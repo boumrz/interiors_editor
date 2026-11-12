@@ -1,0 +1,59 @@
+# Local operating-system files
+.DS_Store
+__pycache__/
+*.py[cod]
+
+# Credentials stay on the workstation or in server/GitHub secret stores.
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.ssh/
+.aws/
+
+# Disposable waiver-spike dependencies and generated reports.
+# Source, tests, lockfiles, and planning evidence remain visible to Git.
+_bmad-output/implementation-artifacts/spikes/**/node_modules/
+_bmad-output/implementation-artifacts/spikes/**/.fallow/
+_bmad-output/implementation-artifacts/spikes/**/coverage/
+_bmad-output/implementation-artifacts/spikes/**/test-results/
+_bmad-output/implementation-artifacts/spikes/**/artifacts/
+_bmad-output/implementation-artifacts/spikes/**/.stryker-tmp/
+
+# Transient interactive-browser captures. Durable evidence belongs in its
+# explicitly named planning-artifacts/evidence location.
+output/playwright/
+/.playwright-cli/
+/.playwright-mcp/
+/test-results/
+/catalog-current.png
+
+# Historical verification archives, instrumented copies, traces and reports
+# occupy tens of GB. Preserve decision/status Markdown in Git; keep the raw
+# evidence on the existing workstation without deleting or rewriting it.
+# Runtime sources, fixtures and checks live under apps/, contracts/ and scripts/.
+/docs/progress/**
+!/docs/progress/**/
+!/docs/progress/**/*.md
+
+# Root phone POC: generated dependency, build and test output is never source.
+node_modules/
+.pnpm-store/
+apps/*/node_modules/
+apps/web/dist/
+apps/web/dist-telegram/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/reports/mutation/
+apps/web/reports/coverage/
+apps/web/.stryker-tmp/
+apps/catalog-control-plane/.gradle/
+apps/catalog-control-plane/.kotlin/
+apps/catalog-control-plane/build/

@@ -200,7 +200,7 @@ function render() {
 		readReleaseStartupInput: current.readReleaseStartupInput,
 		drawingDimensionPreferences: current.drawingDimensions,
 		sourceRecovery: current.sourceRecovery,
-		...(browserProtected ? { navigationProtection: { discardWriterRecoveryAndShowProjects: async () => false } } : { fileTransfer }),
+		...(browserProtected ? { editorStorageNamespace: "browser-registered" as const, navigationProtection: { discardWriterRecoveryAndShowProjects: async () => false } } : { fileTransfer }),
 		...(navigable ? { hostNavigation, hostLifecycle } : {}),
 	};
 	root.render(navigable ? <StrictMode><EditorApp {...props} /></StrictMode> : <EditorApp {...props} />);

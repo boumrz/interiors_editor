@@ -133,6 +133,7 @@ test('project ignores preserve source and status documents while omitting local 
     '.playwright-mcp/page.yml',
     'test-results/.last-run.json',
     'apps/web/dist-telegram/index.html',
+    'apps/web/reports/readonly-source/native/run-example/native.log',
     'docs/progress/release/raw.tar.gz',
     'docs/progress/release/context/copied.ts',
     'docs/progress/release/report.json'

@@ -46,6 +46,22 @@ def service_distribution(properties):
     return distribution
 
 
+def verify_process_distribution(distribution, arguments):
+    """Tie the live JVM to all and only the configured release's runtime JARs."""
+    check(arguments and Path(arguments[0]).name == "java" and arguments.count("-classpath") == 1,
+          "Unrecognized catalog JVM command")
+    position = arguments.index("-classpath")
+    check(position >= 1 and len(arguments) == position + 4
+          and arguments[position + 2:] == ["dev.interiors.catalog.CatalogControlPlaneKt", "serve"]
+          and not any(value in {"-cp", "--class-path", "-jar", "-m", "--module"}
+                      for value in arguments[1:position]), "Unexpected catalog JVM launch arguments")
+    classpath = arguments[position + 1].split(":")
+    expected = {str(path) for name, path in catalog_package.distribution_files(distribution).items()
+                if name.startswith("lib/")}
+    check(len(classpath) == len(expected) and set(classpath) == expected,
+          "Catalog JVM classpath differs from its configured release")
+
+
 def inspect_unit():
     names = ["User", "Group", "ActiveState", "NoNewPrivileges", "ProtectSystem", "MainPID",
              "FragmentPath", "EnvironmentFiles", "ExecStart"]
@@ -54,6 +70,9 @@ def inspect_unit():
     properties = dict(line.split("=", 1) for line in info.stdout.splitlines() if "=" in line)
     distribution = service_distribution(properties)
     process = Path("/proc") / properties["MainPID"]
+    arguments = (process / "cmdline").read_bytes().split(b"\0")
+    check(arguments[-1] == b"", "Incomplete catalog process command")
+    verify_process_distribution(distribution, [os.fsdecode(value) for value in arguments[:-1]])
     status = dict(line.split(":", 1) for line in (process / "status").read_text().splitlines() if ":" in line)
     uid = pwd.getpwnam("interiors-catalog").pw_uid
     check(uid != 0 and [int(value) for value in status["Uid"].split()] == [uid] * 4

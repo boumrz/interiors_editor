@@ -1,9 +1,50 @@
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import catalog_activate as deploy
+
+
+class CatalogProcessTests(unittest.TestCase):
+    def test_inspection_reads_the_running_jvm_before_accepting_the_unit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            distribution = root / "catalog-control-plane"
+            (distribution / "bin").mkdir(parents=True)
+            (distribution / "lib").mkdir()
+            (distribution / deploy.LAUNCHER).write_bytes(b"launcher")
+            jar = distribution / "lib/application.jar"
+            jar.write_bytes(b"synthetic")
+            process = root / "proc/42"
+            process.mkdir(parents=True)
+            (process / "status").write_text("Uid:\t1000\t1000\t1000\t1000\nCapEff:\t00000000\n")
+            (process / "environ").write_bytes(b"CATALOG_DATABASE_URL=\0CATALOG_DATABASE_USER=\0CATALOG_DATABASE_PASSWORD=\0")
+            arguments = ["/usr/bin/java", "-classpath", str(jar), "dev.interiors.catalog.CatalogControlPlaneKt", "serve"]
+            runtime_env = Mock()
+            runtime_env.stat.return_value = SimpleNamespace(st_uid=0, st_mode=0o100600)
+            runtime_env.is_file.return_value = True
+            runtime_env.is_symlink.return_value = False
+
+            def path(value):
+                if value == "/proc":
+                    return root / "proc"
+                if value == deploy.RUNTIME_ENV:
+                    return runtime_env
+                return Path(value)
+
+            with patch.object(deploy, "Path", side_effect=path), patch.object(deploy, "service_distribution", return_value=distribution), patch.object(deploy.subprocess, "run", return_value=SimpleNamespace(stdout="MainPID=42\n")), patch.object(deploy.pwd, "getpwnam", return_value=SimpleNamespace(pw_uid=1000)):
+                for command, accepted in [(arguments, True), (arguments[:-1] + ["publish"], False)]:
+                    (process / "cmdline").write_bytes(b"\0".join(value.encode() for value in command) + b"\0")
+                    if accepted:
+                        self.assertEqual(deploy.inspect_unit(), distribution)
+                    else:
+                        with self.assertRaises(ValueError):
+                            deploy.inspect_unit()
+                (process / "cmdline").write_bytes(b"\0".join(value.encode() for value in arguments))
+                with self.assertRaisesRegex(ValueError, "Incomplete"):
+                    deploy.inspect_unit()
 
 
 class CatalogActivationTests(unittest.TestCase):
@@ -110,13 +151,22 @@ class CatalogActivationTests(unittest.TestCase):
         self.assertFalse(self.restarts)
 
     def test_running_jvm_must_match_the_configured_release(self):
-        jar = str(self.old / "lib/interiors-catalog-control-plane-0.1.0-alpha.jar")
+        jar = str(self.old / "lib/application.jar")
         arguments = ["/usr/bin/java", "-Xmx256m", "-classpath", jar, "dev.interiors.catalog.CatalogControlPlaneKt", "serve"]
         deploy.verify_process_distribution(self.old, arguments)
         for changed in [arguments[:-1] + ["publish"], arguments[:3] + [jar + ":/opt/other.jar"] + arguments[4:],
-                        arguments[:3] + [jar.replace("20261106-initial", self.commit)] + arguments[4:]]:
+                        arguments[:3] + [jar.replace("20261106-initial", self.commit)] + arguments[4:],
+                        arguments[:3] + [jar + ":" + jar] + arguments[4:],
+                        arguments[:2] + arguments[3:], arguments[:-2] + ["WrongMain", "serve"],
+                        arguments + ["extra"], ["/usr/bin/other"] + arguments[1:],
+                        arguments[:2] + ["-jar", "/opt/other.jar"] + arguments[2:]]:
             with self.subTest(changed=changed), self.assertRaises(ValueError):
                 deploy.verify_process_distribution(self.old, changed)
+        dependency = self.old / "lib/dependency.jar"
+        dependency.write_bytes(b"dependency")
+        with self.assertRaises(ValueError):
+            deploy.verify_process_distribution(self.old, arguments)
+        deploy.verify_process_distribution(self.old, arguments[:3] + [str(dependency) + ":" + jar] + arguments[4:])
 
     def test_unit_contract_only_accepts_scoped_user_runtime_env_and_exact_launcher(self):
         launcher = str(self.old / deploy.LAUNCHER)

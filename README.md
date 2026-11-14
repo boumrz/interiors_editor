@@ -20,33 +20,22 @@ Telegram Mini App опубликован через [InteriorsEditorBot](https:/
 Текущие рамки приёмки и ограничения Telegram находятся в
 [актуальном статусе](docs/progress/telegram-extension-2026-11-04/current-status.md).
 
-## GitHub и автопубликация — подготовка 12 ноября 2026
+## GitHub и автопубликация — 14 ноября 2026
 
-Целевой репозиторий: [boumrz/interiors_editor](https://github.com/boumrz/interiors_editor).
-Владелец разрешил коммит, push и настройку deployment. Подготовлен
-[workflow](.github/workflows/deploy.yml): push в `main` запускает Web/PWA,
-Telegram и Kotlin regression, проверяет содержимое репозитория и deployment
-контракты, после успешных проверок публикует оба frontend на основной VPS.
-Точные ресурсы старых выпусков сохраняются; неудачная серверная проверка
-возвращает предыдущий активный выпуск.
+Репозиторий: [boumrz/interiors_editor](https://github.com/boumrz/interiors_editor).
+Владелец разрешил коммит, push и настройку deployment. Push в `main` запускает
+[workflow](.github/workflows/deploy.yml): проверки репозитория, Web/PWA,
+Telegram и Kotlin/PostgreSQL, затем публикацию обоих frontend и Kotlin backend
+из одного коммита на основной VPS. Старые immutable ресурсы сохраняются;
+неудачная серверная проверка возвращает предыдущие frontend и backend.
 
-Установка receiver и двух GitHub environment secrets описана в
-[инструкции](docs/operations/GITHUB-DEPLOYMENT.md). Backend этим процессом
-проверяется, но автоматически не заменяется; изменение его исходников или
-контрактов блокирует публикацию до отдельно проверенного backend rollout.
-На этапе подготовки текущая сессия запрещает запись в `.git`, SSH и открытие
-локальных портов. Поэтому commit, push, реальный CI и deployment пока **не
-выполнены**. Результаты и оставшиеся действия фиксируются в инструкции.
-
-Повторная проверка 12 ноября в новой сессии подтвердила административный
-доступ подключённого GitHub к пустому целевому репозиторию. Ограничения
-исполнительной среды сохранились: `git add --dry-run` не может создать
-`.git/index.lock`, SSH запрещён до соединения, DNS и локальный loopback
-недоступны; Docker daemon не работает, `gh` не установлен. Lint, TypeScript,
-135 отдельных repository/architecture/release/delivery/deployment тестов и обе
-production сборки повторно прошли. Полный Rstest останавливается до запуска
-тестов на `listen EPERM ::1:3000`. Коммит, push, настройка secrets и реальный
-deployment по-прежнему не выполнены; разрешение владельца на них уже получено.
+Receiver и два secrets environment `production` установлены. Настройка и
+rollback описаны в [инструкции](docs/operations/GITHUB-DEPLOYMENT.md).
+Фактический результат каждого выпуска доступен в
+[Actions](https://github.com/boumrz/interiors_editor/actions/workflows/deploy.yml)
+и серверном `frontend/last-deployment.json`. Схема БД и существующая публикация
+каталога сохраняются; изменения migrations/seed требуют отдельного обновления
+данных и останавливают обычный rollout до его подготовки.
 
 Из Git исключены тяжёлые сырые отчёты, архивы и копии проверки под
 `docs/progress`: они сохранены локально. Markdown с решениями и статусами,
@@ -143,8 +132,8 @@ InteriorsEditor; обычные push/PR сохраняют regression и deliver
 Workflow начнет выполняться после загрузки репозитория на GitHub;
 файл не является успешным CI-прогоном.
 
-Git пока не содержит коммитов. Разрешение владельца от 12 ноября охватывает
-первый коммит и push в указанный выше репозиторий.
+Проект опубликован в GitHub. Разрешение владельца от 12 ноября и текущий
+запрос охватывают commit, push и deployment существующего продукта.
 Один владелец редактирует один срез; действуют TDD и [AGENTS.md](AGENTS.md).
 Архивный POC и spike-код не переносятся в приложение.
 

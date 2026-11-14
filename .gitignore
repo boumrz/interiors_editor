@@ -53,6 +53,7 @@ apps/web/test-results/
 apps/web/playwright-report/
 apps/web/reports/mutation/
 apps/web/reports/coverage/
+apps/web/reports/readonly-source/
 apps/web/.stryker-tmp/
 apps/catalog-control-plane/.gradle/
 apps/catalog-control-plane/.kotlin/

@@ -8,6 +8,7 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+import sys
 from unittest.mock import patch
 
 
@@ -155,9 +156,87 @@ class DeploymentTests(unittest.TestCase):
                    "catalog": {"publicationSha256": "b" * 64}}
         self.assertEqual(frontend.receipt_catalog_digest(inventory, receipt), "b" * 64)
         for field, value in (("deployed", False), ("commit", "d" * 40), ("release", "old"),
-                             ("catalog", {"publicationSha256": ""})):
+                             ("deployed", 1), ("catalog", None),
+                             *(("catalog", {"publicationSha256": value}) for value in
+                               ["", "b" * 63, "b" * 65, "z" * 64, 3])):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 frontend.receipt_catalog_digest(inventory, {**receipt, field: value})
+        for malformed in (None, [], {}, {**receipt, "catalog": {}}):
+            with self.subTest(receipt=malformed), self.assertRaises(ValueError):
+                frontend.receipt_catalog_digest(inventory, malformed)
+
+    def public_response(self, origin, path, method="GET", headers=None, timeout=15):
+        target = "telegram" if origin == frontend.ORIGINS["telegram"] else "web"
+        directory = self.telegram if target == "telegram" else self.web
+        if method == "POST":
+            return 405, {}, b""
+        if path == "/catalog-api/v1/catalogs/current":
+            if headers and ("Cookie" in headers or "Authorization" in headers):
+                return 400, {}, b""
+            data = b'{"catalogVersion":"synthetic"}'
+            return 200, {"etag": '"' + frontend.sha(data) + '"'}, data
+        if path.startswith("/?"):
+            path = "/index.html"
+        file = directory / path[1:]
+        if not file.is_file():
+            return 404, {}, b""
+        data = file.read_bytes()
+        if headers and "Range" in headers:
+            return 206, {"content-range": "bytes 0-3/" + str(len(data))}, data[:4]
+        mime = {".js": "application/javascript", ".html": "text/html", ".json": "application/json", ".webmanifest": "application/manifest+json"}[file.suffix]
+        cache = "no-store" if path in frontend.CONTROLS else "public, max-age=31536000, immutable"
+        return 200, {"content-type": mime, "content-length": str(len(data)), "cache-control": cache,
+                     "x-content-type-options": "nosniff", "referrer-policy": "no-referrer"}, b"" if method == "HEAD" else data
+
+    def test_smoke_binds_both_public_catalogs_to_the_server_receipt(self):
+        inventory = self.package()
+        digest = frontend.sha(b'{"catalogVersion":"synthetic"}')
+        with patch.object(frontend, "request", side_effect=self.public_response):
+            self.assertTrue(frontend.smoke_release(inventory, expected_catalog_digest=digest)["passed"])
+            with self.assertRaisesRegex(ValueError, "catalog.*digest"):
+                frontend.smoke_release(inventory, expected_catalog_digest="f" * 64)
+        for origin in frontend.ORIGINS.values():
+            def changed_etag(url, path, *args, **kwargs):
+                result = self.public_response(url, path, *args, **kwargs)
+                if url == origin and path == "/catalog-api/v1/catalogs/current" and result[0] == 200:
+                    return 200, {"etag": '"' + "f" * 64 + '"'}, result[2]
+                return result
+            with self.subTest(origin=origin), patch.object(frontend, "request", side_effect=changed_etag):
+                with self.assertRaisesRegex(ValueError, "catalog.*digest"):
+                    frontend.smoke_release(inventory, expected_catalog_digest=digest)
+            def changed_bytes(url, path, *args, **kwargs):
+                result = self.public_response(url, path, *args, **kwargs)
+                if url == origin and path == "/catalog-api/v1/catalogs/current" and result[0] == 200:
+                    return 200, result[1], b'{"catalogVersion":"changed"}'
+                return result
+            with self.subTest(origin=origin), patch.object(frontend, "request", side_effect=changed_bytes):
+                with self.assertRaisesRegex(ValueError, "catalog.*digest"):
+                    frontend.smoke_release(inventory, expected_catalog_digest=digest)
+
+    def test_smoke_cli_checks_receipt_identity_before_network_access(self):
+        inventory = self.package()
+        receipt = self.base / "receipt.json"
+        receipt.write_text(json.dumps({"deployed": True, "commit": "d" * 40, "release": inventory["release"],
+                                       "catalog": {"publicationSha256": "b" * 64}}))
+        with patch.object(sys, "argv", [str(MODULE), "smoke", "--archive", str(self.archive), "--receipt", str(receipt)]), patch.object(frontend, "request", side_effect=AssertionError("network before receipt")):
+            with self.assertRaises(ValueError):
+                frontend.main()
+        digest = frontend.sha(b'{"catalogVersion":"synthetic"}')
+        receipt.write_text(json.dumps({"deployed": True, "commit": inventory["commit"], "release": inventory["release"],
+                                       "catalog": {"publicationSha256": digest}}))
+        with patch.object(sys, "argv", [str(MODULE), "smoke", "--archive", str(self.archive), "--receipt", str(receipt)]), patch.object(frontend, "request", side_effect=self.public_response), patch.object(sys, "stdout", io.StringIO()) as output:
+            frontend.main()
+        self.assertTrue(json.loads(output.getvalue())["passed"])
+
+    def test_server_health_uses_catalog_digest_and_rolls_back_on_mismatch(self):
+        self.package()
+        root, site = self.server()
+        with patch.object(frontend, "smoke_release", side_effect=ValueError("catalog digest mismatch")) as health:
+            with self.assertRaisesRegex(ValueError, "catalog digest mismatch"):
+                frontend.activate_release(self.archive, root, site, command=lambda _: None, ready=lambda _: None,
+                                          catalog_receipt={"changed": True, "publicationSha256": "b" * 64})
+        self.assertEqual(health.call_args.kwargs, {"expected_catalog_digest": "b" * 64})
+        self.assertEqual((root / "current").readlink().as_posix(), "releases/old")
 
     def test_smoke_has_a_total_deadline_before_network_io(self):
         inventory = self.package()

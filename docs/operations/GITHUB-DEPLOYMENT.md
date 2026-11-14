@@ -1,33 +1,41 @@
-# GitHub Actions и публикация frontend
+# GitHub Actions и публикация проекта
 
-Этот процесс собирает и проверяет два существующих frontend: Telegram на
-`https://domiknote.ru/` и Web/PWA на `https://www.domiknote.ru/`. Публикация
-добавляет полный выпуск, сохраняет старые immutable ресурсы и переключает
-общий указатель `frontend/current`. Сервис Kotlin, PostgreSQL, текущая
-публикация каталога, серверные credentials и пользовательские данные этим
-процессом не изменяются. Backend продолжает проверяться в CI; его обновление
-не входит в frontend deployment.
+Push в `main` запускает `.github/workflows/deploy.yml`: проверки репозитория,
+Web/PWA, Telegram и Kotlin/PostgreSQL, затем публикацию полного выпуска на
+основной NL VPS. Telegram обслуживается на `https://domiknote.ru/`, Web/PWA —
+на `https://www.domiknote.ru/`. Оба frontend и Kotlin distribution берутся
+из одного проверенного source commit. Сборки выполняются на GitHub runners.
 
-`scripts/deploy/catalog_boundary.py` сверяет 27 production/build/contract
-входов с `catalog-source-baseline.json`. Любое добавление, удаление или
-изменение блокирует frontend публикацию. Baseline — локальный подготовленный
-снимок, соответствие работающему backend **не проверено**. Для полного
-автодеплоя проекта необходимо сначала сверить действующий `interiors-catalog`
-unit/ExecStart, schema/migrations и runtime credentials, затем добавить
-отдельно проверенную атомарную поставку Kotlin с rollback. Просто обновлять
-baseline ради зелёного CI нельзя.
+`project_release.py` координирует замену Kotlin runtime и обоих frontend.
+`catalog_activate.py` сверяет systemd unit, фактический JVM classpath,
+непривилегированного пользователя и runtime-only credentials. Перед рестартом
+`catalog_package.py` сравнивает migrations и seed/resources с установленным
+distribution. Изменения кода backend публикуются автоматически; изменение
+схемы БД или seed-публикации останавливает выпуск до отдельно подготовленного
+обновления данных. CI не запускает `migrate`/`publish` с привилегированными
+credentials. Legacy `catalog_boundary.py` не является gate текущего workflow.
+
+PostgreSQL, текущая публикация каталога и пользовательские данные сохраняются.
+Пользовательские проекты и backup остаются на устройстве. Старые immutable
+frontend URL не удаляются. При серверном сбое возвращаются прежние frontend
+и Kotlin runtime. Ошибка дополнительной внешней проверки на GitHub отмечает
+job как failed и требует проверки оператора, даже если серверная активация
+прошла успешно.
 
 Владельцем разрешены подготовка GitHub, коммит, push и deployment существующего
 продукта 12 ноября 2026 года. Это разрешение инфраструктурного среза не
 объявляет Telegram Epic 10 `READY`, не закрывает физическую приёмку или внешний
 файловый roundtrip и не включает новый browser registered-transfer ingress.
 
-На момент подготовки скриптов доступная исполнительная среда запретила SSH
-подключение. Поэтому установка receiver на рабочий сервер, запись GitHub
-secrets, реальный Actions run и live deployment ещё требуют выполнения и
-проверки; наличие этих файлов не является свидетельством успешной публикации.
-Запись в `.git` также запрещена: добавление `remote.origin` завершилось
-`could not lock config file .git/config: Operation not permitted`.
+14 ноября 2026 года подтверждены Git push и SSH к основному VPS, оба HTTPS
+origin, действующий TLS/Certbot timer и фактическая конфигурация каталога.
+Restricted receiver установлен; environment `production` содержит
+`DEPLOY_SSH_PRIVATE_KEY` и `DEPLOY_SSH_KNOWN_HOSTS`. Первый push запустил
+реальный Actions run. Актуальный результат публикации проверять в
+[Actions](https://github.com/boumrz/interiors_editor/actions/workflows/deploy.yml)
+и `/opt/interiors-editor/frontend/last-deployment.json`; успешный push сам по
+себе не означает успешный deployment. Таблицы 12 ноября ниже — история
+подготовки, их ограничения среды не описывают текущий доступ.
 
 ## Первый запуск
 
@@ -58,7 +66,9 @@ admin key в GitHub не передаётся. Повторный setup созд
 старые такие ключи автоматически не удаляются. После успешной ротации их нужно
 сверить и отозвать в отдельной административной сессии.
 
-После полного прогона проверок, до первого коммита:
+Для уже настроенного репозитория после проверок достаточно commit и push в
+`main`; повторный bootstrap и ротация ключа для каждого push не нужны.
+Первичная настройка Git при отсутствии remote/commit:
 
 ```sh
 node scripts/check-repository.mjs
@@ -167,7 +177,20 @@ inventory. Отдельный SSH receiver проверяет длину, SHA-25
 `.env`, приватные ключи, дампы, пользовательские Project/Backup/GLB или
 настоящие signed Telegram launch данные.
 
+Kotlin distribution собирается `./gradlew --no-daemon
+--dependency-verification=strict installDist` и упаковывается
+`scripts/deploy/catalog_package.py` с тем же commit. SSH receiver принимает
+ограниченный USTAR с ровно `frontend.tar.gz` и `catalog.tar.gz`; исходники,
+серверные env и пользовательские файлы в него не входят.
+
 ## Публикация и восстановление
+
+Внешний project lock охватывает всю активацию. Сначала проверяется текущий
+catalog unit/JVM и совпадение data contract, сохраняется digest публикации,
+затем при необходимости переключается Kotlin distribution через systemd
+drop-in. После рестарта обязательны прежний digest, готовность сервиса и
+проверка фактического нового JVM. Публикация frontend выполняется внутри
+этого rollback context; при её ошибке возвращается также предыдущий backend.
 
 1. `flock` последовательно допускает одного publisher. Архив проверяется в
    закрытом staging; tar traversal, hardlinks/symlinks, duplicates,
@@ -184,7 +207,8 @@ inventory. Отдельный SSH receiver проверяет длину, SHA-25
 4. Одним `os.replace` меняется `current`, поэтому HTML, release manifest,
    PWA worker и PWA manifest выбираются из одного полного выпуска.
 5. HTTPS smoke сверяет каждый файл и его SHA/длину, GET/HEAD, cache/security
-   headers, root, range, неизвестные пути, отказ POST, каталог и отсутствие
+   headers, root, range, неизвестные пути, отказ POST, исходный digest и ETag
+   каталога на обоих origin и отсутствие
    PWA worker/manifest на Telegram origin. Общий smoke budget — 180 секунд.
 6. При неудаче health-check возвращается прежний `current`. Union static URL
    сохраняется: уже загруженный новый shell продолжает получать lazy chunks.
@@ -194,11 +218,13 @@ inventory. Отдельный SSH receiver проверяет длину, SHA-25
 
 Успешный receipt записывается в
 `/opt/interiors-editor/frontend/last-deployment.json`; он содержит commit,
-release и предыдущий указатель без credentials. Для независимой проверки
+release, предыдущий указатель и catalog receipt без credentials. GitHub runner
+сохраняет SSH stdout как `deployment-receipt.json`, сверяет его commit/release
+с архивом и повторяет публичный smoke с catalog digest. Для независимой проверки
 того же сохранённого артефакта:
 
 ```sh
-python3 scripts/deploy/frontend.py smoke --archive /tmp/frontend.tar.gz
+python3 scripts/deploy/frontend.py smoke --archive /tmp/frontend.tar.gz --receipt /tmp/deployment-receipt.json
 ```
 
 Для ручного возврата выбрать предыдущий проверенный архив и его полный commit
@@ -274,5 +300,6 @@ runtime или lockfile. Команды запускаются через `pnpm 
 исходящими SSH/HTTPS/DNS и loopback, работающий Docker и авторизованный `gh`.
 Далее остаются полный regression, проверка фактического backend на VPS,
 установка restricted receiver/secrets, commit/push и подтверждённый Actions
-run с receipt и публичным smoke. Текущий workflow публикует только frontend;
-полный backend rollout остаётся отдельной незавершённой частью запроса.
+run с receipt и публичным smoke. На 12 ноября полный backend rollout ещё
+оставался незавершённым. Текущая схема полной поставки и подтверждённый
+14 ноября доступ описаны в начале документа.

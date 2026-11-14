@@ -266,7 +266,11 @@ def activate_release(archive, root, site, command=run_command, health=None, expe
                 (ready or wait_for_assets)(inventory)
                 atomic_link(root / "current", "releases/" + inventory["release"])
                 switched = True
-                (health or smoke_release)(inventory)
+                if health is not None:
+                    health(inventory)
+                else:
+                    smoke_release(inventory, expected_catalog_digest=(
+                        catalog_receipt["publicationSha256"] if catalog_receipt is not None else None))
                 receipt = {"deployed": True, "commit": inventory["commit"], "release": inventory["release"], "previous": str(previous), "backendChanged": False, "retainedAssetsDeleted": False}
                 if catalog_receipt is not None:
                     receipt.update(catalog=catalog_receipt, backendChanged=catalog_receipt["changed"])
@@ -333,7 +337,18 @@ def wait_for_assets(inventory, timeout_seconds=60):
             time.sleep(min(0.25, remaining))
 
 
-def smoke_release(inventory, timeout_seconds=180):
+def receipt_catalog_digest(inventory, receipt):
+    require(isinstance(receipt, dict) and receipt.get("deployed") is True
+            and receipt.get("commit") == inventory["commit"] and receipt.get("release") == inventory["release"],
+            "Deployment receipt does not match this release")
+    catalog = receipt.get("catalog")
+    digest = catalog.get("publicationSha256") if isinstance(catalog, dict) else None
+    require(isinstance(digest, str) and re.fullmatch(r"[a-f0-9]{64}", digest),
+            "Deployment receipt has no valid catalog publication digest")
+    return digest
+
+
+def smoke_release(inventory, timeout_seconds=180, expected_catalog_digest=None):
     deadline = time.monotonic() + timeout_seconds
     def probe(origin, path, method="GET", headers=None):
         remaining = deadline - time.monotonic()
@@ -361,8 +376,11 @@ def smoke_release(inventory, timeout_seconds=180):
         asset = next(row for row in rows if row["path"].endswith(".js") and row["byteLength"] >= 4)
         status, headers, data = probe(origin, asset["path"], headers={"Range": "bytes=0-3"})
         require(status == 206 and len(data) == 4 and headers.get("content-range") == "bytes 0-3/" + str(asset["byteLength"]), "Public byte range mismatch")
-        status, _, data = probe(origin, "/catalog-api/v1/catalogs/current", headers={"Accept": "application/json"})
+        status, headers, data = probe(origin, "/catalog-api/v1/catalogs/current", headers={"Accept": "application/json"})
         require(status == 200 and isinstance(json.loads(data).get("catalogVersion"), str), "Read-only catalog unavailable")
+        if expected_catalog_digest is not None:
+            require(sha(data) == expected_catalog_digest and headers.get("etag") == '"' + expected_catalog_digest + '"',
+                    "Public catalog publication digest mismatch")
         require(probe(origin, "/catalog-api/v1/catalogs/current?unexpected=1")[0] == 404, "Catalog query accepted")
         require(probe(origin, "/catalog-api/v1/catalogs/current", headers={"Cookie": "synthetic=1"})[0] == 400, "Catalog cookie accepted")
         require(probe(origin, "/catalog-api/v1/catalogs/current", headers={"Authorization": "Bearer synthetic"})[0] == 400, "Catalog authorization accepted")
@@ -386,6 +404,7 @@ def main():
     activate.add_argument("--site", default="/etc/nginx/sites-available/interiors-editor.conf")
     smoke = commands.add_parser("smoke")
     smoke.add_argument("--archive", required=True)
+    smoke.add_argument("--receipt", type=Path)
     arguments = parser.parse_args()
     if arguments.command == "package":
         result = package_release(arguments.web, arguments.telegram, arguments.output, arguments.commit)
@@ -401,7 +420,8 @@ def main():
     else:
         with tempfile.TemporaryDirectory(prefix="interiors-deploy-smoke-") as temporary:
             result = extract_release(arguments.archive, Path(temporary) / "release")
-            print(json.dumps(smoke_release(result)))
+            digest = receipt_catalog_digest(result, json.loads(arguments.receipt.read_bytes())) if arguments.receipt else None
+            print(json.dumps(smoke_release(result, expected_catalog_digest=digest)))
 
 
 if __name__ == "__main__":

@@ -90,11 +90,13 @@ jobs:
           ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=20 \
             -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -i "$ssh_dir/key" \
-            root@147.45.133.75 "deploy $GITHUB_SHA $digest $size" < "$archive"
+            root@147.45.133.75 "deploy $GITHUB_SHA $digest $size" < "$archive" \
+            > "$RUNNER_TEMP/interiors-release/deployment-receipt.json"
       - name: Verify public HTTPS delivery from the GitHub runner
         run: >-
           python3 scripts/deploy/frontend.py smoke
           --archive "$RUNNER_TEMP/interiors-release/frontend.tar.gz"
+          --receipt "$RUNNER_TEMP/interiors-release/deployment-receipt.json"
       - name: Record the published commit
         env:
           COMMIT_SHA: ${{ github.sha }}

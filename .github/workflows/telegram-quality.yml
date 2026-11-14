@@ -41,7 +41,7 @@ jobs:
       - name: Type-check the separate entry and shared editor
         run: pnpm exec tsc --noEmit -p tsconfig.telegram.json
       - name: Verify release sealing and read-only preview proxy
-        run: pnpm exec node --test scripts/telegram-release-build.test.mjs scripts/telegram-release-build.boundaries.test.mjs scripts/telegram-target-independence.test.mjs scripts/telegram-preview-server.test.mjs scripts/telegram-readonly-fixture-server.test.mjs scripts/telegram-readonly-proof-audit.test.mjs scripts/telegram-readonly-native-terminal-policy.test.mjs tests/verification/telegram-readonly-subject-loader.test.mjs
+        run: pnpm exec node --test scripts/telegram-release-build.test.mjs scripts/telegram-release-build.boundaries.test.mjs scripts/telegram-target-independence.test.mjs scripts/telegram-preview-server.test.mjs scripts/telegram-readonly-fixture-server.test.mjs scripts/telegram-readonly-proof-audit.test.mjs scripts/telegram-readonly-native-terminal-policy.test.mjs scripts/telegram-readonly-fixture-lifecycle.test.mjs tests/verification/telegram-readonly-subject-loader.test.mjs
       - name: Verify native IndexedDB and Web Locks protocol
         run: pnpm exec node scripts/run-telegram-storage-mutation.mjs
       - name: Verify isolated browser storage admission and revocation

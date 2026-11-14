@@ -327,7 +327,9 @@ const harness = {
   try {
    for (const storeName of Array.from(db.objectStoreNames)) contents[storeName] = await new Promise<readonly unknown[]>((resolve, reject) => {
     const tx = db.transaction(storeName, "readonly"), request = tx.objectStore(storeName).getAll();
-    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    let records: readonly unknown[];
+    request.onsuccess = () => { records = request.result; };
+    tx.oncomplete = () => resolve(records); tx.onabort = () => reject(tx.error);
    });
   } finally { db.close(); }
   try {

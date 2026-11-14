@@ -1,0 +1,13 @@
+# Entry568 timeout subtype correction — PRE-FULL test-only handoff
+
+Only `new/src/app/telegram-editor-app.test.ts` is proposed for guarded integration against baseline85cc2816. Source3b4997f9 unchanged. Historical full568/133 raw and its suspended acceptance are preserved; no statuses, score or denominator adjusted.
+
+All original133+extra6 canonical file/title identities are preserved (139unique). New workspace/configuration yields new Rstest ID hash prefixes; an explicit raw old→current mapping is retained, and actual current IDs stay fixed across current calls. No IDs were forged or rewritten.
+
+Tests observe actual public Promise fulfillment/rejection through a real750ms observation deadline captured before fake application timers. This is a verification assertion bound, not product policy. Held fake-port gates race actual public operation completion, including early refusal. Exact undefined/Error rejection payload assertions remain. Ordinary139cases and strict TS/Biome PASS.
+
+All17 formerly hidden Node-bodytimeout selectors now produce actual named bounded assertions, no body/hook timeout. Exact full568 inventory recreated with installed Instrumenter and unchanged ranges76–126 +178–636; every ID/span/mutator/replacement matches original. V2 retained raw source-error exceptions. V3 classifier permits supplementary errors only beside an actual named activated assertion and exact selected-source first frame, under Root's calibrated217 policy; raw stacks remain. Actual mixed131→1/globalonly→2/foreignextra122→2 plus badSHA/fakeID/worker/skip/build4-GLB controls qualify. Four independent Node policy tests reject all17actual historical bodytimeout records and unknown/foreign errors.
+
+Formal Stryker dry-run2: actual568 mutants, all139case/module probes,1worker, unchanged80threshold, full599src/tests/public/config/resource closure restored exactly. Initial formal dry-run1 covered502FS files and is retained; v2 expands restoration/immutability tracking to all source+tests. Initial baseline guard wrongly required one PID across7sequential forks; rejected proof retained, corrected exclusive lease begin/end proves one concurrent worker. First raw JSON mixed-error control lacked computed topFrame; withheld until first-frame derivation was validated. These setup corrections are not behavioral detections.
+
+Fresh COMPLETE568/139/80 CPU1 is authorized and starts only after this immutable preflight freeze. Its full raw gate and post-audit remain PENDING in this packet. No Native/Chrome/network/deployment/commits/original edits occurred. Proof/config/context paths are evidence only, never proposed context overwrites.

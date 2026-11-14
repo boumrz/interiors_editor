@@ -1,0 +1,9 @@
+# Additional20 actual Native follow-up
+
+Three existing VERIFICATION updates only, protected by exact current Original SHA guards: append one public no-general-GC case/helper to frozen19; replace only its embedded case plan with actual frozen20. No production/algorithm/package/default target edit. All19 original case IDs/assertions are retained. Frozen19 actual full baseline passed BEFORE this addition; fresh20 full baseline and instrumented-off20 also passed.
+
+The twentieth scenario is wholly public: origin lease creates actual bytes; an independent consumer pins the same bytes; origin discard leaves consumer root and original creation owner; consumer takeover removes its final owned root. Exact foreign-created resource bytes/row/other Project data must remain (S2 has no general GC), with legitimate technical fencing/counter changes isolated. Baseline proves beforeCreationLease===originLease, distinct consumerLease, beforeRoots=[consumerLease], durable=false, and exact remaining row with roots[]. Actual installed selector854 changes only creation-owner guard totrue and now gives a genuine named failure. No fake Access, rows, IDB events or private error-message oracle.
+
+Actual other selectors838/840/783/785/287/288/157/165/167/629/632/332/342/350/351 also fail named public tests.161/163 remain honestly all20-clean (not called detected or blanket equivalent). Source/local-ID poison controls reject2. All four actual instrumented payloads map to the unchanged current2903 inventory, source4 restored exactly, no score is synthesized. Physical Telegram/auth/GLB safety/rendering/archive acceptance are outside these opaque-byte protocol fixtures.
+
+New combined32 screening harness is a later SEPARATE profile (2+20+10); this packet carries only the actual19/20 baseline and causal controls. It is not a whole shared-algorithm gate or adjusted score. Originals remain untouched by this agent.

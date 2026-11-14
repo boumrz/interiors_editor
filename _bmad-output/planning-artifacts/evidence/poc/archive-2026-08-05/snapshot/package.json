@@ -1,0 +1,24 @@
+{
+  "name": "interiors-editor",
+  "private": true,
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": "24.19.0",
+    "pnpm": "11.20.0"
+  },
+  "scripts": {
+    "check:runtime": "node apps/web/scripts/check-runtime.mjs",
+    "dev": "pnpm --filter @interiors/web dev",
+    "build": "pnpm --filter @interiors/web build",
+    "typecheck": "pnpm --filter @interiors/web typecheck",
+    "test": "pnpm --filter @interiors/web test",
+    "test:e2e": "pnpm --filter @interiors/web test:e2e",
+    "poc:dev": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web dev",
+    "poc:build": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web build",
+    "poc:typecheck": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web typecheck",
+    "poc:test": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web test",
+    "poc:test:e2e": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web test:e2e",
+    "poc:test:mutation": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web test:mutation",
+    "poc:verify": "npm run poc:typecheck && npm run poc:test && npm run poc:build && npm run poc:test:e2e && npm run poc:test:mutation"
+  }
+}

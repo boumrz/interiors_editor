@@ -1,0 +1,60 @@
+[32m21:15:24 (89491) INFO ProjectReader[39m Found 3 of 353 file(s) to be mutated.
+[32m21:15:24 (89491) INFO Instrumenter[39m Instrumented 3 source file(s) with 172 mutant(s)
+[32m21:15:24 (89491) INFO ConcurrencyTokenProvider[39m Creating 1 test runner process(es).
+[32m21:15:24 (89491) INFO Sandbox[39m In place mode is enabled, Stryker will be overriding YOUR files. Find your backup at: .stryker-tmp/backup-Dk8JA8
+[32m21:15:24 (89491) INFO BroadcastReporter[39m Detected that current console does not support the "progress" reporter, downgrading to "progress-append-only" reporter
+[32m21:15:24 (89491) INFO DryRunExecutor[39m Starting initial test run (command test runner with "off" coverage analysis). This may take a while.
+[32m21:15:24 (89491) INFO DryRunExecutor[39m Initial test run succeeded. Ran 1 tests in 0 seconds (net 375 ms, overhead 1 ms).
+Mutation testing 4% (elapsed: <1m, remaining: ~3m) 8/172 tested (0 survived, 0 timed out)
+Mutation testing 13% (elapsed: <1m, remaining: ~2m) 24/172 tested (2 survived, 0 timed out)
+Mutation testing 15% (elapsed: <1m, remaining: ~2m) 26/172 tested (2 survived, 0 timed out)
+Mutation testing 16% (elapsed: <1m, remaining: ~3m) 29/172 tested (2 survived, 0 timed out)
+Mutation testing 20% (elapsed: <1m, remaining: ~3m) 35/172 tested (2 survived, 0 timed out)
+Mutation testing 22% (elapsed: ~1m, remaining: ~3m) 38/172 tested (2 survived, 0 timed out)
+Mutation testing 24% (elapsed: ~1m, remaining: ~3m) 42/172 tested (2 survived, 0 timed out)
+Mutation testing 26% (elapsed: ~1m, remaining: ~3m) 46/172 tested (2 survived, 0 timed out)
+Mutation testing 28% (elapsed: ~1m, remaining: ~3m) 49/172 tested (2 survived, 0 timed out)
+Mutation testing 30% (elapsed: ~1m, remaining: ~3m) 53/172 tested (2 survived, 0 timed out)
+Mutation testing 31% (elapsed: ~1m, remaining: ~3m) 55/172 tested (2 survived, 0 timed out)
+Mutation testing 34% (elapsed: ~2m, remaining: ~3m) 60/172 tested (2 survived, 0 timed out)
+Mutation testing 36% (elapsed: ~2m, remaining: ~3m) 63/172 tested (2 survived, 0 timed out)
+Mutation testing 41% (elapsed: ~2m, remaining: ~3m) 72/172 tested (2 survived, 0 timed out)
+Mutation testing 43% (elapsed: ~2m, remaining: ~3m) 74/172 tested (2 survived, 0 timed out)
+Mutation testing 44% (elapsed: ~2m, remaining: ~3m) 77/172 tested (2 survived, 0 timed out)
+Mutation testing 52% (elapsed: ~2m, remaining: ~2m) 90/172 tested (2 survived, 0 timed out)
+Mutation testing 61% (elapsed: ~3m, remaining: ~1m) 105/172 tested (2 survived, 0 timed out)
+Mutation testing 69% (elapsed: ~3m, remaining: ~1m) 120/172 tested (2 survived, 0 timed out)
+Mutation testing 78% (elapsed: ~3m, remaining: <1m) 135/172 tested (2 survived, 0 timed out)
+Mutation testing 87% (elapsed: ~3m, remaining: <1m) 151/172 tested (2 survived, 0 timed out)
+Mutation testing 97% (elapsed: ~3m, remaining: <1m) 168/172 tested (2 survived, 0 timed out)
+
+All tests
+  ✓ All tests (killed 170)
+
+[Survived] ObjectLiteral
+src/adapters/catalog/http-catalog-gateway.ts:77:54
+-   		signal?.addEventListener("abort", abortFromCaller, { once: true });
++   		signal?.addEventListener("abort", abortFromCaller, {});
+
+[Survived] BooleanLiteral
+src/adapters/catalog/http-catalog-gateway.ts:77:62
+-   		signal?.addEventListener("abort", abortFromCaller, { once: true });
++   		signal?.addEventListener("abort", abortFromCaller, { once: false });
+
+Ran 1.00 tests per mutant on average.
+----------------------------|------------------|----------|-----------|------------|----------|----------|
+                            | % Mutation score |          |           |            |          |          |
+File                        |  total | covered | # killed | # timeout | # survived | # no cov | # errors |
+----------------------------|--------|---------|----------|-----------|------------|----------|----------|
+All files                   |  98.84 |   98.84 |      170 |         0 |          2 |        0 |        0 |
+ adapters                   |  91.67 |   91.67 |       22 |         0 |          2 |        0 |        0 |
+  catalog                   |  91.67 |   91.67 |       22 |         0 |          2 |        0 |        0 |
+   http-catalog-gateway.ts  |  91.67 |   91.67 |       22 |         0 |          2 |        0 |        0 |
+ app                        | 100.00 |  100.00 |       98 |         0 |          0 |        0 |        0 |
+  project-controller.ts     | 100.00 |  100.00 |       98 |         0 |          0 |        0 |        0 |
+ domain                     | 100.00 |  100.00 |       50 |         0 |          0 |        0 |        0 |
+  update-room-properties.ts | 100.00 |  100.00 |       50 |         0 |          0 |        0 |        0 |
+----------------------------|--------|---------|----------|-----------|------------|----------|----------|
+[32m21:19:06 (89491) INFO JsonReporter[39m Your report can be found at: file:///private/tmp/interiors-catalog-release-mutation/apps/web/reports/mutation/release-owned-final.json
+[32m21:19:06 (89491) INFO MutationTestExecutor[39m Done in 3 minutes and 42 seconds.
+[32m21:19:06 (89491) INFO Sandbox[39m Resetting your original files from .stryker-tmp/backup-Dk8JA8.

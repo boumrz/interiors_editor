@@ -1,0 +1,25 @@
+:root {
+  background: #f4f1ea;
+  color: #172033;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --canvas: #f4f1ea;
+  --surface: #ffffff;
+  --ink: #172033;
+  --muted: #667085;
+  --line: #b8b7b2;
+  --line-soft: #deddd7;
+  --shadow: color-mix(in srgb, #172033 10%, transparent);
+  --blue: #2563eb;
+  --danger: #b42318;
+  --safe: #147a55;
+  --font-display: "Avenir Next", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { background: var(--canvas); min-width: 320px; min-height: 100%; }
+body { margin: 0; }
+button, input { -webkit-tap-highlight-color: transparent; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; scroll-behavior: auto !important; transition-duration: 1ms !important; } }

@@ -1,0 +1,4 @@
+{
+ "extends": "../../tsconfig.json",
+ "include": ["../../src/ui/styles.d.ts", "../../src/ui/editor-host-boundary.ts", "../../src/ui/editor-transient-lifecycle.test.tsx", "../../src/ui/editor-plan-presentation.ts", "../../src/ui/PlanProjection.tsx", "../../tests/browser/editor-contact-harness.tsx", "../../tests/browser/editor-contact-e2e.check.ts"]
+}

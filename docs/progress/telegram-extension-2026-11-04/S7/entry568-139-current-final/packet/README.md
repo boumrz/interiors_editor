@@ -1,0 +1,15 @@
+# Entry568/139 current complete proof — Root review pending
+
+Raw whole SAME568 declared-range source3b4997f9, current139cases (original133+extra6 preserved), concurrency1/fixed80:482Killed/0Timeout/86Survived84.85915492957746%. Exact report SHA4736b34fccdc070dd5e9b62a78abd8701aad201104e2c03746ce815df0aadcb4. No raw status/score/denominator changed. Historical133 raw and suspended acceptance remain independent and untouched.
+
+Only new/src/app/telegram-editor-app.test.ts is proposed for Root guarded integration against85cc2816→b4afbd277f51410c155ee74fdeebe9287ad728c0d2ac493b0ee4840ba5a95802. Context-tree/proof/evidence are reference, never blind overwrite.
+
+Tests use real-scheduler750ms PUBLIC completion observations; missing fake-port callbacks race actual public operation completion. Exact undefined/Error rejection payload checks remain. No product deadline/policy/source was changed. Ordinary139 +scopedTS/Biome pass. Same139 unique canonical file/title identities mapped from old to current raw Rstest IDs; current baseline literal IDs are fixed within all current invocations.
+
+Post-audit569actualcalls:482named activated behavioral failures, baseline+86survivors each exact139 IDs;19993actual case/module observations. All569run logs clean of build/setup/reporter faults; ZERO Node body/hook timeout. Seven extra-error calls retain raw source TypeErrors beside a named actual AssertionError, first raw stack frame exact selected source per calibrated Root217 policy. Actual131mixed→1/global-only→2/foreign-extra122→2/badsource/fakeID/preheld/skip/build4GLB controls qualify. Four Node policy controls reject all17 real historical bodytimeout records and unknown/foreign extras.
+
+469named failures contain AssertionError;13named direct Error/TypeError case failures are explicitly inventoried for Root review, not silently described as assertions. All raw case errors/extra errors are retained. Exact formal instrumented74381bytes reconstructed by official ts-nocheck directive prefix, hash21c485a1525e8c68739ce9912fc2f2f7079fb217dd2a5e2a1103310878a8b228 matches every actual loaded module/FS hash. Installed Instrumenter568 IDs/spans/mutators/replacements match historical source, no scope omissions.
+
+All599tracked source/test/public/config/resource files restored byte-exact. Recorded1660child/worker PIDs checked:1658absent,2reused unrelated after long elapsed interval; no owned Node process. Parent process close and each sequential fork lease end are recorded. Initial terminal audit saw its own Python PID reused from an old Node PID; corrected read-only executable/cwd audit avoided a false leak claim and never killed unrelated processes. No Native, Chrome, server, deployment, user data/file access, commits or original edits occurred in this Entry proof.
+
+Raw PASS and post-audit are provided for independent Root acceptance; this packet alone is not product release/physical Telegram approval. Runtime136 remains separately suspended pending its5 hidden-bodytimeout corrections; permit100 archive206actual invocation logs has0subtype matches.

@@ -1,0 +1,381 @@
+import { resolveOrthogonalPlanFaces } from "./derived-orthogonal-plan-faces";
+import { floorItemFootprintIntersectsDoorSwing } from "./parametric-item";
+import {
+	isFloorSchematicAssetInstance,
+	isWallSchematicAssetInstance,
+	type Project,
+	type Vertex,
+	type WallSegment,
+} from "./project";
+import type { UpdateWallOpeningInput } from "./wall-opening";
+import {
+	type AddDoorOpeningInput,
+	type AddDoorOpeningResult,
+	type AddWindowOpeningInput,
+	addDoorOpening,
+	addWindowOpening,
+	type DeleteWallOpeningResult,
+	deleteWallOpening,
+	moveWallOpening,
+	updateWallOpening,
+	type WallOpeningHost,
+	wallOpeningIntervalMm,
+} from "./wall-opening";
+
+interface IdSource {
+	next(): string;
+}
+
+export type DoorOpeningProjectMutationResult =
+	| { readonly kind: "accepted"; readonly project: Project }
+	| Extract<AddDoorOpeningResult, { readonly kind: "rejected" }>
+	| Extract<DeleteWallOpeningResult, { readonly kind: "rejected" }>
+	| {
+			readonly kind: "rejected";
+			readonly reasonCode:
+				| "INVALID_WALL_HOST"
+				| "DOOR_CLEARANCE_COLLISION"
+				| "WALL_OPENING_COLLISION";
+	  };
+
+/**
+ * Adds a durable Door only after resolving the selected concrete wall's
+ * length and safe height from the PlanGraph. A shared wall uses the shorter
+ * adjacent Room height, while its renderer can still use the taller envelope.
+ */
+export function addDoorOpeningToProject(
+	project: Project,
+	input: AddDoorOpeningInput,
+	ids: IdSource,
+	updatedAt: string,
+): DoorOpeningProjectMutationResult {
+	const wallHosts = wallOpeningHostsForProject(project);
+	if (!wallHosts) {
+		return { kind: "rejected", reasonCode: "INVALID_WALL_HOST" };
+	}
+	const added = addDoorOpening(
+		{ openings: project.level.openings, wallHosts },
+		input,
+		ids,
+	);
+	if (added.kind === "rejected") {
+		return added;
+	}
+	if (!openingsKeepFloorItemsClear(project, added.openings)) {
+		return { kind: "rejected", reasonCode: "DOOR_CLEARANCE_COLLISION" };
+	}
+	if (!openingsKeepWallItemsClear(project, added.openings)) {
+		return { kind: "rejected", reasonCode: "WALL_OPENING_COLLISION" };
+	}
+	return {
+		kind: "accepted",
+		project: {
+			...project,
+			level: { ...project.level, openings: added.openings },
+			updatedAt,
+		},
+	};
+}
+
+/** Adds a Window only after its canonical wall host and height are derived. */
+export function addWindowOpeningToProject(
+	project: Project,
+	input: AddWindowOpeningInput,
+	ids: IdSource,
+	updatedAt: string,
+): DoorOpeningProjectMutationResult {
+	const wallHosts = wallOpeningHostsForProject(project);
+	if (!wallHosts) {
+		return { kind: "rejected", reasonCode: "INVALID_WALL_HOST" };
+	}
+	const added = addWindowOpening(
+		{ openings: project.level.openings, wallHosts },
+		input,
+		ids,
+	);
+	if (added.kind === "rejected") {
+		return added;
+	}
+	if (!openingsKeepWallItemsClear(project, added.openings)) {
+		return { kind: "rejected", reasonCode: "WALL_OPENING_COLLISION" };
+	}
+	return {
+		kind: "accepted",
+		project: {
+			...project,
+			level: { ...project.level, openings: added.openings },
+			updatedAt,
+		},
+	};
+}
+
+/** Removes only one opening host record; its canonical WallSegment is unchanged. */
+export function deleteDoorOpeningFromProject(
+	project: Project,
+	input: { readonly openingId: string },
+	updatedAt: string,
+): DoorOpeningProjectMutationResult {
+	const deleted = deleteWallOpening(project.level.openings, input.openingId);
+	if (deleted.kind === "rejected") {
+		return deleted;
+	}
+	return {
+		kind: "accepted",
+		project: {
+			...project,
+			level: { ...project.level, openings: deleted.openings },
+			updatedAt,
+		},
+	};
+}
+
+/** Moves one existing durable Door along its original canonical wall host. */
+export function moveDoorOpeningInProject(
+	project: Project,
+	input: { readonly openingId: string; readonly offsetMm: number },
+	updatedAt: string,
+): DoorOpeningProjectMutationResult {
+	const wallHosts = wallOpeningHostsForProject(project);
+	if (!wallHosts) {
+		return { kind: "rejected", reasonCode: "INVALID_WALL_HOST" };
+	}
+	const moved = moveWallOpening(
+		{ openings: project.level.openings, wallHosts },
+		input,
+	);
+	if (moved.kind === "rejected") {
+		return moved;
+	}
+	if (!openingsKeepFloorItemsClear(project, moved.openings)) {
+		return { kind: "rejected", reasonCode: "DOOR_CLEARANCE_COLLISION" };
+	}
+	if (!openingsKeepWallItemsClear(project, moved.openings)) {
+		return { kind: "rejected", reasonCode: "WALL_OPENING_COLLISION" };
+	}
+	return {
+		kind: "accepted",
+		project: {
+			...project,
+			level: { ...project.level, openings: moved.openings },
+			updatedAt,
+		},
+	};
+}
+
+/** Updates editable width, centre offset or hinge side without changing the wall host. */
+export function updateDoorOpeningInProject(
+	project: Project,
+	input: UpdateWallOpeningInput,
+	updatedAt: string,
+): DoorOpeningProjectMutationResult {
+	const wallHosts = wallOpeningHostsForProject(project);
+	if (!wallHosts) {
+		return { kind: "rejected", reasonCode: "INVALID_WALL_HOST" };
+	}
+	const updated = updateWallOpening(
+		{ openings: project.level.openings, wallHosts },
+		input,
+	);
+	if (updated.kind === "rejected") {
+		return updated;
+	}
+	if (!openingsKeepFloorItemsClear(project, updated.openings)) {
+		return { kind: "rejected", reasonCode: "DOOR_CLEARANCE_COLLISION" };
+	}
+	if (!openingsKeepWallItemsClear(project, updated.openings)) {
+		return { kind: "rejected", reasonCode: "WALL_OPENING_COLLISION" };
+	}
+	return {
+		kind: "accepted",
+		project: {
+			...project,
+			level: { ...project.level, openings: updated.openings },
+			updatedAt,
+		},
+	};
+}
+
+/**
+ * Revalidates every durable Opening against the current canonical PlanGraph.
+ * Topology commands call this before publication so an Opening can never
+ * remain attached to a deleted wall or a wall that no longer has a valid
+ * derived host.
+ */
+export function projectOpeningsRemainValid(project: Project): boolean {
+	if (project.level.openings.length === 0) {
+		return true;
+	}
+	const wallHosts = wallOpeningHostsForProject(project);
+	if (!wallHosts) {
+		return false;
+	}
+	const openingIds = new Set<string>();
+	for (const opening of project.level.openings) {
+		if (!opening.openingId || openingIds.has(opening.openingId)) {
+			return false;
+		}
+		openingIds.add(opening.openingId);
+		const revalidated =
+			opening.kind === "Door"
+				? addDoorOpening(
+						{
+							openings: project.level.openings.filter(
+								(candidate) => candidate.openingId !== opening.openingId,
+							),
+							wallHosts,
+						},
+						opening,
+						{ next: () => "validated-opening" },
+					)
+				: addWindowOpening(
+						{
+							openings: project.level.openings.filter(
+								(candidate) => candidate.openingId !== opening.openingId,
+							),
+							wallHosts,
+						},
+						opening,
+						{ next: () => "validated-opening" },
+					);
+		if (revalidated.kind === "rejected") {
+			return false;
+		}
+	}
+	return (
+		openingsKeepFloorItemsClear(project, project.level.openings) &&
+		openingsKeepWallItemsClear(project, project.level.openings)
+	);
+}
+
+function openingsKeepWallItemsClear(
+	project: Project,
+	openings: readonly Project["level"]["openings"][number][],
+): boolean {
+	return openings.every((opening) =>
+		project.assetInstances.every((item) => {
+			if (!isWallSchematicAssetInstance(item)) return true;
+			if (item.wallSegmentId !== opening.wallSegmentId) return true;
+			const interval = wallOpeningIntervalMm(opening);
+			const itemHalfWidthMm = item.widthMm / 2;
+			const itemHalfHeightMm = item.heightMm / 2;
+			return !(
+				item.offsetMm - itemHalfWidthMm < interval.endMm &&
+				item.offsetMm + itemHalfWidthMm > interval.startMm &&
+				item.elevationMm - itemHalfHeightMm <
+					opening.sillMm + opening.heightMm &&
+				item.elevationMm + itemHalfHeightMm > opening.sillMm
+			);
+		}),
+	);
+}
+
+function openingsKeepFloorItemsClear(
+	project: Project,
+	openings: readonly Project["level"]["openings"][number][],
+): boolean {
+	const verticesById = indexVertices(project.level.vertices);
+	if (!verticesById) return false;
+	return openings.every((opening) => {
+		if (opening.kind !== "Door" || opening.sillMm !== 0) return true;
+		const wall = project.level.wallSegments.find(
+			(candidate) => candidate.wallSegmentId === opening.wallSegmentId,
+		);
+		const start = wall ? verticesById.get(wall.startVertexId) : undefined;
+		const end = wall ? verticesById.get(wall.endVertexId) : undefined;
+		return Boolean(
+			start &&
+				end &&
+				project.assetInstances.every(
+					(item) =>
+						!isFloorSchematicAssetInstance(item) ||
+						!floorItemFootprintIntersectsDoorSwing(item, opening, start, end),
+				),
+		);
+	});
+}
+
+/** Derived opening hosts are intentionally disposable; only the Opening stores its host address. */
+export function wallOpeningHostsForProject(
+	project: Project,
+): readonly WallOpeningHost[] | undefined {
+	const resolved = resolveOrthogonalPlanFaces(project);
+	if (resolved.kind === "rejected") {
+		return undefined;
+	}
+	const verticesById = indexVertices(project.level.vertices);
+	const wallsById = indexWalls(project.level.wallSegments);
+	if (!verticesById || !wallsById) {
+		return undefined;
+	}
+	const hosts: WallOpeningHost[] = [];
+	for (const wallProjection of resolved.plan.walls) {
+		const wall = wallsById.get(wallProjection.wallSegmentId);
+		const lengthMm = wall ? wallLengthMm(wall, verticesById) : undefined;
+		if (lengthMm === undefined) {
+			return undefined;
+		}
+		const adjacentRoomHeights = resolved.plan.rooms
+			.filter((room) =>
+				room.boundaryWallSegmentIds.includes(wallProjection.wallSegmentId),
+			)
+			.map((room) => room.heightMm);
+		const heightMm =
+			adjacentRoomHeights.length === 0
+				? wallProjection.heightMm
+				: Math.min(...adjacentRoomHeights);
+		if (!Number.isSafeInteger(heightMm) || heightMm <= 0) {
+			return undefined;
+		}
+		hosts.push({
+			heightMm,
+			usableLengthMm: lengthMm,
+			wallSegmentId: wallProjection.wallSegmentId,
+		});
+	}
+	return hosts;
+}
+
+function indexVertices(
+	vertices: readonly Vertex[],
+): ReadonlyMap<string, Vertex> | undefined {
+	const result = new Map<string, Vertex>();
+	for (const vertex of vertices) {
+		if (!vertex.vertexId || result.has(vertex.vertexId)) {
+			return undefined;
+		}
+		result.set(vertex.vertexId, vertex);
+	}
+	return result;
+}
+
+function indexWalls(
+	walls: readonly WallSegment[],
+): ReadonlyMap<string, WallSegment> | undefined {
+	const result = new Map<string, WallSegment>();
+	for (const wall of walls) {
+		if (!wall.wallSegmentId || result.has(wall.wallSegmentId)) {
+			return undefined;
+		}
+		result.set(wall.wallSegmentId, wall);
+	}
+	return result;
+}
+
+function wallLengthMm(
+	wall: WallSegment,
+	verticesById: ReadonlyMap<string, Vertex>,
+): number | undefined {
+	const start = verticesById.get(wall.startVertexId);
+	const end = verticesById.get(wall.endVertexId);
+	if (!start || !end) {
+		return undefined;
+	}
+	const deltaXMm = end.xMm - start.xMm;
+	const deltaZMm = end.zMm - start.zMm;
+	// The durable wall endpoints are integer millimetres, while a 45-degree
+	// length is irrational. The PlanGraph resolver has already admitted only
+	// cardinal/45-degree walls; openings keep their integer-mm address, so a
+	// floored interval remains strictly within the actual physical segment.
+	const lengthMm = Math.floor(Math.hypot(deltaXMm, deltaZMm));
+	return Number.isSafeInteger(lengthMm) && lengthMm > 0 ? lengthMm : undefined;
+}

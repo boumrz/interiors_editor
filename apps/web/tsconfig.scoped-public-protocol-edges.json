@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.json","include":["tests/verification/scoped-public-protocol-edges-harness.ts","tests/browser/scoped-public-protocol-edges-e2e.check.ts"]}

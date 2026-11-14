@@ -1,0 +1,167 @@
+name: Verify InteriorsEditor
+
+on:
+  push:
+    branches: ['codex/**']
+  pull_request:
+  workflow_call:
+    inputs:
+      package_release:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      mutation_scope:
+        description: Mutation verification scope
+        type: choice
+        default: hardening
+        options: [hardening, full]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+
+jobs:
+  web:
+    name: Web regression and production PWA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - name: Install the pinned package manager
+        run: npm install --global pnpm@11.20.0
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install the browser used by the existing phone suites
+        run: pnpm --filter @interiors/web exec playwright install --with-deps chrome
+      - run: pnpm run lint
+      - run: pnpm run check:architecture
+      - run: pnpm run typecheck
+      - run: pnpm run test
+      - run: pnpm run build
+      - run: pnpm run test:delivery
+      - run: pnpm run test:e2e
+      - name: Build the configured Telegram production target
+        if: inputs.package_release == true
+        working-directory: apps/web
+        env:
+          INTERIORS_TELEGRAM_BOT_ID: '9112733311'
+          INTERIORS_TELEGRAM_ENVIRONMENT: production
+          INTERIORS_TELEGRAM_LINK: https://t.me/InteriorsEditorBot?startapp
+          INTERIORS_WEB_URL: https://www.domiknote.ru/
+        run: pnpm exec rspack build --mode production --config rspack.telegram.config.mjs
+      - name: Seal both tested frontend outputs into one release
+        if: inputs.package_release == true
+        run: >-
+          python3 scripts/deploy/frontend.py package
+          --web apps/web/dist --telegram apps/web/dist-telegram
+          --output frontend.tar.gz --commit "$GITHUB_SHA"
+      - name: Preserve the exact deployment candidate
+        if: inputs.package_release == true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: frontend-${{ github.sha }}
+          path: frontend.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Preserve synthetic browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: web-failure-evidence
+          path: |
+            apps/web/test-results/
+            apps/web/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  web-mutation:
+    name: Selected web mutation scope
+    if: github.event_name == 'workflow_dispatch' && inputs.package_release != true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - run: npm install --global pnpm@11.20.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - name: Verify the hardening scopes
+        if: inputs.mutation_scope == 'hardening'
+        run: pnpm run test:mutation:hardening
+      - name: Verify all domain and application code
+        if: inputs.mutation_scope == 'full'
+        run: pnpm run test:mutation
+      - name: Preserve mutation reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: web-mutation-reports
+          path: apps/web/reports/mutation/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  catalog:
+    name: Kotlin catalog and PostgreSQL 18.4
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/catalog-control-plane
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Verify Docker for Testcontainers
+        run: docker info
+      - name: Test with strict dependency verification and the pinned database image
+        run: ./gradlew --no-daemon --dependency-verification=strict test
+      - name: Package the tested catalog service
+        if: inputs.package_release == true
+        run: |
+          ./gradlew --no-daemon --dependency-verification=strict installDist
+          python3 ../../scripts/deploy/catalog_package.py \
+            --distribution build/install/interiors-catalog-control-plane \
+            --output "$RUNNER_TEMP/catalog.tar.gz" --commit "$GITHUB_SHA"
+      - name: Preserve the exact catalog distribution
+        if: inputs.package_release == true
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: catalog-${{ github.sha }}
+          path: ${{ runner.temp }}/catalog.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Check backend mutation strength
+        if: github.event_name == 'workflow_dispatch' && inputs.package_release != true
+        run: ./gradlew --no-daemon --dependency-verification=strict pitest
+      - name: Preserve backend reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: catalog-test-and-mutation-reports
+          path: apps/catalog-control-plane/build/reports/
+          if-no-files-found: ignore
+          retention-days: 7

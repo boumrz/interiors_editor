@@ -1,0 +1,15 @@
+
+Running 10 tests using 1 worker
+
+  ✓   1 tests/e2e/durability.spec.mjs:31:1 › persistent profile visibly creates, mutates, restarts and recovers synthetic durable state (1.9s)
+  ✓   2 tests/e2e/durability.spec.mjs:51:1 › a visible injected pre-pointer fault keeps the prior durable revision after recovery (384ms)
+  ✓   3 tests/e2e/durability.spec.mjs:65:1 › a cold reload after persisted malformed-pointer injection stays visibly controlled and read-only (996ms)
+  ✓   4 tests/e2e/durability.spec.mjs:107:1 › a previously loaded app shell remains visibly usable when browser context goes offline (564ms)
+  ✓   5 tests/e2e/durability.spec.mjs:132:1 › recovery before the first durable revision is a visible safe no-op (221ms)
+  ✓   6 tests/e2e/durability.spec.mjs:140:1 › an initial-create staging fault recovers visibly without fabricating a durable revision (241ms)
+  ✓   7 tests/e2e/durability.spec.mjs:155:1 › a post-pointer-swap fault visibly confirms durable publication across restart recovery (440ms)
+  ✓   8 tests/e2e/durability.spec.mjs:181:1 › two pages are fenced by default and only an explicit takeover replaces the writer (508ms)
+  ✓   9 tests/e2e/durability.spec.mjs:212:1 › an opener-derived popup is fenced until an explicit takeover (483ms)
+  ✓  10 tests/e2e/durability.spec.mjs:246:1 › controlled local service-worker update is observed without reloading an active synthetic session (356ms)
+
+  10 passed (7.1s)

@@ -1,0 +1,1 @@
+Current Scene9168 two-guard scope13 total9Killed0Timeout4Survived (69.23%). All4 individually bounded; dual-guard original RED was on Scene196 without either fix. No synthetic full-file score or general race equivalence. Source restored SHA verified. Full Scene38 native PASS already handed off with exact current harness. No original edits.

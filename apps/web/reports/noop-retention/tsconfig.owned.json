@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": [
+    "../../src/ui/styles.d.ts",
+    "../../src/ui/editor-host-boundary.ts",
+    "../../src/ui/editor-plan-presentation.ts",
+    "../../src/ui/PlanProjection.tsx",
+    "../../src/ui/RoomScene3d.tsx",
+    "../../tests/browser/editor-contact-harness.tsx",
+    "../../tests/browser/editor-contact-e2e.check.ts",
+    "../../tests/browser/editor-scene-contact-harness.tsx",
+    "../../tests/browser/editor-scene-contact-e2e.check.ts"
+  ]
+}

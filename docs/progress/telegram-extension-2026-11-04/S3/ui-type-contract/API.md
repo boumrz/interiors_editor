@@ -1,0 +1,11 @@
+# AD31 UI contract only
+
+Pure type/signature increment; new facade has not yet been enabled. Legacy method bodies and createProductionRuntime return behavior stay unchanged. Owner options on an actual legacy core do not select storage. Only the future trusted facade will validate and route owners; it must refuse absent/unknown directory owner without ID/hash/file inference. All merged rows will be annotated by that composition.
+
+`ProjectSummary.storageNamespace?: "legacy" | "browser-registered"`. Projects state has optional readonly `storageSources` entries. Entry `{storageNamespace,kind}` uses available/unavailable/recovery-required; browser-only not-provisioned also requires `history: "unknown"`. Optional absence preserves existing legacy state presentation. A missing or unavailable source is never represented as a proven empty directory.
+
+`openProject(projectId, options?: ProjectOpenOptions)`, with optional storageNamespace and initialAction:"rename". `renameProject(name, options?: ProjectStorageOwnerOptions)`. `permanentlyDeleteProjectFromDirectory(projectId, options?: ProjectStorageOwnerOptions)`. Both exportProjectTransfer and exportRegisteredProjectTransfer keep projectId and signal options, adding optional storageNamespace through ProjectTransferExportOptions. Current-project operations capture the selected core in the future facade; directory actions carry exact trusted owner.
+
+Production runtime optionally exposes stable `getEditorInstanceSnapshot(): BrowserEditorInstanceSnapshot` and `subscribeEditorInstance(listener:()=>void):()=>void`. Snapshot is `{readonly key:string;readonly requestedRenameProjectId?:string}`. Key is opaque, monotonic per facade instance generation; subscribers receive change notification. The implementation must return a cached immutable snapshot, preserve already selected core across EditorApp remount/open, and bind requested rename intent to that same key/owner. These fields are ephemeral; no Project/Revision/wire/storage schema is extended by this handoff.
+
+Full tests, application/domain typecheck, owned lint and architecture graph pass. This increment is erased types and unused optional signature parameters; no runtime mutation behavior is added or declared. Project/runtime APIs beyond this contract and browser substrate implementation remain separately owned/incomplete.

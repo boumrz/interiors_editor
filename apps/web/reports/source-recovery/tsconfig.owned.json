@@ -1,0 +1,1 @@
+{"extends":"../../tsconfig.json","include":["../../src/ui/styles.d.ts","../../src/ui/stored-source-recovery.tsx","../../src/ui/stored-source-recovery.test.tsx","../../tests/browser/stored-source-recovery-harness.tsx","../../tests/browser/stored-source-recovery-e2e.check.ts"]}

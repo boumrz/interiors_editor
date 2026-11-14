@@ -1,0 +1,13 @@
+
+> interiors-editor-s3-durability-spike@0.0.0-experimental test:unit
+> vitest run --config vitest.config.mjs
+
+
+ RUN  v4.1.10 /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/_bmad-output/implementation-artifacts/spikes/W-SPK-2026-08-04/S-3
+
+
+ Test Files  2 passed (2)
+      Tests  63 passed (63)
+   Start at  01:18:56
+   Duration  353ms (transform 34ms, setup 0ms, import 65ms, tests 148ms, environment 0ms)
+

@@ -1,0 +1,491 @@
+:global(*) {
+  box-sizing: border-box;
+}
+
+:global(html),
+:global(body),
+:global(#root) {
+  min-height: 100%;
+  margin: 0;
+}
+
+:global(body) {
+  background: #172722;
+  color: #172722;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+:global(button) {
+  font: inherit;
+}
+
+.shell {
+  --theme-ink: #172722;
+  --theme-muted-ink: #67736e;
+  --theme-paper: #f0efe8;
+  --theme-paper-deep: #e1e1d7;
+  --theme-line: #c8cbc2;
+  --theme-signal: #e9ff62;
+  --theme-signal-ink: #1d2a27;
+  --theme-panel: #ffffff;
+  background: var(--theme-paper);
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  min-height: 100dvh;
+  overflow: hidden;
+  position: relative;
+  width: min(100%, 660px);
+}
+
+.shell::before {
+  background-image: linear-gradient(rgba(23, 39, 34, 0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(23, 39, 34, 0.035) 1px, transparent 1px);
+  background-size: 8px 8px;
+  content: '';
+  inset: 0;
+  opacity: 0.45;
+  pointer-events: none;
+  position: absolute;
+}
+
+.header,
+.statusRow,
+.context,
+.focusLabel,
+.planSection,
+.notice,
+.controlDock {
+  position: relative;
+  z-index: 1;
+}
+
+.header {
+  align-items: center;
+  border-bottom: 1px solid rgba(23, 39, 34, 0.16);
+  display: flex;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: max(12px, env(safe-area-inset-top)) 18px 12px;
+}
+
+.brandBlock,
+.headerActions,
+.statusRow,
+.toolRail,
+.focusLabel {
+  align-items: center;
+  display: flex;
+}
+
+.brandBlock {
+  gap: 12px;
+}
+
+.brandMark,
+.pocBadge,
+.statusRow,
+.eyebrow,
+.planFrameHeader,
+.focusLabel {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: 0.07em;
+}
+
+.brandMark {
+  background: var(--theme-ink);
+  color: var(--theme-signal);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 7px 6px 6px;
+}
+
+.projectName {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.headerActions {
+  gap: 9px;
+}
+
+.pocBadge {
+  border: 1px solid var(--theme-ink);
+  font-size: 9px;
+  font-weight: 700;
+  padding: 4px 5px;
+}
+
+.iconButton {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--theme-ink);
+  border-radius: 0;
+  color: var(--theme-ink);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: ui-monospace, monospace;
+  font-size: 22px;
+  height: 44px;
+  justify-content: center;
+  line-height: 1;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0;
+  width: 44px;
+}
+
+.iconButton:focus-visible,
+.toolButton:focus-visible,
+.primaryAction:focus-visible {
+  outline: 3px solid #2f70e9;
+  outline-offset: 3px;
+}
+
+.statusRow {
+  background: var(--theme-ink);
+  color: #eff0e9;
+  font-size: 10px;
+  gap: 7px;
+  min-height: 31px;
+  overflow: hidden;
+  padding: 7px 18px;
+  white-space: nowrap;
+}
+
+.statusDot {
+  background: var(--theme-signal);
+  border-radius: 50%;
+  height: 7px;
+  width: 7px;
+}
+
+.statusDivider {
+  background: rgba(255, 255, 255, 0.4);
+  height: 12px;
+  margin: 0 1px;
+  width: 1px;
+}
+
+.context {
+  padding: 23px 18px 9px;
+}
+
+.eyebrow {
+  color: var(--theme-muted-ink);
+  font-size: 10px;
+  font-weight: 700;
+  margin: 0 0 9px;
+}
+
+.context h1 {
+  font-size: clamp(27px, 7.9vw, 44px);
+  font-weight: 600;
+  letter-spacing: -0.057em;
+  line-height: 0.94;
+  margin: 0;
+}
+
+.contextCopy {
+  color: #53615b;
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 13px 0 0;
+  max-width: 330px;
+}
+
+.focusLabel {
+  color: var(--theme-muted-ink);
+  font-size: 9px;
+  justify-content: space-between;
+  padding: 12px 18px 4px;
+}
+
+.planSection {
+  flex: 1 1 auto;
+  min-height: 250px;
+  padding: 12px 18px 7px;
+}
+
+.planFrame {
+  background: #fcfcf7;
+  border: 1px solid var(--theme-ink);
+  box-shadow: 5px 5px 0 var(--theme-ink);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 250px;
+  overflow: hidden;
+}
+
+.planFrameHeader {
+  align-items: center;
+  border-bottom: 1px solid rgba(23, 39, 34, 0.28);
+  color: #5c6963;
+  display: flex;
+  font-size: 9px;
+  font-weight: 700;
+  justify-content: space-between;
+  padding: 9px 11px 8px;
+}
+
+.plan {
+  display: block;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+}
+
+.paper {
+  fill: #fbfbf4;
+}
+
+.roomFill path {
+  fill: #edf0e9;
+}
+
+.roomFill path:nth-child(2),
+.roomFill path:nth-child(4) {
+  fill: #f7f6ef;
+}
+
+.walls {
+  fill: none;
+  stroke: #172722;
+  stroke-linecap: square;
+  stroke-width: 6;
+}
+
+.doorways {
+  fill: none;
+  stroke: #89938d;
+  stroke-width: 1.5;
+}
+
+.furniture {
+  fill: none;
+  stroke: #a5ada7;
+  stroke-width: 2;
+}
+
+.roomLabels {
+  fill: #43524c;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.09em;
+}
+
+.roomLabels text:nth-child(even) {
+  fill: #7b8580;
+  font-size: 7px;
+}
+
+.measurements,
+.scaleMark {
+  fill: #758079;
+  font-family: ui-monospace, monospace;
+  font-size: 7px;
+  letter-spacing: 0.05em;
+  stroke: #9ca49d;
+  stroke-width: 1;
+}
+
+.measurements text,
+.scaleMark text {
+  stroke: none;
+}
+
+.notice {
+  color: #40514a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.3;
+  margin: 1px 18px 10px;
+  min-height: 14px;
+}
+
+.controlDock {
+  background: var(--theme-panel);
+  border-top: 1px solid var(--theme-ink);
+  padding: 11px 18px calc(12px + env(safe-area-inset-bottom));
+}
+
+.toolRail {
+  gap: 7px;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.toolButton {
+  align-items: center;
+  background: #f5f5ef;
+  border: 1px solid #c8ccc3;
+  border-radius: 0;
+  color: #52605a;
+  cursor: pointer;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9px;
+  gap: 3px;
+  min-height: 51px;
+  padding: 5px 3px;
+}
+
+.toolIcon {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 19px;
+  height: 20px;
+  line-height: 16px;
+}
+
+.selectedTool {
+  background: var(--theme-ink);
+  border-color: var(--theme-ink);
+  color: var(--theme-signal);
+}
+
+.primaryAction {
+  align-items: center;
+  background: var(--theme-signal);
+  border: 1px solid var(--theme-ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--theme-ink);
+  color: var(--theme-signal-ink);
+  cursor: pointer;
+  display: flex;
+  font-size: 16px;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  letter-spacing: -0.025em;
+  min-height: 49px;
+  width: calc(100% - 3px);
+}
+
+.primaryAction:active,
+.iconButton:active {
+  transform: translate(1px, 1px);
+}
+
+.primaryAction:disabled {
+  background: #d9ddd2;
+  box-shadow: none;
+  color: #68736e;
+  cursor: not-allowed;
+}
+
+.focusShell .header {
+  min-height: 55px;
+}
+
+.focusShell {
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+}
+
+.focusShell .planSection {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+  padding-top: 8px;
+}
+
+.focusShell .planFrame {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+}
+
+.focusShell .plan {
+  flex: 1 1 0;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.focusShell .notice {
+  margin-bottom: 6px;
+}
+
+.focusShell .controlDock {
+  padding-top: 8px;
+}
+
+.focusShell .toolRail {
+  display: none;
+}
+
+@media (min-width: 661px) {
+  :global(body) {
+    padding: 20px;
+  }
+
+  .shell {
+    box-shadow: 16px 16px 0 rgba(233, 255, 98, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.16);
+    min-height: calc(100dvh - 40px);
+  }
+}
+
+@media (max-height: 730px) {
+  .shell {
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+  }
+
+  .context {
+    padding-bottom: 4px;
+    padding-top: 10px;
+  }
+
+  .contextCopy {
+    display: none;
+  }
+
+  .eyebrow {
+    margin-bottom: 5px;
+  }
+
+  .context h1 {
+    font-size: 27px;
+    line-height: 1;
+  }
+
+  .planSection {
+    display: flex;
+    flex: 1 1 0;
+    min-height: 0;
+    padding-bottom: 5px;
+    padding-top: 6px;
+  }
+
+  .planFrame {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+  }
+
+  .plan {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .planFrameHeader {
+    padding-bottom: 7px;
+    padding-top: 7px;
+  }
+
+  .controlDock {
+    padding-top: 8px;
+  }
+
+  .toolButton {
+    min-height: 44px;
+  }
+}

@@ -1,0 +1,536 @@
+.sceneViewport {
+	inset: 0;
+	position: absolute;
+}
+
+.viewControls {
+	align-items: flex-start;
+	display: flex;
+	filter: drop-shadow(0 8px 16px color-mix(in srgb, var(--ink) 10%, transparent));
+	flex-direction: row-reverse;
+	justify-content: space-between;
+	left: 12px;
+	pointer-events: none;
+	position: absolute;
+	right: 12px;
+	top: calc(var(--editor-header-bottom, 106px) + 8px);
+	z-index: 3;
+}
+
+.viewControls > * { pointer-events: auto; }
+
+.cameraDeck { display: contents; }
+
+.threeDimensionalCatalogButton {
+	align-items: center;
+	background:color-mix(in srgb, var(--surface) 94%, transparent);
+	border:1px solid var(--line);
+	color:var(--ink);
+	cursor: pointer;
+	display: inline-flex;
+	font: 800 0.72rem/1 var(--font-display);
+	gap: 6px;
+	justify-content: center;
+	min-height: 44px;
+	min-inline-size: 44px;
+	padding: 0 10px;
+}
+
+.threeDimensionalCatalogButton svg { height: 19px; width: 19px; }
+
+.threeDimensionalCatalogButton:disabled {
+	color:var(--muted);
+	cursor: not-allowed;
+}
+
+.cutawayControls {
+  border:0;
+  display: flex;
+  margin: 0;
+  min-inline-size: 0;
+  padding: 0;
+}
+
+.cutawayLegend {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.cutawayButton {
+	align-items: center;
+	background:color-mix(in srgb, var(--surface) 94%, transparent);
+	border:1px solid var(--line);
+	color:var(--ink);
+	cursor: pointer;
+	display: inline-flex;
+	font: inherit;
+	font-size: 0.72rem;
+	font-weight: 800;
+	gap: 6px;
+	justify-content: center;
+	min-height: 44px;
+	min-inline-size: 44px;
+	padding: 0 10px;
+}
+
+.cutawayButton svg {
+	display: block;
+	height: 19px;
+	width: 19px;
+}
+
+.cutawayButton + .cutawayButton {
+  border-left:0;
+}
+
+.cutawayButton[aria-pressed="true"] {
+  background:color-mix(in srgb, var(--blue) 12%, var(--surface));
+  border-color:color-mix(in srgb, var(--blue) 34%, var(--line));
+  color:var(--editor-host-primary, var(--blue));
+}
+
+.cutawayButton:focus-visible {
+  outline:3px solid color-mix(in srgb, var(--editor-host-primary, var(--blue)) 52%, transparent);
+  outline-offset: 2px;
+}
+
+/* A manual camera move may deliberately take the shell out of its composed
+   overview. Keep the recovery above the deck, rather than add a permanent fourth
+   item to the phone thumb deck. */
+.overviewReset {
+	align-items: center;
+	background:color-mix(in srgb, var(--surface) 94%, transparent);
+	border:1px solid color-mix(in srgb, var(--line) 88%, transparent);
+	border-radius:999px;
+	bottom: 138px;
+	box-shadow: 0 6px 16px color-mix(in srgb, var(--ink) 12%, transparent);
+	color:var(--ink);
+	cursor: pointer;
+	display: inline-flex;
+	font: 800 0.68rem/1 var(--font-display);
+	gap: 5px;
+	left: 12px;
+	min-height: 44px;
+	min-inline-size: 44px;
+	padding: 0 12px;
+	position: absolute;
+	z-index: 3;
+}
+
+.overviewReset svg {
+	height: 18px;
+	width: 18px;
+}
+
+.overviewReset:hover {
+	background:color-mix(in srgb, var(--blue) 9%, var(--surface));
+	border-color:color-mix(in srgb, var(--blue) 34%, var(--line));
+	color:var(--editor-host-primary, var(--blue));
+}
+
+.overviewReset:focus-visible {
+	outline:3px solid color-mix(in srgb, var(--editor-host-primary, var(--blue)) 52%, transparent);
+	outline-offset: 2px;
+}
+
+/* The selected item keeps the same quiet blue boundary in 3D as in Plan.
+   It is deliberately passive: the canvas retains direct move gestures and the
+   rotation ring remains the only interactive overlay. */
+.itemSelectionFrame {
+	inset: 0;
+	overflow: visible;
+	pointer-events: none;
+	position: absolute;
+	z-index: 1;
+}
+
+.itemSelectionFrame polygon {
+	fill: color-mix(in srgb, var(--blue) 8%, transparent);
+	stroke: var(--blue);
+	stroke-linejoin: round;
+	stroke-width: 2.1;
+	vector-effect: non-scaling-stroke;
+}
+
+.itemSelectionFrame circle {
+	fill: var(--surface);
+	stroke: var(--blue);
+	stroke-width: 2.1;
+	vector-effect: non-scaling-stroke;
+}
+
+.rotationOverlay {
+	position: absolute;
+	pointer-events: none;
+	transform: translate(-50%, -100px);
+	width: 200px;
+	z-index: 2;
+}
+
+.rotationGizmo {
+	fill: none;
+	/* A visible hemisphere communicates rotation before the first contact.
+	   Its wide annular hit band leaves the selected item's centre for moving. */
+	filter: none;
+	overflow: visible;
+	pointer-events: none;
+	display: block;
+	touch-action: none;
+}
+
+.rotationTrack {
+	opacity: 0.85;
+	pointer-events: none;
+	stroke: var(--blue);
+	stroke-width: 2;
+}
+
+.rotationDome { fill: color-mix(in srgb, var(--blue) 10%, transparent); stroke: none; pointer-events: none; }
+.rotationMeridian { stroke: var(--blue); stroke-width: 1; opacity: 0.45; pointer-events: none; }
+
+.rotationHandle {
+	fill: color-mix(in srgb, var(--surface) 94%, transparent);
+	opacity: 1;
+	stroke: var(--blue);
+	stroke-width: 1.6;
+}
+
+.rotationGizmo[data-rotation-active="true"] .rotationTrack {
+	opacity: 1;
+}
+
+.rotationGizmo[data-rotation-active="true"] .rotationHandle {
+	opacity: 0.9;
+}
+
+.rotationHitArea {
+	cursor: grab;
+	fill: none;
+	pointer-events: stroke;
+	/* A painted, effectively invisible stroke is hit-tested consistently by
+	   WebKit; `transparent` is not reliable on older iPhone Safari versions. */
+	stroke: rgb(0 0 0);
+	stroke-opacity: 0.001;
+	stroke-width: 48;
+	touch-action: none;
+}
+
+.rotationHandle:focus-visible {
+  outline:3px solid color-mix(in srgb, var(--editor-host-primary, var(--blue)) 52%, transparent);
+  outline-offset: 2px;
+}
+
+.rotationStepControls {
+	align-items: center;
+	background:var(--surface);
+	border:1px solid var(--line);
+	border-radius:16px;
+	display: grid;
+	grid-template-columns: 48px minmax(0, 1fr) 48px;
+	margin: 4px 4px 0;
+	min-inline-size: 0;
+	padding: 0;
+	pointer-events: auto;
+}
+.rotationStepControls button, .rotationCancel {
+	background:transparent;
+	border:0;
+	border-radius:14px;
+	color:var(--editor-host-primary, var(--blue));
+	cursor: pointer;
+	font: 700 22px/1 var(--font-display);
+	min-width: 48px;
+	min-height: 48px;
+	padding: 6px;
+}
+.rotationStepControls button:disabled { color:var(--muted); cursor: default; }
+.rotationAngle { background:var(--surface); border-radius:8px; color:var(--ink); font: 700 14px/1.2 var(--font-mono); left: 50%; padding: 2px 6px; pointer-events: none; position: absolute; top: 3px; transform: translateX(-50%); }
+.rotationCaption { color:var(--muted); font: 700 12px/1.2 var(--font-display); text-align: center; }
+.rotationStepControls .rotationCancel { font-size: 13px; line-height: 1.2; min-width: 0; pointer-events: auto; width: 100%; }
+.rotationStepControls button:focus-visible, .rotationCancel:focus-visible { outline:3px solid var(--editor-host-primary, var(--blue)); outline-offset: -3px; }
+
+.placementRotationControls { margin: 0; width: 100%; }
+.placementRotationControls output { display: block; font: 700 14px/1.2 var(--font-mono); text-align: center; }
+
+.scaleControls {
+  border:0;
+  display: grid;
+  margin: 0;
+  padding: 0;
+}
+
+.scaleButton {
+  background:color-mix(in srgb, var(--surface) 94%, transparent);
+  border:1px solid var(--line);
+  color:var(--ink);
+  cursor: pointer;
+  font: 800 1.35rem/1 var(--font-display);
+  height: 44px;
+  padding: 0;
+  width: 44px;
+}
+
+.scaleButton:hover {
+	background:color-mix(in srgb, var(--blue) 9%, var(--surface));
+	color:var(--editor-host-primary, var(--blue));
+}
+
+.scaleButton + .scaleButton {
+  border-top:0;
+}
+
+.itemPlacementMenu {
+  align-items: center;
+	--placement-primary: #1976b9;
+  background:var(--editor-host-surface, #fff);
+  border:1px solid var(--editor-host-line, #dbe2e8);
+	bottom: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+  border-radius:28px;
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  left: 50%;
+  max-width: calc(100% - 24px);
+	box-sizing: border-box;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+  padding: 11px 12px 12px;
+  position: absolute;
+  transform: translateX(-50%);
+  width: min(360px, calc(100% - 24px));
+  z-index: 4;
+}
+
+@media (max-height: 600px) {
+	/* Keep a touchable scene between the measured header and the scrollable
+	   controls, including before a placement point has been chosen. */
+	.itemPlacementMenu {
+		max-height: max(96px, calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 116px) - 148px)) !important;
+	}
+
+	/* History occupies the upper left of the scene on compact phones. */
+	.rotationOverlay {
+		left: max(212px, 50%) !important;
+	}
+}
+
+.itemPlacementHandle {
+  background:#c8cdd2;
+  border-radius:999px;
+  height: 4px;
+  justify-self: center;
+  width: 44px;
+}
+
+.itemPlacementIdentity {
+  align-items: center;
+  display: grid;
+  gap: 9px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.itemPlacementGlyph {
+  align-items: center;
+  background:var(--editor-host-primary-soft, #e7f3fb);
+  border:1px solid #cae4f4;
+  border-radius:13px;
+  color:var(--editor-host-primary, var(--placement-primary));
+  display: flex;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.itemPlacementGlyph svg {
+  height: 25px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  width: 25px;
+}
+
+.itemPlacementCopy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.itemPlacementCopy strong {
+  color:var(--ink);
+  font: 800 0.83rem/1.15 var(--font-display);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemPlacementStatus {
+  color:var(--muted);
+  font: 700 0.68rem/1.15 var(--font-mono);
+}
+
+.itemPlacementStatus[data-placement-state="choose-another-point"] {
+  color:var(--danger);
+}
+
+.itemPlacementCoordinates {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  width: 1px;
+}
+
+.itemPlacementActions {
+  align-items: stretch;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
+}
+
+.itemPlacementActions button {
+  align-items: center;
+  border-radius:14px;
+  cursor: pointer;
+  display: flex;
+  font: 800 0.92rem/1.2 system-ui, sans-serif;
+  justify-content: center;
+  min-height: 48px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.itemPlacementConfirm {
+  background:var(--placement-primary);
+  border:1.5px solid var(--editor-host-primary, var(--placement-primary));
+  color:var(--surface);
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.itemPlacementConfirm:disabled {
+  background:color-mix(in srgb, var(--placement-primary) 26%, var(--surface));
+  color:color-mix(in srgb, var(--editor-host-primary, var(--placement-primary)) 58%, var(--surface));
+  cursor: not-allowed;
+}
+
+.itemPlacementCancel {
+  background:var(--editor-host-surface, #fff);
+  border:1.5px solid var(--editor-host-primary, var(--placement-primary));
+  color:var(--editor-host-primary, var(--placement-primary));
+  padding: 10px 12px;
+}
+
+.itemPlacementActions button:not(:disabled):hover {
+  filter: brightness(0.96);
+}
+
+@media (max-width: 559px) {
+	/* Keep camera controls close to the thumb zone, in a single calm control
+	   deck above the persistent editor dock. The 3D room remains unobstructed
+	   and direct manipulation on the canvas is unchanged. */
+	.viewControls {
+		align-items: stretch;
+		background:color-mix(in srgb, var(--surface) 94%, transparent);
+		backdrop-filter: blur(18px);
+		border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
+		border-radius:18px;
+		bottom: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+		box-shadow: 0 10px 24px color-mix(in srgb, var(--ink) 13%, transparent);
+		gap: 6px;
+		left: 10px;
+		padding: 5px;
+		right: 10px;
+		top: auto;
+	}
+
+	.cameraDeck {
+		align-items: stretch;
+		display: flex;
+		flex: 1;
+		gap: 4px;
+		position: relative;
+	}
+
+	.threeDimensionalCatalogButton {
+		border:0;
+		border-radius:12px;
+		flex: 1;
+		flex-direction: column;
+		font-size: 0.7rem;
+		gap: 1px;
+		min-height: 50px;
+		padding: 4px 5px;
+	}
+
+	.threeDimensionalCatalogButton svg { height: 23px; width: 23px; }
+
+	.cutawayControls { flex: 2; gap: 4px; }
+
+	.cutawayButton {
+		border:0;
+		border-radius:12px;
+		flex: 1;
+		font-size: 0.7rem;
+		flex-direction: column;
+		gap: 1px;
+		min-height: 50px;
+		padding: 4px 5px;
+	}
+
+	.cutawayButton svg {
+		height: 23px;
+		width: 23px;
+	}
+
+	.cutawayButton + .cutawayButton { border-left:0; }
+
+	.cutawayButton[aria-pressed="true"] {
+		background:color-mix(in srgb, var(--blue) 14%, var(--surface));
+		box-shadow: none;
+		color:var(--editor-host-primary, var(--blue));
+	}
+
+	/* Pinch zoom is native on the canvas; it keeps the three primary actions
+	   equal-width, as in the mobile editor reference. */
+	.scaleControls { display: none; }
+
+
+	.itemPlacementMenu {
+		width: min(390px, calc(100% - 20px));
+	}
+}
+
+/* The 3D deck is the 3D counterpart of the Plan ActionDock: one solid,
+   quiet surface in the thumb zone, with the canvas left visually primary. */
+@media (max-width: 559px) {
+	.viewControls {
+		background:var(--editor-host-surface, #fff);
+		backdrop-filter: none;
+		border-color:var(--editor-host-line, #d9e1e8);
+		border-radius:28px;
+		box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent);
+		filter: none;
+	}
+
+	.threeDimensionalCatalogButton,
+	.cutawayButton {
+		background:transparent;
+	}
+
+	.cutawayButton[aria-pressed="true"] {
+		background:var(--editor-host-primary-soft, #e7f3fb);
+		border-color:#cae4f4;
+		color:var(--editor-host-primary, #1976b9);
+	}
+
+}

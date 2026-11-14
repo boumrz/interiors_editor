@@ -1,0 +1,3 @@
+import {defineConfig,devices} from '@playwright/test';
+const baseURL=process.env.PLAYWRIGHT_SOURCE_BASE_URL;const outputDir=process.env.PLAYWRIGHT_SOURCE_OUTPUT_DIR;if(!baseURL||new URL(baseURL).hostname!=='127.0.0.1'||!outputDir)throw new Error('Isolated source verification URL/output required');
+export default defineConfig({testDir:'./tests/browser',testMatch:'stored-source-recovery-e2e.check.ts',workers:1,timeout:20000,outputDir,metadata:{activeMutant:process.env.__STRYKER_ACTIVE_MUTANT__??null},use:{...devices['iPhone 13'],browserName:'chromium',channel:'chrome',baseURL,trace:'retain-on-failure',screenshot:'only-on-failure'}});

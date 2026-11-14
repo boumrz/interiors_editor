@@ -1,0 +1,1 @@
+import{defineConfig}from'@playwright/test';import base from'./playwright.scoped-protocol.config.mjs';export default defineConfig({...base,testDir:'./tests/browser',testMatch:['common-prefix-input-pairs-e2e.check.ts']});

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "2827115116056fb10a5f-6b35fdf9b30ac237e818",
+    "title": "RO-LEAF-01 StrictMode lists once, binds exact Revision and hands off only on the fresh second gesture"
+  },
+  {
+    "id": "2827115116056fb10a5f-41c046140c19204200f2",
+    "title": "RO-LEAF-02 empty, unavailable and recovery-needed remain distinct with private error text hidden"
+  },
+  {
+    "id": "2827115116056fb10a5f-28cfd99ca89166bb2fdd",
+    "title": "RO-LEAF-03 abort synchronously revokes a pending export, closes delivery and drops the late result"
+  },
+  {
+    "id": "2827115116056fb10a5f-0c1f634c29aa47965267",
+    "title": "RO-LEAF-04 A\u2192B\u2192A full effects retire the old query and Back subscriber without reviving it"
+  },
+  {
+    "id": "2827115116056fb10a5f-8e25e98809c5315e9140",
+    "title": "RO-LEAF-05 an old raw read cannot replace a newer prepared Project file"
+  },
+  {
+    "id": "2827115116056fb10a5f-69725850bff1d261830d",
+    "title": "RO-LEAF-06 explicit raw list/select prepares a separate lossless unverified-source File"
+  },
+  {
+    "id": "2827115116056fb10a5f-d03491f830738e055e32",
+    "title": "RO-LEAF-07 unavailable File delivery disables Project and raw controls while Retry/Exit remain usable"
+  },
+  {
+    "id": "2827115116056fb10a5f-617f56442254db2c7b25",
+    "title": "RO-LEAF-08 360px, 200% text and dark theme preserve visible controls, viewport and computed contrast"
+  }
+]

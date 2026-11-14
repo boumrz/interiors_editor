@@ -1,0 +1,5 @@
+Guarded followup to the36-file owner packet. No Source F/K/Original edits; Native15 UNRUN.
+
+Root found inside-body finally attribution ambiguity. The policy now derives all nested AST finalizer ranges and rejects matching error locations/stacks, even beside a body caller. Seven added contract vectors include actual Runtime04/05 headers and release lines; policy46 CPU GREEN and RED4 retained. The test-only releaseScopeLock helper additionally tags its own sync/async failures as technical, preserving exact healthy value, synchronous release invocation and original cause. This covers browser-evaluate errors whose stack exposes only the outer caller. Technical-helper2 controls RED→GREEN; Telegram TSC PASS.
+
+All original21 callback bytes, beforeEach,15 IDs/titles/file/line/column remain unchanged. Actual build-only returns special build-only state, no Native phases/physical processes. Previous packet stays immutable; apply only five whitelisted verification paths with beforeSHA/absent guards. Actual Native preflight and future whole are still required; no score.

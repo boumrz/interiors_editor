@@ -1,0 +1,1 @@
+This real raw623 run519K3Timeout101Survived83.79 used26 helper cases but omitted the7 existing browser-registered-transfer-decoder adapter cases from the historical required corpus. It is preserved as an incomplete-corpus report and is NOT S3gate acceptance. A fresh full-corpus33-case run is separately recorded. No source changes or denominator adjustment.

@@ -1,0 +1,12 @@
+# Независимый reality review — V1 yaw projection
+
+Дата: 2026-11-04. Scope: применимость существующей V1 projection и placement assessment к конечным `yawRadians` при проверке переносимого Project. Canonical документы не редактировались.
+
+**Вердикт: применимо с явным guard; реализация и проверочный corpus остаются pending.**
+
+- `apps/web/src/domain/parametric-item.ts:1097` выводит disposable угол через `yawRadiansFor`; `rotationStepForFootprint` сначала использует существующий `yawStep`, а при его отсутствии передаёт `yawRadians` в `rotationStepForYawRadians`. Нормализация не исправляет `Infinity`: конечный `±Number.MAX_VALUE` может вызвать деление до `±Infinity` и дать `NaN` в проекции. `0.5` и `±1e100` дают конечный результат. При заданном валидном `yawStep` он остаётся authority, включая случай экстремального исходного `yawRadians`.
+- `assessParametricFloorItemPlacement` принимает `ParametricFloorItemInput.yawStep`, а не поле `yawRadians`; после проверки `Number.isFinite(yawRadiansFor(item))` допустимо передать временному input `rotationStepForYawRadians(derivedYaw)`. Шаг остаётся disposable и не записывается в исходный Project. При отсутствии обоих полей действующая projection возвращает 0.
+- Явный guard `INVALID_DIMENSION` для неfinite derived projection — правило будущего whole-Project domain validator после закрытой grammar/policy, не утверждение, что существующий production importer уже выдаёт этот код. Весь floor-item набор проверяется до проверки размещений, поскольку collision assessment читает и другие исходные items. При конечной проекции применять существующие invalid/warning outcomes, не превращая warnings в ошибку и не переклассифицируя их.
+- Для принятой задачи отдельная core-projection repair не требуется: отказ не меняет сохранённое конечное число и оставляет source доступным для восстановления. Если позже потребуется поддержать публикацию экстремального случая, это отдельное изменение core с доказательством неизменности всех ранее конечных проекций и сохранения source; молчаливый default либо округление в durable `yawStep` не допустимы.
+
+Read-only Node probe показал: `0.5 → π/4`, `±1e100 → 0`, `±Number.MAX_VALUE → NaN`, а обратный переход временной проекции для шагов 0–7 возвращает тот же шаг. Это точечная проверка выражения, не выполненный application test и не подтверждение end-to-end import/recovery. Для реализации остаются необходимы автоматические positive/negative и precedence fixtures, включая explicit `yawStep` вместе с экстремальным `yawRadians`, а также доказательство сохранности source.

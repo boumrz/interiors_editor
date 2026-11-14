@@ -1,0 +1,4 @@
+import{execFile}from'node:child_process';import{promisify}from'node:util';
+const canonical=value=>String(value).replaceAll('/private/var/','/var/');
+export function readonlyOwnedProcesses(text,{runRoot,pids=[]}){const prefix=canonical(runRoot)+'/tmp/',known=new Set(pids.filter(Number.isSafeInteger));return text.split('\n').map(line=>{const match=/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);return match?{pid:Number(match[1]),ppid:Number(match[2]),pgid:Number(match[3]),command:match[4]}:null;}).filter(row=>row&&(known.has(row.pid)||canonical(row.command).includes(prefix)));}
+export async function scanReadonlyTerminal(runRoot,pids){const{stdout}=await promisify(execFile)('/bin/ps',['-axo','pid=,ppid=,pgid=,command=']);return{runRoot,pids,remaining:readonlyOwnedProcesses(stdout,{runRoot,pids}),observedAt:new Date().toISOString()};}

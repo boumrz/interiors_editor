@@ -1,0 +1,1209 @@
+import { expect, type Page, test } from "@playwright/test";
+import type {} from "./telegram-runtime-ui-harness";
+import { projectRectangularRoomForWebGl } from "../../src/adapters/renderer/rectangular-room-projection";
+import { canvasPointForFloor } from "../../src/ui/three-dimensional-floor-interaction";
+
+async function start(page: Page, scope: "a" | "b") {
+	await page.evaluate(async (scope) => {
+		await window.__telegramRuntimeUi.initialize();
+		await window.__telegramRuntimeUi.mount(scope);
+	}, scope);
+	await expect(
+		page.getByRole("button", { name: "Новый проект", exact: true }),
+	).toBeVisible();
+}
+async function saved(page: Page) {
+	await expect(
+		page.getByTestId("editor-top-bar").getByRole("status"),
+	).toHaveText("Сохранено");
+}
+async function createRoom(page: Page, name: string) {
+	await page.getByRole("button", { name: "Новый проект", exact: true }).click();
+	await page.getByRole("textbox", { name: "Название проекта" }).fill(name);
+	await page
+		.getByRole("button", { name: "Создать проект", exact: true })
+		.click();
+	await page
+		.getByRole("textbox", { name: "Ширина, мм", exact: true })
+		.fill("4000");
+	await page
+		.getByRole("textbox", { name: "Глубина, мм", exact: true })
+		.fill("3000");
+	await page
+		.getByRole("textbox", { name: "Высота, мм", exact: true })
+		.fill("2800");
+	await page
+		.getByRole("button", { name: "Создать контур", exact: true })
+		.click();
+	await saved(page);
+}
+async function dimensions(page: Page) {
+	await page
+		.getByRole("button", { name: "Настроить размеры", exact: true })
+		.click();
+	return page.getByRole("dialog", { name: "Размеры", exact: true });
+}
+async function open(page: Page, name: string) {
+	await page
+		.getByRole("button", { name: `Открыть ${name}`, exact: true })
+		.click();
+	await saved(page);
+}
+const browser = (page: Page) =>
+	page.evaluate(() => window.__telegramRuntimeUi.browserSnapshot());
+const rows = (page: Page, scope: "a" | "b") =>
+	page.evaluate(
+		(scope) => window.__telegramRuntimeUi.semanticRows(scope),
+		scope,
+	);
+async function currentProject(page: Page) {
+	return page.evaluate(() => {
+		const state = window.__telegramRuntimeUi.state();
+		if (
+			!("project" in state) ||
+			!state.project ||
+			state.project.schemaVersion !== 1
+		)
+			throw new Error("No actual saved V1 Project");
+		return state.project;
+	});
+}
+test.beforeEach(async ({ page, baseURL }, info) => {
+	if (!baseURL) throw new Error("Missing isolated fixture origin");
+	const allowedOrigin = new URL(baseURL).origin;
+	await page.route("**/*", (route) =>
+		new URL(route.request().url()).origin === allowedOrigin
+			? route.continue()
+			: route.abort(),
+	);
+	await page.goto("/");
+	expect(await page.evaluate(() => Reflect.get(globalThis, "__stryker__")?.activeMutant)).toBe(info.project.metadata.activeMutant);
+	await page.evaluate(() => window.__telegramRuntimeUi.initialize());
+});
+test.afterEach(async ({ page }) => {
+	await page
+		.evaluate(() => window.__telegramRuntimeUi.dispose())
+		.catch(() => undefined);
+});
+
+test("TMA-UI-01: real EditorApp creates a durable rectangle and reload reopens its exact scoped Revision", async ({
+	page,
+}) => {
+	const preserved = await browser(page);
+	await start(page, "a");
+	await createRoom(page, "UI rectangle A");
+	const before = await rows(page, "a");
+	const source = await currentProject(page);
+	expect(before.revisions).toHaveLength(2);
+	expect(source.level.rooms[0]?.heightMm).toBe(2800);
+	expect(Math.max(...source.level.vertices.map((vertex) => vertex.xMm))).toBe(
+		4100,
+	);
+	await page.reload();
+	await start(page, "a");
+	await open(page, "UI rectangle A");
+	expect(await currentProject(page)).toEqual(source);
+	expect(await rows(page, "a")).toEqual(before);
+	expect(await browser(page)).toEqual(preserved);
+});
+
+test("TMA-UI-02: full A→B→A remount keeps Projects/preferences isolated and leaves real browser data/cache/preferences untouched", async ({
+	page,
+}) => {
+	const preserved = await browser(page);
+	await start(page, "a");
+	await createRoom(page, "UI scope A");
+	const beforeA = await rows(page, "a");
+	let dialog = await dimensions(page);
+	await expect(
+		dialog.getByRole("checkbox", { name: "Внешние габариты", exact: true }),
+	).not.toBeChecked();
+	await dialog
+		.getByRole("checkbox", { name: "Внешние габариты", exact: true })
+		.check();
+	await dialog.getByRole("button", { name: "Готово", exact: true }).click();
+	await start(page, "b");
+	await expect(
+		page.getByRole("button", { name: "Открыть UI scope A", exact: true }),
+	).toHaveCount(0);
+	await createRoom(page, "UI scope B");
+	const beforeB = await rows(page, "b");
+	dialog = await dimensions(page);
+	await expect(
+		dialog.getByRole("checkbox", { name: "Внешние габариты", exact: true }),
+	).not.toBeChecked();
+	await dialog.getByRole("tab", { name: "Проёмы", exact: true }).click();
+	await dialog
+		.getByRole("checkbox", { name: "Ширина проёмов", exact: true })
+		.check();
+	await dialog.getByRole("button", { name: "Готово", exact: true }).click();
+	await start(page, "a");
+	await expect(
+		page.getByRole("button", { name: "Открыть UI scope B", exact: true }),
+	).toHaveCount(0);
+	await open(page, "UI scope A");
+	dialog = await dimensions(page);
+	await expect(
+		dialog.getByRole("checkbox", { name: "Внешние габариты", exact: true }),
+	).toBeChecked();
+	await dialog.getByRole("tab", { name: "Проёмы", exact: true }).click();
+	await expect(
+		dialog.getByRole("checkbox", { name: "Ширина проёмов", exact: true }),
+	).not.toBeChecked();
+	expect(await rows(page, "a")).toEqual(beforeA);
+	expect(await rows(page, "b")).toEqual(beforeB);
+	expect(await browser(page)).toEqual(preserved);
+});
+
+async function prepared(page: Page) {
+	const fixture = await page.evaluate(() =>
+		window.__telegramRuntimeUi.prepareUpperCustom("a"),
+	);
+	expect(fixture.resourceHash).toBe(fixture.actualDigest.toUpperCase());
+	expect(fixture.resourceHash).not.toBe(fixture.actualDigest);
+	expect(fixture.pinnedBytes).toEqual(fixture.sourceBytes);
+	await page.evaluate(() => window.__telegramRuntimeUi.mountPrepared("a"));
+	await open(page, "Uppercase local model");
+	return fixture;
+}
+test("TMA-UI-03: a real pinned raw-UPPER resource hydrates its visible custom catalogue card", async ({
+	page,
+}, info) => {
+	const fixture = await prepared(page);
+	await info.attach("actual-upper-pin", {
+		contentType: "application/json",
+		body: JSON.stringify(fixture),
+	});
+	await page
+		.getByRole("navigation", { name: "Инструменты редактора" })
+		.getByRole("button", { name: "Предметы интерьера", exact: true })
+		.click();
+	await page.getByRole("button", { name: "Кастомное", exact: true }).click();
+	const card = page.getByRole("button", {
+		name: /Local upper triangle.*Кастомное/,
+	});
+	await expect(card).toBeVisible();
+	await expect(card).toBeEnabled();
+	expect(await rows(page, "a")).toEqual(fixture.before);
+});
+test("TMA-UI-04: the actual 3D resource path renders the pinned raw-UPPER GLB without changing Project rows", async ({
+	page,
+}, info) => {
+	const fixture = await prepared(page);
+	await info.attach("actual-upper-pin", {
+		contentType: "application/json",
+		body: JSON.stringify(fixture),
+	});
+	await page
+		.getByTestId("editor-view-switch")
+		.getByRole("button", { name: "3D", exact: true })
+		.click();
+	await expect(page.getByTestId("three-dimensional-canvas")).toBeVisible();
+	await expect(
+		page.getByTestId("three-dimensional-custom-glb-status"),
+	).toHaveText("rendered:1");
+	expect(await rows(page, "a")).toEqual(fixture.before);
+	await info.attach("actual-scoped-3d", {
+		body: await page.screenshot(),
+		contentType: "image/png",
+	});
+});
+
+test("TMA-UI-05: actual export prepares a local File before a fresh handoff gesture and reselects it through the registered importer", async ({
+	page,
+}, info) => {
+	const preserved = await browser(page);
+	await start(page, "a");
+	await createRoom(page, "UI local transfer");
+	const source = await currentProject(page);
+	const before = await rows(page, "a");
+	await page
+		.getByRole("button", { name: "Открыть остальные действия", exact: true })
+		.click();
+	await page
+		.getByRole("button", { name: "Экспортировать проект", exact: true })
+		.click();
+	await expect(
+		page.getByRole("button", { name: "Передать файл", exact: true }),
+	).toBeVisible();
+	expect(
+		await page.evaluate(() => window.__telegramRuntimeUi.sharedFileCount()),
+	).toBe(0);
+	expect(await rows(page, "a")).toEqual(before);
+	await page
+		.getByRole("button", { name: "Передать файл", exact: true })
+		.click();
+	await expect(page.getByText(/Проверьте файл вне приложения/)).toBeVisible();
+	expect(
+		await page.evaluate(() => window.__telegramRuntimeUi.sharedFileCount()),
+	).toBe(1);
+	const file = await page.evaluate(() =>
+		window.__telegramRuntimeUi.sharedFile(0),
+	);
+	expect(file.name).toMatch(/\.interiors$/);
+	expect(file.mimeType).toBe("application/zip");
+	expect(file.bytes.length).toBeGreaterThan(0);
+	await info.attach("actual-local-export", {
+		contentType: "application/json",
+		body: JSON.stringify(file),
+	});
+	await page.getByRole("button", { name: "Закрыть", exact: true }).click();
+	await expect(
+		page.getByRole("complementary", { name: "Передача файла", exact: true }),
+	).toHaveCount(0);
+	await page
+		.getByRole("button", { name: "Открыть остальные действия", exact: true })
+		.click();
+	await page.getByRole("button", { name: "Проекты", exact: true }).click();
+	await expect(
+		page.getByLabel("Импортировать проект", { exact: true }),
+	).toBeAttached();
+	await page.evaluate(() => window.__telegramRuntimeUi.reselectSharedFile(0));
+	await expect
+		.poll(async () => {
+			const state = await page.evaluate(() =>
+				window.__telegramRuntimeUi.state(),
+			);
+			return "project" in state ? state.project?.projectId : undefined;
+		})
+		.not.toBe(source.projectId);
+	await saved(page);
+	const imported = await currentProject(page);
+	expect(imported.projectId).not.toBe(source.projectId);
+	expect(imported.level).toEqual(source.level);
+	expect(await browser(page)).toEqual(preserved);
+});
+
+
+test("TMA-UI-06: a complete empty recovery draft uses the actual scoped registered writer and restores a new Project", async ({ page }) => {
+	await start(page, "a");
+	const preserved = await browser(page);
+	const restored = await page.evaluate(() => window.__telegramRuntimeUi.restoreEmptyRecoveryDraft());
+	expect(restored.result.kind).toBe("durable");
+	expect(restored.sourceUnchanged).toBe(true);
+	const state = restored.state;
+	expect(state.kind).toBe("saved");
+	if (state.kind !== "saved") throw new Error("Expected restored Project");
+	expect(state.project.projectId).not.toBe(restored.sourceProject.projectId);
+	expect(state.project.level).toEqual(restored.sourceProject.level);
+	expect(state.project.assetDefinitionRefs).toEqual([]);
+	expect((await rows(page, "a")).projects).toHaveLength(1);
+	expect(await browser(page)).toEqual(preserved);
+});
+
+
+test("TMA-UI-07: ordinary Telegram file transfer never dispatches non-ZIP data to the old browser JSON importer", async ({ page }) => {
+	await start(page, "a");
+	const before = await rows(page, "a");
+	await page.evaluate(() => window.__telegramRuntimeUi.reselectUnregisteredProjectJson());
+	await expect(page.getByText("Не удалось проверить файл проекта. Существующие проекты не изменены.", { exact: true })).toBeVisible({ timeout: 4000 });
+	expect(await rows(page, "a")).toEqual(before);
+	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+});
+
+
+test("TMA-UI-08: host Back preserves raw rename input, caret and the native dialog until explicit discard", async ({ page }, info) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+	await createRoom(page, "Raw Back Project");
+	const before = await rows(page, "a");
+	await page.getByRole("button", { name: "Переименовать проект Raw Back Project", exact: true }).click();
+	const input = page.getByRole("textbox", { name: "Новое название проекта", exact: true });
+	const raw = "  009 План  ";
+	await input.fill(raw);
+	await input.evaluate((element: HTMLInputElement) => element.setSelectionRange(2, 5, "forward"));
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+	await expect(guard).toBeVisible({ timeout: 4000 });
+	await info.attach("retained-raw-dialog", { body: await page.screenshot(), contentType: "image/png" });
+	await expect(input).toHaveValue(raw);
+	expect(await page.evaluate(() => window.__telegramRuntimeUi.hostClosingWarning())).toBe(true);
+	const keep = guard.getByRole("button", { name: "Продолжить", exact: true });
+	const discard = guard.getByRole("button", { name: "Отменить правку", exact: true });
+	await expect(keep).toBeFocused();
+	await page.keyboard.press("Tab"); await expect(discard).toBeFocused();
+	await page.keyboard.press("Tab"); await expect(keep).toBeFocused();
+	await page.keyboard.press("Shift+Tab"); await expect(discard).toBeFocused();
+	await page.keyboard.press("Escape");
+	await expect(guard).toHaveCount(0);
+	await expect(input).toBeFocused();
+	expect(await input.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd, element.selectionDirection])).toEqual([2, 5, "forward"]);
+	await expect(input).toHaveValue(raw);
+	expect(await rows(page, "a")).toEqual(before);
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(guard).toBeVisible();
+	await guard.getByRole("button", { name: "Отменить правку", exact: true }).click();
+	await expect(guard).toHaveCount(0);
+	expect((await currentProject(page)).name).toBe("Raw Back Project");
+	expect(await rows(page, "a")).toEqual(before);
+});
+
+
+test("TMA-UI-09: in-app Back cannot blur-publish a valid raw angle and Continue retains the exact raw field", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.prepareUpperCustom("a"));
+	await page.evaluate(() => window.__telegramRuntimeUi.mountPreparedNavigable("a"));
+	await open(page, "Uppercase local model");
+	await page.getByTestId("schematic-item").click();
+	const inspector = page.getByTestId("selected-item-inspector");
+	if (!(await inspector.isVisible())) {
+		const action = page.getByRole("button", { name: "Параметры выбранного предмета", exact: true });
+		if (!(await action.isVisible())) await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+		await action.click();
+	} else if ((await inspector.getAttribute("data-inspector-expanded")) !== "true") {
+		await page.getByRole("button", { name: "Развернуть панель предмета", exact: true }).click();
+	}
+	const input = page.getByRole("textbox", { name: "Угол поворота выбранного предмета, градусы", exact: true });
+	await expect(input).toBeEnabled();
+	await input.fill(" 45 ");
+	await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Предпросмотр — не сохранено");
+	const before = await rows(page, "a");
+	await page.getByRole("button", { name: "Назад", exact: true }).click();
+	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+	await expect(guard).toBeVisible({ timeout: 4000 });
+	expect(await rows(page, "a")).toEqual(before);
+	await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+	await expect(input).toBeFocused();
+	await expect(input).toHaveValue(" 45 ");
+	expect(await rows(page, "a")).toEqual(before);
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(guard).toBeVisible();
+	await guard.getByRole("button", { name: "Отменить правку", exact: true }).click();
+	await expect(input).toHaveValue("0");
+	expect(await rows(page, "a")).toEqual(before);
+});
+
+
+async function navigableRoom(page: Page, name: string) {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+	await createRoom(page, name);
+}
+test("TMA-UI-10: Back preserves room raw height and type, while explicit discard resets fields without a Revision", async ({ page }) => {
+	await navigableRoom(page, "Room raw Back");
+	await page.getByRole("button", { name: "Помещения", exact: true }).click();
+	const directory = page.getByRole("dialog", { name: "Помещения", exact: true });
+	const height = directory.getByRole("textbox", { name: "Высота помещения, мм", exact: true });
+	const type = directory.getByRole("combobox", { name: "Тип помещения", exact: true });
+	const originalHeight = await height.inputValue(), originalType = await type.inputValue();
+	await height.fill(" 02x ");
+	await type.selectOption("living-room");
+	await height.focus();
+	const before = await rows(page, "a");
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+	await expect(guard).toBeVisible({ timeout: 4000 });
+	await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+	await expect(height).toHaveValue(" 02x "); await expect(type).toHaveValue("living-room");
+	await expect(height).toBeFocused(); expect(await rows(page, "a")).toEqual(before);
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(guard).toBeVisible();
+	await guard.getByRole("button", { name: "Отменить правку", exact: true }).click();
+	await expect(height).toHaveValue(originalHeight); await expect(type).toHaveValue(originalType);
+	expect(await rows(page, "a")).toEqual(before);
+});
+test("TMA-UI-11: one host Back closes the clean dimension dialog and retains the editor and its focus", async ({ page }) => {
+	await navigableRoom(page, "Clean panel Back");
+	const trigger = page.getByRole("button", { name: "Настроить размеры", exact: true });
+	await trigger.click();
+	const dialog = page.getByRole("dialog", { name: "Размеры", exact: true });
+	await expect(dialog).toBeVisible();
+	const before = await rows(page, "a");
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(dialog).toHaveCount(0);
+	await expect(page.getByTestId("editor-workspace")).toBeVisible({ timeout: 4000 });
+	await expect(trigger).toBeFocused();
+	expect(await rows(page, "a")).toEqual(before);
+	expect(await page.evaluate(() => window.__telegramRuntimeUi.hostBackListenerCount())).toBe(1);
+	await page.evaluate(() => window.__telegramRuntimeUi.dispose());
+	expect(await page.evaluate(() => window.__telegramRuntimeUi.hostBackListenerCount())).toBe(0);
+});
+
+
+test("TMA-UI-12: host Back synchronously revokes the actual Plan drag before a queued pointerup and Resume never revives it", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.prepareUpperCustom("a"));
+	await page.evaluate(() => window.__telegramRuntimeUi.mountPreparedNavigable("a"));
+	await open(page, "Uppercase local model");
+	const item = page.getByTestId("schematic-item");
+	const box = await item.boundingBox();
+	if (!box) throw new Error("No actual rendered item");
+	let x = box.x + box.width / 2, y = box.y + box.height / 2;
+	const baseline = await rows(page, "a");
+	await page.mouse.move(x, y); await page.mouse.down();
+	await page.mouse.move(x + 12, y, { steps: 3 }); await page.mouse.up();
+	await expect.poll(async () => (await rows(page, "a")).revisions.length).toBe(baseline.revisions.length + 1);
+	const movedBox = await item.boundingBox();
+	if (!movedBox) throw new Error("No moved actual item");
+	x = movedBox.x + movedBox.width / 2; y = movedBox.y + movedBox.height / 2;
+	const before = await rows(page, "a");
+	await page.mouse.move(x, y); await page.mouse.down();
+	await page.mouse.move(x + 18, y + 8, { steps: 4 });
+	await page.evaluate(({ x, y }) => {
+		window.__telegramRuntimeUi.hostBack();
+		const svg = document.querySelector('[data-testid="schematic-item"]')?.closest('svg');
+		if (!svg) throw new Error("No actual Plan SVG");
+		svg.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true, clientX: x, clientY: y, buttons: 0 }));
+	}, { x: x + 18, y: y + 8 });
+	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+	await expect(guard).toBeVisible({ timeout: 4000 });
+	await expect.poll(() => page.evaluate(() => window.__telegramRuntimeUi.hasActivePublication())).toBe(false);
+	expect(await rows(page, "a")).toEqual(before);
+	await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+	await page.mouse.up();
+	expect(await rows(page, "a")).toEqual(before);
+});
+
+
+test("TMA-UI-13: first-run name is retained by both Back controls until explicit discard", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+ await page.getByRole("button", { name: "Новый проект", exact: true }).click();
+ const input=page.getByRole("textbox", {name:"Название проекта",exact:true});
+ await input.fill("  000 Мой план  ");
+ await input.evaluate((el:HTMLInputElement)=>el.setSelectionRange(3,7,"forward"));
+ const before=await rows(page,"a");
+ await page.getByRole("button",{name:"Вернуться к проектам",exact:true}).click();
+ const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});
+ await expect(guard).toBeVisible({timeout:4000});
+ await guard.getByRole("button",{name:"Продолжить",exact:true}).click();
+ await expect(input).toHaveValue("  000 Мой план  "); await expect(input).toBeFocused();
+ expect(await input.evaluate((el:HTMLInputElement)=>[el.selectionStart,el.selectionEnd])).toEqual([3,7]);
+ expect(await rows(page,"a")).toEqual(before);
+ await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ await guard.getByRole("button",{name:"Отменить правку",exact:true}).click();
+ await expect(input).toHaveValue(""); expect(await rows(page,"a")).toEqual(before);
+ await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ await expect(page.getByTestId("project-hub")).toBeVisible();
+});
+
+test("TMA-UI-14: starter contour raw dimensions survive Continue and discard resets without saving", async ({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.mountNavigable("a"));
+ await page.getByRole("button",{name:"Новый проект",exact:true}).click();
+ await page.getByRole("textbox",{name:"Название проекта",exact:true}).fill("Starter raw");
+ await page.getByRole("button",{name:"Создать проект",exact:true}).click();
+ const width=page.getByRole("textbox",{name:"Ширина, мм",exact:true});
+ await expect(width).toBeVisible(); const initial=await width.inputValue();
+ await width.fill(" 04x "); await width.focus(); const before=await rows(page,"a");
+ await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});
+ await expect(guard).toBeVisible({timeout:4000});
+ await guard.getByRole("button",{name:"Продолжить",exact:true}).click();
+ await expect(width).toHaveValue(" 04x "); await expect(width).toBeFocused();
+ expect(await rows(page,"a")).toEqual(before);
+ await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ await guard.getByRole("button",{name:"Отменить правку",exact:true}).click();
+ await expect(width).toHaveValue(initial); expect(await rows(page,"a")).toEqual(before);
+});
+
+
+test("TMA-UI-15: catalog composer raw text survives its close button and explicit discard creates no data", async ({page})=>{
+ await navigableRoom(page,"Composer raw");
+ await page.getByRole("button",{name:"Предметы интерьера",exact:true}).click();
+ const catalog=page.getByRole("dialog",{name:"Предметы интерьера",exact:true});
+ await catalog.locator("summary").click();
+ await catalog.getByRole("button",{name:"Создать макетный предмет",exact:true}).click();
+ const input=catalog.getByRole("textbox",{name:"Название макетного предмета",exact:true});
+ const initial=await input.inputValue(); await input.fill("  001 Комод  "); await input.focus(); const before=await rows(page,"a");
+ await catalog.getByRole("button",{name:"Закрыть предметы интерьера",exact:true}).click();
+ const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});
+ await expect(guard).toBeVisible({timeout:4000});
+ await guard.getByRole("button",{name:"Продолжить",exact:true}).click();
+ await expect(input).toHaveValue("  001 Комод  "); await expect(input).toBeFocused();
+ await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ await guard.getByRole("button",{name:"Отменить правку",exact:true}).click();
+ await expect(input).toHaveValue(initial); expect(await rows(page,"a")).toEqual(before);
+});
+
+test("TMA-UI-16: room panel own close follows the same raw-field guard as host Back",async({page})=>{
+ await navigableRoom(page,"Own panel close"); await page.getByRole("button",{name:"Помещения",exact:true}).click();
+ const directory=page.getByRole("dialog",{name:"Помещения",exact:true});
+ const input=directory.getByRole("textbox",{name:"Высота помещения, мм",exact:true});
+ await input.fill("009x"); await input.focus(); const before=await rows(page,"a");
+ await directory.getByRole("button",{name:"Закрыть помещения",exact:true}).click();
+ const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});
+ await expect(guard).toBeVisible({timeout:4000}); await guard.getByRole("button",{name:"Продолжить",exact:true}).click();
+ await expect(input).toBeFocused(); await expect(input).toHaveValue("009x"); expect(await rows(page,"a")).toEqual(before);
+});
+
+
+test("TMA-UI-17: Back before the Saving status preserves the dispatched rename and never offers discard",async({page})=>{
+ await navigableRoom(page,"Before checksum"); const before=await rows(page,"a");
+ await page.getByRole("button",{name:"Переименовать проект Before checksum",exact:true}).click();
+ await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("Held real rename");
+ await page.evaluate(()=>window.__telegramRuntimeUi.holdPublicationChecksum("Held real rename"));
+ await page.getByRole("button",{name:"Сохранить название",exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
+ expect(await page.evaluate(()=>window.__telegramRuntimeUi.state().kind)).toBe("saved");
+ await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ await expect(page.getByText("Дождитесь завершения текущего действия. Сохраняемая правка не отменена.",{exact:true})).toBeVisible({timeout:4000});
+ await expect(page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true})).toHaveCount(0);
+ expect(await rows(page,"a")).toEqual(before);
+ await page.evaluate(()=>window.__telegramRuntimeUi.releasePublicationChecksum());
+ await saved(page); await expect(page.getByRole("button",{name:"Переименовать проект Held real rename",exact:true})).toBeVisible();
+ expect((await rows(page,"a")).revisions).toHaveLength(before.revisions.length+1);
+ await expect(page.getByTestId("editor-workspace")).toBeVisible();
+});
+
+/** Uses the actual current Project, camera and layout; no synthetic scene/controller. */async function currentSceneFloorContact(page: Page, xMm: number, zMm: number) {
+ await expect(page.getByTestId("three-dimensional-renderer-diagnostics")).toContainText("стандартное качество");
+ await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+ const [project, cameraText, bounds] = await Promise.all([
+  currentProject(page), page.getByTestId("three-dimensional-camera").textContent(), page.getByTestId("three-dimensional-canvas").boundingBox(),
+ ]);
+ const scene = projectRectangularRoomForWebGl(project);
+ const values = cameraText?.split(":").map(Number);
+ if (!scene || !bounds || !values || values.length !== 5 || !values.every(Number.isFinite)) throw new Error("No actual current 3D floor projection");
+ const [azimuthRadians, elevationRadians, distance, panXM, panZM] = values;
+ const originX = Math.min(...project.level.vertices.map((vertex) => vertex.xMm));
+ const originZ = Math.min(...project.level.vertices.map((vertex) => vertex.zMm));
+ const point = canvasPointForFloor(scene, { azimuthRadians, elevationRadians, distance, panXM, panZM }, bounds, { xM: (xMm - originX) / 1000, zM: (zMm - originZ) / 1000 });
+ if (!point) throw new Error("No visible projected floor contact");
+ return { x: bounds.x + point.x, y: bounds.y + point.y };
+}
+async function beginActualSceneMove(page: Page, from: { xMm: number; zMm: number }, to: { xMm: number; zMm: number }) {
+ const start = await currentSceneFloorContact(page, from.xMm, from.zMm);
+ const end = await currentSceneFloorContact(page, to.xMm, to.zMm);
+ expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), start)).toBe("three-dimensional-canvas");
+ await page.mouse.move(start.x, start.y); await page.mouse.down(); await page.mouse.move(end.x, end.y, { steps: 5 });
+ await expect(page.getByTestId("three-dimensional-item-preview")).toContainText("перемещение:");
+}
+
+test("TMA-UI-SCENE-01: actual scoped 3D move is suspended by Root Back, retains world pose on Continue and publishes only a fresh contact", async ({ page }) => {
+ const preserved = await browser(page);
+ await page.evaluate(() => window.__telegramRuntimeUi.prepareUpperCustom("a"));
+ await page.evaluate(() => window.__telegramRuntimeUi.mountPreparedNavigable("a"));
+ await open(page, "Uppercase local model");
+ await page.getByTestId("schematic-item").click();
+ await page.getByTestId("editor-view-switch").getByRole("button", { name: "3D", exact: true }).click();
+ await expect(page.getByTestId("three-dimensional-custom-glb-status")).toHaveText("rendered:1");
+ const initial = await currentProject(page);
+ const originalItem = initial.assetInstances.find((item) => item.anchorClass === "floor");
+ if (originalItem?.anchorClass !== "floor") throw new Error("No actual selected floor item");
+ const baseline = await rows(page, "a");
+ // First prove that this native gesture really reaches a Durable scoped Revision.
+ await beginActualSceneMove(page, originalItem, { xMm: originalItem.xMm + 180, zMm: originalItem.zMm });
+ await page.mouse.up();
+ await expect.poll(async () => (await rows(page, "a")).revisions.length).toBe(baseline.revisions.length + 1);
+ const moved = await currentProject(page);
+ const movedItem = moved.assetInstances.find((item) => item.assetInstanceId === originalItem.assetInstanceId);
+ if (movedItem?.anchorClass !== "floor") throw new Error("No actual moved floor item");
+ expect(movedItem.xMm).not.toBe(originalItem.xMm);
+ const before = await rows(page, "a");
+ await beginActualSceneMove(page, movedItem, { xMm: movedItem.xMm + 240, zMm: movedItem.zMm + 120 });
+ const preview = page.getByTestId("three-dimensional-item-preview");
+ const pose = await preview.textContent();
+ if (!pose?.startsWith("перемещение:")) throw new Error("No actual raw move pose");
+ await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+ const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+ await expect(guard).toBeVisible({ timeout: 4000 });
+ await expect(preview).toHaveText(pose);
+ // A real captured pointerup must stay revoked while the root guard owns focus.
+ await page.mouse.up();
+ expect(await rows(page, "a")).toEqual(before);
+ await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+ await expect(preview).toHaveText(pose);
+ await expect(page.getByTestId("three-dimensional-rotation-gizmo")).toBeVisible();
+ expect(await rows(page, "a")).toEqual(before);
+ const [, x, z] = pose.split(":");
+ if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(z))) throw new Error("Invalid retained world pose");
+ const originX = Math.min(...moved.level.vertices.map((vertex) => vertex.xMm));
+ const originZ = Math.min(...moved.level.vertices.map((vertex) => vertex.zMm));
+ const retained = { xMm: Number(x) * 1000 + originX, zMm: Number(z) * 1000 + originZ };
+ await beginActualSceneMove(page, retained, { xMm: retained.xMm + 160, zMm: retained.zMm });
+ await page.mouse.up();
+ await expect.poll(async () => (await rows(page, "a")).revisions.length).toBe(before.revisions.length + 1);
+ expect((await currentProject(page)).assetDefinitionRefs).toEqual(moved.assetDefinitionRefs);
+ expect(await browser(page)).toEqual(preserved);
+});
+
+
+test("TMA-UI-18: item inspector own collapse cannot blur-publish its valid raw angle",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.prepareUpperCustom("a")); await page.evaluate(()=>window.__telegramRuntimeUi.mountPreparedNavigable("a")); await open(page,"Uppercase local model"); await page.getByTestId("schematic-item").click();
+ const inspector=page.getByTestId("selected-item-inspector");
+ if(!(await inspector.isVisible())){const action=page.getByRole("button",{name:"Параметры выбранного предмета",exact:true});if(!(await action.isVisible()))await page.getByRole("button",{name:"Открыть остальные действия",exact:true}).click();await action.click();}
+ else if((await inspector.getAttribute("data-inspector-expanded"))!=="true")await page.getByRole("button",{name:"Развернуть панель предмета",exact:true}).click();
+ const input=page.getByRole("textbox",{name:"Угол поворота выбранного предмета, градусы",exact:true});await input.fill(" 45 ");const before=await rows(page,"a");
+ await page.getByRole("button",{name:"Скрыть панель предмета",exact:true}).click();
+ const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});await expect(guard).toBeVisible({timeout:4000});expect(await rows(page,"a")).toEqual(before);
+ await guard.getByRole("button",{name:"Продолжить",exact:true}).click();await expect(input).toBeFocused();await expect(input).toHaveValue(" 45 ");expect(await rows(page,"a")).toEqual(before);
+});
+
+
+test("TMA-UI-19: Back keeps a failed real candidate and recovery export until explicit retry creates one Revision",async({page})=>{
+ await navigableRoom(page,"Quota before rename");const before=await rows(page,"a");
+ await page.getByRole("button",{name:"Переименовать проект Quota before rename",exact:true}).click();
+ await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("Retained quota rename");
+ await page.evaluate(()=>window.__telegramRuntimeUi.failNextScopedProjectWrite());
+ await page.getByRole("button",{name:"Сохранить название",exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.state().kind)).toBe("persist-failed");
+ const failed=await rows(page,"a");
+ expect(failed.projects).toEqual(before.projects);
+ for (const prior of before.revisions) expect(failed.revisions).toContainEqual(prior);
+ expect((await currentProject(page)).name).toBe("Quota before rename");
+ await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ await expect(page.getByText("Правка не сохранена. Повторите сохранение или экспортируйте данные для восстановления.",{exact:true})).toBeVisible({timeout:4000});
+ await expect(page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true})).toHaveCount(0);
+ expect(await rows(page,"a")).toEqual(failed);
+ await page.getByTestId("rename-project-sheet").getByRole("button",{name:"Отмена",exact:true}).click();
+ const notice=page.getByTestId("persistence-failure-notice"); await expect(notice).toBeVisible();
+ await notice.getByRole("button",{name:"Скачать несохранённую правку",exact:true}).click();
+ const transfer=page.getByRole("complementary",{name:"Передача файла",exact:true});await expect(transfer.getByRole("heading",{name:"Несохранённая правка",exact:true})).toBeVisible();
+ await expect(transfer.getByRole("button",{name:"Передать файл",exact:true})).toBeVisible();
+ expect(await rows(page,"a")).toEqual(failed);
+ await transfer.getByRole("button",{name:"Закрыть",exact:true}).click();
+ await notice.getByRole("button",{name:"Повторить сохранение",exact:true}).click();
+ await saved(page); expect((await currentProject(page)).name).toBe("Retained quota rename");
+ expect((await rows(page,"a")).revisions).toHaveLength(before.revisions.length+1);
+});
+
+
+test("TMA-UI-20: host viewport and safe-area hooks fit the actual editor and revoke an old contact after live resize",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.prepareUpperCustom("a")); await page.evaluate(()=>window.__telegramRuntimeUi.mountPreparedNavigable("a")); await open(page,"Uppercase local model");
+ const item=page.getByTestId("schematic-item");const box=await item.boundingBox();if(!box)throw new Error("No actual item");
+ const before=await rows(page,"a");const x=box.x+box.width/2,y=box.y+box.height/2;
+ await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+18,y+10,{steps:4});
+ await page.evaluate(()=>{const s=document.documentElement.style;s.setProperty("--editor-viewport-height","480px");s.setProperty("--editor-safe-area-top","32px");s.setProperty("--editor-safe-area-bottom","24px");});
+ await expect.poll(()=>page.getByTestId("editor-workspace").evaluate(el=>el.getBoundingClientRect().height)).toBe(480);
+ const header=page.getByTestId("editor-top-bar");expect(await header.evaluate(el=>parseFloat(getComputedStyle(el).paddingTop))).toBeGreaterThanOrEqual(32);
+ const dock=page.getByTestId("editor-action-dock");const d=await dock.boundingBox();if(!d)throw new Error("No actual dock");expect(d.y+d.height).toBeLessThanOrEqual(480);
+ await page.mouse.up();expect(await rows(page,"a")).toEqual(before);
+});
+
+test("TMA-UI-21: at360px and200percent text the guarded native dialog keeps both choices inside the visible host viewport",async({page},info)=>{
+ await page.setViewportSize({width:360,height:640});await navigableRoom(page,"200% text");
+ await page.evaluate(()=>{document.documentElement.style.fontSize="200%";document.documentElement.style.setProperty("--editor-viewport-height","480px");});
+ await page.getByRole("button",{name:"Переименовать проект 200% text",exact:true}).click();
+ await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("  Большой текст  ");await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});await expect(guard).toBeVisible();
+ for(const name of ["Продолжить","Отменить правку"]){const b=guard.getByRole("button",{name,exact:true});await b.scrollIntoViewIfNeeded();const size=await b.evaluate(el=>({box:el.getBoundingClientRect().toJSON(),scroll:el.scrollWidth,client:el.clientWidth,font:parseFloat(getComputedStyle(el).fontSize)}));expect(size.font).toBeGreaterThanOrEqual(32);expect(size.scroll).toBeLessThanOrEqual(size.client+1);expect(size.box.x).toBeGreaterThanOrEqual(0);expect(size.box.right).toBeLessThanOrEqual(360);expect(size.box.bottom).toBeLessThanOrEqual(480);expect(size.box.height).toBeGreaterThanOrEqual(44);}
+ await info.attach("360px-200percent-host-viewport",{body:await page.screenshot(),contentType:"image/png"});
+ await guard.getByRole("button",{name:"Продолжить",exact:true}).click();await expect(page.getByRole("textbox",{name:"Новое название проекта",exact:true})).toHaveValue("  Большой текст  ");
+});
+
+
+test("TMA-UI-22: host deactivation revokes a queued Plan release and reactivation requires a fresh contact",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.prepareUpperCustom("a"));await page.evaluate(()=>window.__telegramRuntimeUi.mountPreparedNavigable("a"));await open(page,"Uppercase local model");
+ const item=page.getByTestId("schematic-item"),box=await item.boundingBox();if(!box)throw new Error("No actual item");const x=box.x+box.width/2,y=box.y+box.height/2;
+ await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+18,y+10,{steps:4});const before=await rows(page,"a");
+ await page.evaluate(({x,y})=>{window.__telegramRuntimeUi.setHostActivity(false);document.querySelector('[data-testid="schematic-item"]')?.closest('svg')?.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,pointerId:1,pointerType:"mouse",isPrimary:true,clientX:x,clientY:y,buttons:0}));},{x:x+18,y:y+10});
+ await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.hasActivePublication())).toBe(false);expect(await rows(page,"a")).toEqual(before);
+ await page.evaluate(()=>window.__telegramRuntimeUi.setHostActivity(true));await page.mouse.up();expect(await rows(page,"a")).toEqual(before);
+ expect(await page.evaluate(()=>window.__telegramRuntimeUi.hostLifecycleListenerCount())).toBe(1);await page.evaluate(()=>window.__telegramRuntimeUi.dispose());expect(await page.evaluate(()=>window.__telegramRuntimeUi.hostLifecycleListenerCount())).toBe(0);
+});
+
+
+test("TMA-UI-23: exact unverified private source uses explicit readonly selection and a distinct fresh File gesture", async ({ page }) => {
+	const preserved = await browser(page);
+	await start(page, "a");
+	await createRoom(page, "Source recovery only");
+	const serializedProject = ' \n{"schemaVersion":999,"raw":"' + String.fromCharCode(0xd800) + '\u0000"}  ';
+	await page.evaluate((text) => window.__telegramRuntimeUi.corruptCurrentSource("a", text), serializedProject);
+	await expect(page.getByRole("heading", { name: "Проект требует восстановления", exact: true })).toBeVisible();
+	const before = await rows(page, "a");
+	const panel = page.getByRole("complementary", { name: "Непроверенные исходники", exact: true });
+	await expect(panel).toBeVisible();
+	await expect(panel.getByRole("button", { name: "Подготовить исходник записи 1", exact: true })).toHaveCount(0);
+	await panel.getByRole("button", { name: "Показать записи", exact: true }).click();
+	await panel.getByRole("button", { name: "Подготовить исходник записи 1", exact: true }).click();
+	const file = page.getByRole("complementary", { name: "Передача файла", exact: true });
+	await expect(file.getByRole("heading", { name: "Непроверенная исходная запись", exact: true })).toBeVisible();
+	expect(await page.evaluate(() => window.__telegramRuntimeUi.sharedFileCount())).toBe(0);
+	await file.getByRole("button", { name: "Передать файл", exact: true }).click();
+	await expect.poll(() => page.evaluate(() => window.__telegramRuntimeUi.sharedFileCount())).toBe(1);
+	const handed = await page.evaluate(() => window.__telegramRuntimeUi.sharedFile(0));
+	expect(handed.name).toBe("project.interiors-source.json");
+	expect(handed.mimeType).toBe("application/json");
+	const envelope = JSON.parse(new TextDecoder().decode(new Uint8Array(handed.bytes)));
+	expect(envelope).toEqual({ purpose: "interiors-editor-unverified-source", version: 1, kind: "unverified-source", projectId: Reflect.get(before.projects[0] as object, "projectId"), revisionId: Reflect.get(before.projects[0] as object, "currentRevisionId"), serializedProject });
+	await expect(file).toContainText("этот файл не восстанавливает проект автоматически");
+	expect(await rows(page, "a")).toEqual(before);
+	expect(await browser(page)).toEqual(preserved);
+});
+
+
+test("TMA-UI-24: inactive host captures focused raw angle before blur and never turns it into a saved mutation",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.prepareUpperCustom("a"));await page.evaluate(()=>window.__telegramRuntimeUi.mountPreparedNavigable("a"));await open(page,"Uppercase local model");await page.getByTestId("schematic-item").click();
+ const inspector=page.getByTestId("selected-item-inspector");if(!(await inspector.isVisible())){const action=page.getByRole("button",{name:"Параметры выбранного предмета",exact:true});if(!(await action.isVisible()))await page.getByRole("button",{name:"Открыть остальные действия",exact:true}).click();await action.click();}else if((await inspector.getAttribute("data-inspector-expanded"))!=="true")await page.getByRole("button",{name:"Развернуть панель предмета",exact:true}).click();
+ const angle=inspector.getByRole("textbox",{name:"Угол поворота выбранного предмета, градусы",exact:true});await angle.fill("17.50");const before=await rows(page,"a");
+ await page.evaluate(()=>window.__telegramRuntimeUi.setHostActivity(false));await angle.evaluate(element=>(element as HTMLInputElement).blur());
+ await expect(angle).toHaveValue("17.50");expect(await rows(page,"a")).toEqual(before);
+ await page.evaluate(()=>window.__telegramRuntimeUi.setHostActivity(true));await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+ const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});await expect(guard).toBeVisible();expect(await rows(page,"a")).toEqual(before);
+ await guard.getByRole("button",{name:"Продолжить",exact:true}).click();await expect(angle).toHaveValue("17.50");expect(await rows(page,"a")).toEqual(before);
+});
+
+test("TMA-UI-25: a layout-only host event invalidates the old Plan release without a Project command",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.prepareUpperCustom("a"));await page.evaluate(()=>window.__telegramRuntimeUi.mountPreparedNavigable("a"));await open(page,"Uppercase local model");
+ const item=page.getByTestId("schematic-item");await item.click();const box=await item.boundingBox();if(!box)throw new Error("Actual placed model missing");const before=await rows(page,"a");
+ await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+25,box.y+box.height/2+15,{steps:3});
+ await page.evaluate(()=>window.__telegramRuntimeUi.changeHostLayout());await page.mouse.up();expect(await rows(page,"a")).toEqual(before);
+});
+
+test("TMA-UI-26: closing the page during an actual uncommitted save reopens the last exact Durable Revision",async({page,context})=>{
+ await navigableRoom(page,"Last durable before abrupt close");const before=await rows(page,"a"),preserved=await browser(page),url=page.url();
+ await page.getByRole("button",{name:"Переименовать проект Last durable before abrupt close",exact:true}).click();
+ await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("Uncommitted after close");
+ await page.evaluate(()=>window.__telegramRuntimeUi.holdPublicationChecksum("Uncommitted after close"));
+ await page.getByRole("button",{name:"Сохранить название",exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
+ await page.close({runBeforeUnload:false});
+ const reopened=await context.newPage();
+ try{
+  await reopened.goto(url);await start(reopened,"a");await reopened.getByRole("button",{name:"Открыть Last durable before abrupt close",exact:true}).click();
+  await expect.poll(()=>reopened.evaluate(()=>{const state=window.__telegramRuntimeUi.state();return "project" in state ? state.project?.name : undefined;})).toBe("Last durable before abrupt close");
+  expect(await rows(reopened,"a")).toEqual(before);expect(await browser(reopened)).toEqual(preserved);
+  await expect(reopened.getByRole("button",{name:"Переименовать проект Uncommitted after close",exact:true})).toHaveCount(0);
+ }finally{await reopened.evaluate(()=>window.__telegramRuntimeUi.dispose()).catch(()=>undefined);await reopened.close();}
+});
+
+
+test("TMA-UI-27: an oversized actual local GLB is refused before reading bytes and without Project changes",async({page})=>{
+ await navigableRoom(page,"Bounded local GLB");const before=await rows(page,"a");
+ await page.getByRole("button",{name:"Предметы интерьера",exact:true}).click();await page.getByTestId("catalog-authoring").locator("summary").click();
+ await page.evaluate(()=>window.__telegramRuntimeUi.selectModelFile("glb",25*1024*1024+1));
+ await expect(page.getByText("Одна GLB-модель ограничена 25 MiB, чтобы её можно было хранить и открыть на телефоне.",{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>window.__telegramRuntimeUi.localModelFileReads())).toBe(0);expect(await rows(page,"a")).toEqual(before);
+});
+test("TMA-UI-28: embedded Telegram exposes static GLB only and rejects a queued FBX selection without conversion or reads",async({page})=>{
+ await navigableRoom(page,"Static GLB only");const before=await rows(page,"a");
+ await page.getByRole("button",{name:"Предметы интерьера",exact:true}).click();await page.getByTestId("catalog-authoring").locator("summary").click();
+ await expect(page.getByRole("button",{name:"Выбрать FBX или ZIP",exact:true})).toHaveCount(0);
+ await expect(page.getByRole("button",{name:"Выбрать GLB",exact:true})).toBeVisible();
+ await page.evaluate(()=>window.__telegramRuntimeUi.selectModelFile("fbx",1));
+ await expect(page.getByText(/^Преобразуем /)).toHaveCount(0);expect(await page.evaluate(()=>window.__telegramRuntimeUi.localModelFileReads())).toBe(0);expect(await rows(page,"a")).toEqual(before);
+});
+
+
+test("TMA-UI-29: Back requires an explicit discard for an actual fence-loss recovery candidate",async({page,context})=>{
+ await navigableRoom(page,"Fence recovery base");
+ await page.getByRole("button",{name:"Переименовать проект Fence recovery base",exact:true}).click();await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("Retained fence candidate");
+ await page.evaluate(()=>window.__telegramRuntimeUi.holdPublicationChecksum("Retained fence candidate"));await page.getByRole("button",{name:"Сохранить название",exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
+ const foreign=await context.newPage();
+ try{
+  await foreign.goto(page.url());await foreign.evaluate(async()=>{await window.__telegramRuntimeUi.initialize();await window.__telegramRuntimeUi.mountConcurrentNavigable("a");});await foreign.getByRole("button",{name:"Открыть Fence recovery base",exact:true}).click();
+  await foreign.getByRole("button",{name:"Взять редактирование на себя",exact:true}).click();await foreign.getByRole("button",{name:"Подтвердить перехват",exact:true}).click();await expect(foreign.getByTestId("writer-lease-notice")).toHaveCount(0);
+  await page.evaluate(()=>window.__telegramRuntimeUi.releasePublicationChecksum());
+  await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.writerRecoveryName())).toBe("Retained fence candidate");
+  await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.hostClosingWarning())).toBe(true);
+  const durable=await rows(page,"a");
+  const panel=await dimensions(page);await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());await expect(panel).toHaveCount(0);expect(await page.evaluate(()=>window.__telegramRuntimeUi.writerRecoveryName())).toBe("Retained fence candidate");
+  await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
+  const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});await expect(guard).toBeVisible();expect(await page.evaluate(()=>window.__telegramRuntimeUi.hostClosingWarning())).toBe(true);
+  await guard.getByRole("button",{name:"Продолжить",exact:true}).click();expect(await page.evaluate(()=>window.__telegramRuntimeUi.writerRecoveryName())).toBe("Retained fence candidate");expect(await rows(page,"a")).toEqual(durable);
+  await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());await guard.getByRole("button",{name:"Отменить правку",exact:true}).click();await expect(page.getByTestId("project-hub")).toBeVisible();expect(await page.evaluate(()=>window.__telegramRuntimeUi.writerRecoveryName())).toBeUndefined();expect(await rows(page,"a")).toEqual(durable);
+  await page.getByRole("button",{name:"Открыть Fence recovery base",exact:true}).click();await expect(page.getByTestId("writer-lease-notice")).toBeVisible();await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());await expect(page.getByTestId("project-hub")).toBeVisible();await expect(guard).toHaveCount(0);
+ }finally{await foreign.evaluate(()=>window.__telegramRuntimeUi.dispose()).catch(()=>undefined);await foreign.close();}
+});
+
+
+test("TMA-UI-30: host Back waits while an explicit native writer takeover is queued behind the real scope lock",async({page,context})=>{
+ await navigableRoom(page,"Queued writer takeover");const before=await rows(page,"a"),foreign=await context.newPage();
+ try{
+  await foreign.goto(page.url());await foreign.evaluate(async()=>{await window.__telegramRuntimeUi.initialize();await window.__telegramRuntimeUi.mountConcurrentNavigable("a");});
+  await foreign.getByRole("button",{name:"Открыть Queued writer takeover",exact:true}).click();await foreign.getByRole("button",{name:"Взять редактирование на себя",exact:true}).click();
+  await page.evaluate(()=>window.__telegramRuntimeUi.holdScopeLock("a"));await foreign.getByRole("button",{name:"Подтвердить перехват",exact:true}).click();await expect(foreign.getByRole("button",{name:"Перехватываем редактирование…",exact:true})).toBeDisabled();
+  await foreign.evaluate(()=>window.__telegramRuntimeUi.hostBack());await expect(foreign.getByText("Дождитесь завершения текущего действия. Сохраняемая правка не отменена.",{exact:true})).toBeVisible();
+  await expect(foreign.getByTestId("project-hub")).toHaveCount(0);await expect(foreign.getByRole("alertdialog",{name:"Несохранённая правка",exact:true})).toHaveCount(0);expect(await foreign.evaluate(()=>window.__telegramRuntimeUi.hostClosingWarning())).toBe(true);
+  await page.evaluate(()=>window.__telegramRuntimeUi.releaseScopeLock());await expect(foreign.getByTestId("writer-lease-notice")).toHaveCount(0);expect(await rows(foreign,"a")).toEqual(before);
+ }finally{await page.evaluate(()=>window.__telegramRuntimeUi.releaseScopeLock()).catch(()=>undefined);await foreign.evaluate(()=>window.__telegramRuntimeUi.dispose()).catch(()=>undefined);await foreign.close();}
+});
+
+
+test("TMA-UI-31: exact repair bounds precede every File read or storage write and a supported exact GLB restores the same Revision",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.prepareUpperCustom("a"));await page.evaluate(()=>window.__telegramRuntimeUi.removeCurrentResource("a"));
+ await page.getByRole("button",{name:"Открыть Uppercase local model",exact:true}).click();
+ await expect(page.getByRole("button",{name:"Восстановить исходные GLB",exact:true})).toBeVisible();
+ const before=await rows(page,"a"),all=await page.evaluate(()=>window.__telegramRuntimeUi.allScopedRows("a"));
+ for(const sizes of [[50*1024*1024+1],Array.from({length:901},()=>1)]){
+  await page.evaluate(sizes=>window.__telegramRuntimeUi.selectRepairFiles(sizes),sizes);
+  await expect(page.getByText("Выбранный набор GLB превышает допустимые ограничения. Проект не изменён.",{exact:true})).toBeVisible();expect(await page.evaluate(()=>window.__telegramRuntimeUi.localModelFileReads())).toBe(0);expect(await page.evaluate(()=>window.__telegramRuntimeUi.allScopedRows("a"))).toEqual(all);
+ }
+ await page.evaluate(()=>window.__telegramRuntimeUi.selectRepairFiles());await saved(page);expect(await page.evaluate(()=>window.__telegramRuntimeUi.localModelFileReads())).toBe(1);expect(await rows(page,"a")).toEqual(before);
+});
+
+
+test("BROWSER-DIRECTORY-UI-01: qualified same-ID card actions retain their selected owner at the shared UI boundary", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract());
+ const card = page.locator('[data-project-storage="browser-registered"]');
+ await expect(card.getByRole("button", { name: /^Открыть / })).toBeVisible();
+ await card.getByRole("button", { name: /^Открыть / }).click();
+ await card.locator("summary").click();
+ await card.getByRole("button", { name: /^Экспортировать проект / }).click();
+ await card.getByRole("button", { name: /^Экспорт файла для переноса:/ }).click();
+ await card.getByRole("button", { name: /^Удалить проект / }).click();
+ await page.getByRole("dialog", { name: "Удалить проект", exact: true }).getByRole("button", { name: "Удалить навсегда", exact: true }).click();
+ const calls = await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls());
+ expect(calls.map(call => [call.method, call.arguments[0], call.arguments[1]])).toEqual([
+  ["openProject", "same-id", { storageNamespace: "browser-registered" }],
+  ["export", "same-id", { storageNamespace: "browser-registered" }],
+  ["registered-export", "same-id", { storageNamespace: "browser-registered" }],
+  ["delete", "same-id", { storageNamespace: "browser-registered" }],
+ ]);
+ await card.getByRole("button", { name: /^Переименовать / }).click();
+ await expect(page.getByRole("textbox", { name: "Новое название проекта", exact: true })).toHaveValue("Перенесённый план");
+ const rename = (await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).at(-1);
+ expect(rename).toEqual({ method: "openProject", arguments: ["same-id", { storageNamespace: "browser-registered", initialAction: "rename" }] });
+});
+
+test("BROWSER-DIRECTORY-UI-02: an opaque instance change remounts same-ID editor state and retains only the new rename intent", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract());
+ await page.evaluate(() => window.__telegramRuntimeUi.selectDirectoryContract("Первая копия"));
+ const input = page.getByRole("textbox", { name: "Новое название проекта", exact: true });
+ await expect(input).toHaveValue("Первая копия"); await input.fill("  Старый сырой черновик  ");
+ await input.evaluate(element => { Object.defineProperty(window, "__priorRename", { value: element, configurable: true }); });
+ await page.evaluate(() => window.__telegramRuntimeUi.selectDirectoryContract("Другая копия с тем же ID"));
+ await expect(input).toHaveValue("Другая копия с тем же ID");
+ expect(await page.evaluate(() => (window as unknown as { __priorRename: Element }).__priorRename.isConnected)).toBe(false);
+});
+
+test("BROWSER-DIRECTORY-UI-03: the ordinary unqualified Web card preserves its single-argument open contract", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(false));
+ await page.getByRole("button", { name: "Открыть Одинаковый план", exact: true }).click();
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([{ method: "openProject", arguments: ["same-id"] }]);
+});
+
+test("BROWSER-DIRECTORY-UI-04: unavailable source is not called empty and explicit retry refreshes the directory", async ({ page }) => {
+ await page.setViewportSize({ width: 360, height: 800 });
+ await page.addStyleTag({ content: "html { font-size: 200% !important; }" });
+ // Deliberately publish after the render snapshot but before observer registration.
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, true));
+ await expect(page.getByText("Часть проектов сейчас недоступна", { exact: true })).toBeVisible();
+ await expect(page.getByText("Пока нет проектов", { exact: true })).toHaveCount(0);
+ await page.getByRole("button", { name: "Повторить проверку локальных хранилищ", exact: true }).click();
+ await expect(page.locator('[data-project-storage]')).toHaveCount(2);
+ expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+ await page.getByText("Старая версия не видит перенесённые проекты", { exact: true }).click();
+ await expect(page.getByText(/^Проекты из хранилища для переноса не отображаются в старой версии/)).toBeVisible();
+ await page.screenshot({ path: test.info().outputPath("qualified-directory-360-200.png"), fullPage: true });
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([{ method: "showProjects", arguments: [] }]);
+});
+
+
+test("BROWSER-DIRECTORY-UI-05: browser protection confirms an owned recovery copy without pretending to be Telegram", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, true));
+ await expect(page.getByTestId("project-hub")).toBeVisible();
+ await page.evaluate(() => window.__telegramRuntimeUi.directoryRecoveryExit());
+ await expect(page.getByTestId("editor-top-bar")).toBeVisible();
+ expect(await page.locator('[data-editor-host="telegram"]').count()).toBe(0);
+ await page.getByTestId("editor-top-bar").getByRole("button", { name: "Вернуться к проектам", exact: true }).click();
+ const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+ await expect(guard).toBeVisible();
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([]);
+ await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+ await expect(guard).toHaveCount(0); await expect(page.getByTestId("editor-top-bar")).toBeVisible();
+ await page.getByTestId("editor-top-bar").getByRole("button", { name: "Вернуться к проектам", exact: true }).click();
+ await guard.getByRole("button", { name: "Отменить правку", exact: true }).click();
+ await expect(page.getByTestId("project-hub")).toBeVisible();
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([{ method: "confirmedDiscard", arguments: ["Несохранённая копия"] }]);
+});
+
+
+test("BROWSER-PROTECTION-01: optional browser navigation cannot blur-publish a valid raw angle before confirmation", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.prepareUpperCustom("a"));
+	await page.evaluate(() => window.__telegramRuntimeUi.mountPreparedBrowserProtected("a"));
+	await open(page, "Uppercase local model");
+	await page.getByTestId("schematic-item").click();
+	const inspector = page.getByTestId("selected-item-inspector");
+	if (!(await inspector.isVisible())) {
+		const action = page.getByRole("button", { name: "Параметры выбранного предмета", exact: true });
+		if (!(await action.isVisible())) await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+		await action.click();
+	} else if ((await inspector.getAttribute("data-inspector-expanded")) !== "true") {
+		await page.getByRole("button", { name: "Развернуть панель предмета", exact: true }).click();
+	}
+	const input = page.getByRole("textbox", { name: "Угол поворота выбранного предмета, градусы", exact: true });
+	await expect(input).toBeEnabled();
+	await input.fill(" 45 ");
+	await input.evaluate((element: HTMLInputElement) => element.setSelectionRange(1, 3, "forward"));
+	const before = await rows(page, "a");
+	expect(await page.locator('[data-editor-host="telegram"]').count()).toBe(0);
+ await page.getByTestId("editor-top-bar").getByRole("button", { name: "Вернуться к проектам", exact: true }).click();
+	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+	try { await expect(guard).toBeVisible({ timeout: 4000 }); } catch (error) {
+ await test.info().attach("actual-preblur-state", { body: JSON.stringify({ before, after: await rows(page, "a"), state: await page.evaluate(() => window.__telegramRuntimeUi.state()) }), contentType: "application/json" }); throw error;
+ }
+	expect(await rows(page, "a")).toEqual(before);
+	await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+	await expect(input).toBeFocused();
+	await expect(input).toHaveValue(" 45 ");
+ expect(await input.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd, element.selectionDirection])).toEqual([1, 3, "forward"]);
+ await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Предпросмотр — не сохранено");
+	expect(await rows(page, "a")).toEqual(before);
+	await page.getByTestId("editor-top-bar").getByRole("button", { name: "Вернуться к проектам", exact: true }).click();
+	await expect(guard).toBeVisible();
+	await guard.getByRole("button", { name: "Отменить правку", exact: true }).click();
+	await expect(input).toHaveValue("0");
+	expect(await rows(page, "a")).toEqual(before);
+});
+
+
+
+test("BROWSER-PROTECTION-02: protected browser Back revokes an actual Plan drag before its queued release", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.prepareUpperCustom("a"));
+	await page.evaluate(() => window.__telegramRuntimeUi.mountPreparedBrowserProtected("a"));
+	await open(page, "Uppercase local model");
+	const item = page.getByTestId("schematic-item");
+	const box = await item.boundingBox();
+	if (!box) throw new Error("No actual rendered item");
+	let x = box.x + box.width / 2, y = box.y + box.height / 2;
+	const baseline = await rows(page, "a");
+	await page.mouse.move(x, y); await page.mouse.down();
+	await page.mouse.move(x + 12, y, { steps: 3 }); await page.mouse.up();
+	await expect.poll(async () => (await rows(page, "a")).revisions.length).toBe(baseline.revisions.length + 1);
+	const movedBox = await item.boundingBox();
+	if (!movedBox) throw new Error("No moved actual item");
+	x = movedBox.x + movedBox.width / 2; y = movedBox.y + movedBox.height / 2;
+	const before = await rows(page, "a");
+	await page.mouse.move(x, y); await page.mouse.down();
+	await page.mouse.move(x + 18, y + 8, { steps: 4 });
+	await page.evaluate(({ x, y }) => {
+		const back = document.querySelector<HTMLButtonElement>('[data-testid="editor-top-bar"] button[aria-label="Вернуться к проектам"]'); if (!back) throw new Error("Missing actual browser Back"); back.click();
+		const svg = document.querySelector('[data-testid="schematic-item"]')?.closest('svg');
+		if (!svg) throw new Error("No actual Plan SVG");
+		svg.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true, clientX: x, clientY: y, buttons: 0 }));
+	}, { x: x + 18, y: y + 8 });
+	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+	await expect(guard).toBeVisible({ timeout: 4000 });
+	await expect.poll(() => page.evaluate(() => window.__telegramRuntimeUi.hasActivePublication())).toBe(false);
+	expect(await rows(page, "a")).toEqual(before);
+	await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+	await page.mouse.up();
+	expect(await rows(page, "a")).toEqual(before);
+});
+
+
+test("BROWSER-PROTECTION-03: protected browser Back retains the actual 3D pose and requires a fresh contact", async ({ page }) => {
+ const preserved = await browser(page);
+ await page.evaluate(() => window.__telegramRuntimeUi.prepareUpperCustom("a"));
+ await page.evaluate(() => window.__telegramRuntimeUi.mountPreparedBrowserProtected("a"));
+ await open(page, "Uppercase local model");
+ await page.getByTestId("schematic-item").click();
+ await page.getByTestId("editor-view-switch").getByRole("button", { name: "3D", exact: true }).click();
+ await expect(page.getByTestId("three-dimensional-custom-glb-status")).toHaveText("rendered:1");
+ const initial = await currentProject(page);
+ const originalItem = initial.assetInstances.find((item) => item.anchorClass === "floor");
+ if (originalItem?.anchorClass !== "floor") throw new Error("No actual selected floor item");
+ const baseline = await rows(page, "a");
+ // First prove that this native gesture really reaches a Durable scoped Revision.
+ await beginActualSceneMove(page, originalItem, { xMm: originalItem.xMm + 180, zMm: originalItem.zMm });
+ await page.mouse.up();
+ await expect.poll(async () => (await rows(page, "a")).revisions.length).toBe(baseline.revisions.length + 1);
+ const moved = await currentProject(page);
+ const movedItem = moved.assetInstances.find((item) => item.assetInstanceId === originalItem.assetInstanceId);
+ if (movedItem?.anchorClass !== "floor") throw new Error("No actual moved floor item");
+ expect(movedItem.xMm).not.toBe(originalItem.xMm);
+ const before = await rows(page, "a");
+ await beginActualSceneMove(page, movedItem, { xMm: movedItem.xMm + 240, zMm: movedItem.zMm + 120 });
+ const preview = page.getByTestId("three-dimensional-item-preview");
+ const pose = await preview.textContent();
+ if (!pose?.startsWith("перемещение:")) throw new Error("No actual raw move pose");
+ await page.evaluate(() => { const back = document.querySelector<HTMLButtonElement>('[data-testid="editor-top-bar"] button[aria-label="Вернуться к проектам"]'); if (!back) throw new Error("Missing actual browser Back"); back.click(); });
+ const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+ await expect(guard).toBeVisible({ timeout: 4000 });
+ await expect(preview).toHaveText(pose);
+ // A real captured pointerup must stay revoked while the root guard owns focus.
+ await page.mouse.up();
+ expect(await rows(page, "a")).toEqual(before);
+ await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+ await expect(preview).toHaveText(pose);
+ await expect(page.getByTestId("three-dimensional-rotation-gizmo")).toBeVisible();
+ expect(await rows(page, "a")).toEqual(before);
+ const [, x, z] = pose.split(":");
+ if (!Number.isFinite(Number(x)) || !Number.isFinite(Number(z))) throw new Error("Invalid retained world pose");
+ const originX = Math.min(...moved.level.vertices.map((vertex) => vertex.xMm));
+ const originZ = Math.min(...moved.level.vertices.map((vertex) => vertex.zMm));
+ const retained = { xMm: Number(x) * 1000 + originX, zMm: Number(z) * 1000 + originZ };
+ await beginActualSceneMove(page, retained, { xMm: retained.xMm + 160, zMm: retained.zMm });
+ await page.mouse.up();
+ await expect.poll(async () => (await rows(page, "a")).revisions.length).toBe(before.revisions.length + 1);
+ expect((await currentProject(page)).assetDefinitionRefs).toEqual(moved.assetDefinitionRefs);
+ expect(await browser(page)).toEqual(preserved);
+});
+
+
+test("BROWSER-DIRECTORY-UI-06: a retained history target behind Saved blocks navigation and ordinary editing but leaves recovery available", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, true));
+ await expect(page.getByTestId("project-hub")).toBeVisible();
+ await page.evaluate(() => window.__telegramRuntimeUi.directoryPendingHistoryExit());
+ await expect(page.getByTestId("editor-top-bar")).toBeVisible();
+ await page.getByTestId("editor-top-bar").getByRole("button", { name: "Вернуться к проектам", exact: true }).click();
+ await expect(page.getByText("Правка не сохранена. Повторите сохранение или экспортируйте данные для восстановления.", { exact: true })).toBeVisible();
+ await expect(page.getByTestId("project-hub")).toHaveCount(0);
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([]);
+ await expect(page.getByRole("button", { name: "Переименовать проект План с ожидающей историей", exact: true })).toBeDisabled();
+ await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Правка не сохранена");
+ const recovery = page.getByTestId("retained-publication-notice").getByRole("button", { name: "Скачать копию для восстановления", exact: true });
+ await expect(recovery).toBeEnabled(); await recovery.click();
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([{ method: "recovery-export", arguments: [] }]);
+ await expect(page.getByRole("alert")).toHaveText("Не удалось подготовить несохранённую правку. Повторите попытку.");
+});
+
+
+test("BROWSER-DIRECTORY-UI-07: legacy readonly admission disables its creation and writes while exports and the private editor remain available", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, true, false));
+ await expect(page.getByTestId("project-hub")).toBeVisible(); await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeDisabled();
+ const legacy = page.locator('[data-project-storage="legacy"]'), registered = page.locator('[data-project-storage="browser-registered"]');
+ await expect(legacy.getByRole("button", { name: /^Открыть / })).toBeDisabled(); await legacy.locator("summary").click(); await expect(legacy.getByRole("button", { name: /^Удалить проект / })).toBeDisabled(); await expect(legacy.getByRole("button", { name: /^Переименовать / })).toBeDisabled();
+ await expect(legacy.getByRole("button", { name: /^Экспорт файла для переноса:/ })).toBeEnabled();
+ await expect(registered.getByRole("button", { name: /^Открыть / })).toBeEnabled();
+ await page.evaluate(() => window.__telegramRuntimeUi.selectDirectoryContract("Private still available", false, "browser-registered"));
+ await expect(page.getByRole("button", { name: "Переименовать проект Private still available", exact: true })).toBeEnabled();
+ await page.evaluate(() => window.__telegramRuntimeUi.selectDirectoryContract("Legacy readonly", false, "legacy"));
+ await expect(page.getByRole("button", { name: "Переименовать проект Legacy readonly", exact: true })).toBeDisabled();
+});
+
+
+test("BROWSER-DIRECTORY-UI-08: healthy private editor keeps an explicit exact unverified legacy source download available", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, true, false));
+ await expect(page.getByTestId("project-hub")).toBeVisible();
+ const source = { projectId: "legacy\udfff", serializedProject: 'bad-json:{"name":"\ud800"}\u0000' };
+ await page.evaluate(() => window.__telegramRuntimeUi.selectDirectoryContract("Private healthy", false, "browser-registered"));
+ const canvas = page.locator("#editor-canvas"), beforeCanvas = await canvas.boundingBox();
+ await page.evaluate((record) => window.__telegramRuntimeUi.setLegacyDirectoryRecovery(record), source);
+ const panel = page.getByTestId("legacy-startup-recovery"); await expect(panel).toBeVisible();
+ expect(await canvas.boundingBox()).toEqual(beforeCanvas); await panel.locator("summary").click(); expect(await canvas.boundingBox()).toEqual(beforeCanvas);
+ await expect(page.getByRole("button", { name: "Переименовать проект Private healthy", exact: true })).toBeEnabled();
+ await page.evaluate(()=>{const create=URL.createObjectURL.bind(URL),revoke=URL.revokeObjectURL.bind(URL),record:{created:{url:string;mime:string}[];revoked:string[]}={created:[],revoked:[]};Reflect.set(globalThis,"__legacySourceUrls",record);URL.createObjectURL=object=>{const url=create(object);record.created.push({url,mime:object instanceof Blob?object.type:""});return url;};URL.revokeObjectURL=url=>{record.revoked.push(url);revoke(url);};});
+ const downloadPromise = page.waitForEvent("download");
+ await panel.getByRole("button", { name: "Сохранить исходную запись", exact: true }).click();
+ const download = await downloadPromise; expect(download.suggestedFilename()).toBe("project.interiors-source.json");
+ const path = await download.path(); if (!path) throw new Error("Missing actual browser download");
+ const fsName = "node:fs/promises"; const { readFile } = await import(fsName);
+ expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ purpose: "interiors-editor-unverified-source", version: 1, kind: "unverified-source", projectId: source.projectId, revisionId: "", serializedProject: source.serializedProject });
+ const created=await page.evaluate(()=>Reflect.get(globalThis,"__legacySourceUrls").created as {url:string;mime:string}[]);expect(created).toHaveLength(1);expect(created[0].mime).toBe("application/json");await expect.poll(()=>page.evaluate(()=>Reflect.get(globalThis,"__legacySourceUrls").revoked as string[])).toEqual([created[0].url]);
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([]);
+});
+
+for (const change of ["changed", "closed", "same-text-new-project", "same-project-new-text"] as const) test(`BROWSER-DIRECTORY-UI-09-${change}: a late legacy recovery action never downloads a replaced or closed source`, async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, true, false));
+ await expect(page.getByTestId("project-hub")).toBeVisible();
+ await page.evaluate(() => window.__telegramRuntimeUi.setLegacyDirectoryRecovery({ projectId: "legacy-A", serializedProject: "original-A" }));
+ const panel = page.getByTestId("legacy-startup-recovery"); await expect(panel).toBeVisible();
+ const downloads: string[] = []; page.on("download", (download) => downloads.push(download.suggestedFilename()));
+ await page.evaluate((change) => window.__telegramRuntimeUi.setLegacyDirectoryRecovery(change === "closed" ? undefined : { projectId: change === "same-project-new-text" ? "legacy-A" : "legacy-B", serializedProject: change === "same-text-new-project" ? "original-A" : "changed-B" }, false), change);
+ await panel.getByRole("button", { name: "Сохранить исходную запись", exact: true }).click();
+ if (change === "closed") await expect(panel).toHaveCount(0);
+ else await expect(panel.getByRole("alert")).toHaveText("Исходная запись изменилась. Проверьте её и повторите скачивание.");
+ expect(downloads).toEqual([]); expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([]);
+});
+
+
+test("BROWSER-DIRECTORY-UI-10: late source admission updates visible capabilities without remounting a private rename draft", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, true, true));
+ await expect(page.getByTestId("project-hub")).toBeVisible(); const create = page.getByRole("button", { name: "Новый проект", exact: true });
+ await expect(create).toBeEnabled();
+ await page.evaluate(() => window.__telegramRuntimeUi.updateDirectorySourceAdmission(false, { projectId: "late-legacy", serializedProject: "late source" }));
+ await expect(create).toBeDisabled(); await expect(page.getByTestId("legacy-startup-recovery")).toBeVisible();
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([]);
+ await page.evaluate(() => window.__telegramRuntimeUi.selectDirectoryContract("Private source event", true, "browser-registered"));
+ const input = page.getByRole("textbox", { name: "Новое название проекта", exact: true }); await expect(input).toBeVisible(); await input.fill("Сырой незавершённый ввод");
+ await input.evaluate((node) => (node as HTMLInputElement).setSelectionRange(2, 6));
+ const originalInput = await input.elementHandle();
+ await page.evaluate(() => window.__telegramRuntimeUi.updateDirectorySourceAdmission(true, undefined));
+ await expect(page.getByTestId("legacy-startup-recovery")).toHaveCount(0); await expect(input).toBeVisible(); await expect(input).toHaveValue("Сырой незавершённый ввод");
+ expect(await input.evaluate((node) => [(node as HTMLInputElement).selectionStart, (node as HTMLInputElement).selectionEnd])).toEqual([2, 6]);
+ expect(await originalInput?.evaluate((node) => node.isConnected)).toBe(true);
+ expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([]);
+});
+
+
+for (const denial of ["blob", "encoding"] as const) test(`BROWSER-DIRECTORY-UI-11-${denial}: local source preparation failure remains visible without changing the private editor`, async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, true, false));
+ await expect(page.getByTestId("project-hub")).toBeVisible();
+ await page.evaluate(() => window.__telegramRuntimeUi.setLegacyDirectoryRecovery({ projectId: "legacy", serializedProject: "source remains exact" }));
+ await page.evaluate(() => window.__telegramRuntimeUi.selectDirectoryContract("Healthy private", false, "browser-registered"));
+ await expect(page.getByTestId("legacy-startup-recovery")).toBeVisible();
+ await page.getByTestId("legacy-startup-recovery").locator("summary").click();
+ const downloads: string[] = []; page.on("download", (download) => downloads.push(download.suggestedFilename()));
+ await page.evaluate((denial) => {
+  if (denial === "blob") URL.createObjectURL = () => { throw new Error("Controlled local blob refusal"); };
+  else TextEncoder.prototype.encode = () => { throw new RangeError("Controlled local encoding refusal"); };
+ }, denial);
+ await page.getByTestId("legacy-startup-recovery").getByRole("button", { name: "Сохранить исходную запись", exact: true }).click();
+ await expect(page.getByTestId("legacy-startup-recovery").getByRole("alert")).toHaveText("Не удалось скачать исходную запись. Повторите попытку.");
+ await expect(page.getByRole("button", { name: "Переименовать проект Healthy private", exact: true })).toBeEnabled();
+ expect(downloads).toEqual([]); expect(await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).toEqual([]);
+});
+
+
+test("BROWSER-DIRECTORY-UI-12: all-readonly startup renders its two qualified copies and prepares only the selected export",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.mountDirectoryContract(true,false,false,false,true));await expect(page.getByRole("heading",{name:"Просмотр проектов",exact:true})).toBeVisible();expect(await page.getByRole("button",{name:/Создать|Удалить|Импортировать|Открыть проект/}).count()).toBe(0);
+ const registered=page.getByRole("button",{name:/^Подготовить файл для переноса:.*хранилище для переноса/});await registered.click();await expect(page.getByRole("heading",{name:"Полный архив подготовлен",exact:true})).toBeVisible();const calls=await page.evaluate(()=>window.__telegramRuntimeUi.directoryContractCalls());expect(calls.filter(row=>row.method==="readonly-export")).toEqual([{method:"readonly-export",arguments:[{storageNamespace:"browser-registered",projectId:"same-id",revisionId:"same-revision"},"registered"]}]);expect(calls.some(row=>["openProject","export","registered-export","delete","rename"].includes(row.method))).toBe(false);
+ const downloaded=page.waitForEvent("download", {timeout:5000});await page.getByRole("button",{name:"Скачать файл",exact:true}).click();await expect(downloaded).resolves.toBeDefined();expect((await downloaded).suggestedFilename()).toBe("ui-only.interiors");await page.evaluate(()=>window.__telegramRuntimeUi.abortReadonlyDirectorySource("legacy"));await expect(page.getByRole("button",{name:"Скачать файл",exact:true})).toBeVisible();await page.evaluate(()=>window.__telegramRuntimeUi.abortReadonlyDirectorySource("browser-registered"));await expect(page.getByRole("button",{name:"Скачать файл",exact:true})).toHaveCount(0);
+});
+test("BROWSER-DIRECTORY-UI-13: all-readonly raw source uses a distinct file and stays usable on a narrow enlarged view",async({page})=>{
+ await page.setViewportSize({width:360,height:740});await page.evaluate(()=>window.__telegramRuntimeUi.mountDirectoryContract(true,false,false,false,true));await expect(page.getByRole("heading",{name:"Просмотр проектов",exact:true})).toBeVisible();await page.evaluate(()=>{document.documentElement.style.fontSize="200%";});const sources=page.getByRole("region",{name:/^Непроверенные исходники:.*обычное хранилище/});await sources.getByRole("button",{name:"Показать записи",exact:true}).click();await sources.getByRole("button",{name:"Подготовить исходник записи 1",exact:true}).click();await expect(page.getByRole("heading",{name:"Непроверенный исходник",exact:true})).toBeVisible();const download=page.waitForEvent("download", {timeout:5000});await page.getByRole("button",{name:"Скачать файл",exact:true}).click();await expect(download).resolves.toBeDefined();expect((await download).suggestedFilename()).toBe("project.interiors-source.json");expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect((await page.evaluate(()=>window.__telegramRuntimeUi.directoryContractCalls())).some(row=>row.method==="readonly-export")).toBe(false);
+});
+
+
+test("BROWSER-DIRECTORY-UI-14: healthy private authoring keeps the separate legacy backup-only section truthful",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.mountDirectoryContract(true,false,false,false,"partial"));await expect(page.getByTestId("project-hub")).toBeVisible();const supplemental=page.getByRole("region",{name:"Проекты только для выгрузки",exact:true});await expect(supplemental).toBeVisible();await expect(supplemental.getByRole("button",{name:/Открыть|Переименовать|Удалить|Импортировать/})).toHaveCount(0);expect(await supplemental.getByRole("button",{name:/^Подготовить полный архив:/}).count()).toBe(1);await expect(page.getByText("Часть проектов сейчас недоступна",{exact:true})).toHaveCount(0);await supplemental.getByRole("button",{name:/^Подготовить файл для переноса:/}).click();await expect(supplemental.getByRole("button",{name:"Скачать файл",exact:true})).toBeVisible();const exports=(await page.evaluate(()=>window.__telegramRuntimeUi.directoryContractCalls())).filter(row=>row.method==="readonly-export");expect(exports).toEqual([{method:"readonly-export",arguments:[{storageNamespace:"legacy",projectId:"same-id",revisionId:"same-revision"},"registered"]}]);await expect(page.getByRole("main")).toHaveCount(1);await supplemental.screenshot({path:test.info().outputPath("backup-only.png")});const privateCard=page.locator('[data-project-storage="browser-registered"]');await privateCard.locator("summary").click();await privateCard.getByRole("button",{name:/^Переименовать /}).click();const name=page.getByRole("textbox",{name:"Новое название проекта",exact:true});await name.fill("Здоровый черновик");await expect(supplemental).toHaveCount(0);const retained=await name.elementHandle();await page.evaluate(()=>window.__telegramRuntimeUi.updateDirectorySourceAdmission(false,undefined));expect(await name.elementHandle()).not.toBeNull();expect(await name.evaluate((element,prior)=>element===prior,retained)).toBe(true);await expect(name).toHaveValue("Здоровый черновик");
+});
+
+
+test("BROWSER-DIRECTORY-UI-15: two writable sources do not query or display the dormant backup-only reader",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.mountDirectoryContract(true,false,false,true,"writable"));await expect(page.getByTestId("project-hub")).toBeVisible();await expect(page.getByRole("heading",{name:"Проекты только для выгрузки",exact:true})).toHaveCount(0);await expect(page.getByRole("button",{name:/^Подготовить полный архив:/})).toHaveCount(0);expect(await page.locator("[data-project-storage]").count()).toBe(2);expect((await page.evaluate(()=>window.__telegramRuntimeUi.directoryContractCalls())).some(call=>call.method==="readonly-list")).toBe(false);
+});
+
+
+test("BROWSER-DIRECTORY-UI-16: a corrupt record in a writable source retains explicit raw export beside healthy editable cards",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.mountDirectoryContract(true,false,false,true,"corrupt"));await expect(page.getByTestId("project-hub")).toBeVisible();const recovery=page.getByRole("region",{name:"Исходные записи для восстановления",exact:true});await expect(recovery).toBeVisible();expect(await page.locator("[data-project-storage]").count()).toBe(2);await expect(recovery.getByRole("button",{name:/^Подготовить полный архив:/})).toHaveCount(0);const legacy=recovery.getByRole("region",{name:/^Непроверенные исходники:.*обычное хранилище/});await legacy.getByRole("button",{name:"Показать записи",exact:true}).click();await legacy.getByRole("button",{name:"Подготовить исходник записи 1",exact:true}).click();await expect(recovery.getByRole("region",{name:"Подготовленный файл",exact:true}).getByText("На этом устройстве · обычное хранилище",{exact:true})).toBeVisible();const source=recovery.getByRole("region",{name:/^Непроверенные исходники:.*хранилище для переноса/});await source.getByRole("button",{name:"Показать записи",exact:true}).click();await source.getByRole("button",{name:"Подготовить исходник записи 1",exact:true}).click();await expect(recovery.getByRole("heading",{name:"Непроверенный исходник",exact:true})).toBeVisible();await expect(recovery.getByRole("region",{name:"Подготовленный файл",exact:true}).getByText("На этом устройстве · хранилище для переноса",{exact:true})).toBeVisible();const download=page.waitForEvent("download", {timeout:5000});await recovery.getByRole("button",{name:"Скачать файл",exact:true}).click();await expect(download).resolves.toBeDefined();const path=await(await download).path();if(!path)throw new Error("Missing actual local raw file");const fsName="node:fs/promises",fs=await import(fsName);expect(JSON.parse(await fs.readFile(path,"utf8"))).toMatchObject({purpose:"interiors-editor-unverified-source",projectId:"broken-private",revisionId:"broken-rev",serializedProject:"bad-private-raw"});const card=page.locator('[data-project-storage="browser-registered"]');await expect(card.getByRole("button",{name:/^Открыть /})).toBeEnabled();expect((await page.evaluate(()=>window.__telegramRuntimeUi.directoryContractCalls())).some(call=>call.method==="readonly-export")).toBe(false);
+});
+
+
+test("BROWSER-DIRECTORY-UI-17: browser runtime-owned navigation protection reaches the common editor without caller duplication",async({page})=>{
+ await page.evaluate(()=>window.__telegramRuntimeUi.mountDirectoryContract(true,false,"runtime"));await expect(page.getByTestId("project-hub")).toBeVisible();await page.evaluate(()=>window.__telegramRuntimeUi.directoryRecoveryExit());await page.getByTestId("editor-top-bar").getByRole("button",{name:"Вернуться к проектам",exact:true}).click();const guard=page.getByRole("alertdialog",{name:"Несохранённая правка",exact:true});await expect(guard).toBeVisible();await guard.getByRole("button",{name:"Отменить правку",exact:true}).click();await expect(page.getByTestId("project-hub")).toBeVisible();expect(await page.evaluate(()=>window.__telegramRuntimeUi.directoryContractCalls())).toEqual([{method:"confirmedDiscard",arguments:["Несохранённая копия"]}]);
+});
+
+
+// A read-only source already owns its raw recovery in the backup-only section.
+// The extra recovery panel belongs only to writable sources, even in a mixed hub.
+test("BROWSER-DIRECTORY-UI-18: mixed source recovery keeps each unverified record in exactly its owning section", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, false, true, "partial-corrupt"));
+ await expect(page.getByTestId("project-hub")).toBeVisible();
+ const backup = page.getByRole("region", { name: "Проекты только для выгрузки", exact: true });
+ const recovery = page.getByRole("region", { name: "Исходные записи для восстановления", exact: true });
+ await expect(backup).toBeVisible(); await expect(recovery).toBeVisible();
+ await expect(backup.getByRole("region", { name: /^Непроверенные исходники:.*обычное хранилище/ })).toHaveCount(1);
+ await expect(backup.getByRole("region", { name: /^Непроверенные исходники:.*хранилище для переноса/ })).toHaveCount(0);
+ await expect(recovery.getByRole("region", { name: /^Непроверенные исходники:.*обычное хранилище/ })).toHaveCount(0);
+ const privateSource = recovery.getByRole("region", { name: /^Непроверенные исходники:.*хранилище для переноса/ });
+ await expect(privateSource).toHaveCount(1);
+ await privateSource.getByRole("button", { name: "Показать записи", exact: true }).click();
+ await privateSource.getByRole("button", { name: "Подготовить исходник записи 1", exact: true }).click();
+ await expect(recovery.getByRole("heading", { name: "Непроверенный исходник", exact: true })).toBeVisible();
+ await expect(backup.getByRole("button", { name: "Скачать файл", exact: true })).toHaveCount(0);
+ await expect(page.locator('[data-project-storage="browser-registered"]').getByRole("button", { name: /^Открыть / })).toBeEnabled();
+ expect((await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).some(call => call.method === "readonly-export")).toBe(false);
+});
+
+
+test("BROWSER-DIRECTORY-UI-19: a complete browser archive uses its legacy owner, blocks both preparation actions and releases its real download URL", async ({ page }) => {
+ await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract(true, false, false, false, true));
+ await expect(page.getByRole("heading", { name: "Просмотр проектов", exact: true })).toBeVisible();
+ await page.evaluate(() => {
+  const create = URL.createObjectURL.bind(URL), revoke = URL.revokeObjectURL.bind(URL);
+  const observed: { created: { url: string; mime: string; size: number }[]; revoked: string[] } = { created: [], revoked: [] };
+  Reflect.set(globalThis, "__readonlyDownloadUrls", observed);
+  URL.createObjectURL = value => { const url = create(value); if (value instanceof Blob) observed.created.push({ url, mime: value.type, size: value.size }); return url; };
+  URL.revokeObjectURL = url => { observed.revoked.push(url); revoke(url); };
+  window.__telegramRuntimeUi.pauseDirectoryReadonlyExport();
+ });
+ const complete = page.getByRole("button", { name: /^Подготовить полный архив:.*обычное хранилище/ });
+ await expect(complete).toBeVisible(); await expect(complete).toBeEnabled(); await complete.click({ timeout: 5_000 });
+ const preparations = page.getByRole("button", { name: /^Подготовить (полный архив|файл для переноса):/ });
+ await expect(preparations).toHaveCount(4);
+ for (const button of await preparations.all()) await expect(button).toBeDisabled();
+ await expect(page.getByText("Готовим проверенный архив…", { exact: true })).toBeVisible();
+ expect((await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).filter(call => call.method === "readonly-export")).toEqual([{ method: "readonly-export", arguments: [{ storageNamespace: "legacy", projectId: "same-id", revisionId: "same-revision" }, "legacy"] }]);
+ await page.evaluate(() => window.__telegramRuntimeUi.releaseDirectoryReadonlyExport());
+ await expect(page.getByRole("heading", { name: "Полный архив подготовлен", exact: true })).toBeVisible();
+ for (const button of await preparations.all()) await expect(button).toBeEnabled();
+ const received = page.waitForEvent("download", { timeout: 5_000 });
+ const downloadButton = page.getByRole("button", { name: "Скачать файл", exact: true });
+ await expect(downloadButton).toBeEnabled(); await downloadButton.click({ timeout: 5_000 }); await expect(received).resolves.toBeDefined();
+ const download = await received, path = await download.path(); if (!path) throw new Error("No real controlled UI download");
+ expect(download.suggestedFilename()).toBe("ui-only.interiors");
+ const fsName = "node:fs/promises", fs = await import(fsName) as { readFile(path: string): Promise<Uint8Array> };
+ expect(Array.from(await fs.readFile(path))).toEqual([1, 2, 3]);
+ const created = await page.evaluate(() => (Reflect.get(globalThis, "__readonlyDownloadUrls") as { created: { url: string; mime: string; size: number }[] }).created);
+ expect(created).toHaveLength(1); expect(created[0]).toMatchObject({ mime: "application/zip", size: 3 });
+ await expect.poll(() => page.evaluate(() => (Reflect.get(globalThis, "__readonlyDownloadUrls") as { revoked: string[] }).revoked)).toEqual([created[0].url]);
+});

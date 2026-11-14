@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "classification": "LOCAL_PREPARED_DEPLOYMENT_BOUNDARY",
+  "serverEquivalenceVerified": false,
+  "updatePolicy": "Separate inspected backend rollout and explicit review; no automatic baseline refresh.",
+  "files": {
+    "apps/catalog-control-plane/build.gradle.kts": {
+      "byteLength": 3746,
+      "sha256": "15437520444550b9fda54caeae82f74a346f0595b50454a2b564e33ff6691d83"
+    },
+    "apps/catalog-control-plane/gradle.lockfile": {
+      "byteLength": 16648,
+      "sha256": "b628d62347c5c9024b71a30abd0ff19851c63cbc5b879f2dfc127bbbbf58163d"
+    },
+    "apps/catalog-control-plane/gradle.properties": {
+      "byteLength": 87,
+      "sha256": "678f778ada26872a09a25d7391f343e334cc4efde0c418684f8a46914a2150b4"
+    },
+    "apps/catalog-control-plane/gradle/verification-metadata.xml": {
+      "byteLength": 101891,
+      "sha256": "6ceb3f66a4117bf48684a577be21ff02b903e5d0dceccbf27e349e0c3efbebf4"
+    },
+    "apps/catalog-control-plane/gradle/wrapper/gradle-wrapper.jar": {
+      "byteLength": 48966,
+      "sha256": "55243ef57851f12b070ad14f7f5bb8302daceeebc5bce5ece5fa6edb23e1145c"
+    },
+    "apps/catalog-control-plane/gradle/wrapper/gradle-wrapper.properties": {
+      "byteLength": 339,
+      "sha256": "93b4f2c5ddcfc9e6f630fc7e004b31b389695cd0228be6da42e196e5d4af7acb"
+    },
+    "apps/catalog-control-plane/gradlew": {
+      "byteLength": 8654,
+      "sha256": "5434a5b0657cbc767c4486551fe223f12a10eaa61017fd4c68382dc6e0810da8"
+    },
+    "apps/catalog-control-plane/gradlew.bat": {
+      "byteLength": 2896,
+      "sha256": "fedad02c18e266ec094995a5751b7fe1eb6e74f66bf75db64fae2e50eb22c234"
+    },
+    "apps/catalog-control-plane/settings.gradle.kts": {
+      "byteLength": 53,
+      "sha256": "56b467ea92557fe47e465d007a1ed82168daaf914814b3d60ef1d4e6e7de053c"
+    },
+    "apps/catalog-control-plane/src/main/kotlin/dev/interiors/catalog/CatalogControlPlane.kt": {
+      "byteLength": 3408,
+      "sha256": "85ecc7b0ec84d189cf0fb58ba8564d9af88d88f7f388af0750bb43d5a915a673"
+    },
+    "apps/catalog-control-plane/src/main/kotlin/dev/interiors/catalog/CatalogEnvelope.kt": {
+      "byteLength": 12012,
+      "sha256": "b5781171f6561a68cd0be648dcfbeaa21987c3d2ec7fa743886e618169762684"
+    },
+    "apps/catalog-control-plane/src/main/kotlin/dev/interiors/catalog/CatalogHttp.kt": {
+      "byteLength": 9667,
+      "sha256": "d5b290c08a7f8c706a4f7cbe6bbbab92004d558910da2d83d727d8ad4584e147"
+    },
+    "apps/catalog-control-plane/src/main/kotlin/dev/interiors/catalog/CatalogMediaValidator.kt": {
+      "byteLength": 13621,
+      "sha256": "92d5e73e456de0dd5ec804c8445d4e16c32bcb48c9900486504671c10aa916bd"
+    },
+    "apps/catalog-control-plane/src/main/kotlin/dev/interiors/catalog/CatalogPublisher.kt": {
+      "byteLength": 7139,
+      "sha256": "51a772b6e075942102f6b8084a7cee57b149284d0ac238c9cd753925cdf74ac5"
+    },
+    "apps/catalog-control-plane/src/main/kotlin/dev/interiors/catalog/CatalogSeed.kt": {
+      "byteLength": 6057,
+      "sha256": "40fccf0626314dc44d62d1b2a6382a53630e98babd98dd70843857a698fbb9a5"
+    },
+    "apps/catalog-control-plane/src/main/kotlin/dev/interiors/catalog/JdbcCatalogRepository.kt": {
+      "byteLength": 11807,
+      "sha256": "6080b9c605764f462ac394625d141ac579aa63b116033a1516819dbac9327485"
+    },
+    "apps/catalog-control-plane/src/main/resources/catalog/catalog-envelope-source.json": {
+      "byteLength": 8055,
+      "sha256": "aa1b43d6369dd2969b2afb28f62da39abfb079fa6d8b5c8813fcc03c9bd040c6"
+    },
+    "apps/catalog-control-plane/src/main/resources/catalog/catalog-resource-files-v1.json": {
+      "byteLength": 1903,
+      "sha256": "cfbd5219a0d99f52ab98f13934fa0e5bfcf9c883a931408570769701c1b9f12e"
+    },
+    "apps/catalog-control-plane/src/main/resources/catalog/evidence-assets/evidence-bathroom-sink.glb": {
+      "byteLength": 1052,
+      "sha256": "d86ee150670306e9fc705848345b8fe78ca7bd8d6993eec28fbb2a92f30f187c"
+    },
+    "apps/catalog-control-plane/src/main/resources/catalog/evidence-assets/evidence-countertop-appliance.glb": {
+      "byteLength": 1056,
+      "sha256": "b569c982d39756b4fd5735372a5272c63a6c3df7e066cba6a45a40ffb47430a6"
+    },
+    "apps/catalog-control-plane/src/main/resources/catalog/evidence-assets/evidence-floor-vase.glb": {
+      "byteLength": 964,
+      "sha256": "cd58deda7dfc510f4dd8ff330c155976cd9674335d9c3518e74914fac705dc76"
+    },
+    "apps/catalog-control-plane/src/main/resources/catalog/evidence-assets/evidence-wall-sconce.glb": {
+      "byteLength": 972,
+      "sha256": "fcfc3ff594a2a4182da87e08bb36ea5dfa0128803e14d54d599b419775a05f38"
+    },
+    "apps/catalog-control-plane/src/main/resources/catalog/evidence-assets/generate-evidence-assets.mjs": {
+      "byteLength": 3823,
+      "sha256": "549e260c7ad99bd951d28a2f885159422393ee1e08d57d8e43a158f8f99e0206"
+    },
+    "contracts/catalog-control-plane/catalog-envelope-v1.schema.json": {
+      "byteLength": 5227,
+      "sha256": "130031843de86d6ac61b44586d04250f050e03b51f5dec36c165fc5ff03fa563"
+    },
+    "contracts/catalog-control-plane/catalog-envelope-v1.semantic.md": {
+      "byteLength": 11219,
+      "sha256": "1abce2b05632da885834a3fe7c0a9223e20efa7159584eb0ee87e63ebb8f7a2b"
+    },
+    "contracts/catalog-control-plane/catalog-operator-bootstrap-v1.sql": {
+      "byteLength": 1123,
+      "sha256": "3b16abcbcf2b6ba7a3e73d95c9a9cdcf09ff709df213b658c6a6e598883683bc"
+    },
+    "contracts/catalog-control-plane/catalog-schema-v1.sql": {
+      "byteLength": 4974,
+      "sha256": "79b991964a47fea77b89a580943cc47134aaef786f412d7285176e12fe0c0af7"
+    }
+  }
+}

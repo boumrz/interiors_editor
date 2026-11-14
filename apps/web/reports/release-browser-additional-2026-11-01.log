@@ -1,0 +1,61 @@
+
+Running 3 tests using 1 worker
+
+(node:88980) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/3] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:4095:1 › EDITOR-E2E-02X: removing a diagonal through touch keeps one chosen Room and restores the square
+[2/3] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:4380:1 › EDITOR-E2E-02A: each confirmed wall returns to Hand and the next wall starts from an explicit tool choice
+  1) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:4380:1 › EDITOR-E2E-02A: each confirmed wall returns to Hand and the next wall starts from an explicit tool choice 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator:  getByTestId('wall-count')
+    Expected: "12 стен"
+    Received: "10 стен"
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveText" with timeout 5000ms
+      - waiting for getByTestId('wall-count')
+        14 × locator resolved to <output hidden="" data-testid="wall-count">10 стен</output>
+           - unexpected value "10 стен"
+
+
+      4413 | 	).toContainText("Сохранено локально");
+      4414 | 	await drawCentreCrossbarByTouch(session.page);
+    > 4415 | 	await expect(session.page.getByTestId("wall-count")).toHaveText("12 стен");
+           | 	                                                     ^
+      4416 | 	await expect(session.page.getByTestId("room-count")).toHaveText("4 комнаты");
+      4417 | 	await expect(plan).toHaveAttribute("data-active-tool", "select");
+      4418 | 	await session.page.reload();
+        at /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web/tests/browser/editor-workspace-e2e.spec.ts:4415:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-full-fix-results/editor-workspace-e2e-EDITO-126d9-rom-an-explicit-tool-choice-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-full-fix-results/editor-workspace-e2e-EDITO-126d9-rom-an-explicit-tool-choice-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-full-fix-results/editor-workspace-e2e-EDITO-126d9-rom-an-explicit-tool-choice-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-full-fix-results/editor-workspace-e2e-EDITO-126d9-rom-an-explicit-tool-choice-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-full-fix-results/editor-workspace-e2e-EDITO-126d9-rom-an-explicit-tool-choice-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:89281) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[3/3] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:7587:1 › PLAN-E2E-04: deleting a divider explicitly preserves one Room's metadata before persisting the merged plan
+  1 failed
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:4380:1 › EDITOR-E2E-02A: each confirmed wall returns to Hand and the next wall starts from an explicit tool choice 
+  2 passed (31.3s)

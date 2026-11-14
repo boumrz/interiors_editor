@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "tests/browser/scoped-*-e2e.check.ts",
+    "tests/browser/telegram-storage-harness.ts",
+    "tests/browser/00-scoped-resource-cas-e2e.check.ts",
+    "tests/browser/01-scoped-repair-boundaries-e2e.check.ts",
+    "tests/browser/02-scoped-library-boundaries-e2e.check.ts",
+    "tests/browser/03-scoped-library-input-e2e.check.ts"
+  ]
+}

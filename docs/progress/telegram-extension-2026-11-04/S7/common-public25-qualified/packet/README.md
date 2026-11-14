@@ -1,0 +1,9 @@
+# Common25 public native oracles — qualified
+
+Five NEW verification paths in files/ are guarded integration candidates. No application code, package, policy, schema or default entry changes. Root originals remain untouched. Context (including frozen fdd75 base) is read-only, never overwrite current e6e48 config. Test-only fake scopes/opaque3byte resources are protocol inputs, not signed-auth/GLB/render/device acceptance.
+
+Current0d61 actual IndexedDB/Web Locks/transactions are used. Fault wrappers delegate all real Access methods/records/results, with deliberate native corruption or acknowledgement loss only at documented boundaries. No fake transaction success or invented native return values. Candidate inputs/domain/SHA are real.25 baseline+25 instrumented-off pass. All25 exact selected old-clean IDs now have genuine marked named public failures; no errors/setup/native whole-case timeouts. IDs92/192/300/938/931/551/556/954/953/150/739/752/701/985/227/228/244/462/816/818/819/219/431/436/437. No whole or adjusted score.
+
+All9 stores are preserved on refusal; quota/preparation allow only counter burn with exact identity/counter shape+monotonicity. History recovery permits only its exact owned H cancellation; preserves protected9-store snapshot/R1 bytes/currentR2. Creator repair modifies only an EXISTING retained row and never recreates a deleted revision. No invented first takeover-not-ready policy. Positive history retry is required. No general GC.
+
+Per-case source8/hash/local-ID/member/canonical-file proof, actual reported error guard and explicit transport/cleanup invalid sidecars are required by the bounded helper. Sources4 restored exactly, owned profiles/loopbacks drained. Full265 isolation/build/runner closure follows separately:35 CPU→25 Native→32 Native→retained173. Do not copy stock retained test rebindings into originals; preserve exact frozen19 bodies via isolated preparation.

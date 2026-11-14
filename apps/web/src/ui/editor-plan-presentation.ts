@@ -1,0 +1,429 @@
+import type { RegisterEditorTransientBoundary } from "./editor-host-boundary";
+import type { DrawingDimensionVisibility } from "./drawing-dimension-visibility";
+import type { AddWallSegmentInput } from "../domain/add-wall-segment";
+import { PLAN_GRID_STEP_MM } from "../domain/constrained-partition";
+import { resolveOrthogonalPlanFaces } from "../domain/derived-orthogonal-plan-faces";
+import { resolveProjectV2Plan } from "../domain/derived-project-v2-plan";
+import type {
+	MoveGeneralWallInput,
+	SplitGeneralWallHostResolutionInput,
+	SplitGeneralWallInput,
+} from "../domain/general-wall-project";
+import {
+	type ParametricFloorItemPlacementWarning,
+	yawRadiansFor,
+} from "../domain/parametric-item";
+import type { ParametricWallItemPlacementWarning } from "../domain/parametric-wall-item";
+import type { Project, Vertex } from "../domain/project";
+import type { ProjectV2 } from "../domain/project-v2";
+import type { EditorViewport } from "./editor-viewport";
+import type { WallDraftDirection, WallDraftPoint } from "./wall-draft";
+
+/** Pure Plan presentation policies and shared editor contracts; no controller or AppShell dependency. */
+
+export type EditorTool = "select" | "wall" | "item";
+
+export type EditorProject = Project | ProjectV2;
+
+export type EditorFloorAsset =
+	| Extract<
+			Project["assetInstances"][number],
+			{ readonly anchorClass: "floor" }
+	  >
+	| ProjectV2["assetInstances"][number];
+
+/** A draft belongs to one exact durable snapshot and cannot cross its revision boundary. */
+export function hasProjectRevisionChanged(
+	previous: EditorProject,
+	next: EditorProject,
+): boolean {
+	return previous !== next;
+}
+
+export function isFloorEditorAsset(
+	asset: EditorProject["assetInstances"][number],
+): asset is EditorFloorAsset {
+	return asset.anchorClass === "floor";
+}
+
+export function yawRadiansForEditorFloorAsset(item: EditorFloorAsset): number {
+	return yawRadiansFor({
+		yawRadians:
+			"yawRadians" in item && typeof item.yawRadians === "number"
+				? item.yawRadians
+				: undefined,
+		yawStep:
+			"yawStep" in item && typeof item.yawStep === "number"
+				? item.yawStep
+				: undefined,
+	});
+}
+
+export function derivedPlanFor(project: EditorProject) {
+	return project.schemaVersion === 2
+		? resolveProjectV2Plan(project)
+		: resolveOrthogonalPlanFaces(project);
+}
+
+export function wallDraftDirectionCopy(
+	direction: WallDraftDirection | undefined,
+): string {
+	switch (direction) {
+		case "E":
+		case "W":
+			return "Направление: горизонтально";
+		case "N":
+		case "S":
+			return "Направление: вертикально";
+		case "NE":
+		case "NW":
+		case "SE":
+		case "SW":
+			return "Направление: диагональ 45°";
+		default:
+			return "Направление: уточняется";
+	}
+}
+
+/** The preview must explain its state before a placement becomes durable. */
+export function itemPlacementWarningSummary(
+	warnings: readonly (
+		| ParametricFloorItemPlacementWarning
+		| ParametricWallItemPlacementWarning
+	)[],
+): string {
+	return [
+		...new Set(
+			warnings.map((warning) =>
+				warning.kind === "item"
+					? "пересечение с другим предметом"
+					: warning.kind === "wall-item"
+						? "пересечение с другим настенным предметом"
+						: "перекрытие зоны открывания двери",
+			),
+		),
+	].join("; ");
+}
+
+export function itemPlacementPreviewFeedback(
+	preview: {
+		readonly isValid: boolean;
+		readonly reasonCode?: string;
+		readonly warnings?: readonly ParametricFloorItemPlacementWarning[];
+	},
+	options?: { readonly isPreparingResource?: boolean },
+): string {
+	if (options?.isPreparingResource) {
+		return "Подготавливаем модель…";
+	}
+	if (preview.warnings && preview.warnings.length > 0) {
+		return `Предупреждение: ${itemPlacementWarningSummary(preview.warnings)}.`;
+	}
+	if (preview.isValid) {
+		return "";
+	}
+	switch (preview.reasonCode) {
+		case "WALL_ITEM_COLLISION":
+			return "Предпросмотр пересекает стену.";
+		case "OUTSIDE_ROOM_HOST":
+			return "Предпросмотр выходит за границы комнаты.";
+		default:
+			return "Это размещение пока недоступно.";
+	}
+}
+
+export function snappedPoint(point: {
+	readonly xMm: number;
+	readonly zMm: number;
+}) {
+	return {
+		xMm: Math.round(point.xMm / PLAN_GRID_STEP_MM) * PLAN_GRID_STEP_MM,
+		zMm: Math.round(point.zMm / PLAN_GRID_STEP_MM) * PLAN_GRID_STEP_MM,
+	};
+}
+
+export function gridLinesBetween(
+	minimumMm: number,
+	maximumMm: number,
+	stepMm: number,
+	phaseMm = 0,
+): readonly number[] {
+	const first = Math.ceil((minimumMm - phaseMm) / stepMm) * stepMm + phaseMm;
+	const lines: number[] = [];
+	for (let line = first; line <= maximumMm; line += stepMm) {
+		lines.push(line);
+	}
+	return lines;
+}
+
+/** A filled hit region stays accessible to touch and browser automation for zero-width SVG lines. */
+export function wallHitPath(
+	start: { readonly x: number; readonly y: number },
+	end: { readonly x: number; readonly y: number },
+	targetWidth: number,
+): string {
+	const length = Math.hypot(end.x - start.x, end.y - start.y);
+	if (
+		!Number.isFinite(length) ||
+		length <= 0 ||
+		!Number.isFinite(targetWidth) ||
+		targetWidth <= 0
+	) {
+		return "";
+	}
+	const offsetX = (-(end.y - start.y) * targetWidth) / (length * 2);
+	const offsetY = ((end.x - start.x) * targetWidth) / (length * 2);
+	return [
+		`M ${start.x + offsetX} ${start.y + offsetY}`,
+		`L ${end.x + offsetX} ${end.y + offsetY}`,
+		`L ${end.x - offsetX} ${end.y - offsetY}`,
+		`L ${start.x - offsetX} ${start.y - offsetY}`,
+		"Z",
+	].join(" ");
+}
+
+export function visualGridStepMm(): number {
+	return PLAN_GRID_STEP_MM;
+}
+
+export interface PlanProjectionProps {
+	readonly registerTransientBoundary?: RegisterEditorTransientBoundary;
+	readonly dimensionVisibility: DrawingDimensionVisibility;
+	readonly openingMoveErrorCopy: (reasonCode: string) => string;
+	readonly activeTool: EditorTool;
+	readonly isInteractionLocked: boolean;
+	readonly isWallMoveMode: boolean;
+	readonly isWallSplitMode: boolean;
+	readonly isWallVertexMoveMode: boolean;
+	readonly movableWallVertexIds: readonly string[];
+	readonly openingMovePreview?: {
+		readonly openingId: string;
+		readonly offsetMm: number;
+	};
+	readonly openingCreationPreview:
+		| {
+				readonly offsetMm: number;
+				readonly wallSegmentId: string;
+				readonly widthMm: number;
+		  }
+		| undefined;
+	readonly onItemPlacementYawChange: (yawRadians: number) => void;
+	readonly itemDraft:
+		| {
+				readonly color: string;
+				readonly yawRadians: number;
+				readonly depthMm: number;
+				readonly heightMm: number;
+				readonly label: string;
+				readonly widthMm: number;
+		  }
+		| undefined;
+	readonly readOnly: boolean;
+	readonly onCancelItemPlacement: () => void;
+	readonly onDrawWall: (input: AddWallSegmentInput) => Promise<boolean>;
+	readonly onDrawingVisibilityChange: (isVisible: boolean) => void;
+	readonly onSelectOpening?: (openingId: string) => void;
+	readonly onClearSelection?: () => void;
+	readonly onMoveDoorOpening: (input: {
+		readonly openingId: string;
+		readonly offsetMm: number;
+	}) => Promise<boolean>;
+	readonly onMoveItem: (input: {
+		readonly assetInstanceId: string;
+		readonly xMm: number;
+		readonly zMm: number;
+	}) => Promise<boolean>;
+	readonly onMoveWall: (input: MoveGeneralWallInput) => Promise<boolean>;
+	readonly onMoveWallVertex: (input: {
+		readonly vertexId: string;
+		readonly xMm: number;
+		readonly zMm: number;
+	}) => Promise<boolean>;
+	readonly onPwaUpdateSafetyChange: (hasTransientEdit: boolean) => void;
+	readonly onResolveSplitHostConflict: (
+		input: SplitGeneralWallHostResolutionInput & {
+			readonly previewRevisionId: string;
+		},
+	) => Promise<WallSplitHostConflictResolutionResult>;
+	readonly onSplitWall: (
+		input: SplitGeneralWallInput,
+	) => Promise<WallSplitPublishResult>;
+	readonly onRotateItem: (input: {
+		readonly assetInstanceId: string;
+		readonly yawRadians: number;
+	}) => Promise<boolean>;
+	readonly onPlaceItem: (point: {
+		readonly xMm: number;
+		readonly zMm: number;
+	}) => Promise<void> | void;
+	readonly onSelectItem: (assetInstanceId: string) => void;
+	readonly onSelectWall: (wallSegmentId: string) => void;
+	readonly onWallMoveModeChange: (isActive: boolean) => void;
+	readonly onWallSplitModeChange: (isActive: boolean) => void;
+	readonly onWallVertexMoveModeChange: (isActive: boolean) => void;
+	readonly project: EditorProject;
+	readonly selectedItemId: string | undefined;
+	readonly selectedWallId: string | undefined;
+	readonly wallThicknessMm: number | undefined;
+	readonly viewport: EditorViewport;
+	readonly setViewport: (
+		next: (previous: EditorViewport) => EditorViewport,
+	) => void;
+}
+
+export interface PointerPosition {
+	readonly x: number;
+	readonly y: number;
+}
+
+export interface WallDraft {
+	readonly gestureStart?: { readonly xMm: number; readonly zMm: number };
+	readonly direction?: WallDraftDirection;
+	readonly end: { readonly xMm: number; readonly zMm: number };
+	readonly phase: "drawing" | "ready";
+	readonly rawEnd: { readonly xMm: number; readonly zMm: number };
+	readonly pointerOrigin: PointerPosition;
+	readonly pointerId: number | undefined;
+	readonly start: { readonly xMm: number; readonly zMm: number };
+}
+
+export type WallMoveDraft =
+	| {
+			readonly kind: "cardinal";
+			readonly originalPositionMm: number;
+			readonly phase: "dragging" | "ready";
+			readonly pointerId: number | undefined;
+			readonly pointerOrigin: PointerPosition;
+			readonly positionMm: number;
+			readonly wallSegmentId: string;
+	  }
+	| {
+			readonly kind: "diagonal-falling" | "diagonal-rising";
+			readonly originalPointerPoint: WallDraftPoint;
+			readonly phase: "dragging" | "ready";
+			readonly pointerId: number | undefined;
+			readonly pointerOrigin: PointerPosition;
+			readonly translationMm: { readonly xMm: number; readonly zMm: number };
+			readonly wallSegmentId: string;
+	  };
+
+export type WallMoveAxis =
+	| {
+			readonly axis: "x" | "z";
+			readonly end: Vertex;
+			readonly kind: "cardinal";
+			readonly positionMm: number;
+			readonly start: Vertex;
+	  }
+	| {
+			readonly end: Vertex;
+			readonly kind: "diagonal-falling" | "diagonal-rising";
+			readonly start: Vertex;
+	  };
+
+export interface WallVertexMoveDraft {
+	readonly original: WallDraftPoint;
+	readonly phase: "dragging" | "ready";
+	readonly pointerId: number | undefined;
+	readonly pointerOrigin: PointerPosition;
+	readonly vertexId: string;
+	readonly xMm: number;
+	readonly zMm: number;
+}
+
+export interface WallSplitDraft {
+	readonly pointMm: WallDraftPoint;
+	readonly wallSegmentId: string;
+}
+
+export type WallSplitPublishResult =
+	| { readonly kind: "durable" }
+	| {
+			readonly itemIds: readonly string[];
+			readonly kind: "host-conflict";
+			readonly openingIds: readonly string[];
+			readonly previewRevisionId: string;
+	  }
+	| { readonly kind: "rejected" };
+
+export type WallSplitHostConflictResolutionResult =
+	| "durable"
+	| "rejected"
+	| "stale-base";
+
+export interface DoorOpeningDrag {
+	readonly originalOffsetMm: number;
+	readonly pointerStart: WallDraftPoint;
+	readonly pointerOrigin: PointerPosition;
+	readonly base: EditorProject;
+	readonly openingId: string;
+	readonly pointerId: number;
+	readonly wallSegmentId: string;
+	readonly offsetMm: number;
+}
+
+export interface ItemPlacementDrag {
+	readonly pointerId: number;
+}
+
+export const initialPlanCanvasSize = {
+	canvasHeight: 370,
+	canvasWidth: 440,
+} as const;
+
+const MINIMUM_VISIBLE_PLAN_SPAN_MM = 4000;
+
+const EMPTY_PLAN_HALF_SPAN_MM = 3000;
+
+const EXTERIOR_DRAW_MARGIN_MM = 0;
+
+export function distance(
+	first: PointerPosition,
+	second: PointerPosition,
+): number {
+	return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+export function centre(
+	first: PointerPosition,
+	second: PointerPosition,
+): PointerPosition {
+	return { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 };
+}
+
+export function visiblePlanFrame(
+	vertices: readonly { readonly xMm: number; readonly zMm: number }[],
+	padEditableCanvas: boolean,
+) {
+	if (vertices.length === 0) {
+		return {
+			maxX: EMPTY_PLAN_HALF_SPAN_MM,
+			maxZ: EMPTY_PLAN_HALF_SPAN_MM,
+			minX: -EMPTY_PLAN_HALF_SPAN_MM,
+			minZ: -EMPTY_PLAN_HALF_SPAN_MM,
+		};
+	}
+	const rawMinX = Math.min(...vertices.map((vertex) => vertex.xMm));
+	const rawMaxX = Math.max(...vertices.map((vertex) => vertex.xMm));
+	const rawMinZ = Math.min(...vertices.map((vertex) => vertex.zMm));
+	const rawMaxZ = Math.max(...vertices.map((vertex) => vertex.zMm));
+	if (!padEditableCanvas) {
+		return { maxX: rawMaxX, maxZ: rawMaxZ, minX: rawMinX, minZ: rawMinZ };
+	}
+	const width = Math.max(
+		rawMaxX - rawMinX + EXTERIOR_DRAW_MARGIN_MM * 2,
+		MINIMUM_VISIBLE_PLAN_SPAN_MM,
+	);
+	const depth = Math.max(
+		rawMaxZ - rawMinZ + EXTERIOR_DRAW_MARGIN_MM * 2,
+		MINIMUM_VISIBLE_PLAN_SPAN_MM,
+	);
+	const centerX = (rawMinX + rawMaxX) / 2;
+	const centerZ = (rawMinZ + rawMaxZ) / 2;
+	return {
+		maxX: centerX + width / 2,
+		maxZ: centerZ + depth / 2,
+		minX: centerX - width / 2,
+		minZ: centerZ - depth / 2,
+	};
+}

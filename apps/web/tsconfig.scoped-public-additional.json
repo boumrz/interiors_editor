@@ -1,0 +1,1 @@
+{"extends": "./tsconfig.json", "include": ["tests/verification/scoped-public-additional-harness.ts", "tests/browser/scoped-public-additional-e2e.check.ts", "src/ui/styles.d.ts"]}

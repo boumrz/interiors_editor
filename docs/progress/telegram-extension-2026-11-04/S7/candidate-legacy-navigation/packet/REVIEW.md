@@ -1,0 +1,7 @@
+Full transient protection now requires Telegram hostNavigation OR both an actual browser navigation protection capability and trusted browser-registered owner. Neutral browser protection remains for actual pending command, persist-failure, retained publication identity, writerRecoveryCopy and exact CAS discard.
+
+Legacy headerBack ignores host-style rawdraft/panel-first behavior and preserves the previous Projects action; explicit panel-close callbacks still close their own panel after neutral durable safety. Pointer preblur interception, Plan/Scene transient registration, host placement filtering and raw-preview save label use the full flag. No UI file/SDK capability is granted.
+
+Only files/ is proposed, with exact CANDIDATE baseline guards. Active Root candidate/Original were never edited. Original all50 AppShell tests retain exact bytes before the six appended cases. The six new SSR checks cover visible interception wiring for legacy/unknown/private/Telegram, retained-publication feedback+mutation block and refusal to infer capabilities from owner text. They are component markup/contract evidence, not claimed real native event/canvas proof. Existing Root actual native RED cases must be rerun.
+
+WholeTS initial failure was Root-confirmed accidental duplicate functions in the captured Root-owned browser-runtime.test.ts. Only that test context was refreshed from Root-approved fixed73-case copy for verification, not part of the proposed packet. RED/failedcontext/source metadata retained.

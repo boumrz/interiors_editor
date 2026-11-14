@@ -1,0 +1,1 @@
+Provider287 v2 verification-only preparation; no Native or full287 was run. See readiness.json. Source4 and133+33 corpus preserved. Old81 packet immutable. Native11 qualification is pending Root review/ACK; no formal score claimed.

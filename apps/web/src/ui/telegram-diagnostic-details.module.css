@@ -1,0 +1,4 @@
+.panel { background: var(--surface); border: 1px solid var(--line); color: var(--ink); margin-top: 16px; max-width: 100%; padding: 12px; width: 100%; box-sizing: border-box; }
+.panel summary { align-items: center; cursor: pointer; display: flex; font-weight: 700; min-height: 44px; }
+.panel p { font-size: .85rem; line-height: 1.45; }
+.panel textarea { background: var(--surface); border: 1px solid var(--line); box-sizing: border-box; color: var(--ink); display: block; font: .75rem/1.5 var(--font-mono, monospace); max-width: 100%; min-height: 12rem; padding: 10px; resize: vertical; width: 100%; }

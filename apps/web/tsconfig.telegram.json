@@ -1,0 +1,4 @@
+{
+ "extends": "./tsconfig.json",
+ "include": ["src/telegram-main.tsx", "src/app", "src/application", "src/domain", "src/adapters", "src/ui", "tests/browser"]
+}

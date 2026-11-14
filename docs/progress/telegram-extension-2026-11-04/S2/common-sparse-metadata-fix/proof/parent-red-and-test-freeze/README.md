@@ -1,0 +1,7 @@
+# Three actual native sparse metadata REDs, common74ff unchanged
+
+1. Manifest: actual published empty Project; coherent Revision+creationJournal+receipt arrays become native Array(1) holes, length1/keys[]; public load stillDurable. Later preservation assertions not reached.
+2. Resource roots: actual pinned→published→complete resource; only roots becomes native sparseArray(1), durabletrue and payload intact; publicread returnsbytes. All9rows unchanged proved before RED. Opaquebytes [31,32,33] are metadata ownership fixture, not GLB validity proof.
+3. Pin hashes: actual published emptyProject; actual strict native reservedlease ID, coherent creation.leaseId+pin with resourceHashes sparseArray(1), markedtrue; actual access stillWritable1. Current healthyProject/rawsource and all9rows preserved before RED.
+
+Integrity/refusal contract only, no demonstrated user-file loss. Exact source/context74ff, native module source/local-namespace assertions active. Controlled native fixtures only; no original/root mutation. Owner reproduction can overlay ONLY files/ into fresh isolatedclone of prior boundary snapshot and run SCOPED_BOUNDARY_PROOF=sparse-all SCOPED_MUTATED_SUBJECTS='[]' SCOPED_PROOF_PHASE=owner-sparse-three ... node scripts/run-scoped-protocol-native.mjs (existing maxFailures1 means firstRED stops; individual selectors sparse|roots|pin reproduce each). All3GREEN expected after sourceowner minimalfix, no score claim. My short native slot now RELEASED for owner's RED→GREEN.

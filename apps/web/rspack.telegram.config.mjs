@@ -1,0 +1,50 @@
+import "./scripts/check-runtime.mjs";
+import { resolve } from "node:path";
+import { rspack } from "@rspack/core";
+import browserConfiguration from "./rspack.config.mjs";
+import { telegramSdkAssetPatterns } from "./scripts/telegram-sdk-asset.mjs";
+import {
+	assertTelegramOutputDirectory,
+	telegramPublicConfiguration,
+	TelegramReleasePlugin,
+} from "./scripts/telegram-release-build.mjs";
+
+export default (environment, arguments_) => {
+	const base = browserConfiguration(environment, arguments_);
+	return {
+		...base,
+		entry: { telegram: "./src/telegram-main.tsx" },
+		output: {
+			...base.output,
+			path: assertTelegramOutputDirectory(
+				process.env.INTERIORS_TELEGRAM_OUTPUT ?? resolve("dist-telegram"),
+			),
+			clean: false,
+			filename: "[name].[contenthash].js",
+			chunkFilename: "[name].[contenthash].js",
+			cssFilename: "[name].[contenthash].css",
+			cssChunkFilename: "[name].[contenthash].css",
+		},
+		plugins: [
+			new rspack.DefinePlugin({ __INTERIORS_TEST_SEAM__: "false" }),
+			new rspack.HtmlRspackPlugin({
+				template: "./public/telegram-index.html",
+				title: "InteriorsEditor · Telegram",
+			}),
+			new rspack.CopyRspackPlugin({
+				patterns: [
+					...telegramSdkAssetPatterns(),
+					{ from: "./public/icon.svg", to: "icon.svg" },
+					{ from: "./public/catalog", to: "catalog" },
+					{
+						from: "../catalog-control-plane/src/main/resources/catalog/evidence-assets/*.glb",
+						to: "catalog/[name][ext]",
+					},
+				],
+			}),
+			new TelegramReleasePlugin(telegramPublicConfiguration(process.env)),
+		],
+		// Preview delivery is explicit and has no SPA fallback or inherited PWA proxy.
+		devServer: undefined,
+	};
+};

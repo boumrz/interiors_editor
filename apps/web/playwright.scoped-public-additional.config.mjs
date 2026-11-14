@@ -1,0 +1,1 @@
+import{defineConfig}from'@playwright/test';import base from'./playwright.scoped-protocol.config.mjs';export default defineConfig({...base,testDir:'./tests/browser',testMatch:['scoped-public-additional-e2e.check.ts'],metadata:{...base.metadata,...(process.env.SCOPED_POISON_ACTIVE==='1'?{activeMutant:'wrong-active-control'}:{})}});

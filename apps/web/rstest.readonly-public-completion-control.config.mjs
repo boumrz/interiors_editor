@@ -1,0 +1,1 @@
+import{defineConfig}from'@rstest/core';import base from'./rstest.config.mjs';export default defineConfig({...base,include:['tests/verification/readonly-public-completion.test.ts'],pool:{maxWorkers:1,minWorkers:1}});

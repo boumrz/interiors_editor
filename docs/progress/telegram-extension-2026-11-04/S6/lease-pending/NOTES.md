@@ -1,0 +1,7 @@
+# Preserve unpublished work during writer-access refresh
+
+The readonly lease refresh now updates writer-access presentation without replacing active, failed or history-pending work. It admits the loaded candidate only while the exact captured current/recovery candidate and navigation request still match and no publication boundary exists. A private optional acceptance predicate carries this check across resource verification and writer inspection; all ordinary opening callers retain default behavior. A newer completed command also prevents stale refresh R1 from replacing R2. Existing writerRecoveryCopy-only refresh, explicit navigation and take-over behavior remain unchanged.
+
+RED: seven meaningful new cases failed against baseline (102 existing pass). Actual RenameProjectUseCase and actual SHA resource verification cover saving/quota failure, delay at inspection/load/resource verification, and newer completed revision. GREEN: full suite, both TypeScript projects, owned2 lint, architecture tests and graph. Public recovery export retains exact unpublished name/revision and source Durable stays unchanged. Native/UI proofs remain root-owned; no global navigation/discard rewrite or storage/persistence changes. Focused mutation follows separately.
+
+Exactly the two sha256.json files changed among baseline files. No original checkout edits, dependency/manifest/lock edits, live process actions or commits.

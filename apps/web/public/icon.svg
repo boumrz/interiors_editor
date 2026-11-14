@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">InteriorsEditor</title>
+  <rect width="512" height="512" rx="108" fill="#172033"/>
+  <path d="M112 112h288v288H112z" fill="#f4f1ea"/>
+  <path d="M158 158h196v196H158z" fill="none" stroke="#2563eb" stroke-width="24"/>
+  <path d="M158 256h196M256 158v196" stroke="#172033" stroke-width="16"/>
+  <circle cx="256" cy="256" r="28" fill="#b42318"/>
+</svg>

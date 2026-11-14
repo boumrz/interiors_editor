@@ -1,0 +1,21 @@
+{
+  "contractVersion": "catalog-envelope-v1",
+  "positive": [
+    "catalog-envelope-v1.valid.json"
+  ],
+  "media": "media-cases.json",
+  "semantic": "semantic-cases.json",
+  "http": "http-cases.json",
+  "negative": [
+    { "file": "catalog-envelope-v1.empty-assets.json", "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID" },
+    { "file": "catalog-envelope-v1.png-as-model.json", "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID" },
+    { "file": "catalog-envelope-v1.model-as-thumbnail.json", "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID" },
+    { "file": "catalog-envelope-v1.duplicate-member.json", "reasonCode": "CATALOG_ENVELOPE_DUPLICATE_MEMBER" },
+    { "file": "catalog-envelope-v1.conflicting-hash.json", "reasonCode": "CATALOG_RESOURCE_DESCRIPTOR_CONFLICT" },
+    { "file": "catalog-envelope-v1.non-nfc-label.json", "reasonCode": "CATALOG_LABEL_NOT_NFC" },
+    { "file": "catalog-envelope-v1.non-utc-timestamp.json", "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID" },
+    { "file": "catalog-envelope-v1.trailing-document.json", "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID" },
+    { "file": "catalog-envelope-v1.unpaired-surrogate.json", "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID" },
+    { "file": "catalog-envelope-v1.reserved-current.json", "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID" }
+  ]
+}

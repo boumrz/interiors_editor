@@ -1,0 +1,177 @@
+[
+  {
+    "id": "bfc76a51d0d314299bf0-ffd744d12b913c3e31c5",
+    "title": "COMMON-GAP-QUOTA: real native abort before prepare commit preserves R1 and reports quota, then healthy retry publishes",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 27,
+    "column": 1
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-68447a404aa89e73210d",
+    "title": "COMMON-GAP-UNMARKED: exact prepared resource cannot publish before explicit mark; same candidate then succeeds",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 52,
+    "column": 1
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-a63e94695c66e305b6bf",
+    "title": "COMMON-GAP-LINK-pointer-scope: marking requires exact native Project, lease and attempt links without changing any row",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 70,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-79cde537ec43cea981d7",
+    "title": "COMMON-GAP-LINK-lease-project: marking requires exact native Project, lease and attempt links without changing any row",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 70,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-4516ac971e8aa61001c9",
+    "title": "COMMON-GAP-LINK-attempt-lease: marking requires exact native Project, lease and attempt links without changing any row",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 70,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-6dd6dbeed0e0305d972b",
+    "title": "COMMON-GAP-PREPARED-stage-schema: same-owner acquisition refuses noncurrent unreadable staging without changing rows",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 87,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-9a5a27a1a471be76f282",
+    "title": "COMMON-GAP-PREPARED-stage-project: same-owner acquisition refuses noncurrent unreadable staging without changing rows",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 87,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-72426230ed776af89c2c",
+    "title": "COMMON-GAP-COHERENT-OWNER: changed native attempt and fence owner do not authorize stale in-memory owner to mark",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 99,
+    "column": 1
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-e36b6ddac198c9a82cf5",
+    "title": "COMMON-GAP-POST-ACQUIRE-lease-attempt: native corruption after real acquisition commit cannot authorize recovery cleanup",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 115,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-50a310b61f8fdd084dc6",
+    "title": "COMMON-GAP-POST-ACQUIRE-lease-project: native corruption after real acquisition commit cannot authorize recovery cleanup",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 115,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-8cec85fbe3981c65f192",
+    "title": "COMMON-GAP-POST-ACQUIRE-revision-project: native corruption after real acquisition commit cannot authorize recovery cleanup",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 115,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-1f14cf47c901e3cc65ad",
+    "title": "COMMON-GAP-HISTORY-PROTOCOL: noncurrent creation protocol changed after real acquisition cannot authorize history publication",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 132,
+    "column": 1
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-893e9136fe734cef12c4",
+    "title": "COMMON-GAP-PUBLISHED-MARK: published journal cannot retain an unmarked pin and renew writer authority",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 152,
+    "column": 1
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-5807c834b5c8662a144d",
+    "title": "COMMON-GAP-MARK-project: publication parameters cannot authorize a different prepared identity",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 165,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-854bae8ee354ff3fbb4b",
+    "title": "COMMON-GAP-MARK-revision: publication parameters cannot authorize a different prepared identity",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 165,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-e8714f5028d25b929d12",
+    "title": "COMMON-GAP-LATE-REVISION-scope: native target mutation after actual resource hashing refuses publication atomically",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 178,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-d433e3c823760f2bd71b",
+    "title": "COMMON-GAP-LATE-REVISION-candidate: native target mutation after actual resource hashing refuses publication atomically",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 178,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-ed59729d6765e71706dc",
+    "title": "COMMON-GAP-OLD-JOURNAL-receipt: noncurrent published receipt and identity remain authoritative before writer renewal",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 198,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-45b641f5f482a2af2c99",
+    "title": "COMMON-GAP-OLD-JOURNAL-scope: noncurrent published receipt and identity remain authoritative before writer renewal",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 198,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-4be58c47e898f43eda17",
+    "title": "COMMON-GAP-OLD-JOURNAL-protocol: noncurrent published receipt and identity remain authoritative before writer renewal",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 198,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-1373045638e950b233e5",
+    "title": "COMMON-GAP-OLD-ACK: lost acknowledgement retry after R3 still requires exact R2 receipt without rewinding",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 213,
+    "column": 1
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-6cde17ab01f17746dc78",
+    "title": "COMMON-GAP-HISTORY-RETAIN-ordinary: cancelled history attempt cannot delete its original Durable Revision",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 235,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-7d6987dbaf45ad2301c9",
+    "title": "COMMON-GAP-HISTORY-RETAIN-ambiguous-creator: cancelled history attempt cannot delete its original Durable Revision",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 235,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-49ce8ebe26538d4696b4",
+    "title": "COMMON-GAP-ORPHAN-PIN-prepared-without-lease: an actual journal without backlink cannot authorize an added pin",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 272,
+    "column": 2
+  },
+  {
+    "id": "bfc76a51d0d314299bf0-245afcdec60915412f4f",
+    "title": "COMMON-GAP-ORPHAN-PIN-no-publish-without-lease: an actual journal without backlink cannot authorize an added pin",
+    "file": "common-public-gap-e2e.check.ts",
+    "line": 272,
+    "column": 2
+  }
+]

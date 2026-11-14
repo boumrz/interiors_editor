@@ -1,0 +1,13 @@
+# Fresh bounded public-oracle gates: guard74 and export243
+
+Only four TEST files are proposed for guarded updates. Six optional NEW reusable verification files have absence/current-SHA guards. No production source, package, protected build configuration, default Web/PWA/data change or commit is included. Context is NEVER offered for overwrite.
+
+Current full guard scope74:74Killed/0Timeout/0Survived100%, all74IDs execute all32 stock cases,2368 valid first-loaded-source/local-selector observations, no setup/build/file/global/timeout-subtype errors. Current full export scope243:232Killed/0Timeout/11Survived95.47%, all243 IDs execute all51 stock cases,12393 valid observations, all11survivors full51 clean; per-file scores96.55/90.48/98.44. Each scope separately requires80. No combined score is used. Both804 original input paths restored. Scoped TypeScript and lint on all4modified tests pass.
+
+The earlier accepted export243 had29 hidden Rstest bodytimeout outcomes and guard74 had6. Their raw reports are untouched in canonical repository history. First fresh raw outcomes also remain REJECTED because5guard/2export global-error records were found; their raw content/invocations are retained losslessly here. Only final full-v2 data is the passing evidence.
+
+Public test corrections: race the actual public operation against controlled port entry, so early wrong routes/refusals produce named assertions; assert public promise settlement after all fake IDB callbacks have dispatched; observe wrong Promise returns while preserving and asserting the synchronous contract; capture only a supplied late-open callback error in its own fixture rather than emitting a global worker error. No global rejection suppression or private error-message oracle was added. Case names/counts remain complete.
+
+Strict stock JSON policy rejects Test/Hook bodytimeouts, unknown/file/global errors, missing/skip/retry cases, wrong actual first-byte source/module-local selector, worker overlap/leak and compiler/copy errors. Exact OLD guard33 deliberately replayed its actual5000ms bodytimeout with valid case/source identity: wrapper rejected2 with only body-timeout-subtype issue. All4missing siblingGLBs also reject2 despite passing stock assertions. Wrong source/local ID/held worker controls reject2.
+
+Verification command paths use pinned Node24.19.0/pnpm11.20.0, one Stryker command process and one Rstest worker. The terminal Stryker count of one test means one stock command, not one public case. All complete stock JSON, activation ledgers, output logs, controls and historical rejected results are archived, excluding generated build bytes; input closures and actual first-loader source hashes are retained. No native/physical/full-app acceptance is claimed.

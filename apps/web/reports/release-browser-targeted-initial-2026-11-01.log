@@ -1,0 +1,297 @@
+
+Running 24 tests using 1 worker
+
+(node:59646) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:2238:1 › EDITOR-E2E-13B: the phone catalog exposes model import above browsing without horizontal overflow
+[2/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:2361:1 › EDITOR-E2E-13E: the clean phone plan keeps dimension settings accessible through the safe area
+[3/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:3155:1 › EDITOR-E2E-02VC: a phone-drawn concave room retains legacy thickness through a legacy split, reopening and 3D
+[4/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:4923:1 › PLAN-E2E-04JA: a phone user can preview and remove a redundant Vertex on a 45-degree Wall
+[5/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:4969:1 › EDITOR-E2E-02T: a detached 45-degree wall endpoint moves only along its diagonal after explicit confirmation
+[6/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:5401:1 › EDITOR-E2E-02I: a positive-overlap gesture trims the occupied part and publishes only the extension
+[7/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:5667:1 › PLAN-E2E-04D: a legacy thick wall reopens with exact geometry while thickness editing stays absent
+[8/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:7899:1 › PLAN-E2E-04I: a selected wall has no split action and a repeated touch leaves its geometry durable
+  1) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:7899:1 › PLAN-E2E-04I: a selected wall has no split action and a repeated touch leaves its geometry durable 
+
+    Test timeout of 30000ms exceeded.
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--1a153-leaves-its-geometry-durable-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--1a153-leaves-its-geometry-durable-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--1a153-leaves-its-geometry-durable-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--1a153-leaves-its-geometry-durable-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--1a153-leaves-its-geometry-durable-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:63875) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[9/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:7933:1 › RECONCILIATION-E2E-02A: a whole wall item rehosts when reopening a legacy split wall
+[10/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8327:1 › RECONCILIATION-E2E-02D: a wall panel remains intact when the removed split route is unavailable
+  2) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8327:1 › RECONCILIATION-E2E-02D: a wall panel remains intact when the removed split route is unavailable 
+
+    Test timeout of 30000ms exceeded.
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:66079) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[11/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9059:1 › RECONCILIATION-E2E-02C: removing a split vertex returns a panel to its durable wall host
+[12/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9121:1 › PLAN-E2E-04J: a selected split wall can remove only its redundant inline vertex
+[13/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9515:1 › PLAN-E2E-04B: a selected wall creates a Door only after the explicit New Opening draft is added
+  3) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9515:1 › PLAN-E2E-04B: a selected wall creates a Door only after the explicit New Opening draft is added 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByTestId('selected-wall-inspector')
+    Expected: 0
+    Received: 1
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 5000ms
+      - waiting for getByTestId('selected-wall-inspector')
+        14 × locator resolved to 1 element
+           - unexpected value "1"
+
+
+      9550 | 		),
+      9551 | 	).toBeDisabled();
+    > 9552 | 	await expect(session.page.getByTestId("selected-wall-inspector")).toHaveCount(
+           | 	                                                                  ^
+      9553 | 		0,
+      9554 | 	);
+      9555 | 	await expect(
+        at /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web/tests/browser/editor-workspace-e2e.spec.ts:9552:68
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--9a7fc--New-Opening-draft-is-added-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--9a7fc--New-Opening-draft-is-added-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--9a7fc--New-Opening-draft-is-added-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--9a7fc--New-Opening-draft-is-added-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--9a7fc--New-Opening-draft-is-added-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:66272) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[14/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9609:1 › PLAN-E2E-04AC: New Opening traps focus, blocks the background, and restores its initiator
+[15/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9691:1 › PLAN-E2E-04J: the removed wall-split route remains absent when visible Undo changes the current revision
+[16/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9725:1 › PLAN-E2E-04Z: reopening a legacy wall split away from a Door keeps one durable wall host
+[17/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9767:1 › PLAN-E2E-04AA: the removed wall-split route cannot remove a Door
+  4) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9767:1 › PLAN-E2E-04AA: the removed wall-split route cannot remove a Door 
+
+    Error: locator.evaluate: Error: No wall hit target is exposed outside Opening handles and panels
+        at eval (eval at evaluate (:311:30), <anonymous>:16:11)
+        at UtilityScript.evaluate (<anonymous>:313:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at eval (eval at evaluate (:311:30), <anonymous>:16:11)
+        at UtilityScript.evaluate (<anonymous>:313:16)
+        at UtilityScript.<anonymous> (<anonymous>:1:44)
+        at clickWallOutsideOpeningHandle (/Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web/tests/browser/editor-workspace-e2e.spec.ts:837:27)
+        at /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web/tests/browser/editor-workspace-e2e.spec.ts:9796:8
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--8c04b--route-cannot-remove-a-Door-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--8c04b--route-cannot-remove-a-Door-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--8c04b--route-cannot-remove-a-Door-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--8c04b--route-cannot-remove-a-Door-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--8c04b--route-cannot-remove-a-Door-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:66481) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[18/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9811:1 › PLAN-E2E-04D: the New Opening sheet changes to Window before its single explicit publish
+  5) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9811:1 › PLAN-E2E-04D: the New Opening sheet changes to Window before its single explicit publish 
+
+    Error: expect(locator).toHaveCount(expected) failed
+
+    Locator:  getByTestId('selected-wall-inspector')
+    Expected: 0
+    Received: 1
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toHaveCount" with timeout 5000ms
+      - waiting for getByTestId('selected-wall-inspector')
+        14 × locator resolved to 1 element
+           - unexpected value "1"
+
+
+      9832 | 		session.page.getByRole("dialog", { name: "Новый проём", exact: true }),
+      9833 | 	).toHaveCount(0);
+    > 9834 | 	await expect(session.page.getByTestId("selected-wall-inspector")).toHaveCount(
+           | 	                                                                  ^
+      9835 | 		0,
+      9836 | 	);
+      9837 | 	await expect(
+        at /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web/tests/browser/editor-workspace-e2e.spec.ts:9834:68
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--7b991-its-single-explicit-publish-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--7b991-its-single-explicit-publish-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--7b991-its-single-explicit-publish-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--7b991-its-single-explicit-publish-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--7b991-its-single-explicit-publish-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:66591) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[19/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9866:1 › PLAN-E2E-04F: editing a legacy window size preserves its exact offset and existing non-default sill without a sill field
+  6) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9866:1 › PLAN-E2E-04F: editing a legacy window size preserves its exact offset and existing non-default sill without a sill field 
+
+    Test timeout of 30000ms exceeded.
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--a5155-t-sill-without-a-sill-field-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--a5155-t-sill-without-a-sill-field-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--a5155-t-sill-without-a-sill-field-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--a5155-t-sill-without-a-sill-field-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-PLAN--a5155-t-sill-without-a-sill-field-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:68918) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[20/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:11138:1 › CATALOG-E2E-01E: local furniture and its search stay available while the catalog publication is unavailable
+[21/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:11590:1 › CATALOG-E2E-02: version metadata is visible and an inline publication outage can be retried or the catalog closed without changing the local Project
+[22/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:11672:1 › HISTORY-E2E-00: a phone editor durably undoes and redoes a placed item in the active session
+[23/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:12319:1 › ROOM-E2E-01: the separate phone Room directory saves only type and height while preserving legacy names as one durable command
+  7) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:12319:1 › ROOM-E2E-01: the separate phone Room directory saves only type and height while preserving legacy names as one durable command 
+
+    Error: expect(received).toEqual(expected) // deep equality
+
+    - Expected  - 1
+    + Received  + 1
+
+      Array [
+        undefined,
+    -   undefined,
+    +   "Комната 2",
+      ]
+
+      12412 | 	await expect(reopened.getByLabel("Тип помещения")).toHaveValue("kitchen");
+      12413 | 	await expect(reopened.getByLabel("Высота помещения, мм")).toHaveValue("2800");
+    > 12414 | 	expect((await durableRooms(session.page)).map((room) => room.name)).toEqual(
+            | 	                                                                    ^
+      12415 | 		namesBefore,
+      12416 | 	);
+      12417 | 	await reopened.getByRole("button", { name: "Закрыть помещения" }).click();
+        at /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web/tests/browser/editor-workspace-e2e.spec.ts:12414:70
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-ROOM--a7a0a-ames-as-one-durable-command-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-ROOM--a7a0a-ames-as-one-durable-command-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-ROOM--a7a0a-ames-as-one-durable-command-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-ROOM--a7a0a-ames-as-one-durable-command-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-results/editor-workspace-e2e-ROOM--a7a0a-ames-as-one-durable-command-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:70064) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[24/24] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:12458:1 › PANEL-E2E-01: Room properties retain focus and the selected room through saving, and fit enlarged text
+  7 failed
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:7899:1 › PLAN-E2E-04I: a selected wall has no split action and a repeated touch leaves its geometry durable 
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8327:1 › RECONCILIATION-E2E-02D: a wall panel remains intact when the removed split route is unavailable 
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9515:1 › PLAN-E2E-04B: a selected wall creates a Door only after the explicit New Opening draft is added 
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9767:1 › PLAN-E2E-04AA: the removed wall-split route cannot remove a Door 
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9811:1 › PLAN-E2E-04D: the New Opening sheet changes to Window before its single explicit publish 
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9866:1 › PLAN-E2E-04F: editing a legacy window size preserves its exact offset and existing non-default sill without a sill field 
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:12319:1 › ROOM-E2E-01: the separate phone Room directory saves only type and height while preserving legacy names as one durable command 
+  17 passed (4.0m)

@@ -1,0 +1,17 @@
+{
+  "subjects": [
+    "src/adapters/persistence/scoped-project-repository.ts",
+    "src/adapters/persistence/scoped-writer-lease.ts",
+    "src/adapters/persistence/telegram-project-repository.ts",
+    "src/adapters/persistence/telegram-writer-lease.ts"
+  ],
+  "tests": [
+    "src/adapters/persistence/scoped-project-invalid-input-prefix.test.ts",
+    "src/adapters/persistence/scoped-project-resource-port-denials.test.ts",
+    "src/adapters/persistence/scoped-project-mixed-pin-input.test.ts"
+  ],
+  "expectedCases": 35,
+  "wholeDeclaredInventory": 2903,
+  "screenOnly": "One genuine installed selector887 plus invalid infrastructure controls; no full mutation or score",
+  "threshold": "not applicable to screening; future whole80 unchanged"
+}

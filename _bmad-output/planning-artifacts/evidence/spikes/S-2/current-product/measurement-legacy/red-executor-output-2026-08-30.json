@@ -1,0 +1,32 @@
+{
+  "command": "node -e '<read current-product manifest; require both TCC-A1 families to be passed>'",
+  "exitCode": 1,
+  "observedAt": "2026-08-30",
+  "result": {
+    "complete": false,
+    "rows": [
+      {
+        "family": "measurement-and-projections",
+        "status": "not-executable-as-tcc-a1",
+        "supportingKernel": "apps/web/src/domain/measurement-request.ts",
+        "supportingKernelSha256": "21c7ac7f0d5f3de89e272bdd88fbf9ccc0d9c0eff331201c3d23788da7731fa3",
+        "missing": [
+          "bound/tie/stale fixtures",
+          "shared Preview/2D/3D/export result evidence"
+        ]
+      },
+      {
+        "family": "legacy-and-ingress-boundary",
+        "status": "not-executable-as-tcc-a1",
+        "supportingKernel": "apps/web/src/domain/migrate-project-v1-to-v2.ts",
+        "supportingKernelSha256": "3d6e1b26dbeb7ba60b02d43599b94d6603fa32918dced99239d1c62f4a8aa639",
+        "missing": [
+          "legacy-classifier executor role",
+          "recorded V1/V2 raw grammars",
+          "classification/reason-precedence corpus",
+          "no-promotion proof"
+        ]
+      }
+    ]
+  }
+}

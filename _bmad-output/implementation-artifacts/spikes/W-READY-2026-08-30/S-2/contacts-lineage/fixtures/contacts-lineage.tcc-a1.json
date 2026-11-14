@@ -1,0 +1,56 @@
+{
+  "contractId": "interiors.topology-corpus-contract",
+  "contractVersion": 1,
+  "corpusId": "interiors.tcc-a1.contacts-faces-lineage",
+  "corpusRevision": 1,
+  "executorRole": "domain-kernel",
+  "policyReferences": [
+    "_bmad-output/specs/spec-interiors-editor-alpha/geometry-contract.md#6",
+    "_bmad-output/specs/spec-interiors-editor-alpha/topology-corpus-contract.md#2",
+    "_bmad-output/specs/spec-interiors-editor-alpha/topology-corpus-contract.md#3",
+    "_bmad-output/planning-artifacts/architecture/architecture-InteriorsEditor-2026-07-26/ARCHITECTURE-SPINE.md#AD-20"
+  ],
+  "fixtures": [
+    {
+      "fixtureId": "TCC-A1-CONTACTS-001",
+      "family": "contacts-and-plan-invariants",
+      "rawInput": "{\"baseGraph\":{\"vertices\":[{\"vertexId\":\"a\",\"xMm\":0,\"zMm\":0},{\"vertexId\":\"b\",\"xMm\":4000,\"zMm\":0},{\"vertexId\":\"c\",\"xMm\":4000,\"zMm\":3000},{\"vertexId\":\"d\",\"xMm\":0,\"zMm\":3000}],\"wallSegments\":[{\"endVertexId\":\"d\",\"startVertexId\":\"a\",\"thicknessMm\":100,\"wallSegmentId\":\"left\"},{\"endVertexId\":\"b\",\"startVertexId\":\"a\",\"thicknessMm\":100,\"wallSegmentId\":\"bottom\"},{\"endVertexId\":\"c\",\"startVertexId\":\"b\",\"thicknessMm\":100,\"wallSegmentId\":\"right\"},{\"endVertexId\":\"d\",\"startVertexId\":\"c\",\"thicknessMm\":100,\"wallSegmentId\":\"top\"}]},\"idSequence\":[\"vertex-contact\",\"vertex-end\",\"bottom-tail\",\"wall-divider\"],\"intent\":{\"end\":{\"xMm\":2000,\"zMm\":1200},\"start\":{\"xMm\":2000,\"zMm\":0},\"thicknessMm\":100},\"operation\":\"add-wall-segment\"}",
+      "rawInputByteLength": 708,
+      "rawInputSha256": "0919e955fc321a70bd326d236943418f22dfc5122ea37f8fffe637f004fa2eff",
+      "expectedOutcome": {
+        "kind": "accepted",
+        "semanticAssertion": "one exact T contact becomes one shared Vertex; the existing wall is split into non-zero pieces; no Room is replaced"
+      },
+      "executorDisposition": "BLOCKED_UNSUPPORTED_TCC_A1_OUTCOME"
+    },
+    {
+      "fixtureId": "TCC-A1-FACES-001",
+      "family": "faces-and-usable-geometry",
+      "rawInput": "{\"baseGraph\":{\"vertices\":[{\"vertexId\":\"outer-a\",\"xMm\":0,\"zMm\":0},{\"vertexId\":\"outer-b\",\"xMm\":6000,\"zMm\":0},{\"vertexId\":\"outer-c\",\"xMm\":6000,\"zMm\":5000},{\"vertexId\":\"outer-d\",\"xMm\":0,\"zMm\":5000},{\"vertexId\":\"inner-a\",\"xMm\":2000,\"zMm\":1500},{\"vertexId\":\"inner-b\",\"xMm\":4000,\"zMm\":1500},{\"vertexId\":\"inner-c\",\"xMm\":4000,\"zMm\":3500},{\"vertexId\":\"inner-d\",\"xMm\":2000,\"zMm\":3500}],\"wallSegments\":[{\"endVertexId\":\"outer-b\",\"startVertexId\":\"outer-a\",\"thicknessMm\":100,\"wallSegmentId\":\"outer-bottom\"},{\"endVertexId\":\"outer-c\",\"startVertexId\":\"outer-b\",\"thicknessMm\":100,\"wallSegmentId\":\"outer-right\"},{\"endVertexId\":\"outer-d\",\"startVertexId\":\"outer-c\",\"thicknessMm\":100,\"wallSegmentId\":\"outer-top\"},{\"endVertexId\":\"outer-a\",\"startVertexId\":\"outer-d\",\"thicknessMm\":100,\"wallSegmentId\":\"outer-left\"},{\"endVertexId\":\"inner-b\",\"startVertexId\":\"inner-a\",\"thicknessMm\":100,\"wallSegmentId\":\"inner-bottom\"},{\"endVertexId\":\"inner-c\",\"startVertexId\":\"inner-b\",\"thicknessMm\":100,\"wallSegmentId\":\"inner-right\"},{\"endVertexId\":\"inner-d\",\"startVertexId\":\"inner-c\",\"thicknessMm\":100,\"wallSegmentId\":\"inner-top\"},{\"endVertexId\":\"inner-a\",\"startVertexId\":\"inner-d\",\"thicknessMm\":100,\"wallSegmentId\":\"inner-left\"}]},\"operation\":\"derive-bounded-faces\"}",
+      "rawInputByteLength": 1224,
+      "rawInputSha256": "a80ca6557bb509a9361ed2e3c6f6a7c6e0a2a0e0fa058fee92b8af6d786e8390",
+      "expectedOutcome": {
+        "kind": "rejected",
+        "reasonCode": "AMBIGUOUS_BOUNDED_WALK",
+        "semanticAssertion": "nested closed rings do not materialize a partial or second Room"
+      },
+      "executorDisposition": "BLOCKED_UNSUPPORTED_TCC_A1_OUTCOME"
+    },
+    {
+      "fixtureId": "TCC-A1-LINEAGE-001",
+      "family": "lineage-and-hosts",
+      "rawInput": "{\"baseProjectRecipe\":{\"depthMm\":\"3000\",\"heightMm\":\"2600\",\"widthMm\":\"4000\"},\"idSequence\":[\"vertex-bottom\",\"vertex-top\",\"bottom-tail\",\"top-tail\",\"divider-bottom\",\"divider-top\",\"room-2\"],\"intent\":{\"end\":{\"xMm\":2000,\"zMm\":3000},\"start\":{\"xMm\":2000,\"zMm\":0},\"thicknessMm\":100},\"operation\":\"add-general-wall-split\"}",
+      "rawInputByteLength": 309,
+      "rawInputSha256": "d4d9b87f938e18edce0f6fa5ce136a44bd2db93fedcea8a547c952117fb76e31",
+      "expectedOutcome": {
+        "kind": "accepted",
+        "semanticAssertion": "a valid full divider creates two successor Rooms and each inherits heightMm=2600 without user selection"
+      },
+      "executorDisposition": "BLOCKED_UNSUPPORTED_TCC_A1_OUTCOME"
+    }
+  ],
+  "immutability": {
+    "status": "declared-but-not-published-as-executed",
+    "rule": "Any semantic correction creates corpusRevision 2; this revision remains a blocked raw-input record."
+  }
+}

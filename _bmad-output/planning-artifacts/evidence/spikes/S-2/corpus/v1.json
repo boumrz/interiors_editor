@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "S-2-topology-candidate-v1",
+  "spikeId": "S-2",
+  "waiverId": "W-SPK-2026-08-04",
+  "created": "2026-08-04",
+  "classification": "synthetic-disposable-evidence-only",
+  "canonicalUnits": {
+    "coordinate": "integer millimetres",
+    "area": "square millimetres",
+    "persistence": "canonical JSON serialization"
+  },
+  "policyStatus": "candidate behavior only; no entry is an adopted Product, UX, or Architecture decision",
+  "cases": [
+    {
+      "id": "S2-C-RECT-001",
+      "kind": "golden",
+      "input": {
+        "command": "CreateRectangle",
+        "innerWidthMm": 4000,
+        "innerDepthMm": 3000,
+        "wallThicknessMm": 100
+      },
+      "expected": {
+        "accepted": true,
+        "vertices": 4,
+        "walls": 4,
+        "derivedFaces": 1,
+        "usableWidthMm": 4000,
+        "usableDepthMm": 3000,
+        "areaMm2": 12000000
+      },
+      "automatedBy": "test/topology-adversarial-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-DIRECTION-001",
+      "kind": "validation",
+      "input": "horizontal, vertical, and 45-degree integer-mm segments",
+      "expected": { "accepted": true },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-DIRECTION-002",
+      "kind": "negative",
+      "input": "zero-length and non-0/45/90-degree segments",
+      "expected": {
+        "accepted": false,
+        "reasons": ["ZERO_LENGTH", "UNSUPPORTED_DIRECTION"],
+        "serializedRevisionUnchanged": true
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-DUPLICATE-001",
+      "kind": "negative",
+      "input": "same segment with reversed endpoints",
+      "expected": {
+        "accepted": false,
+        "reason": "DUPLICATE_SEGMENT",
+        "serializedRevisionUnchanged": true
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-T-001",
+      "kind": "topology",
+      "input": "integer-mm T intersection at an existing wall interior",
+      "expected": {
+        "accepted": true,
+        "existingWallIsSplit": true,
+        "wallCountAfter": 3
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-X-001",
+      "kind": "policy-boundary",
+      "input": "integer-mm X intersection with xIntersectionPolicy=reject",
+      "expected": {
+        "accepted": false,
+        "reason": "AMBIGUOUS_INTERSECTION",
+        "serializedRevisionUnchanged": true
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-X-002",
+      "kind": "policy-boundary",
+      "input": "integer-mm X intersection with xIntersectionPolicy=split",
+      "expected": {
+        "accepted": true,
+        "crossingVertex": { "xMm": 500, "zMm": 500 },
+        "wallCountAfter": 4
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-X-003",
+      "kind": "negative",
+      "input": "999-mm diagonal X intersection that would require a half-millimetre vertex",
+      "expected": {
+        "accepted": false,
+        "reason": "AMBIGUOUS_INTERSECTION",
+        "serializedRevisionUnchanged": true
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-PLANAR-UNSPLIT-001",
+      "kind": "negative",
+      "input": "persisted exact T and X crossings with a stray Vertex at the exact crossing coordinate but without every crossed WallSegment split to reference it",
+      "expected": {
+        "accepted": false,
+        "reason": "SERIALIZATION_INVALID"
+      },
+      "automatedBy": "test/topology-integrity-regressions.spec.ts"
+    },
+    {
+      "id": "S2-C-MERGE-001",
+      "kind": "policy-boundary",
+      "input": "two connected equal-thickness collinear walls with mergePolicy=manual-only",
+      "expected": {
+        "accepted": true,
+        "automaticMerge": false,
+        "wallCountAfter": 1
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-MERGE-002",
+      "kind": "negative",
+      "input": "non-collinear, disconnected, unequal-thickness, missing, unapproved-policy, and branch-at-an-unsplit-junction merge candidates",
+      "expected": {
+        "accepted": false,
+        "reasons": ["MERGE_NOT_COLLINEAR", "WALL_NOT_FOUND", "INVALID_DIMENSION", "POLICY_REQUIRED", "AMBIGUOUS_INTERSECTION"]
+      },
+      "automatedBy": "test/topology-boundary-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-FACE-001",
+      "kind": "derivation",
+      "input": "rectangle plus a full divider",
+      "expected": {
+        "derivedFaces": 2,
+        "roomIdentity": "ROOM_IDENTITY_AMBIGUOUS",
+        "silentRoomIdTransfer": false
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-OPENING-001",
+      "kind": "derived-rule-candidate",
+      "input": {
+        "wallLengthMm": 4000,
+        "adjacentRoomHeightsMm": [2400, 3000],
+        "opening": { "offsetMm": 600, "widthMm": 900, "heightMm": 2400, "sillMm": 0 }
+      },
+      "expected": {
+        "accepted": true,
+        "wallHeightMm": 3000,
+        "openingHeightLimitMm": 2400
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-OPENING-002",
+      "kind": "negative",
+      "input": "height, sill, offset, and width values outside the tested inclusive bounds",
+      "expected": { "accepted": false, "reason": "OPENING_OUT_OF_BOUNDS" },
+      "automatedBy": "test/topology-boundary-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-INVERSE-001",
+      "kind": "reversibility",
+      "input": "accepted AddWallSegment command followed by its captured inverse",
+      "expected": { "serializedRevisionRestoredExactly": true },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-SERIALIZE-001",
+      "kind": "persistence-candidate",
+      "input": "canonical serialize/deserialize plus malformed and topologically invalid records",
+      "expected": {
+        "validRoundTripStable": true,
+        "invalidReason": "SERIALIZATION_INVALID"
+      },
+      "automatedBy": "test/topology-boundary-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-COMMAND-REVISION-001",
+      "kind": "negative",
+      "input": "fractional in-memory coordinates and malformed Revision envelopes, including null, unsupported schema, non-array entity collections, and fractional Wall thickness",
+      "expected": {
+        "accepted": false,
+        "reason": "SERIALIZATION_INVALID",
+        "throws": false,
+        "returnedRevision": "canonical empty revision"
+      },
+      "automatedBy": "test/topology-integrity-regressions.spec.ts"
+    },
+    {
+      "id": "S2-C-PROP-001",
+      "kind": "property",
+      "input": "250 generated legal 0/45/90-degree integer-mm segments",
+      "expected": { "inverseAndSerializationStable": true, "numRuns": 250 },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    },
+    {
+      "id": "S2-C-PROP-002",
+      "kind": "property",
+      "input": "250 generated legal segments followed by their reversed duplicate",
+      "expected": {
+        "reason": "DUPLICATE_SEGMENT",
+        "serializedRevisionUnchanged": true,
+        "numRuns": 250
+      },
+      "automatedBy": "test/topology-scenarios.spec.ts"
+    }
+  ]
+}

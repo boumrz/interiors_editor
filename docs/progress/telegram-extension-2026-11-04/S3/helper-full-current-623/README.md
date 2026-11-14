@@ -1,0 +1,13 @@
+# Canonical whole helper mutation: complete33-case corpus
+
+Source SHA38710fc55101133033f6d381501db5ad22a90f39e362e5a883a386e2eebcdcff. All623 mutants, unchanged80 threshold, concurrency2. Actual required old helper+browser registered-decoder corpus is preserved: baseline159bd15 +original adapter7(SHA695c2638…) +11 new public boundary cases =33 in5files. Clean pre-run33 baseline and restored-environment33 baseline pass.
+
+**Raw complete result:520Killed /3Timeout /100Survived =83.95%, threshold80PASS for this exact helper/corpus scope.**0 compile/runtime/no-coverage errors. Actual namespace canary observes all623 IDs,20,515 matching records, zero mismatch. Every one of620 nonTimeout IDs has exactly33 actual test activations. Only deterministic UTF8 runaway-loop mutants546/547/581 have partial31/6/18 records, separately timed out. Source and all6 frozen source/test inventory files match after restoration.
+
+Historical old full623474K3T146S76.57FAIL stays separate. Exactly46 historical survivors are Killed in this full33 run by exact location/mutator/replacement matching; every previously detected mutation stays detected, including max-depth385 via the retained adapter suite. Do NOT compare report arrays by positional zip; concurrent result order can vary. Current100 survivors keep explicit prior per-ID scope/guard/work/diagnostic dispositions with raw counts unchanged; no blanket equivalence or adjusted score.
+
+A prior real whole-file26-case run519K3T101S83.79 omitted the7 original adapter cases. It is retained underincomplete26 with an explicit non-acceptance notice, not promoted into this result or combined with it. The corpus omission was corrected before claiming the required helper gate.
+
+Environment incident:15 old-mtime copied baseline files disappeared across independent temp snapshots (package/biome/domain config/public icons/catalog PNG/global CSS). Cause is not established; age-based OS temp cleanup is only a hypothesis. This run recorded33 actual test activations for EVERY nonTimeout mutant, so no missing-package/setup exit is counted as Killed. No helper/adapter source/test disappeared or changed. The15 files, unused as these unit subjects, were preserved in a loss audit then restored ONLY in this owned snapshot after exact matching originalSHA via copyfile/fresh destination mtime; all33 baseline tests pass afterward. No other agent snapshot or originals were repaired/cleaned. Future source clones use fresh own mtimes.
+
+This is the required current helper mutation scope only. It does not close broader S2 shared algorithm, other S3 exporters/registered adapter, Web/PWA/device/OS-file or physical Telegram acceptance. No production/original/source-policy/dependency/commit changes.

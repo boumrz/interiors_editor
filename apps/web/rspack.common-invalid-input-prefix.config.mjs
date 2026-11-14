@@ -1,0 +1,1 @@
+import base from'./rspack.config.mjs';import{resolve}from'node:path';export default(env,args)=>{const config=base(env,args);return{...config,cache:false,module:{...config.module,rules:[...config.module.rules,{enforce:'pre',include:[resolve('src/adapters/persistence/scoped-project-repository.ts')],use:[resolve('tests/verification/common-prefix-source-loader.cjs')]}]}};};

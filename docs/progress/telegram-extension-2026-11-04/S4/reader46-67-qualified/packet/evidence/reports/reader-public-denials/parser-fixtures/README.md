@@ -1,0 +1,1 @@
+Immutable actual rejectedv6b408 JSON andactual26canaries copied for CPU parser controls only. Synthetic perturbations never become application/gate witnesses. Actualv7 selected408 separately required.

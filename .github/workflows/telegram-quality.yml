@@ -1,0 +1,70 @@
+name: Verify additive Telegram target
+
+on:
+  push:
+    branches: ['codex/**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  telegram:
+    name: Separate release, signed entry and local storage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Use the runner's temporary directory for verification evidence
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - run: npm install --global pnpm@11.20.0
+      - run: pnpm install --frozen-lockfile
+        working-directory: .
+      - run: pnpm exec playwright install --with-deps chrome
+      - name: Type-check the separate entry and shared editor
+        run: pnpm exec tsc --noEmit -p tsconfig.telegram.json
+      - name: Verify release sealing and read-only preview proxy
+        run: pnpm exec node --test scripts/telegram-release-build.test.mjs scripts/telegram-release-build.boundaries.test.mjs scripts/telegram-target-independence.test.mjs scripts/telegram-preview-server.test.mjs scripts/telegram-readonly-fixture-server.test.mjs scripts/telegram-readonly-proof-audit.test.mjs tests/verification/telegram-readonly-subject-loader.test.mjs
+      - name: Verify native IndexedDB and Web Locks protocol
+        run: pnpm exec node scripts/run-telegram-storage-mutation.mjs
+      - name: Verify isolated browser storage admission and revocation
+        run: pnpm exec node scripts/run-browser-registered-storage.mjs
+      - name: Verify qualified browser projects and exact portable resources
+        run: pnpm exec node scripts/run-browser-registered-project.mjs
+      - name: Verify existing-only browser project export and exact source recovery
+        run: pnpm exec node scripts/run-browser-readonly-project.mjs
+      - name: Verify existing-only Telegram snapshot reads without provisioning
+        run: pnpm exec node scripts/run-telegram-readonly-source.mjs
+      - name: Verify the actual signed production target and retained releases
+        run: pnpm exec node scripts/run-telegram-entry.mjs
+      - name: Verify the common editor through the scoped Telegram runtime
+        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs
+      - name: Preserve isolated verification evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: telegram-local-verification
+          path: |
+            ${{ runner.temp }}/interiors-tma-*
+            ${{ runner.temp }}/interiors-browser-registered-*
+            ${{ runner.temp }}/interiors-browser-readonly-*
+            ${{ github.workspace }}/apps/web/reports/readonly-source/native
+          if-no-files-found: ignore
+          retention-days: 7

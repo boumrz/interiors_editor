@@ -1,0 +1,103 @@
+name: Deploy InteriorsEditor
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Keep one whole publication in flight, including verification and rollback.
+concurrency:
+  group: interiors-production
+  cancel-in-progress: false
+
+jobs:
+  repository:
+    name: Repository and deployment contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.19.0'
+          package-manager-cache: false
+      - run: node --test scripts/check-repository.test.mjs
+      - run: node scripts/check-repository.mjs
+      - run: python3 -m unittest discover -s scripts/deploy -p 'test_*.py' -v
+
+  verify:
+    name: Web and catalog regression
+    uses: ./.github/workflows/verify.yml
+    with:
+      package_release: true
+
+  telegram:
+    name: Telegram regression
+    uses: ./.github/workflows/telegram-quality.yml
+
+  deploy:
+    name: Publish to the Netherlands VPS
+    needs: [repository, verify, telegram]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://domiknote.ru/
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: frontend-${{ github.sha }}
+          path: ${{ runner.temp }}/interiors-release
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: catalog-${{ github.sha }}
+          path: ${{ runner.temp }}/interiors-release
+      - name: Refuse publication of a superseded main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          test "$current" = "$GITHUB_SHA"
+      - name: Send the verified archive through the restricted SSH receiver
+        env:
+          DEPLOY_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_PRIVATE_KEY" && test -n "$DEPLOY_KNOWN_HOSTS"
+          ssh_dir=$(mktemp -d "$RUNNER_TEMP/interiors-ssh.XXXXXX")
+          trap 'rm -rf "$ssh_dir"' EXIT
+          chmod 700 "$ssh_dir"
+          printf '%s\n' "$DEPLOY_PRIVATE_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/key" "$ssh_dir/known_hosts"
+          archive="$RUNNER_TEMP/interiors-release/project.tar"
+          tar --format=ustar -cf "$archive" -C "$RUNNER_TEMP/interiors-release" frontend.tar.gz catalog.tar.gz
+          digest=$(sha256sum "$archive" | cut -d ' ' -f 1)
+          size=$(wc -c < "$archive" | tr -d ' ')
+          ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=20 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -i "$ssh_dir/key" \
+            root@147.45.133.75 "deploy $GITHUB_SHA $digest $size" < "$archive"
+      - name: Verify public HTTPS delivery from the GitHub runner
+        run: >-
+          python3 scripts/deploy/frontend.py smoke
+          --archive "$RUNNER_TEMP/interiors-release/frontend.tar.gz"
+      - name: Record the published commit
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          printf 'Published catalog service, [Telegram](https://domiknote.ru/) and [Web/PWA](https://www.domiknote.ru/) at `%s`.\n' "$COMMIT_SHA" >> "$GITHUB_STEP_SUMMARY"

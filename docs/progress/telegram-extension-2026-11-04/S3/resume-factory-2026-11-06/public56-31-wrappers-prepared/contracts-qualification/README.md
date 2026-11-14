@@ -1,0 +1,9 @@
+# Fixed two-helper210 CPU qualification
+
+The current application1065-input closure and both app contract modules are unchanged. All mutation experiments and test strengthening ran in separate owned CPU copies. The82 external controls cover actual child CLOSE/signal/code, valid/issue/identity boundaries, exact56/31 counts, malformed or missing stage envelopes, valid0/414 and invalid415 selectors, named-body requirements, plain-failure refusals, build-only separation and final state outcomes. No diagnostic-wording assertions were added.
+
+All210 official mutants across the two original helpers are counted:201 behavioral test failures,9 survivors,95.714286%; invalid0. Every one of211 actual child calls loaded all82 cases. Each raw TAP has its own inside-process receipt recording actual env activeID and __stryker__.activeMutant, pinned Node/argv, actual instrumented Source/test file hashes and exit. Archived instrumented Source bytes match all receipts. The exact runner, inventory, original results and every raw TAP/receipt are retained. Every archive member was read back and compared byte-for-byte. See qualification-summary.json for a further conservative calculation leaving runtime-SyntaxError BODY failures uncredited, without changing original statuses.
+
+The initial24-case complete210 campaign151K/59S remains a diagnostic, including its original inventory/results and all TAPs. It did not collect inside-child receipts; the final82 campaign supplies those receipts for every disposition. No prior result is overwritten or normalized.
+
+Source modules remain exact copies of the frozen app helpers. The strengthened external test can be run with pinned Node --test in the current82 temporary root listed in the original result, or reconstructed from its archive. No Native, production Source mutation,415 inventory change, threshold change or app-gate score occurs here.

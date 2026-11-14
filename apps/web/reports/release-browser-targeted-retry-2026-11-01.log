@@ -1,0 +1,62 @@
+
+Running 6 tests using 1 worker
+
+(node:73121) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/6] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:7899:1 › PLAN-E2E-04I: a selected wall has no split action and a repeated touch leaves its geometry durable
+[2/6] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8328:1 › RECONCILIATION-E2E-02D: a wall panel remains intact when the removed split route is unavailable
+  1) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8328:1 › RECONCILIATION-E2E-02D: a wall panel remains intact when the removed split route is unavailable 
+
+    Error: expect(locator).toHaveText(expected) failed
+
+    Locator: getByTestId('wall-count')
+    Expected: "4 стены"
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toHaveText" with timeout 5000ms
+      - waiting for getByTestId('wall-count')
+
+
+      8360 | 	await session.page.reload();
+      8361 | 	await openProjectFromHub(session.page, "Панель в линии разделения");
+    > 8362 | 	await expect(session.page.getByTestId("wall-count")).toHaveText("4 стены");
+           | 	                                                     ^
+      8363 | 	await expect(session.page.getByTestId("room-count")).toHaveText("1 комната");
+      8364 | 	expect(await durableWallItems(session.page)).toEqual(itemsBeforeTouch);
+      8365 | 	expect(await durableRevisionCount(session.page)).toBe(revisionsBeforeSplit);
+        at /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web/tests/browser/editor-workspace-e2e.spec.ts:8362:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-retry-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-retry-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-retry-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-retry-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-retry-results/editor-workspace-e2e-RECON-2377e--split-route-is-unavailable-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+(node:73210) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[3/6] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9517:1 › PLAN-E2E-04B: a selected wall creates a Door only after the explicit New Opening draft is added
+[4/6] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9769:1 › PLAN-E2E-04AA: the removed wall-split route cannot remove a Door
+[5/6] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9814:1 › PLAN-E2E-04D: the New Opening sheet changes to Window before its single explicit publish
+[6/6] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:9869:1 › PLAN-E2E-04F: editing a legacy window size preserves its exact offset and existing non-default sill without a sill field
+  1 failed
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8328:1 › RECONCILIATION-E2E-02D: a wall panel remains intact when the removed split route is unavailable 
+  5 passed (30.5s)

@@ -1,0 +1,9 @@
+Test-only frozen handoff; no public production API change.
+
+Whole current browser-runtime.ts328a: full320, same109 cases,270Killed/0Timeout/50Survived=84.375.321 formal JSON calls;11257 actual before +11257 post case markers (45028 before module observations);33 qualified controls. Actual named Error/TypeError is a behavior failure only when JSON testId/file/title was entered with actual loaded source/local ID and clean setup. It is not called an AssertionError. Every extra error independently requires exact selected-source first raw frame. Global-only/foreign-extra/body or hook timeouts, build/reporter/worker/source errors reject. Formal mixedIDs64/65/81/82/170/171/275 retain their raw selected-source extra errors.
+
+Fixture promises keep original rejection identity, with an attached handled observer; memory-port cleanup preserves the first actual assertion. Disposal tests first prove pending owned drain, then inject exact Error/undefined rejection; failed setup does not manufacture a foreign unhandled rejection. Original sync failure paths remain in the same cases. Public construction/Promise shape assertions make broken public return contracts explicit. Final import formatting is covered by the fresh complete current-byte run.
+
+Every frozen subject/context/corpus listed in manifest restored exactly. Full src/tests context is supplied for reproduction; unrelated UI/Native files are context only, not claimed as executed by these109 unit cases. All50 raw survivors remain in denominator; no equivalence-adjusted score. Prior rejected v6 and stopped v7 raw remain at their original isolated paths.
+
+Only files/ paths are copy targets. Two files are outer109 corpus; NEW leaf-contract15 has only a provider124 baseline and earlier bounded vectors, not a completed provider287/native persistence gate. No prototype/source/UI/DB/history/PPJ/default-browser mutation; no activation.

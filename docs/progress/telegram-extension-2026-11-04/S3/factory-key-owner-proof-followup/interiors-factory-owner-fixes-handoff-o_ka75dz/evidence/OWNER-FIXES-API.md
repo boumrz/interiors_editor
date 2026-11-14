@@ -1,0 +1,9 @@
+Verification-only F/K ownership delta. Source F/K and Original are unchanged. Native15 remains UNRUN; no whole lease is active.
+
+The public test function remains the original Playwright function. Twenty outer `withFactoryBodyProof(originalCallback)` expressions delegate all21 expanded callback byte strings without edits. Registration stays at its original canonical callsite. Body attachments contain `{testId,file,title,pid,phase:'entered'}` and `{...,phase:'settled',outcome:'fulfilled'|'rejected'}`. Actual navigation rows include the same Node worker PID. Context/page are the actual supplied Playwright fixtures.
+
+The Native runner uses canonical path aliases plus actual child/worker PIDs. Build-only returns `build-only-no-native` with zero phases; composite acceptance requires exactly one qualified `native15` phase with cases15. Raw reports and failed CPU-discovery attempts are retained. Synthetic policy/terminal controls are not Native acceptance.
+
+The stock manager remains gated before any instrumentation. Future `native-preflight-qualified.json` must contain `qualified:true`, `unitCases:32`, `nativeCases:15`, `scopes.factory.qualified` and/or `scopes.key.qualified` for the selected actual-qualified scope, `sourceHashes` for all10 plain subjects, complete immutable app `inputHashes` (same exclusions as the manager), and `proofHashes` for all mandatory runtime proof files listed in the manager. An explicit `BR_FACTORY_NATIVE_SLOT=reserved` is also mandatory. Build-only mode is rejected for whole launch. Changing any source/context/proof after qualification requires a fresh preflight; candidate rebase is not covered by current CPU evidence.
+
+No result from this preparation is a mutation score. Future whole scopes stay415 and176 separately, fixed32+15, break80, one worker.

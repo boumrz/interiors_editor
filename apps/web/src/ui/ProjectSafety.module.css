@@ -1,0 +1,69 @@
+.card {
+	background:var(--editor-host-surface, #fff);
+	border:1px solid var(--editor-host-line, #d9e1e8);
+	border-radius:24px;
+	color:var(--editor-host-ink, #192436);
+	display: grid;
+	font: 400 0.875rem/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	gap: 16px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	padding: 20px;
+}
+.card h1, .card h2 { font: 700 1.25rem/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; }
+.card p { margin: 0; }
+.card button { background:var(--editor-host-surface, #fff); border:1px solid var(--editor-host-line, #d9e1e8); border-radius:12px; color:var(--editor-host-primary, #1976b9); cursor: pointer; font: 600 0.875rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 44px; min-width: 44px; padding: 12px; text-align: center; overflow-wrap: anywhere; }
+.card button:focus-visible { outline:2px solid var(--editor-host-primary, #1976b9); outline-offset: -4px; }
+.card button:disabled { cursor: wait; opacity: 0.6; }
+.card .primary { background:#1976b9; border-color:var(--editor-host-primary, #1976b9); color:#fff; }
+.card .secondary { background:var(--editor-host-surface, #fff); border-color:var(--editor-host-line, #d9e1e8); color:var(--editor-host-primary, #1976b9); }
+.card .danger { border-color:#e0c4c4; color:var(--editor-host-danger, #a33333); }
+.card .back { border:0; justify-self: start; padding-inline: 0; }
+.card .error { color:var(--editor-host-danger, #a33333); }
+.context { background:var(--editor-host-canvas, #f4f6f8); border-radius:12px; color:var(--editor-host-muted, #52647b); padding: 12px; }
+.message, .actions, .recoveryActions { display: grid; gap: 12px; }
+.message h2 { color:var(--editor-host-danger, #a33333); }
+.floating {
+	bottom: calc(96px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	box-shadow: 0 4px 16px rgb(25 40 60 / 8%);
+	left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	max-height: calc(var(--editor-viewport-height, 100dvh) - max(9px, var(--editor-safe-area-top, env(safe-area-inset-top))) - 228px - var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	position: absolute;
+	right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	z-index: 8;
+}
+.saveFailure { position: fixed; z-index: 30; }
+.page { background:var(--editor-host-canvas, #f4f6f8); min-height: var(--editor-viewport-height, 100dvh); overflow-x: hidden; padding: max(20px, var(--editor-safe-area-top, env(safe-area-inset-top))) max(16px, var(--editor-safe-area-right, env(safe-area-inset-right))) max(24px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))) max(16px, var(--editor-safe-area-left, env(safe-area-inset-left))); }
+.page > .card { margin-inline: auto; max-width: 460px; }
+.recoveryActions > div { display: grid; gap: 12px; }
+.dialog {
+	box-shadow: 0 12px 40px rgb(11 23 32 / 16%);
+	box-sizing: border-box;
+	inset: auto max(12px, var(--editor-safe-area-right, env(safe-area-inset-right))) max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))) max(12px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	margin: 0 auto;
+	max-height: calc(var(--editor-viewport-height, 100dvh) - max(12px, var(--editor-safe-area-top, env(safe-area-inset-top))) - max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))));
+	max-width: 460px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	position: fixed;
+	width: auto;
+}
+.dialog:not([open]) { display: none; }
+.dialog::backdrop { background:rgb(11 23 32 / 32%); }
+.dialog[data-confirm-tone="primary"] {
+	height: fit-content;
+	inset: max(16px, var(--editor-safe-area-top, env(safe-area-inset-top))) max(16px, var(--editor-safe-area-right, env(safe-area-inset-right))) max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))) max(16px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	margin: auto;
+	max-height: calc(var(--editor-viewport-height, 100dvh) - max(16px, var(--editor-safe-area-top, env(safe-area-inset-top))) - max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))));
+	max-width: 380px;
+	width: calc(100% - 32px);
+}
+.dialog[data-confirm-tone="primary"] .actions { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); }
+
+/* Fixed dialogs use the visible host height; absent host values retain the browser inset. */
+.dialog { bottom: calc(100dvh - var(--editor-viewport-height, 100dvh) + max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)))); }
+.dialog[data-confirm-tone="primary"] { bottom: calc(100dvh - var(--editor-viewport-height, 100dvh) + max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)))); }
+.saveFailure { bottom: calc(100dvh - var(--editor-viewport-height, 100dvh) + 96px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }

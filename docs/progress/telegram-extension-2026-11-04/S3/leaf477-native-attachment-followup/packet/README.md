@@ -1,0 +1,1 @@
+Small verification followup: reject a valid other-case attachment before it enters aggregate actual-module proof. testId/title/canonical file must equal the reporter spec that physically owns the attachment. CPU3 RED→GREEN; Native remains UNRUN. No product source edits or score.

@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": ["@rstest/core"]
+  },
+  "include": [
+    "src/main.tsx",
+    "src/app",
+    "src/application",
+    "src/domain",
+    "src/adapters",
+    "src/ui",
+    "tests/browser",
+    "rspack.config.mjs",
+    "rstest.config.mjs",
+    "playwright.config.mjs"
+  ]
+}

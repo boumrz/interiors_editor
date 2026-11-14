@@ -1,0 +1,7 @@
+{
+  "portableIngressScenario": {
+    "condition": "V1/V2-looking source only after an otherwise valid, checksum-valid, AST-R1-admitted current envelope",
+    "expectedSourceContractReason": "BACKUP_SCHEMA_UNREADABLE",
+    "forbiddenEffects": ["migration", "resource-pin", "id-allocation", "revision", "project-publication"]
+  }
+}

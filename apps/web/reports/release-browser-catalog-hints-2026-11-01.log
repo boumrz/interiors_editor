@@ -1,0 +1,10 @@
+
+Running 2 tests using 1 worker
+
+(node:6397) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/2] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:10899:1 › CATALOG-E2E-01: a phone catalog returns a chosen preloaded model to direct plan placement
+[2/2] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:11213:1 › CATALOG-E2E-01AA: a user can compose an exact local placeholder before its explicit floor placement
+  2 passed (18.5s)

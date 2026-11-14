@@ -1,0 +1,1 @@
+CPU-only diagnostic of complete Bridge49, fixed42 Node cases. Raw42Killed/7Survived/0Timeout;50 formal calls. Independently audited locally:34 assertions+8 public exceptions,0 mixed errors/cleanup attribution,4656 actual module observations,939 restored context paths. Native23 unrun; no hybrid or default activation acceptance claim. Historical accepted Bridge34 remains separate.

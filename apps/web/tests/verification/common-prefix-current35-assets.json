@@ -1,0 +1,6 @@
+{
+  "../catalog-control-plane/src/main/resources/catalog/evidence-assets/evidence-floor-vase.glb": "cd58deda7dfc510f4dd8ff330c155976cd9674335d9c3518e74914fac705dc76",
+  "../catalog-control-plane/src/main/resources/catalog/evidence-assets/evidence-bathroom-sink.glb": "d86ee150670306e9fc705848345b8fe78ca7bd8d6993eec28fbb2a92f30f187c",
+  "../catalog-control-plane/src/main/resources/catalog/evidence-assets/evidence-countertop-appliance.glb": "b569c982d39756b4fd5735372a5272c63a6c3df7e066cba6a45a40ffb47430a6",
+  "../catalog-control-plane/src/main/resources/catalog/evidence-assets/evidence-wall-sconce.glb": "fcfc3ff594a2a4182da87e08bb36ea5dfa0128803e14d54d599b419775a05f38"
+}

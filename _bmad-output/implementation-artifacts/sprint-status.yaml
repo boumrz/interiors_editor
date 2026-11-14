@@ -1,0 +1,1809 @@
+# generated: 2026-08-05T16:42:27+03:00
+# last_updated: 2026-08-29T19:41:00+03:00
+# project: InteriorsEditor
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in the canonical epic file
+#   - ready-for-dev: Story file created in the implementation-artifacts folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review
+#   - done: Story completed
+#   - retired: Product Owner has removed the scope; it is excluded from Alpha
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - This inventory is generated from planning-artifacts/epics.md.
+# - No story file existed when this tracker was generated; every story starts in backlog.
+# - An epic becomes in-progress only when its first story is actually started.
+# - Stories can be worked in parallel only within their documented execution gates.
+#
+# 2026-08-29 Product Owner superseded the former eight-context NFR-15 device
+# matrix. Functional browser and installed-PWA verification on iPhone 15 Pro
+# Max and Samsung S24 Ultra is accepted as Alpha device evidence. RS-2,
+# cold/warm, thermal and independent-review records are optional diagnostics.
+# Story 4.4 is therefore done; all 35 active Alpha stories are now done.
+#
+# 2026-08-25 Product Owner scope correction: Alpha has no licensing or legal
+# asset work. All older comments about AssetUsageGrant, assetUsageDeclaration,
+# provenance, attribution, notices, license ledger or rendered-output rights
+# are historical and do not block stories. Technical format/size/hash, exact
+# pin, BackupFeasibilityPolicy, recovery and self-contained backup remain.
+# 2026-08-25 Product Owner scope correction: floor/wall finish assignment,
+# independent Project duplication and PNG download/share are outside Alpha.
+# Stories 6.2, 6.4, 6.5, 8.1 and 8.10 are retired. Story 6.1 remains only for
+# ItemInstance color/variant; neutral room geometry, Portable Backup/import,
+# ordinary Project transfer, rename and confirmed permanent deletion remain active.
+# 2026-08-25 implementation evidence: Custom GLB definition/JSON/backup no
+# longer serializes or validates a legal usage declaration. Technical GLB
+# format, dimensions, byte length, SHA-256, exact local pin and self-contained
+# backup checks are unchanged. A descriptor carrying the retired legal payload
+# fails the strict JSON boundary rather than being silently reinterpreted.
+# Focused mutation evidence is 37/37 killed (100%); full lint, both TypeScript
+# configurations, 1,278 Rstest and production build are green. This does not
+# close catalog/device/reviewer gates or promote Alpha+ custom import.
+# 2026-08-25 UI follow-up: the Custom GLB review no longer renders a legal
+# declaration checkbox or requires a rights confirmation before placement. It
+# asks only for the display name and integer-mm dimensions; static GLB
+# preflight, SHA-256, exact local pin, resource recovery and self-contained
+# backup are unchanged. `PROJECT-E2E-03D` explicitly asserts that no checkbox
+# exists and proves import → placement → portable backup → restore. The full
+# 123-test mobile-browser suite, 1,278 Rstest, both TypeScript configurations,
+# Biome and production Rspack build passed. A manual equivalent mutation that
+# blocked the post-import placement caused that E2E to time out, then the source
+# was restored and the focused scenario passed again. The configured Stryker
+# command runner cannot safely inject this TSX/browser mutation, so no automatic
+# mutation percentage is claimed for this UI-only follow-up.
+
+generated: 2026-08-05T16:42:27+03:00
+last_updated: 2026-08-29T19:41:00+03:00
+project: InteriorsEditor
+project_key: NOKEY
+tracking_system: file-system
+story_location: /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/_bmad-output/implementation-artifacts
+
+# 2026-08-15 Product Owner verified the current base editor on Samsung S24
+# Ultra and iPhone hardware. This is accepted product feedback for the base
+# interaction slice, not an independent NFR-15/device-lab or installed-PWA
+# certification trace.
+#
+# 2026-08-24 Product Owner retired the Room-metadata successor choice for an
+# added Wall. The historic Story 3.1 panel and `EDITOR-E2E-02RM` evidence are
+# superseded rather than erased: a valid wall-induced split must publish
+# immediately after ordinary Wall confirmation, give every successor the exact
+# predecessor `heightMm`, and never ask which left/right Room keeps ID, name,
+# type or history. The 2600-mm default-successor rule is removed from the
+# Alpha roadmap. Merge choice and unresolved Opening/asset/surface host
+# consequences remain separate safety routes; they are not this retired scope.
+# See sprint-change-proposal-2026-08-24-automatic-room-split.md.
+# Implementation completed and verified on 2026-08-24: the successor chooser,
+# stale-preview route and 2600-mm replacement policy are deleted. Full source
+# regression (1,239 Rstest), both TypeScript configurations, Biome (240 files),
+# production Rspack, six affected mobile-browser scenarios, all three PWA
+# scenarios and scoped Stryker 1/1 killed are green. This is implementation
+# evidence only; it does not alter the remaining story or Alpha status.
+#
+# 2026-08-15 evidence audit: `in-progress` means a production path and
+# automated evidence now exist but full story AC are still open; `review`
+# means the automated slice is ready for independent review. No physical NFR
+# matrix or independent acceptance is claimed as done here.
+#
+# 2026-08-15 Story 1.2 now has automated local list/open/rename evidence and
+# focused mutation evidence (36/36 killed). It remains in-progress pending its
+# running SC-V01 checkpoint and predecessor independent review.
+#
+# 2026-08-15 Story 4.2 is in progress: the existing disposable 3D orbit,
+# pinch-pan/zoom, cutaway and scale controls now gain transient Room-surface
+# selection. A selected usable floor resolves to its derived stable `roomId`;
+# the accessible list exposes the same choice and it creates no Revision or
+# history entry. Focused Rstest (22/22), phone-browser-emulation Playwright
+# (`EDITOR-E2E-03C`) and lint/typecheck passed. Walkthrough and full story
+# acceptance remain open.
+#
+# 2026-08-15 Story 8.3 remains in progress: browser capability-only install
+# guidance now explains the separate local stores of browser and installed
+# application, and safe PWA-update E2E passed. Installed-iOS and physical PWA
+# evidence are still not claimed complete.
+#
+# 2026-08-22 Product Owner removed room Walk from Alpha. Story 4.3, first-person
+# UI, Door navigation edges/transitions and their tests are deleted; Door/Window
+# validation and normal Plan/3D inspection remain in Stories 3.3–3.4 and 4.1–4.2.
+#
+# 2026-08-22 Story 1.4 is done: durable rename joins active-session undo/redo;
+# all production mutation and RecoveryChangeSet publications pass shared
+# SessionRetentionPolicy admission over current+undo+redo+prospective roots.
+# `PROJECT_HISTORY_RESOURCE_LIMIT` preserves current/branches and offers an
+# explicit close/reopen boundary. The independent review and browser-emulation
+# SC-V01 checkpoint found the final cancel/invalid/persistence evidence ready.
+#
+# 2026-08-23 Story 2.3 adds the touch-first safe parallel wall-move slice:
+# the selected cardinal wall is dragged to an exact integer-mm candidate, a
+# disposable dashed projection is shown, and explicit confirm/cancel keeps the
+# current Durable Revision unchanged until publication. The inspector is
+# temporarily removed while the gesture is armed so it cannot cover the target
+# on a phone. The numeric exact-mm input remains available. Full diagonal,
+# vertex and multi-segment topology work remains open.
+#
+# 2026-08-23 Product Owner superseded the coordinate-entry portion of FR-8
+# and the exposed numeric paths of Stories 2.2–2.4. Alpha is touch-first:
+# direct global-coordinate Wall construction, wall position, wall split point
+# and Vertex endpoint fields are removed from the UI. Door/Window creation and
+# editing likewise expose no offset field: their stable wall address is an
+# internal default or direct-handle result. Integer-mm coordinates, the
+# move/split/vertex/opening commands and their validation remain internal
+# geometry safeguards for gesture routes; they are not user-facing placement
+# controls.
+# 2026-08-23 Story 2.3 gains the first safe direct-Vertex gesture route:
+# selecting a detached cardinal Wall exposes only its eligible endpoint handles.
+# A one-finger axis-constrained drag produces a disposable preview and explicit
+# confirm/cancel; only confirmation calls the existing atomic vertex mutation.
+# `PLAN-E2E-04H` proves cancel stays non-durable and confirm makes one Revision;
+# its publish-return mutation is killed. Junction and multi-segment gestures,
+# as well as 45-degree topology, remain open.
+#
+# 2026-08-23 Stories 2.3/2.4 extend that touch-first route to an isolated
+# 45-degree Wall: an endpoint follows its diagonal; the entire Wall moves
+# only along its perpendicular; and a split candidate projects back to its
+# exact 45-degree centreline. Each route remains a disposable preview until
+# one explicit confirmation publishes a Revision. Cardinal point splitting
+# keeps its prior behaviour through the same command seam. Closed diagonal
+# Rooms, diagonal Opening hosts and junction/multi-segment diagonal edits are
+# still deliberately rejected rather than approximated. Focused Rstest (50),
+# two TypeScript configurations, production build, four affected mobile E2E
+# scenarios and 81.25% threshold-passing mutation evidence are green.
+#
+# 2026-08-23 Story 2.2 now completes the narrow first closed diagonal-Room
+# vertical slice: exactly three Walls in a clean empty 0°/45°/90° graph
+# materialize one durable triangular Room with its raw derived fingerprint.
+# Its Plan face and inset usable-floor polygon remain triangular, and 3D
+# renders a real triangular floor prism rather than a rectangular envelope.
+# This intentionally does not yet cover edits after closure, multiple or
+# arbitrary diagonal faces, diagonal-hosted Openings or Items. Evidence:
+# 1,219 Rstest, four targeted mobile-browser flows (including the triangle
+# creation/view flow), and focused 19/19 mutation evidence are green.
+#
+# 2026-08-23 historical Story 2.2 increment extended the user path from the
+# first triangle to a square Room split by a touch-drawn 45° diagonal. Its
+# explicit successor panel and default Room behavior are superseded by the
+# 2026-08-24 automatic-height decision; both raw derived fingerprints survive
+# reopen reconciliation, and Plan
+# plus WebGL display two exact triangles. A floor Item makes this split reject
+# with `ITEM_HOST_UNRESOLVABLE`, rather than silently choosing a triangle.
+# Five targeted mobile-browser scenarios, 1,220 Rstest, both TypeScript
+# configurations, changed-file Biome, production build and focused mutation
+# evidence (25/26 killed; the `> 0` to `>= 0` survivor is equivalent after
+# the zero-area guard) are green. Generic non-rectangular editing, Items and
+# diagonal-hosted Openings remain deliberately outside the slice.
+#
+# 2026-08-24 Regression repair: a manually closed, strictly convex 0°/45°/90°
+# contour with four or more edges now materializes one durable Room rather than
+# being rejected as `UNSUPPORTED_FACE_SHAPE`. Its raw face fingerprint, exact
+# polygonal 2D face and orientation-aware inset usable floor are preserved for
+# reopening and WebGL projection; no rectangular envelope is inferred. The
+# scope deliberately remains bounded: concave contours, general polygon edits
+# or splits after closure, and diagonal Opening rehosting remain out of scope
+# and fail closed. Evidence: 1,270 Rstest, both
+# TypeScript configurations, Biome (247 files), production Rspack, 123 mobile
+# browser scenarios and focused Stryker 44/54 killed (81.48%, threshold 80%).
+#
+# 2026-08-23 The diagonal Room slice now covers a safe reversal and opening
+# host. Removing the selected 45° divider previews the two source Rooms and
+# requires an explicit choice of the Room whose metadata survives; cancel
+# remains non-durable and confirmation restores the square. A 45° Wall now
+# exposes a conservative integer-mm opening interval (floor of its physical
+# length), so a selected diagonal divider can create, persist and render a
+# Door in Plan and WebGL without coordinate placement. If that Door exists,
+# the same deletion preview composes its exact Opening ID with the required
+# Room metadata choice; confirmation removes both in one revision.
+# `EDITOR-E2E-02X` and `EDITOR-E2E-02Y` supply mobile-browser evidence.
+# Generic diagonal topology edits and diagonal Opening changes after topology
+# mutation remain out of scope.
+#
+# 2026-08-24 The same durable Door on the stable 45° host is now covered
+# through safe edit: the cancellable draft rejects 10,000-mm width without a
+# revision, while a 1,300-mm width and opposite swing side publish once,
+# retain the exact host and survive reload plus WebGL reopening. Domain checks
+# accept the exact 2,828-mm conservative diagonal boundary, reject 2,829 mm
+# immutably, and keep the corresponding Window oversize reason distinct.
+# Focused Stryker kills all 15 width-validation mutants. This does not add
+# opening rehome/edit support after a diagonal topology mutation.
+#
+# 2026-08-15 Story 3.2 is in progress. The canonical Room metadata command
+# now validates bounded integer ceiling height (500–10,000 mm), a nonblank
+# user name, and a closed alpha type vocabulary before one durable publish.
+# The 2D/3D UI selects the derived stable roomId, displays the supplied name,
+# and has mobile-browser E2E evidence for one publish and the updated 3D
+# projection. Metadata follows the unambiguous surviving Room through the
+# covered local split/merge route. Full golden-fixture, independent review,
+# and physical-NFR evidence remain open.
+#
+# 2026-08-22 Product Owner removed Room selection from both Plan and 3D. This
+# supersedes the prior transient Room-surface selection UI: Room remains a
+# derived/display-only domain projection, its tap creates no selection or
+# history entry, and the selector/property panels are deleted. Story 3.2
+# metadata and Stories 6.2–6.3 finish flows now wait for a separately approved
+# non-canvas redesign route; ItemInstance selection remains in its own Story 5.4.
+#
+# 2026-08-22 Story 3.3 is done. Door and Window are strict wall-hosted types
+# (Window has no door swing state); both validate exact integer-mm interval,
+# height and overlap constraints, publish only through the durable Revision
+# boundary, survive canonical JSON transfer, and cut the same host wall in Plan
+# and disposable 3D projection. Door/Window controls require a selected
+# compatible Wall, never a Room. The phone Window draft accepts exact width,
+# height and sill; its initial midpoint offset remains an internal stable host
+# address, and direct handle movement is the only user-facing repositioning.
+# Cancel creates no revision. The shared-wall corpus
+# proves 2400 mm is accepted at equality and 2401 mm atomically rejects as
+# `OPENING_OUT_OF_BOUNDS` even beside a 2700 mm room. Evidence: 1,111 Rstest,
+# 95 mobile-browser E2E, 3 production-PWA E2E, typechecks, changed-file Biome
+# lint and production Rspack build passed; the
+# exact-boundary tests kill the `≤` → `<` manual mutation, and the window-draft
+# browser test kills a mutation that suppresses its durable publish.
+#
+# 2026-08-22 Story 3.4 increment: an existing Door or Window now opens an
+# explicit cancellable draft. Width, height, sill/threshold and Door swing side
+# are validated together against a fresh canonical host; the stable offset is
+# changed only by its direct handle. Only confirm can publish one durable
+# revision, while cancel leaves Project, history and autosave untouched. The
+# domain corpus proves a Window may reach
+# its exact host-height boundary and rejects the next millimetre atomically;
+# that new test kills a mutation that ignores the edited height. Evidence:
+# 1,111 Rstest, 95 mobile-browser E2E, 3 production-PWA E2E, typechecks,
+# changed-file Biome lint and production Rspack build passed. Full ConflictPreview
+# choices for host-wall topology changes and Room-height re-entry remain open.
+#
+# 2026-08-22 Story 3.4 increment: deleting a Wall with hosted Openings now
+# first creates an allocation-free `ConflictPreview`, listing exactly the
+# affected host IDs. Cancel leaves Project/history/autosave unchanged. The
+# explicit delete outcome rechecks that exact set on the fresh writer-fenced
+# base and then atomically removes only those Openings with the Wall in one
+# Durable Revision; stale lists reject without partial deletion. Evidence:
+# 1,112 Rstest, 95 mobile-browser E2E and 3 production-PWA E2E passed, with
+# both typechecks, changed-file Biome lint and production Rspack build. Manual
+# mutation that retains the hosted Opening is killed by the domain corpus.
+# Rehome/resize choices for more complex topology edits and Room-height
+# conflict re-entry remain open.
+#
+# 2026-08-22 Story 3.4 increment: lowering a Room ceiling now runs a pure
+# Opening ConflictPreview before any durable metadata update. The preview lists
+# every newly invalid Opening; ordinary update rejects without changing Project,
+# history or autosave. Re-entry accepts only an exact, fresh resize/delete set,
+# reruns host validation and publishes the Room plus resolved Openings in one
+# Revision. Domain/application tests prove cancellation-by-omission, stale and
+# duplicate outcome rejection, an exact 1900-mm resize and delete path; manual
+# mutation changing the requested resize by one millimetre is killed. A UI
+# surface for Room metadata remains deferred with the approved non-canvas
+# redesign, and topology rehome choices remain open.
+#
+# 2026-08-23 Story 3.4 now preserves a Door or Window when a touch-selected
+# wall is split entirely to one side of its interval: head keeps the original
+# Wall ID and a tail receives the new ID plus a rebased internal offset. A jamb
+# may meet the split point exactly. If the marker crosses a Door/Window, Plan
+# shows an allocation-free conflict with Cancel or one explicit action that
+# rechecks the exact opening-ID set on the fresh base and atomically removes
+# only those cut Openings with the split. `PLAN-E2E-04Z` covers retained Door
+# host/reload/3D; `PLAN-E2E-04AA` covers cancel and confirmed atomic removal;
+# the domain suite covers a tail-hosted Window and stale set rejection. A
+# manual `<=` → `<` jamb-boundary mutation is killed. Rehome/resize to another
+# arbitrary Wall after more complex topology edits remains open.
+#
+# 2026-08-22 Story 2.6/3.4 increment: deleting a Wall now previews the exact
+# direct Opening IDs and any floor Item IDs that would lose their only valid
+# derived Room host. The preview also exposes affected Room IDs when a
+# consequence panel is already needed. Cancel is non-durable; confirm compares
+# all displayed IDs against the fresh fenced base and atomically deletes the
+# approved Wall/Openings/orphaned Items or rejects stale input. Browser test
+# `PLAN-E2E-04G` proves a phone user can cancel and then confirm the one-revision
+# item outcome; `RECONCILIATION-E2E-01` remains green for Door-only deletion.
+#
+# 2026-08-22 Story 3.1 historical increment: an added Wall that splits a
+# derived Room created an allocation-free metadata ConflictPreview and required
+# choosing a successor. This implementation/evidence is superseded by the
+# Product Owner's 2026-08-24 decision above and is no longer planned Alpha
+# behavior. It remains recorded only for traceability; neither its left/right
+# dialog, 2600-mm default, nor `EDITOR-E2E-02RM` is an acceptance target.
+#
+# 2026-08-23 Story 2.6/3.1 increment: removing a divider that merges Rooms
+# now previews the exact source-Room choice before any publication. The user
+# selects the Room whose ID/name/type/height/history survives; missing,
+# duplicate or foreign selections reject without a Revision. `PLAN-E2E-04`
+# proves cancel, required choice and durable mobile confirmation. The panel is
+# a transient topology consequence, not a Room-selection feature.
+#
+# 2026-08-23 Story 2.3 increment: a selected cardinal Wall can now move in
+# exact integer millimetres along its normal through one durable command. Its
+# endpoint IDs, adjacent perpendicular connections, Room metadata and valid
+# hosted data are revalidated atomically; a collapsed usable polygon is
+# non-durable. `PLAN-E2E-04E` proves move/reopen on phone browser emulation;
+# manual mutation that leaves the divider at its old coordinate is killed.
+# Touch drag, diagonal/freeform moves and multi-segment topology moves remain
+# explicitly outside this increment.
+#
+# 2026-08-23 Story 2.4 increment: a selected cardinal Wall can now split at
+# an exact integer-mm point through the normal durable path. The original ID
+# stays with the first piece, the second piece and shared Vertex receive fresh
+# IDs only after topology validation; the derived Room is preserved. Endpoint,
+# decimal and Opening-hosted splits reject before allocation. `PLAN-E2E-04F`
+# proves the phone numeric flow and durable reopen; manual duplicate-tail-ID
+# mutation is killed. Connecting a new Wall through the vertex remains handled
+# by the existing all-contact AddWallSegment path; 45-degree/multi-segment
+# topology stays open.
+#
+# 2026-08-23 Story 2.4 now has its first touch-first split route: selecting a
+# cardinal Wall without an Opening exposes `Разделить стену жестом`; one tap
+# strictly inside the segment creates only a local marker candidate. Cancel
+# remains non-durable, while confirmation invokes the existing atomic split
+# command and produces one Durable Revision. `PLAN-E2E-04I` covers both paths
+# and its forced non-success publication mutation is killed. The former numeric
+# split UI is superseded by the Product Owner's no-coordinate decision; joined
+# junctions, 45-degree and multi-segment topology remain open.
+#
+# 2026-08-23 Stories 2.4/2.6 gain the safe inverse of that split: the selected
+# segment may offer `Убрать вершину разделения` only for an inline degree-two
+# Vertex joining equal-thickness walls with no Opening host. The explicit
+# preview can be cancelled without a Revision; confirm merges the pieces with
+# the first segment ID retained. Corners, junctions, unequal thickness and
+# Opening hosts reject before mutation. `PLAN-E2E-04J` and domain tests cover
+# cancellation, one-revision confirmation and the corner rejection; a manual
+# collinearity mutation is killed.
+#
+# 2026-08-23 Story 4.5 Focus increment: `Войти в Фокус` now performs the
+# capability-first native fullscreen request in that same direct gesture through
+# a UI/platform seam. `fullscreenchange`, `fullscreenerror`, Promise rejection,
+# unsupported platform and external native exit reconcile only transient UI
+# state: in-app Focus, Project, history and status remain intact. The Focus rail
+# retains labelled 2D/3D view switching, exit and Undo/Redo; blocking restart
+# confirmation stays above it. `FOCUS-E2E-01`–`06` are green in controlled
+# mobile-browser emulation (with `05A`/`05B` fallback variants and `01A` mode
+# regression); unit tests cover the seam. Manual mutations removing the entry
+# request and falsifying capability detection are killed. This is not physical
+# fullscreen compatibility or NFR-15 evidence: visualViewport/keyboard/text
+# scale/status-matrix, installed-PWA and eight physical Focus rows remain open.
+#
+# 2026-08-25 Story 8.2 scope correction: recoverable Project removal is removed.
+# One explicit named confirmation now atomically deletes the active Project
+# pointer, its staging record and all owned Durable Revisions under the same
+# fenced transaction. Cancel, storage error and stale writer retain the Project.
+# Exact resource bytes are intentionally retained until a global reachability
+# inventory can prove them unreferenced by Projects, library, recovery and
+# session roots. A legacy pointer carrying the obsolete lifecycle marker reopens
+# as a normal Project card rather than being deleted automatically. That cross-project GC and physical-
+# device evidence remain open.
+# 2026-08-25 Direct-delete implementation is ready for independent review:
+# UI, controller and IndexedDB direct routes are covered by cancellation,
+# storage-failure, stale-writer, legacy-pointer and phone-browser tests; scoped
+# Stryker mutation score is 82.65% (81/98 killed). This records no G-* PASS.
+#
+# 2026-08-23 Story 8.5 is in progress. The browser's advisory StorageManager
+# estimate is classified as healthy/warning/critical at explicit 70%/90%
+# envelopes; missing, malformed and failed estimates remain unavailable rather
+# than inventing capacity. Warning/critical state is visibly announced in the
+# phone editor before the next change, explains that it is not an eviction
+# guarantee, and offers the existing project/JSON-export route. The durable
+# failure path keeps the previous Revision and readable Project pointer intact
+# when IndexedDB refuses a permanent-delete transaction. Unit, type and mobile
+# browser evidence cover these outcomes. Cache reachability cleanup, quota-error
+# recovery action and physical device/storage-pressure evidence remain open.
+#
+# 2026-08-15 Story 5.1 is in progress. The current deliberately local
+# procedural catalogue now has accessible name/dimension search, local
+# furniture grouping and an empty-result state; its cards remain explicitly
+# labelled as offline parametric placeholders rather than branded or remotely
+# backed products. Focused domain/UI tests and `CATALOG-E2E-01`/`01A` pass.
+# Manifest gateway, grants, pins, resource-state and outage semantics remain
+# open, so this is not claimed as full catalog-resource completion.
+#
+# 2026-08-24 PWA catalog-resource hardening: a catalog GLB now accepts either
+# a complete no-store 200 response or a contiguous verified 206 range sequence.
+# The service worker passes every Range request through without Cache Storage,
+# because Cache API rejects a 206 response and previously converted that valid
+# network result into `Response.error()`. `CATALOG-E2E-01…01C` cover ready,
+# pending, unavailable/retry and placement states; `PWA-E2E-04` proves that an
+# active worker can place the catalog model and leaves no partial GLB in its
+# shell cache. Focused mutation evidence is 95 killed plus 1 timeout of 106
+# mutants (90.57%). This restores the local catalog path only; it does not
+# claim the remote manifest, provenance/grant or resource-pin gates closed.
+#
+# 2026-08-15 Story 6.1 is in progress. A selected local parametric item can
+# now change only to one of seven declared offline colour variants through one
+# durable command; arbitrary CSS colour ingress is rejected, and the previous
+# variant returns through session Undo. Domain/application/controller tests,
+# a mobile-browser E2E and a manual palette-guard mutation are green. This is
+# deliberately not evidence for V-12: recolorable slots, approved-resource
+# grants, pin staging and portable-backup manifest semantics remain gated.
+#
+# 2026-08-25 Story 6.1 follow-up: the same seven declared local colour
+# variants are now available for a selected wall-hosted panel. The choice
+# changes only that panel's colour; its stable WallSegment host, side, local
+# offset, elevation, dimensions and catalog definition remain unchanged.
+# Unsupported colours, floor/missing IDs and a locked panel are rejected
+# before hashing or publication. The controller routes an accepted change as
+# exactly one Durable Revision, and Undo returns the earlier colour. Focused
+# domain/application tests and `ITEM-E2E-04G` cover the phone flow; the locked
+# panel test also proves its palette is disabled. Scoped mutation runs killed
+# 41/41 domain and 19/19 publication mutants. Story 6.1 remains in progress:
+# declared material variants/recolorable catalog slots and the technical
+# resource pin/backup admission evidence are still outside this colour slice.
+# Final regression is green: Biome (247 files), both TypeScript
+# configurations, 1,287 Rstest, production Rspack, 127/127 ordinary
+# mobile-browser E2E and 4/4 production-PWA E2E. The temporary local test
+# server was stopped after the run; no public tunnel was started.
+#
+# 2026-08-25 Story 6.1 truthfulness follow-up: a GLB-backed ItemInstance is
+# recolorable only when a future catalog contract declares a recolorable slot.
+# Until then, the editor hides its palette and explains that no editable colour
+# variant is declared; the domain rejects `ITEM_COLOR_NOT_SUPPORTED` before
+# checksum or Durable Revision publication. The same rule applies to wall
+# items. Parametric items and parametric wall panels retain the seven declared
+# offline colours. Exact matching against the Project GLB manifest prevents an
+# unrelated GLB from disabling a parametric catalog colour. Domain/application
+# tests cover rejection-before-publication, multiple manifest entries and
+# one-target-only recolour. `CATALOG-E2E-01` proves the preloaded Bed has the
+# explanatory state and no swatches; `ITEM-E2E-05` proves that a parametric
+# placeholder still recolours and Undo restores it. Scoped mutation scores are
+# 47/48 (97.92%) for floor items and 54/55 (98.18%) for wall items; one
+# survivor in each is equivalent for valid data because a GLB definition ID
+# cannot equal `undefined`. Final regression: 1,295 Rstest, Biome (247 files),
+# both TypeScript configurations, production Rspack, 127/127 mobile E2E and
+# 4/4 production-PWA E2E. The temporary local server was stopped; no public
+# tunnel was started. Story 6.1 remains in progress pending declared
+# recolorable slots/material variants and technical resource pin/backup
+# admission evidence.
+#
+# 2026-08-25 Story 5.3 wall-side projection follow-up: a wall-hosted item's
+# existing semantic `left`/`right` address now determines its physical centre
+# outside the host wall rather than leaving both sides on the centreline. Plan
+# and WebGL consume one disposable footprint calculation, including a 45-degree
+# host, so the renderer cannot invent a different side convention. The phone
+# draft exposes left/right before confirmation; choosing a side creates no
+# Durable Revision, while confirmation stores the ordinary stable host and
+# keeps it after reload. `ITEM-E2E-04H` covers the right-side phone flow and
+# 2D Plan marker; the projection unit test proves left/right have distinct
+# centres. Story 5.3 remains in-progress because catalog resource admission,
+# recovery and its remaining cross-topology acceptance are still open. Final
+# evidence: 1,296 Rstest, both TypeScript configurations, Biome (247 files),
+# production Rspack, 128/128 mobile-browser E2E and 4/4 production-PWA E2E.
+# A scoped Stryker run over the large renderer adapter was stopped after it
+# made no progress for six minutes; no mutation score is claimed for this
+# adapter-only slice.
+#
+# 2026-08-25 Story 5.5 wall-placeholder follow-up: selected-wall placement
+# now starts a configurable local parametric placeholder rather than a
+# permanently hard-coded panel. Before the explicit confirmation a phone user
+# can set its name, width, depth, height, installation elevation, local offset,
+# semantic side and one declared color. Raw draft text remains non-durable;
+# confirmation reconstructs an integer-mm wall-local input and routes it through
+# the existing host-boundary, opening and collision assessment. This creates no
+# ceiling feature or resource/licensing requirement. `ITEM-E2E-04I` was RED
+# before these controls existed and now verifies every field persists in the
+# Durable Revision and after reload. A manual equivalent mutation that used the
+# width as the local offset made the E2E fail (700 mm received instead of
+# 1,400 mm), then was reverted; the focused test passed again. Automatic
+# Stryker does not reliably run TSX/browser mutations, so no score is claimed.
+# Final evidence: 1,296 Rstest, both TypeScript configurations, Biome (247
+# files), production Rspack, 129/129 mobile-browser E2E and 4/4 production-PWA
+# E2E green. The temporary localhost server on 4188 was stopped; no public
+# tunnel was started. The broader floor, wall and opening collision outcomes
+# were audited below; external catalog-resource work belongs to Story 5.6,
+# not to this local Parametric Placeholder story.
+#
+# 2026-08-25 Story 5.5 draft-feedback follow-up: a wall-item draft now performs
+# the existing pure placement assessment while the user is editing it. A
+# malformed integer-mm draft, host/opening conflict or same-side overlap is
+# immediately explained and cannot be confirmed; selecting the opposite side
+# immediately restores a valid confirmation action when that side is clear.
+# This is UI-only derived state: it creates no Revision, changes no asset and
+# leaves the final controller assessment as the durable authority.
+# `ITEM-E2E-04E` was RED before the immediate feedback existed and now proves
+# the named overlap, disabled confirmation, valid opposite-side transition and
+# cancel-without-revision. A manual `&&` → `||` mutation of the confirmation
+# predicate made the test fail with an incorrectly enabled action, then was
+# reverted. Stryker cannot reliably run TSX/browser mutations, so no automatic
+# score is claimed. Final evidence: 1,296 Rstest, both TypeScript
+# configurations, Biome (247 files), production Rspack, 129/129 mobile-browser
+# E2E and 4/4 production-PWA E2E green. The localhost server on 4188 was
+# stopped; no public tunnel was started.
+#
+# 2026-08-25 Story 5.5 acceptance audit: the four acceptance outcomes are now
+# traceable through the local product path. `CATALOG-E2E-01AA` verifies a named,
+# sized, coloured floor Parametric Placeholder before durable placement;
+# `ITEM-E2E-04I` verifies its wall-hosted counterpart; `EDITOR-E2E-11` verifies
+# floor collision feedback and rejected commit; and `ITEM-E2E-04E` verifies
+# immediate wall-side collision feedback, a corrected candidate and cancel with
+# no Revision. The shared pure domain preflight covers item, wall and door
+# clearance collisions; the display exposes the affected Plan geometry and a
+# corrective message. A fresh 1,296/1,296 Rstest and these four mobile E2E
+# scenarios passed on 2026-08-25. Story 5.5 is ready for independent review;
+# no `done` claim is made without it.
+#
+# 2026-08-25 Story 7.2 acceptance audit: Cancel returns every tested active
+# editor interaction to its prior applied state without a Revision, autosave or
+# History entry. Mobile scenarios cover a no-intent Wall tap (`EDITOR-E2E-02C`),
+# valid and invalid floor-item previews (`EDITOR-E2E-04B`), a two-finger
+# interruption of an item drag (`EDITOR-E2E-04A`), Wall move and split drafts
+# (`PLAN-E2E-04E`, `PLAN-E2E-04I`) and a Window draft (`PLAN-E2E-04D`). The
+# tactile controls are distinct from camera navigation and always restore the
+# non-draft tool state. Direct numeric editing was explicitly removed from the
+# phone-first Alpha scope; its former acceptance wording is superseded by the
+# same labelled touch/button cancellation route. The six named scenarios (and
+# six neighbouring same-name mobile checks) plus 1,296/1,296 Rstest passed.
+# Story 7.2 is ready for independent review; it is not `done` without it.
+#
+# 2026-08-25 Story 8.3 compatibility follow-up: if the browser cannot expose
+# a StorageManager estimate, the phone editor now says so explicitly and offers
+# the existing Project/export route. It remains an advisory limitation: exact
+# 2D authoring and ordinary local Durable save stay available, while the user is
+# told to make a backup before important work. The status is delayed until the
+# first estimate resolves, so capable browsers do not see a false transient
+# warning. `PROJECT-E2E-01D` was RED before this UI existed and proves this
+# fallback plus a successful local Plan save; `PROJECT-E2E-01C` keeps the
+# distinct 90% pressure warning green. A manual `unavailable` → `healthy`
+# mutation made the new E2E fail, then was reverted. The TSX/browser Stryker
+# route remains unreliable, therefore no automatic score is claimed. Full
+# evidence: 1,296/1,296 Rstest, both TypeScript configurations, Biome (247
+# files), production build, the two storage mobile E2E, `PLAN-E2E-02` WebGL2
+# fallback and 4/4 production-PWA E2E. Story 8.3 is ready for independent
+# review. This does not close Story 8.5's quota-publication, cache-cleanup or
+# physical storage-pressure work.
+# 2026-08-25 Story 8.5 follow-up: after an atomic publication failure, the
+# phone editor now preserves the existing retry action and also offers
+# “К проектам и экспорту”. This takes the user to the existing portable-backup
+# route without treating the candidate mutation as durable. `PLAN-E2E-02`
+# forces the pre-pointer IndexedDB failure, verifies both actions, follows the
+# fallback to the named Project card and verifies its export action. The test
+# was red before the UI change and green afterwards; manually changing the
+# fallback to retry left the test unable to reach Projects, so the mutation was
+# killed and reverted. Full regression is 1,296/1,296 Rstest, both TypeScript
+# configurations, Biome (247 files), production build and 4/4 production-PWA
+# E2E. Story 8.5 stays in progress: real quota-publication evidence,
+# browse-cache-only cleanup and physical-device pressure proof remain.
+# 2026-08-25 Story 8.5 persistence-protection follow-up: when the advisory
+# warning/critical envelope is visible, the user can explicitly request
+# browser-managed persistent storage. The result is preserved as `granted`,
+# `not-granted` or `unavailable`; none is represented as an eviction guarantee,
+# and the Portable Backup route remains visible. `ProjectController` keeps the
+# browser request out of automatic startup/publication paths. Its new test was
+# RED while the method did not exist, then proves refusal, grant and missing
+# capability. `PROJECT-E2E-01E` drives a 90% phone warning, an explicit
+# refused `StorageManager.persist()` request, the honest status and backup
+# route. Focused Stryker found 42/43 killed (97.67%); the one survivor is the
+# equivalent removal of `typeof` before `Number.isSafeInteger`. Manual
+# controller-refusal and UI-navigation mutations each made their target test
+# fail and were reverted. Full regression is 1,297/1,297 Rstest, both
+# TypeScript configurations, Biome (247 files), production build and 4/4
+# production-PWA E2E. Story 8.5 remains in progress for quota-publication,
+# browse-cache cleanup and physical-device evidence.
+# 2026-08-25 Story 8.5 quota-publication follow-up: a named IndexedDB
+# `QuotaExceededError` now becomes `PERSISTENCE_QUOTA_EXCEEDED`, while every
+# other write fault remains `PERSISTENCE_WRITE_FAILED`. The durable adapter
+# continues to stage/validate before the current-pointer transition; a quota
+# rejection therefore leaves the previous Durable Revision current and the
+# candidate unpublished. The editor now says that local storage has run out,
+# directs the user to export the Project, free space and retry, and retains the
+# existing “К проектам и экспорту” route. `PLAN-E2E-02` exercises the real
+# IndexedDB adapter through a quota-shaped pre-pointer failure on a phone
+# viewport, follows the export route and reopens the last durable dimensions.
+# Focused tests also distinguish a non-quota storage failure and both rename
+# messages. Full regression is 1,300/1,300 Rstest, both TypeScript
+# configurations, Biome lint (247 files), production Rspack build and 4/4
+# production-PWA E2E. Focused Stryker is 65/67 killed (97.01%); the two
+# surviving mutations are equivalent removals of redundant object/null guards
+# before the named-error check. Story 8.5 remains in progress only for
+# browse-cache-only cleanup and physical-device storage-pressure evidence.
+# 2026-08-26 Story 8.5 browse-cache follow-up: the installed PWA now keeps
+# its hashed application shell and repeatable catalog bytes in separate
+# CacheStorage namespaces. Under a storage-pressure warning, the explicit
+# “Освободить место в кэше” action sends a request to the controlling Service
+# Worker, waits for its acknowledgement and clears only `interiors-editor-
+# browse-*`; it cannot access IndexedDB, Project revisions or exact pinned
+# resources. `PWA-E2E-05` starts at 90% advisory storage use on a phone
+# viewport, caches a catalog thumbnail, proves it is in the browse namespace,
+# clears it, then reloads the retained shell and durable Project offline. The
+# test was red before the split and green after it. Two manual production-PWA
+# mutations were killed and reverted: storing catalog bytes in the shell
+# namespace and deleting the shell namespace instead of browse cache. Full
+# regression is 1,300/1,300 Rstest, both TypeScript configurations, Biome lint
+# (247 files), a production Rspack build and 5/5 production-PWA E2E. Story 8.5
+# remains in progress only for physical-device storage-pressure evidence.
+# 2026-08-26 Story 8.6 recovery-state UX follow-up: a Project whose referenced
+# custom bytes are missing or corrupted no longer looks like a blank first-run
+# Project. It has the explicit “Проект требует восстановления” screen and
+# tells the user that unsafe models are withheld from 3D and that editing and
+# session history are deliberately blocked. The ordinary first-run screen stays
+# distinct. The existing browser corruption → exact repair scenario now proves
+# the visible recovery diagnostics as well as the original bytes-only repair.
+# TDD was red before the recovery heading/diagnostic existed. Focused mutation
+# evidence is 10/10 killed (100%). Full regression is 1,301/1,301 Rstest,
+# both TypeScript configurations, Biome lint (247 files), a production Rspack
+# build, 131/131 mobile-browser E2E and 5/5 production-PWA E2E. Story 8.6
+# remains in progress for the separate Catalog-Control-Plane outage proof and
+# deterministic PinStagingLease/forced-GC recovery evidence.
+#
+# 2026-08-26 Story 5.1 loading-reliability follow-up: every catalog GLB range
+# request now has a 15-second cancellation bound. A stalled network request
+# reaches the existing retryable `unavailable` state instead of retaining the
+# in-flight promise and an indefinite "loading" card; a completed request also
+# clears its timer. TDD was red while a hung request remained pending, then
+# green with 11 focused tests. Stryker over the loader killed 105/118 mutants;
+# every mutant in the new timeout/abort/cleanup branch was killed, while the
+# remaining 12 survivors and one timeout are pre-existing byte-range-validation
+# cases outside this increment. Full regression is 1,303/1,303 Rstest, both
+# TypeScript configurations, Biome lint (247 files), production Rspack build,
+# and production-PWA `PWA-E2E-04` for range loading/caching. Story 5.1 remains
+# in progress for its versioned catalog control-plane and outage-contract work.
+#
+# 2026-08-26 Story 5.1 thumbnail-resilience follow-up: an unavailable bundled
+# PNG now renders the compact “Превью недоступно” state at the same card height
+# instead of exposing the browser's broken-image text. This does not prevent
+# selecting the card or loading its GLB for placement. `CATALOG-E2E-01D` is
+# red before the fallback and proves the failed-thumbnail route stays readable,
+# correctly sized on phone and actionable; `CATALOG-E2E-01` preserves the
+# normal alt-labelled image route. The automated Stryker command runner keeps
+# serving a stale TSX bundle and therefore reports false survivors, so it is
+# not used as evidence. Equivalent fresh-server manual mutations—empty normal
+# `alt`, removed image-error handler and invalid state update—each fail the
+# relevant browser assertion, then are restored. Full regression is 1,303/1,303
+# Rstest, both TypeScript configurations, Biome lint (247 files), production
+# Rspack build and both targeted mobile-browser scenarios. Story 5.1 remains
+# in progress; the unimplemented remote Catalog Control Plane remains behind
+# its `G-CP-ADR` gate, not simulated by the local catalog UI.
+#
+# 2026-08-26 Story 7.1 history-only-resource safety increment: an attempted
+# undo/redo now verifies the exact resources of its target before publication.
+# When only that historical target is missing or corrupt, the controller keeps
+# the healthy current revision visible, enters the explicit read-only
+# `history-recovery-needed` state and preserves both branches. The phone UI
+# explains that the current plan remains exportable and opens a named
+# confirmation; cancel keeps the recovery state and branches intact. Approval
+# rechecks the current manifest and writer fence, then clears both in-memory
+# history roots and visibly returns to the same current revision without a new
+# Project Revision. The controller test was red before target verification;
+# it proves no target publication, the current-resource recheck, a read-only
+# writer rejection and clearing both roots only on an approved retry. The UI
+# test proves ordinary editing/undo/redo are disabled in history recovery.
+# Focused tests are 89/89; full regression is 1,306/1,306 Rstest, both
+# TypeScript configurations, Biome lint (247 files), production Rspack build
+# and phone-browser `HISTORY-E2E-00` for ordinary durable undo/redo. Four
+# manual fresh-source mutations—removing target detection, current-manifest
+# recheck, writer-fence rejection or root clearing—each fail the controller
+# test and were restored. The scoped Stryker command runner executed only one
+# test and reported false survivors, so it is not used as evidence. The former
+# ordinary undo/redo browser identifier was renamed from `HISTORY-E2E-01` to
+# `HISTORY-E2E-00`; `HISTORY-E2E-01` remains reserved for the story's required
+# controlled explicit-discard E2E.
+#
+# 2026-08-26 Story 7.1 proactive-history-integrity follow-up: while the
+# current Project is durable, the controller now scans its exact pinned custom
+# resources and both active session branches before the user attempts travel;
+# the phone view invokes that scan on a saved screen, when the app returns to
+# the foreground, and from an explicit recheck action in history recovery.
+# A missing undo or redo resource makes only history read-only and preserves
+# every root; when the exact bytes return, a recheck restores the same saved
+# current revision without resetting either branch. A current-resource failure
+# instead enters normal Project recovery. The controller test covers current,
+# undo and redo roots, repair, direct travel, writer and current-manifest
+# rejection, and confirmed destruction of both branches without publication.
+# The phone UI test proves the explicit recheck affordance and continued
+# read-only state. Full regression is 1,306/1,306 Rstest, both TypeScript
+# configurations, Biome lint (247 files), production Rspack build and
+# `HISTORY-E2E-00`. Four fresh-source manual mutations—skipping history issue
+# entry, suppressing return to saved after exact repair, ignoring a current
+# resource issue, and excluding redo from scanning—each failed the focused
+# controller test and were restored. Story 7.1 remains in progress: it still
+# needs exact history-resource repair, a shared-store fenced root
+# transaction/PinStagingLease crash corpus and the named controlled
+# explicit-discard browser fixture `HISTORY-E2E-01`.
+#
+# 2026-08-15 regression hardening: the mobile editor dock now keeps all
+# controls within two touch-target rows; a short tap selects a wall/Room while
+# a drag from the same plan point pans; placement actions stay above the dock.
+# Browser regression is 74/74 and production-PWA regression is 3/3. The
+# mobile/device evidence does not change any story to done; resource gates,
+# independent review and the formal NFR-15 matrix remain open.
+#
+# 2026-08-15 Stories 8.8 and 8.9 are in progress. The editor now exports a
+# bounded, canonical `Interiors Project JSON v1` file and validates it before
+# publishing an import with new Project and Revision IDs. Browser evidence
+# proves download → file selection → a second local card with the source
+# intact. This is deliberately a resource-free transfer foundation, not yet
+# the self-contained Portable Backup specified by CAP-10: manifests, exact
+# resource bytes, notices and resource-repair semantics remain open.
+#
+# 2026-08-15 Story 5.1 catalogue UI is further in progress: it now exposes a
+# full-screen, category-first mobile tablet with visible original procedural
+# previews, dimensions, offline state and search. The visual cards are not
+# claimed as licensed third-party catalog resources; provenance/grant/pin and
+# manifest gates remain open.
+#
+# 2026-08-18 Product Owner functionally verified the current editor, local
+# import and catalog flow on a physical device. This is product evidence for
+# the observed path, not a visual-UX acceptance, independent review, NFR-15
+# performance trace or installed-PWA certification.
+#
+# 2026-08-18 Story 5.1 remains in progress. Eight bundled GLB candidate cards
+# now use renderer-derived previews and a user may request placement while the
+# resource loads; successful load starts the requested placement automatically.
+# They are a local candidate catalog only: AssetUsageGrant, provenance,
+# versioned descriptor and compliant backup/notices remain open.
+#
+# 2026-08-18 Stories 9.1 and 9.2 are in progress. Direct static GLB has local
+# preflight/reject, preview, usage confirmation and exact resource registration
+# in a reusable device-local "Custom" library. The card survives reload and can
+# be placed in another local Project; only confirmed placement creates that
+# Project's definition/reference. A healthy reopened legacy Project promotes
+# its verified project-owned custom resources into that library without a new
+# Project Revision. The common-library read path rejects missing, malformed or
+# hash-mismatched local bytes before preview/placement and asks for exact
+# re-import without a Project Revision. Late library hydration and stale
+# direct-import completions cannot overwrite a newer card or placement choice;
+# same-hash direct re-import reuses the active Project definition. The bounded
+# FBX/ZIP conversion path is an experimental scope-change candidate, not an
+# accepted extension of CAP-12.
+# Hostile corpus, full semantic confirmation, backup/recovery, delete/GC and
+# physical NFR-22 evidence remain open; no custom-import story is done.
+#
+# 2026-08-18 Story 8.6 is in progress. Reopening a Durable Project now checks
+# byteLength and SHA-256 for every referenced custom GLB bytes-resource before
+# giving it a writer lease; missing or corrupt resources become read-only
+# recovery-needed rather than a silent placeholder substitution. The recovery
+# screen accepts only an original GLB with the durable hash and atomically
+# replaces its local bytes without a new Project Revision. Browser E2E covers
+# intentional IndexedDB corruption, reopen and exact repair with placements
+# preserved. RecoveryChangeSet, history repair and complete Portable Backup
+# remain open.
+#
+# 2026-08-18 historical evidence recorded an independent Project duplicate.
+# Product Owner retired that scope on 2026-08-25: the corresponding use case,
+# controller method, UI and E2E/mutation scenarios are removed. This retained
+# note is not an implementation task or acceptance claim.
+#
+# 2026-08-23 Story 5.5 gains an explicit floor-only «Свой макетный предмет»
+# composer: a user supplies a label, integer width/depth/height and one of the
+# declared local colours, sees validation in place, then enters the existing
+# preview → confirm/cancel route. It publishes no catalog/model identity and
+# remains visibly marked as a mock item after reopening. The on-canvas preview
+# now describes a valid spot and every currently supported invalid reason
+# (item, wall, door-clearance or room-boundary collision) before confirmation;
+# retained item, wall or door-clearance geometry is identified and highlighted
+# in the 2D projection without duplicating collision math in the renderer. It
+# still cannot publish an invalid placement. Focused UI/browser evidence and
+# mutation evidence (19/19 copy; 20/20 collision targets) are green.
+# Wall/ceiling hosts, affected host outcomes, resource policies and broader
+# Story 5.5 acceptance remain open, so its status remains in-progress.
+#
+# 2026-08-23 Story 8.8 gains a deliberately narrow, fail-closed `.interiors`
+# export: every resource-free V1 Project is packaged as a ZIP with its exact
+# canonical JSON, manifest and SHA-256 entry ledger. It is downloadable from
+# both the Project directory and editor, does not mutate the Project, and has
+# mobile-browser evidence for the `.interiors` filename. A Project referencing
+# a custom GLB refuses the export rather than mislabelling an incomplete file
+# as a backup. Exact resource/provenance inclusion, archive import and complete
+# cross-context recovery remain open; Story 8.8 is therefore in-progress.
+# Focused mutation evidence is 37/37 killed (100%).
+#
+# 2026-08-23 Story 8.9 now imports the resource-free `.interiors` export as a
+# separate local Project. Before any new ID or publication, the bounded ZIP
+# central index, exactly three allowed paths, manifest, canonical project bytes,
+# source Project binding and SHA-256 ledger are all verified. Malformed,
+# non-canonical or checksum-mismatched archives fail closed and leave local
+# Projects unchanged. Browser evidence confirms download → import → two
+# independent cards; focused mutation evidence is 27/27 for the application
+# flow and 20/20 for archive integrity. Archives with custom GLB or other
+# resources deliberately remain rejected until exact resource staging,
+# provenance and complete atomic recovery are implemented, so Story 8.9 stays
+# in-progress.
+#
+# 2026-08-23 Stories 8.8/8.9 now also cover the current custom-GLB route:
+# export verifies every immutable local byte length and SHA-256 before adding
+# `custom/<hash>.glb`, a manifest entry and checksum-ledger entry. Import
+# accepts only exact declared paths, resource metadata, byte lengths and
+# digests; it pins every decoded GLB before publishing the new Project, verifies
+# an already-present immutable key, and compensates only bytes first staged by a
+# failed publication. The mobile browser E2E proves export → deletion of the
+# original local GLB → import → healthy second Project/resource store. This is
+# deliberately not yet the full CAP-10 format: catalog assets/textures,
+# provenance/notices/AssetUsageGrant ledger, bounded streaming/cancellation,
+# quota staging and cross-store crash recovery remain open, so both stories stay
+# in-progress.
+#
+# 2026-08-23 Story 2.2 now has a touch-first 0/45/90-degree draft route and
+# a durable first 45-degree free-wall/vertex-branch path in Plan and 3D. A
+# diagonal closed Room remains an explicit rejection; general diagonal topology,
+# room derivation and host reconciliation are still open, so the story remains
+# in-progress. Evidence: 1201 Rstest, TypeScript, Biome, production build,
+# 117/117 mobile Playwright; scoped mutation results 89.41% (gesture) and 100%
+# (critical durable decisions).
+#
+# 2026-08-23 Product Owner removed the in-app Focus/fullscreen feature and the
+# physical Focus-matrix follow-up from Alpha. Story 4.5 implementation, its
+# platform seam and all visible Focus controls are deleted; Story 8.11 is
+# retired with it. No general Plan/3D editor control is removed.
+#
+# 2026-08-24 Approved scope correction synchronizes all current planning
+# sources. FR-53 and NFR-27 are permanently retired, as are V-03-Focus and
+# V-15-Focus; the normal phone-first Plan/3D editor and the remaining eight
+# NFR-15 physical performance traces stay in Alpha. Historic 2026-08-23
+# implementation evidence above is retained as evidence of what was removed.
+#
+# 2026-08-23 Stories 8.8 and 8.9 now have one visible project-transfer route:
+# resource-free Projects transfer as verifiable `.interiors.json`; when exact
+# custom-resource bytes exist, the identical export/import actions use the
+# self-contained `.interiors` container internally. This preserves resources
+# without exposing a duplicate "Backup" workflow.
+#
+# 2026-08-23 Story 4.2 is ready for independent review. 3D has deterministic
+# cutaway (labelled Auto/show-all controls), orbit/pan/zoom and recovery from
+# canonical state, while both 2D and 3D keep Rooms display-only. Active
+# browser evidence proves Room taps do not create state and Focus is absent.
+# Physical responsiveness/thermal evidence remains a release gate, so the
+# story is not marked done.
+#
+# 2026-08-23 cleanup and Story 5.1 increment: the unreferenced legacy POC
+# mock, including its independent Focus UI/tests, is deleted rather than kept
+# as a second incompatible product surface. The live catalog's local index now
+# recognises Russian category and anchor-class queries (for example
+# «хранение» and «напольный»), labels each built-in candidate as floor-mounted,
+# and uses grammatically correct accessible result counts. A failed model-byte
+# preparation is now an explicit non-durable state: the Project remains
+# unchanged, the user can retry preparation or close the catalog, and a retry
+# does not silently start placement. Focused module/UI tests and controlled
+# phone-browser resource failure/retry/cancel evidence are green. Manifest
+# grants/provenance, broader resource states and catalog control-plane work
+# remain open, so Story 5.1 stays in-progress.
+#
+# 2026-08-23 Story 5.3 starts its durable-contract slice. `AssetAnchorClass`
+# now has one schema-owned discriminated placement model: Floor and Ceiling
+# retain a Room address plus canonical plan-frame integer millimetres; Wall
+# retains its WallSegment, semantic left/right side, integer offset and
+# elevation. The guard rejects non-integer coordinates, ambiguous sides and
+# any free renderer/world-transform field. The preloaded catalog consumes the
+# same anchor-class vocabulary, ready for compatible candidates. No wall or
+# ceiling candidate is yet exposed: authoring, projection and topology
+# rehost-or-conflict flows are the next slices, so this only moves 5.3 to
+# in-progress rather than claiming its user workflow complete.
+#
+# 2026-08-23 Story 5.3 now has its first end-to-end wall-anchor slice. A user
+# selects a wall, opens a centre-placement preview for a local wall panel and
+# explicitly confirms or cancels it; the durable object retains only
+# `wallSegmentId`, side, offset and elevation. It projects in 2D and 3D
+# without persisting renderer coordinates, passes the JSON structural gate and
+# uses the normal fenced atomic revision route. Floor-only gestures and legacy
+# topology paths reject rather than mis-handle a non-floor object. Ceiling,
+# candidate-specific wall/ceiling catalog controls, wall-opening exclusion,
+# wall-item editing/rehosting and user-facing tests remain open, so 5.3 stays
+# in-progress.
+#
+# 2026-08-24 Story 5.3 adds deterministic rehosting when a wall is split. A
+# whole panel stays wall-addressed: its semantic side is retained, a tail-host
+# offset is rebased in integer millimetres, and exact edge contact resolves to
+# one predictable successor. A split through a panel is rejected before IDs or
+# a partial topology can be published; malformed already-durable panel hosts
+# fail closed as an invalid source. `RECONCILIATION-E2E-02A` proves the phone
+# flow and persistence contains no renderer/world coordinate. Evidence:
+# 1,254 unit tests, 120 ordinary mobile-browser E2E tests, 4 PWA E2E tests,
+# TypeScript, Biome lint and production build pass; focused mutation score is
+# 90.00% (45/50 killed). Wall deletion/reverse/merge conflict choices, ceiling
+# authoring and catalog AssetUsageGrant/pinning remain open, so 5.3 remains
+# in-progress.
+#
+# 2026-08-24 Story 5.3 extends wall-host safety to deletion. Only a panel
+# directly hosted by the selected wall appears in the allocation-free conflict
+# preview and can be removed in the single confirmed revision. A panel on any
+# other wall remains unchanged; a direct domain deletion still rejects before
+# it could publish a dangling host. The phone UI calls the affected record a
+# lost address rather than incorrectly calling a wall host a Room. The new
+# `RECONCILIATION-E2E-02B` verifies cancel is non-durable and confirmation
+# removes exactly the hosted panel. Evidence: 1,256 unit tests, 121 ordinary
+# mobile-browser E2E tests, 4 PWA E2E tests, TypeScript, Biome lint and build
+# pass; focused mutation score is 90.48% (38/42 killed). Rehome/reverse/merge
+# choices, ceiling authoring and catalog AssetUsageGrant/pinning remain open.
+#
+# 2026-08-24 Story 5.3 adds the deterministic inline-merge lineage case: a
+# panel on the split successor follows the retained wall segment, with its
+# offset reconstructed along the merged centreline and side inverted only if
+# that source segment was oppositely oriented. Resulting host validity is
+# checked before publish. Focused domain, TypeScript and Biome checks plus the
+# full 1,257-unit regression and production build pass. Mobile regression and
+# mutation evidence for this narrow merge branch are the next verification
+# step; the Story remains in-progress.
+#
+# 2026-08-24 Story 5.3 completes the focused merge verification: both normal
+# and reversed second-segment orientation preserve a panel's physical position
+# and semantic side after removing the redundant inline Vertex. Focused
+# mutation evidence is 9/9 killed (100%). Full regression is now 1,258 unit
+# tests with TypeScript, Biome lint and production build passing. A phone E2E
+# for the merge-panel path, reverse-wall command, ceiling authoring and
+# catalog AssetUsageGrant/pinning remain open; Story 5.3 stays in-progress.
+#
+# 2026-08-24 Story 5.3 now has phone-level merge evidence. The mobile path
+# places a wall panel, splits its host, then removes the redundant inline
+# Vertex; the panel returns to the original durable wall host in the expected
+# revision sequence. `RECONCILIATION-E2E-02C` protects that path. TypeScript
+# and Biome lint pass, and the complete ordinary mobile-browser suite is
+# green: 122/122. The earlier focused merge mutation evidence remains 9/9
+# killed (100%). Reverse-wall command, ceiling authoring, and catalog
+# AssetUsageGrant/pinning remain open; Story 5.3 stays in-progress.
+#
+# 2026-08-24 Story 5.3 aligns its ceiling-placement boundary with the
+# Geometry Contract before authoring begins: `CeilingPlacement` now admits
+# `roomId`, plan-frame `xMm`/`zMm` and `dropMm`, the integer downward distance
+# from the Room-derived ceiling. It no longer suggests an independently
+# editable ceiling elevation, so `Room.heightMm` remains the sole height
+# authority. The focused contract suite, TypeScript and Biome pass; mutation
+# evidence for this boundary is 17/17 killed (100%). Ceiling item creation,
+# host validation, projection and topology conflict flows remain open.
+#
+# 2026-08-24 Story 5.3 ships the first deliberately narrow ceiling-hosted
+# authoring slice. In a writable single-room V1 plan, the phone ToolRail can
+# preview and durably place a local ceiling light without a Room-picker. Its
+# durable host is only `{ roomId, xMm, zMm, dropMm, yawStep }`; the 3D centre
+# height is projected from `Room.heightMm`, not persisted as renderer state.
+# The domain rejects a footprint outside the exact usable Room and rejects a
+# Room-height reduction that would carry the light through the floor. JSON
+# transfer preserves the item, wall/opening flows ignore it safely, and the
+# ordinary phone regression contains `CEILING-E2E-01`. Evidence: 1,268 unit
+# tests, TypeScript, Biome, production build and 123/123 ordinary mobile E2E
+# pass; targeted mutation evidence is 17/17 killed (100%) for the ceiling-host
+# predicate and 17/17 (100%) for the placement-contract boundary. Remaining
+# scope: multi-room or non-rectangular ceiling authoring, move/delete controls,
+# an explicit UI for ceiling topology/height conflicts, catalog grants/pinning.
+# Story 5.3 remains in-progress.
+#
+# 2026-08-24 Product Owner retired all ceiling scope. The historic notes above
+# are retained as audit evidence of removed work, but are superseded: no
+# CeilingPlacement, ceiling-hosted item/light, ceiling renderer projection or
+# ceiling finish remains in Alpha. Story 5.3 continues as wall-only; Story 6.3
+# is retired. `Room.heightMm` remains the editable room height and source of
+# derived wall height. A legacy payload containing the retired host is rejected
+# rather than silently dropping an item.
+#
+# 2026-08-24 Story 5.3 now completes the reverse-wall lineage slice. The phone
+# inspector publishes an in-place reversal of exactly the selected stable
+# WallSegment: its vertices exchange canonical order while derived Rooms and
+# their heights stay unchanged. Every selected opening and wall item is
+# reflected in local millimetres; a wall-panel side and a Door swing side flip
+# to retain their physical side. Old Door records without `swingSide` are
+# migrated deterministically to the explicit opposite side; other Walls and
+# hosts remain untouched. `PLAN-E2E-04D-1` verifies the durable phone route
+# survives reload. Evidence: 1,266 unit tests, 123/123 ordinary mobile E2E,
+# 4/4 PWA E2E, TypeScript, Biome and production build pass; focused mutation
+# evidence is 38/38 killed (100%). Wall catalog grant/pinning and the remaining
+# explicit incompatible-host outcomes still keep Story 5.3 in-progress.
+#
+# 2026-08-25 Story 5.3/5.4 gains the narrow local edit route for an existing
+# wall item. The selected item's inspector now exposes integer-mm offset and
+# centre-elevation fields. The mutation retains its host, side, asset identity,
+# label and dimensions; it revalidates the current host boundary and openings
+# before it can create one durable revision. Invalid input leaves the durable
+# project unchanged. `ITEM-E2E-04A` proves the phone route and reload
+# retention. Evidence: 1,274 unit tests, TypeScript, Biome, production build,
+# 4/4 PWA E2E and all ordinary mobile scenarios green (123/124 in the serial
+# run; the sole recovery timeout rerun independently passed); focused mutation
+# evidence is 88/88 killed (100%). Catalog grant/pinning, locks, duplicate/
+# transform controls and explicit incompatible-host outcomes remain open.
+#
+# 2026-08-25 Story 5.4 adds durable accidental-edit protection for an existing
+# wall item. The selected inspector now explicitly locks or unlocks it. A lock
+# is stored only as `locked: true` (older revisions without the marker stay
+# unlocked); the strict V1 transfer validator accepts that exact marker and
+# rejects every other value. While locked, the UI disables position and delete
+# controls and explains how to continue; direct move/delete commands separately
+# reject with `WALL_ITEM_LOCKED`, so a UI bypass cannot mutate the Project.
+# `ITEM-E2E-04B` verifies lock -> reload -> unlock on a phone profile. Evidence:
+# 1,281 unit tests, TypeScript, Biome, production build, 125/125 ordinary mobile
+# E2E and 4/4 PWA E2E pass; scoped mutation evidence is 73/73 killed (100%).
+# Catalog grant/pinning, floor-item protection, duplicate/other transforms and
+# explicit incompatible-host outcomes remain open; Story 5.3 stays in-progress
+# and Story 5.4 remains in review rather than being declared complete.
+#
+# 2026-08-25 Story 5.4 adds the corresponding narrow FR-30 / CAP-6 accidental-
+# edit guard for an existing floor item. Its explicit `locked: true` marker is
+# one durable revision; a missing legacy marker remains unlocked and unlock
+# removes the marker rather than persisting `false`. Direct floor-item move,
+# continuous yaw, 45-degree rotate, resize, recolor and delete all reject with
+# `ITEM_LOCKED`; the phone inspector disables those controls, prevents gesture
+# mutation, explains the state, and publishes an explicit unlock. Strict V1
+# local transfer accepts only the true marker. `ITEM-E2E-04C` proves lock ->
+# reload -> unlock with durable retention. Evidence: TypeScript and Biome pass,
+# 1,288/1,288 unit tests, 126/126 ordinary mobile E2E, production build and
+# 4/4 PWA E2E pass. Scoped mutation evidence is 92/93 killed (98.92%); the
+# sole Rspack/Stryker survivor was manually substituted and the relevant
+# transfer test failed, confirming the guard. Catalog grant/pinning, duplicate
+# and remaining transform routes, and incompatible-host outcomes still keep
+# Story 5.4 in review.
+#
+# 2026-08-25 Story 5.4 now also supports a safe floor-item duplicate route.
+# The selected object becomes a non-durable placement draft; it never appears
+# on top of its source and only the ordinary collision-checked confirmation
+# creates a second revision. The copy has an independent instance ID. A GLB
+# copy reuses the Project's already pinned AssetDefinition reference instead of
+# rereading, importing or re-pinning model bytes. `ITEM-E2E-03A` proves: no
+# durable revision before confirmation, two independent item IDs after it, and
+# exactly one shared GLB definition reference. The focused Stryker command
+# runner could not propagate in-place TSX mutations into its browser process,
+# so it is not claimed as score evidence; three manual equivalent mutations
+# (dropped definition, empty draft fields, inactive item tool) each made that
+# same E2E fail, after which the source was restored. Biome, both TypeScript
+# configurations, 1,278 Rstest tests and the production build pass. Wall-item
+# duplicate and broader transform/reconciliation outcomes remain open; Story
+# 5.4 stays in review.
+#
+# 2026-08-25 Story 5.4 adds the same safe duplicate interaction for a
+# wall-hosted panel. The chosen panel keeps its durable ID and lock state; the
+# copy starts as a non-durable preview at the nearest adjacent local offset on
+# the same host and creates its independent, unlocked instance only after the
+# ordinary explicit placement confirmation. No copy is started if neither
+# adjacent offset fits inside the wall host. `ITEM-E2E-04D` proves the draft
+# makes no revision, an explicitly confirmed copy has a different ID and sits
+# one panel width from its source, and a locked source remains locked while its
+# copy is editable. The test was RED before the control existed. A manual
+# equivalent mutation that put the copy back onto the source made this E2E
+# fail; it was reverted and the scenario passed. Biome, both TypeScript
+# configurations, 1,278 Rstest, production Rspack, 124/124 mobile-browser E2E
+# and 4/4 PWA E2E are green. Stryker's command runner does not propagate these
+# TSX/browser mutations, so no automatic score is claimed for this UI slice.
+#
+# 2026-08-25 Story 5.4 UI accuracy follow-up: a wall-panel draft now displays
+# its canonical local offset from the start of the host wall rather than the
+# misleading static claim that every draft is centred. This matters especially
+# for a duplicate, which deliberately begins beside its source. No draft state
+# or durable revision semantics changed. `ITEM-E2E-04D` was RED until the new
+# offset assertion could see the value, then passed after the display change.
+# A manual equivalent mutation that rendered width in place of offset made the
+# same scenario fail; it was reverted and the focused test passed again.
+# Final evidence: Biome (245 files), both TypeScript configurations, 1,278
+# Rstest, production Rspack, 124/124 mobile-browser E2E and 4/4 PWA E2E green.
+# The Stryker command runner does not reliably inject this TSX/browser-only
+# display mutation, so no automatic mutation percentage is claimed.
+#
+# 2026-08-25 Story 5.5 / 5.4 collision-safety follow-up: a wall-hosted item
+# may no longer intersect another wall item on the same WallSegment and
+# semantic side. The shared domain rule covers create, local move and validity
+# checks used by topology/reconciliation; exact edge contact, a different
+# elevation band, the opposite wall side and another host remain valid. A
+# rejected candidate publishes no Revision or local address change. New
+# `ITEM-E2E-04E` proves a phone user sees the named error and retains exactly
+# one Durable item/revision after trying a second same-side panel. Domain tests
+# were RED before the rule existed and cover both horizontal directions and all
+# touch boundaries. Scoped Stryker for the overlap block killed 52/53 mutants
+# (98.11%); the only survivor is equivalent under the discriminated asset
+# model because a floor instance has neither a WallSegment nor a wall side.
+# Final evidence: Biome (245 files), both TypeScript configurations, 1,280
+# Rstest, production Rspack, 125/125 mobile-browser E2E and 4/4 PWA E2E green.
+#
+# 2026-08-25 Story 5.4 / 5.5 duplicate-safety follow-up: the wall-panel
+# duplicate affordance now asks the same domain placement assessment used by
+# create, move and topology validity. It considers full host bounds, openings
+# and same-side wall-item collisions before it creates a non-durable draft.
+# If neither adjacent local offset is valid, the user sees an explicit error;
+# no misleading preview, Project mutation or Durable Revision is created.
+# Exact touching remains valid. `ITEM-E2E-04F` proves the phone flow where the
+# only host-fitting adjacent slot is already occupied: two durable panels stay
+# unchanged and no preview is shown. Domain tests were RED before the shared
+# assessment existed, include occupied/touching/invalid cases and verify the
+# catalog-reference persistence boundary. Scoped Stryker for the shared rule
+# killed 103/103 mutants (100%). Final evidence: Biome (245 files), both
+# TypeScript configurations, 1,282 Rstest, production Rspack, 126/126 ordinary
+# mobile-browser E2E and 4/4 PWA E2E green. This reduces the wall-item safety
+# gap but does not close catalog/resource recovery, topology reconciliation or
+# physical-device performance gates; Story 5.4 stays in review.
+#
+# 2026-08-23 Story 2.2 additionally normalizes an exact integer-mm diagonal
+# contact through a wall body, or an exact diagonal X contact, into shared
+# canonical Vertex/Wall pieces before durable publication. A graph-bridge
+# branch preserves the existing rectangular Room and its metadata. Fractional
+# contacts and diagonal Room faces remain rejected; those need the pending
+# generic usable-polygon, reconciliation and host work. New source-integrity,
+# denominator-sign, endpoint-continuation, overlap and project-level retention
+# tests pass; final regression is 1,208 Rstest, TypeScript, Biome, production
+# build and 117/117 ordinary mobile-browser E2E. The focused policy mutation
+# score is 96.97% (32/33 killed).
+#
+# 2026-08-26 Story 2.2 now closes one simple concave touch-drawn contour as an
+# exact durable Room instead of rejecting it or substituting its envelope. The
+# derived inward usable polygon remains the Plan/3D source, WebGL triangulates
+# the actual recess, and a collapsed narrow concavity fails closed. Focused
+# evidence: 1,309 Rstest, TypeScript, Biome, production build, one iPhone-13
+# browser-emulation create/reopen/3D flow and 82.76% scoped mutation. Story 2.2
+# remains in-progress: general post-closure polygon edits, diagonal Opening
+# rehosting and the complete S-2 corpus are still open. No physical-device gate
+# is advanced by this browser-emulation evidence.
+#
+# 2026-08-26 Story 2.3 gains the first closed-Room Vertex edit: an equal-leg
+# degree-two cardinal corner exposes top-layer touch handles and projects onto
+# the exact shared 45-degree anchor line. Cancel stays non-durable; confirm
+# publishes one Revision while preserving Room ID/height, reload and 3D.
+# Unequal-leg, mixed-direction, degree-three and unequal-thickness collinear
+# outcomes remain unavailable or fail closed. Evidence: 1,316 Rstest,
+# TypeScript, Biome, production build, three affected mobile-browser E2E and
+# 94.44% focused mutation. Story 2.3 remains in-progress; no physical-device
+# or external gate is advanced.
+# 2026-08-26 post-closure Story 2.5 review evidence now includes selected Wall
+# thickness on an exact concave Room. A phone-inspector change from 100 to
+# 120 mm publishes one Durable Revision, preserves centerlines, Room ID/height,
+# reload and 3D, and recomputes the exact usable polygon. A 300 mm change that
+# collapses a narrow concave inset is rejected atomically before publication.
+# Mutation analysis removed an equivalent early guard and retained one exact
+# derived validator. Evidence: 1,318 Rstest, TypeScript, Biome, production
+# build, 134/134 mobile-browser E2E, 5/5 production PWA E2E, 100% focused
+# mutation and the same iPhone flow over the external tunnel. Story 2.5 remains
+# review, the Alpha-only implementation formula remains 66.9%, and no
+# physical-device or independent-review gate is advanced.
+#
+# 2026-08-26 Story 2.4 now supports a post-closure boundary split on an exact
+# concave Room. A selected straight Wall accepts a touch candidate inside the
+# segment; cancel is non-durable and confirm publishes exactly one Revision,
+# retaining the original Wall ID on the first piece while adding one canonical
+# Vertex and one tail Wall. Room ID/height and the exact usable polygon survive
+# reload and remain the source for 3D. Unequal thickness across the two
+# collinear parts fails closed before publication. Evidence: 1,319 Rstest,
+# TypeScript, Biome, production build, 134/134 mobile-browser E2E, 5/5
+# production PWA E2E, 100% focused mutation and the complete iPhone-emulation
+# flow over the external tunnel. Story 2.4 remains in-progress because
+# Opening/Item-hosted split, T/X normalization and the complete S-2 corpus are
+# still open; the Alpha-only implementation formula remains 66.9%, and no
+# physical-device or independent-review gate is advanced.
+#
+# 2026-08-26 Stories 2.4/5.3 now cover the destructive Item-hosted split
+# outcome required by the topology reconciliation contract. A touch split that
+# cuts a wall-panel footprint produces an allocation-free consequence panel;
+# cancel keeps Wall, Item and Revision unchanged, while confirm refreshes the
+# exact Item/Opening ID sets, removes only the affected resources and publishes
+# the split in one Durable Revision. An Item on another Wall and an Opening
+# outside the cut remain intact; exact interval touching keeps its deterministic
+# successor without a destructive preview. Evidence: 1,324 Rstest, TypeScript,
+# Biome, production build, 135/135 mobile-browser E2E, 5/5 production PWA E2E,
+# 100% focused mutation (85/85) and the complete iPhone-emulation
+# cancel/confirm/reload flow over a new external tunnel. Stories 2.4 and 5.3
+# remain in-progress because T/X normalization, diagonal/multi-segment host
+# cases and the complete S-2 corpus are still open. The Alpha-only formula
+# remains 66.9%; no physical-device or independent-review gate is advanced.
+#
+# 2026-08-26 Stories 2.4/3.4/5.3 now cover the first safe T-junction host
+# reconciliation. A phone-drawn exact T contact no longer rejects merely
+# because the Project contains a wall-local Item or Door. Allocation-free
+# normalization first proves that every hosted interval has exactly one
+# successor; the head keeps the stable Wall ID, while a tail host receives the
+# materialized successor ID and an adjusted local offset without moving in the
+# Plan. Exact edge contact is deterministic. A contact that cuts a wall-panel
+# interval, including a diagonal Door case, still fails closed before Revision
+# or ID allocation. `RECONCILIATION-E2E-02E` proves one Durable Revision,
+# unchanged physical marker position, reload retention and the same 3D source.
+# Evidence: 1,330 Rstest, both TypeScript configurations, Biome lint over 249
+# files, production build, 136/136 mobile-browser E2E, 5/5 production PWA E2E,
+# 90.09% focused mutation (100/111) and the focused mobile scenario through the
+# external tunnel. Stories remain in-progress: X normalization, safe
+# post-closure diagonal/multi-segment hosted lineage and the complete S-2
+# corpus are still open. The Alpha-only formula remains 66.9%; no
+# physical-device or independent-review gate is advanced.
+#
+# 2026-08-26 Stories 2.4/3.4/5.3 now include an isolated exact-X host
+# reconciliation slice. A phone-drawn cardinal Wall crossing an interior
+# divider creates one exact shared Vertex with four canonical incident pieces
+# and publishes once. A wall panel outside the cut keeps its physical marker,
+# moves to the one materialized successor ID with an adjusted local offset,
+# and survives reload plus 3D. Shifted diagonal arithmetic and fractional
+# reject remain allocation-free domain evidence. Full regression is 1,332
+# Rstest, both TypeScript configurations, Biome over 249 files, production
+# build, 137/137 mobile-browser E2E and 5/5 production PWA E2E. Focused X
+# mutation is 95% (95/100), including 36/36 hosted-lineage mutants; the focused
+# phone scenario also passed through the external tunnel. Stories remain
+# in-progress because multi-X, post-closure diagonal Room reconciliation,
+# Opening-hosted X outcomes and the complete S-2 corpus remain open. The
+# Alpha-only formula stays 66.9%; no physical-device or independent-review
+# gate is advanced.
+#
+# 2026-08-26 Stories 2.4/3.1/3.4 now include one post-diagonal Room-edit
+# slice. After a durable corner-to-corner 45-degree split, a second phone-drawn
+# Wall from the exterior boundary to that diagonal publishes exactly one more
+# Revision and derives three Rooms. Exact polygon-boundary lineage distinguishes
+# predecessor triangles that share the same rectangular envelope, preserving
+# 2800 mm height and chosen Room metadata. Reload and 3D reopen the same eight
+# canonical Walls and three derived Rooms. Domain evidence also rehosts an
+# unaffected reversed-diagonal Door at its compensated local offset and covers
+# an additional interior contact. Full regression is 1,335 Rstest, both
+# TypeScript configurations, warning-free Biome over 249 files, production
+# build, 138/138 mobile-browser E2E and 5/5 production PWA E2E. Focused
+# mutation is 87.04% (47/54). The focused phone scenario is verified through
+# the external tunnel after the local run. Stories remain in-progress because
+# general multi-step polygon edits, multi-X, Opening-hosted X outcomes and the
+# complete S-2/device corpus remain open. The Alpha-only formula stays 66.9%;
+# no physical-device or independent-review gate is advanced.
+#
+# 2026-08-26 Stories 2.4/3.1 now include polygon-to-rectangle AddWall
+# lineage. Splitting the rectangular arm of a closed L-shaped Room creates one
+# polygonal and one rectangular successor with the same exact predecessor. In
+# a multi-room domain case the new rectangle inherits 2400 mm from its own
+# L-shaped Room rather than the unrelated neighbour's 3200 mm maximum.
+# `EDITOR-E2E-02VD` proves the real phone path from six Walls/one Room through
+# one Durable Revision to nine Walls/two Rooms, preserving the original Room
+# ID across reload and 3D. Full regression is 1,336 Rstest, both TypeScript
+# configurations, warning-free Biome over 249 files, production build, 139/139
+# mobile-browser E2E and 5/5 production PWA E2E. Focused mutation is 100%
+# (16/16), and the focused phone scenario is verified through the external
+# tunnel. Stories remain in-progress because mixed/void polygon chains,
+# multi-X, Opening-hosted X outcomes and the complete S-2/device corpus remain
+# open. The Alpha-only formula stays 66.9%; no physical-device or independent-
+# review gate is advanced.
+#
+# 2026-08-26 Story 2.2 now includes the large-plan touch-scale correction.
+# On a 40,000 × 30,000 mm phone plan the transient camera can zoom until one
+# permanent 100 mm construction cell reaches 44 CSS px; a physical 100 mm Wall
+# occupies exactly that cell. Grid and draft strokes remain screen-thin, wall
+# hit areas stay at least 44 px, and a real touch-preview lands both endpoints
+# on cell centres. No camera/grid state enters Project or Revision. Evidence:
+# 1,338 Rstest, both TypeScript configurations, warning-free Biome over 249
+# files, production build, 140 mobile-browser scenarios green cumulatively,
+# 5/5 production PWA E2E and 100% focused mutation (17/17). Story 2.2 remains
+# in-progress pending the complete S-2/device corpus and independent review;
+# the Alpha-only formula stays 66.9% and no release gate is advanced.
+#
+# 2026-08-26 Product Owner-directed closure audit separates the minimal
+# direct-Wall story from broader topology and release-gate work. The supported
+# phone route covers free/supported-origin Wall drawing, 0/45/90-degree
+# origin-relative 100-mm integer candidates, actual length/direction preview,
+# explicit confirm/cancel, non-durable tap/micro-drag/multi-touch paths,
+# durable reopen and aligned touch-usable large-plan scale. Focused evidence is
+# 29/29 Rstest and 16/16 iPhone-13 browser-emulation scenarios through the
+# external tunnel. Story 2.2 moves to review. General post-closure editing and
+# hosted reconciliation remain in Stories 2.3/2.4/3.4/5.3; the complete
+# S-2/device corpus and independent review remain release/review gates. With 5
+# done, 14 review, 15 in-progress and 1 backlog Alpha stories, the functional
+# implementation formula is 67.7% ready and 32.3% remaining. No release gate
+# is advanced by this status transition.
+#
+# 2026-08-26 Story 2.3 closure audit confirms the minimal phone Vertex/related-
+# Wall move path is complete: supported detached and closed-Room handles expose
+# one constrained integer-mm gesture, preview/cancel remain non-durable, and
+# confirm publishes one validated Revision while preserving unrelated graph and
+# Room identity/height across reload and 3D. Unsupported junction/mixed-axis
+# handles stay unavailable; canonical invalid/collapse/host outcomes remain
+# rejected. Focused evidence is 111/111 Rstest and 6/6 iPhone-13 browser-
+# emulation scenarios through the external tunnel; the prior source increment
+# retains its 94.44% focused mutation evidence. Story 2.3 moves to review.
+# General join/split/host reconciliation remains in Stories 2.4/3.4/5.3 and the
+# complete S-2/device corpus plus independent review remain gates. With 5 done,
+# 15 review, 14 in-progress and 1 backlog Alpha stories, the functional formula
+# is 68.6% ready and 31.4% remaining. No release gate is advanced.
+#
+# 2026-08-26 Story 2.4 closure audit confirms the minimal join/split route:
+# supported endpoint/body joins and selected-Wall touch splits remain transient
+# until confirm; exact T and isolated cardinal X materialize one shared Vertex
+# with canonical pieces in one durable publication. Stable IDs and unrelated
+# topology survive, while Door/Item hosts deterministically rehost or require
+# one explicit atomic consequence. Invalid candidates reject before partial
+# allocation. Focused evidence is 140/140 Rstest and 9/9 iPhone-13 browser-
+# emulation scenarios green cumulatively through the external tunnel. Two
+# first-pass 3D assertions exceeded five seconds while Cloudflare transferred
+# dev lazy chunks; traces showed pending network requests and both passed on
+# isolated rerun. Story 2.4 moves to review. General multi-X/post-closure
+# diagonal lineage and complete S-2/device/independent-review evidence remain
+# gates. With 5 done, 16 review, 13 in-progress and 1 backlog Alpha stories,
+# the functional formula is 69.4% ready and 30.6% remaining. No release gate is
+# advanced.
+#
+# 2026-08-26 Story 2.6 closure audit completes the minimal deletion slice:
+# selected Wall and eligible redundant inline Vertex actions always open a
+# transient consequence preview; cancel is non-durable, while fresh confirm
+# publishes exactly one atomic Revision. Simple Walls now explicitly state that
+# Rooms/Openings/Items are unaffected instead of deleting immediately. Room
+# merges require a retained predecessor; direct Openings and orphaned floor or
+# wall Items remain exact displayed outcomes. Vertex merge preserves the stable
+# head Wall ID and valid panel address; invalid/stale/fence-lost routes fail
+# closed. The action label is now exactly `Удалить вершину`. Final focused
+# evidence is 194/194 Rstest and 8/8 iPhone-13 browser-emulation scenarios in
+# one clean external-tunnel run, plus changed-file lint, both TypeScript checks
+# and production build. Story 2.6 moves to review. General arbitrary-junction
+# deletion and S-2/device/independent-review evidence remain gates. With 5 done,
+# 17 review, 12 in-progress and 1 backlog Alpha stories, the functional formula
+# is 70.3% ready and 29.7% remaining. No release gate is advanced.
+#
+# 2026-08-26 Story 3.1 closure audit confirms the minimal stable-Room slice:
+# supported simple bounded rectangular, triangular, trapezoid and concave Faces
+# derive exact Rooms; open/bridge/exterior walks create none. Normalized face
+# identity is independent of Wall order/direction, supported local edits retain
+# the same Room metadata, and ordinary Wall split immediately publishes every
+# successor with the exact predecessor height. Merge/host ambiguity remains an
+# explicit fresh-confirm outcome. Reloaded Plan/3D use the same canonical graph.
+# A new characterization proves unsupported nested rings reject atomically as
+# `AMBIGUOUS_BOUNDED_WALK`; full outer+void Room support remains an S-2 topology
+# gate outside the approved minimal closure. Focused evidence is 196/196 Rstest
+# and 11/11 iPhone-13 browser-emulation scenarios green cumulatively through
+# the external tunnel; one combined-run concave 3D assertion waited at
+# `Загружаем 3D…` beyond five seconds and passed isolated. Story 3.1 moves to
+# review. With 5 done, 18 review, 11 in-progress and 1 backlog Alpha stories,
+# the functional formula is 71.1% ready and 28.9% remaining. No release gate is
+# advanced.
+#
+# 2026-08-26 closure-first checkpoint: Story 3.2 now has the separately
+# approved non-canvas `Помещения` route. It lists current derived Rooms,
+# addresses the chosen stable roomId and publishes name/type/height through one
+# canonical durable command without exposing width/depth, area, perimeter or
+# Wall height as editable sources. Invalid input restores prior valid metadata
+# and creates no Revision; Plan/3D Room-surface taps remain inert. Exact
+# `shared-wall-height-opening-min` domain and renderer goldens prove adjacent
+# Room heights 2400/2700 derive a 2700-mm shared Wall, while existing Opening
+# coverage keeps the separate 2400-mm fit boundary. Final evidence is 1339/1339
+# Rstest, 249-file Biome, both TypeScript configs, production build, 3/3
+# adjacent iPhone-13 browser scenarios plus the final isolated ROOM-E2E through
+# the external tunnel. A manual wrong-roomId mutant was killed by the new
+# two-Room assertion and restored. Story 3.2 moves to review. With 5 done, 19
+# review, 10 in-progress and 1 backlog Alpha stories, the functional formula is
+# 72.0% ready and 28.0% remaining. No release gate is advanced.
+#
+# 2026-08-26 closure-first checkpoint: Story 3.4 now covers the minimal Alpha
+# Opening lifecycle end to end. Existing Door/Window edits remain cancellable
+# and publish once; an unambiguous Wall split preserves the stable host, while
+# split-through and host deletion show an exact delete/cancel ConflictPreview.
+# The Room directory now surfaces the previously domain-only height conflict,
+# requires resize/delete for every affected Opening, freezes the candidate
+# fields during re-entry and publishes Room plus resolutions atomically after
+# fresh base/fence validation. Cancel and invalid paths create no Revision.
+# Final evidence is 1339/1339 Rstest, 249-file Biome, both TypeScript configs,
+# production build, 5/5 production PWA E2E and 6/6 related iPhone-13 browser
+# scenarios in one clean external-tunnel run. A manual wrong-arithmetic mutant
+# was killed and restored.
+# Story 3.4 moves to review. With 5 done, 20 review, 9 in-progress and 1 backlog
+# Alpha stories, the functional formula is 72.9% ready and 27.1% remaining. No
+# release gate is advanced.
+#
+# 2026-08-26 closure-first checkpoint: Story 5.1 now covers the minimal Alpha
+# local-catalog browse contract end to end. The phone UI exposes furniture,
+# plumbing, appliances/electronics, lighting and accessories; curated furniture
+# remains available and every unpopulated category has an explicit honest empty
+# state. Accessible local search covers name, Alpha category, furniture subtype,
+# AnchorClass and integer-mm dimensions. Cards state category, floor anchor,
+# variants and local readiness beside exact dimensions; renderer-derived preview
+# fallback, bounded GLB loading and unavailable retry/cancel stay non-durable.
+# Final evidence is 1339/1339 Rstest, 249-file Biome, both TypeScript configs,
+# production build, 6/6 related iPhone-13 browser scenarios in one clean
+# external-tunnel run and 5/5 production PWA E2E. Manual section-operator and
+# category-search-term mutants were killed and restored. Remote Catalog Control
+# Plane remains the separate Story 5.6 and is not simulated here. Story 5.1
+# moves to review. With 5 done, 21 review, 8 in-progress and 1 backlog Alpha
+# stories, the functional formula is 73.7% ready and 26.3% remaining. No release
+# gate is advanced.
+#
+# 2026-08-26 closure-first checkpoint: Story 6.1 now covers the minimal Alpha
+# ItemInstance variant flow end to end. Seven named local variants address one
+# declared body slot; palette selection opens an accessible confirm/cancel
+# dialog, cancel is non-durable and confirm publishes one stable
+# colorVariantId without changing dimensions, placement or host. Floor and
+# wall Items share the same closed vocabulary. Unknown variants, stale/locked
+# targets and GLBs without a declared recolorable slot fail closed; strict
+# Project JSON rejects unknown/mismatched variant projections and GLB-backed
+# references while legacy Items remain readable. Undo/Redo and reload restore
+# the same reference. Final evidence is 1342/1342 Rstest, warning-free 250-file
+# Biome, both TypeScript configs, production build, 2/2 related iPhone-13
+# browser scenarios through the external tunnel, 5/5 production PWA E2E and
+# 100% focused mutation (65/65 killed). Story 6.1 moves to review. With 5 done,
+# 22 review, 7 in-progress and 1 backlog Alpha stories, the functional formula
+# is 74.6% ready and 25.4% remaining. No release gate is advanced.
+#
+# 2026-08-26 closure-first checkpoint: Story 8.5 now covers the minimal Alpha
+# storage-pressure flow end to end. Strict advisory estimates expose warning at
+# 70% and critical at 90%; missing/malformed estimates remain honest unavailable
+# states. The phone UI keeps export, explicit persistent-storage request and
+# browse-cache cleanup reachable without presenting any browser grant as an
+# eviction guarantee. A named quota failure cannot replace the current Durable
+# Revision: candidate remains unsaved, retry/export are visible and further
+# mutations wait for recovery. PWA cleanup removes only the repeatable browse
+# cache, preserving app shell, IndexedDB and the offline Project. Final evidence
+# is 1342/1342 Rstest, warning-free 250-file Biome, both TypeScript configs,
+# production build, 4/4 related iPhone-13 browser scenarios through the external
+# tunnel, 1/1 focused production PWA E2E, 97.67% storage-pressure mutation and
+# 96.97% quota-persistence mutation. Story 8.5 moves to review. With 5 done, 23
+# review, 6 in-progress and 1 backlog Alpha stories, the functional formula is
+# 75.4% ready and 24.6% remaining. Physical-device pressure/eviction evidence
+# remains a separate release gate; no release gate is advanced.
+#
+# 2026-08-26 closure-first checkpoint: Story 8.4 now covers the minimal Alpha
+# airplane-mode flow end to end. After one online production-PWA setup, an exact
+# catalog GLB is pinned into a healthy Project. With the network disabled, the
+# cached shell reopens that Project and Item in 2D/3D, publishes a 4000 -> 4300
+# mm edit and durably Undo/Redoes it. A completely new offline browser process
+# reads the same 4300-mm Revision and Item; the retained writer lease correctly
+# requires explicit takeover before interaction resumes. A never-downloaded GLB
+# remains non-durable unavailable with retry/cancel through the external phone
+# tunnel. Final evidence is 1342/1342 Rstest, warning-free 250-file Biome, both
+# TypeScript configs, production build, 5/5 production PWA E2E, 1/1 external
+# iPhone-13 browser scenario and the unchanged 89.83% pinned-loader mutation
+# baseline. Story 8.4 moves to review. With 5 done, 24 review, 5 in-progress and
+# 1 backlog Alpha stories, the functional formula is 76.3% ready and 23.7%
+# remaining. Remote Catalog Control Plane and physical-device matrix evidence
+# remain separate gates; no release gate is advanced.
+#
+# 2026-08-26 closure-first checkpoint: Story 8.8 now covers the minimal Alpha
+# self-contained export flow end to end. The one visible Project export always
+# emits `.interiors`, including resource-free Projects, with canonical Project,
+# schema/manifest, SHA-256 ledger and every exact referenced local GLB; session
+# History stays outside the candidate contract. Missing, corrupt, unverifiable
+# or unsupported input fails closed before a ready download. Named
+# `CATALOG-E2E-05` disables the network, observes no HTTP request, exports a
+# pinned GLB, deletes the source bytes and restores a second healthy Project
+# from the bundle. Final evidence is 1345/1345 Rstest, warning-free 250-file
+# Biome, both TypeScript configs, production build, 142/142 local mobile-browser
+# E2E, 2/2 related external-tunnel scenarios, 5/5 production PWA E2E and 100%
+# focused mutation for both the envelope (52/52) and visible route (7/7).
+# Story 8.8 moves to review. With 5 done, 25 review, 4 in-progress and 1 backlog
+# Alpha stories, the functional formula is 77.1% ready and 22.9% remaining.
+# Remote Catalog Control Plane and physical-device matrix remain separate gates;
+# no release gate is advanced.
+#
+# 2026-08-26 closure-first checkpoint: Story 8.9 now covers the minimal Alpha
+# atomic Portable Backup import flow. The phone UI exposes validating,
+# resource-staging, local read/render-smoke and saving progress plus explicit
+# cancellation. The bounded decoder distinguishes corrupt, future-schema,
+# cancellation and phone-limit outcomes. Exact missing resources are staged
+# under an operation-local compensation journal, reread from the local store,
+# rechecked by byte length/SHA-256/GLB preflight and projected from canonical
+# integer-mm geometry before any new Project ID or publication. Every observed
+# cancellation/failure removes only bytes first written by that operation and
+# leaves existing Projects unchanged; successful import atomically creates a
+# separate Project without geometry/resource drift. Final evidence is 1385/1385
+# Rstest, warning-free 252-file Biome, both TypeScript configs, production
+# build, 144-scenario mobile-browser regression, focused tunnel import evidence,
+# 5/5 production PWA E2E and focused mutation: smoke 100% (32/32), import 87.67%
+# (128/146), decoder 82.25% (241/293). Story 8.9 moves to review. With 5 done,
+# 26 review, 3 in-progress and 1 backlog Alpha stories, the functional formula
+# is 78.0% ready and 22.0% remaining. Persistent orphan-byte GC and physical
+# device transfer remain release hardening/evidence; no release gate advances.
+#
+# 2026-08-26 closure-first checkpoint: Story 5.3 now covers the minimal Alpha
+# wall-item lifecycle. Phone placement persists only a stable Wall host,
+# semantic side and integer-mm local dimensions/elevation/offset; renderer
+# transforms never enter Project state. Supported reverse, split, T/X and
+# inline-merge edits deterministically retain a lineage-compatible host across
+# reload, Plan and 3D. A split through a panel or deletion of its host lists the
+# exact affected Items and requires one explicit atomic removal outcome or
+# cancel; confirm reruns discovery against the current candidate/fence, so stale
+# preview and publication failure leave no partial Item or Revision. Final
+# evidence is 179/179 focused and 1385/1385 full Rstest, warning-free 252-file
+# Biome, both TypeScript configs, production build, 10/10 local and 10/10
+# external-tunnel iPhone-13 browser scenarios. Existing unchanged mutation
+# evidence is split rehost 90.0% (45/50), split conflict 100% (85/85), delete
+# conflict 90.48% (38/42), merge rehost 100% (9/9), reverse 100% (38/38) and
+# local move 100% (88/88). Story 5.3 moves to review. With 5 done, 27 review,
+# 2 in-progress and 1 backlog Alpha stories, the functional formula is 78.9%
+# ready and 21.1% remaining. Broader lineage/device corpora remain release
+# evidence; no release gate advances.
+#
+# 2026-08-26 closure-first checkpoint: Story 7.1 now covers the Minimal Alpha
+# durable session-history lifecycle. Only successful publications enter the
+# undo stack; undo/redo publish one complete canonical candidate and retain both
+# branches on reject, stale base, fence loss or persistence failure. Shared
+# SessionRetentionPolicy checks current+undo+redo+prospective resource roots
+# before mutation and preserves redo until successful branch replacement.
+# Current, undo and redo exact GLB hashes are scanned before travel/resume;
+# history-only failure keeps healthy current visible/exportable and read-only.
+# Exact byte repair plus recheck restores both branches. Explicit
+# DiscardSessionHistory lists the loss, keeps both branches on cancel and, after
+# fresh current-manifest/writer-fence checks, clears them without a Project
+# Revision. The missing controlled `HISTORY-E2E-01` now proves that cycle through
+# real phone UI and IndexedDB, including unchanged current revision ID/revision
+# count. Final evidence is 76/76 focused and 1385/1385 full Rstest, warning-free
+# 252-file Biome, both TypeScript configs, production build, 2/2 local and 2/2
+# external-tunnel history scenarios, and 5/5 production PWA E2E. The complete
+# mobile run passed 144/145; the sole unrelated `PROJECT-E2E-04G` 30-second
+# timeout passed isolated 1/1 in 3.7 s. Existing unchanged session-retention
+# mutation is 100% (50/50). Story 7.1 moves to review. With 5 done, 28 review,
+# 1 in-progress and 1 backlog Alpha stories, the functional formula is 79.7%
+# ready and 20.3% remaining. Cross-store crash/forced-GC corpus remains release
+# hardening/evidence; no release gate advances.
+#
+# 2026-08-26 closure-first checkpoint: Story 8.6 now covers the Minimal Alpha
+# current-resource recovery lifecycle. Referenced missing/hash-mismatched custom
+# GLB bytes keep the Project in an explicit read-only ResourceRecoveryRequired
+# state; unsafe models, editing and History remain blocked. Exact repair accepts
+# only the complete one-to-one SHA-256 set, writes it atomically and reopens the
+# same Project without a Revision. If exact bytes are unavailable, cancel keeps
+# the prior revision and a fresh confirmed RecoveryChangeSet removes every
+# unresolved reference in exactly one next Durable Revision. Canonical
+# `CATALOG-E2E-04`/`RECOVERY-E2E-01` now prove identical blocking diagnostics
+# across a forced catalog-route outage, partial-repair rejection, no-Revision
+# exact repair, cancel and one-Revision confirmed removal through real phone UI
+# and IndexedDB. Final evidence is 1385/1385 Rstest, warning-free 252-file
+# Biome, both TypeScript configs, production build, 2/2 local and 2/2 external-
+# tunnel recovery scenarios. Existing mutation evidence remains diagnostic
+# 100% (10/10), controller repair 83.33% (135/162), atomic batch 80% (4/5) and
+# RecoveryChangeSet 81.98% (91/111). Story 8.6 moves to review. With 5 done, 29
+# review, 0 in-progress and 1 backlog Alpha stories, the functional formula is
+# 80.6% ready and 19.4% remaining. Persistent cross-store PinStagingLease and
+# physical crash/forced-GC corpora remain release hardening/evidence; no release
+# gate advances.
+#
+# 2026-08-26 closure-first checkpoint: Story 5.6 now covers the Minimal Alpha
+# versioned Catalog Control Plane without remote Project ownership. An isolated
+# Kotlin/Ktor service publishes one immutable eight-asset/sixteen-resource
+# revision atomically into exact PostgreSQL 18.4 catalog-only tables; migration,
+# publisher and SELECT-only runtime credentials remain separate. Shared strict
+# envelope/semantic/media/HTTP fixtures, exact schema/object allowlists,
+# normalized-row lossless projection and runtime/publisher privilege rejection
+# execute in 23/23 backend tests. PIT remains 98% line coverage and 76% mutation
+# score (88/116 killed; 77% test strength). The phone consumes publication and
+# exact resources only through CatalogGatewayPort and same-origin proxy, shows
+# version/hash/byte metadata and keeps outage/invalid/cancel distinct without
+# mutating Project, recovery or writer state. A focused TypeScript mutation run
+# found and fixed acceptance of an impossible Gregorian date; final diagnostic
+# score is 69.49% (571/826 killed plus 3 timeout), with the shared mandatory and
+# expanded boundary corpora green. Final evidence is 1399/1399 Rstest,
+# warning-free 259-file Biome, both TypeScript configs, production build, all
+# 148 ordinary mobile scenarios carrying current green evidence (147/148 full
+# run plus the corrected sole Service Worker scenario 1/1), 5/5 production PWA,
+# and live phone-proxy-Kotlin-PostgreSQL smoke. SC-V09-CP is retained as browser
+# evidence only. Story 5.6 moves to review. The Alpha-only composition is now 5
+# done, 30 review, 0 in-progress and 0 backlog stories; formula
+# (5 * 1 + 30 * 0.8) / 35 = 82.9% ready and 17.1% remaining. G-READY and release
+# gates remain NOT_READY; no physical-device, public-production,
+# independent-human, SLA/Security/Operations or release claim advances.
+#
+# 2026-08-27 Story 5.6 review closure: all 16 accepted findings are patched.
+# Strict trailing-document/Unicode/version validation, pre-repository perimeter
+# rejection, exact 405/header behavior, bounded resource reads, PostgreSQL
+# PUBLIC/runtime authority checks, complete-publication startup readiness,
+# Flyway-before-run and dependency checksum verification are executable.
+# Evidence is 37/37 Kotlin tests, expanded PIT 92% line / 63% mutation / 75%
+# test strength, 1399/1399 Rstest, warning-free 259-file Biome, both TypeScript
+# configs, production build, focused web mutation 591/849 + 3 timeout (69.96%),
+# 148/148 ordinary mobile and 5/5 production PWA, plus live
+# phone-proxy-Kotlin-PostgreSQL smoke. Story 5.6 moves to done. Alpha-only
+# composition is 6 done, 29 review, 0 in-progress and 0 backlog stories;
+# (6 * 1 + 29 * 0.8) / 35 = 83.4% ready and 16.6% remaining. G-READY and
+# physical/public/independent release gates remain NOT_READY.
+#
+# 2026-08-27 Story 1.3 review closure: Project ownership now uses an expiring
+# project-scoped writer lease with visible-page heartbeat and monotonic fencing
+# tokens. A parallel context remains read-only until confirmed takeover, while
+# an ordinarily closed writer can be replaced only after lease expiry. Atomic
+# publish and delete recheck owner, token and expiry at their commit boundary.
+# Duplicate-tab identity, simultaneous opens, staging races, takeover
+# confirmation/cancel/error, mutation-control blocking, draft/history recovery
+# after fence loss and resume to the latest Durable Revision are executable.
+# Evidence is 1415/1415 Rstest, warning-free 259-file Biome, both TypeScript
+# configs, production build, 147/148 mobile scenarios with one environment skip
+# and zero failures, and 5/5 production PWA. Focused mutation evidence is
+# controller 81.33%, expiry protocol 84.56% and atomic fencing 89.58%. Story
+# 1.3 and Epic 1 move to done. Alpha-only composition is 7 done, 28 review,
+# 0 in-progress and 0 backlog stories; (7 * 1 + 28 * 0.8) / 35 = 84.0% ready
+# and 16.0% remaining. G-READY and release gates remain NOT_READY.
+#
+# 2026-08-27 Story 2.2 review closure: all seven accepted findings are patched.
+# Wall magnetic eligibility now stays 24 CSS px across zoom with Vertex-first
+# priority; exact integer-mm cardinal/45-degree contacts remain forward-only and
+# use the raw pointer before the rounded endpoint. Ordinary grid quantisation no
+# longer presents a magnetic guide, and a Wall no longer than its thickness is
+# neither confirmable nor materializable. Temporary and durable graph IDs and
+# every planned piece fail closed on omission or collision. Evidence is
+# 1473/1473 Rstest, warning-free 259-file Biome, both TypeScript configs,
+# production build and focused mutation 83.36% across 535 mutants (UI 83.70%,
+# domain 82.63%). The ordinary mobile suite confirmed 147 product scenarios
+# (146 in the full run plus the backend-dependent case on isolated fixture
+# rerun; one live PostgreSQL case was environment-skipped), and production PWA
+# passed 5/5 with the exact read-only catalog fixture. Story 2.2 moves to done.
+# Alpha-only composition is 8 done, 27 review, 0 in-progress and 0 backlog
+# stories; (8 * 1 + 27 * 0.8) / 35 = 84.6% ready and 15.4% remaining.
+# G-READY and physical/public/independent release gates remain NOT_READY.
+#
+# 2026-08-27 Story 2.3 review closure: all eight accepted findings are patched.
+# MoveVertex/MoveWall now reject unusably short segments, stale wall/floor Item
+# hosts, rotated or polygonally out-of-room floor footprints and cardinal/45°
+# wall-body collisions. Direct touch uses origin-relative 100-mm candidates,
+# 44-CSS-px vertex targets, domain-mirrored gesture eligibility and revision-
+# bound transient drafts. Evidence is 1491/1491 Rstest, warning-free 259-file
+# Biome, both TypeScript configs, production build, 148/149 mobile scenarios
+# with the sole live-PostgreSQL case environment-skipped and zero failures,
+# 5/5 production PWA, and focused mutation 96.34% (237/246; UI 100%). Story
+# 2.3 moves to done. Alpha-only composition is 9 done, 26 review, 0 in-progress
+# and 0 backlog stories; (9 * 1 + 26 * 0.8) / 35 = 85.1% ready and 14.9%
+# remaining. G-READY and physical/public/independent release gates remain
+# NOT_READY.
+# 2026-08-27 Story 2.4 final closure: strict AC5 preflight now rejects every
+# positive-overlap candidate and every wall no longer than its thickness before
+# identity allocation. AddWall T/X consequences are exact and touch-first;
+# transient drafts are revision-bound, competing publication is blocked, retry-
+# pending candidates cannot be falsely cancelled, and the accessible preview
+# identifies affected resources and restores focus on cancel. Independent
+# domain, UI/edge and publication re-reviews report no Story-local findings.
+# Evidence is 1505/1505 Rstest, clean 259-file Biome, both TypeScript configs,
+# production build, 149 passed mobile-browser scenarios with only the live
+# PostgreSQL environment case skipped, 5/5 PWA, final focused touch rerun, and
+# targeted mutation 30/30 AC5 plus 10/10 retry ownership. Story 2.4 moves to
+# done. Alpha-only composition is 10 done and 25 review stories;
+# (10 * 1 + 25 * 0.8) / 35 = 85.7% ready and 14.3% remaining. G-READY and
+# physical/public release gates remain NOT_READY.
+#
+# 2026-08-27 Story 2.5 final closure: all accepted Story-local findings are
+# patched. Thickness editing covers the complete 20–1000 mm integer range,
+# exact odd-thickness half-mm derivation, detached walls, stable centreline and
+# Room identity/height, unequal joins, polygon measurements and atomic
+# no-op/rejection behavior. Exact recomputed usable polygons retain valid
+# rotated floor items; expanded wall bodies reject collisions with floor items
+# and Openings hosted by another Wall without invalidating their own Opening.
+# Final evidence is 1534/1534 Rstest, clean 259-file Biome, both TypeScript
+# configs, production build, 149 passed mobile-browser scenarios with only the
+# live PostgreSQL environment case skipped, 5/5 PWA and focused mutation 81.18%
+# across 356 mutants. Independent blind, edge and acceptance re-review has no
+# unresolved Story-local finding; the repository-wide schema-V1 boundary is
+# retained in deferred-work.md. Story 2.5 moves to done. Alpha-only composition
+# is 11 done and 24 review stories; (11 * 1 + 24 * 0.8) / 35 = 86.3% ready and
+# 13.7% remaining. G-READY and physical/public release gates remain NOT_READY.
+#
+# 2026-08-28 Story 2.6 final closure: destructive Wall/Vertex previews list
+# exact affected Room/Opening/Item identities, require explicit Room metadata
+# predecessor choice and bind confirmation to the previewed Durable Revision.
+# CAS rejection reloads the actual current base; 45-degree inline Vertex merge,
+# polygonal Rooms, exact floor-item lineage and Opening/wall-Item rehost remain
+# canonical across reload. All accepted independent-review findings are closed.
+# Final evidence is 1540/1540 Rstest, clean 259-file Biome, both TypeScript
+# configs, production build, 150 passed mobile-browser scenarios with only the
+# live PostgreSQL environment case skipped, 5/5 PWA and focused mutation 84.00%
+# (147/175). Story 2.6 moves to done and completes Epic 2. Alpha-only composition
+# is 12 done and 23 review stories; (12 * 1 + 23 * 0.8) / 35 = 86.9% ready and
+# 13.1% remaining. G-READY and physical/public release gates remain NOT_READY.
+#
+# 2026-08-28 independent acceptance: Story 3.2 satisfies all six Minimal Alpha
+# AC: the non-canvas directory addresses only a current stable roomId; the form
+# publishes name/type/height atomically; Room surface taps remain inert; shared
+# wall/opening height rules use the required max/min derivations; and rejected
+# input restores prior metadata without a Revision. Current local evidence is
+# 1,584/1,584 Rstest, clean 264-file Biome lint, both TypeScript configurations
+# and a production build. The recorded mobile-browser evidence remains 3/3.
+# Story 3.2 moves to done. Alpha-only composition is 13 done and 22 review
+# stories; (13 * 1 + 22 * 0.8) / 35 = 87.4% ready and 12.6% remaining.
+# G-READY and physical/public release gates remain NOT_READY.
+#
+# 2026-08-28 independent final acceptance: Story 3.4 satisfies all six
+# Minimal Alpha AC. The reopened P1 confirms every Opening and Room-height
+# conflict publication uses exact-base CAS and maps rejection to `stale-base`,
+# without a Durable Revision, History entry or unconditional-publish fallback.
+# Current evidence is 1,590/1,590 Rstest, 61/61 scoped application mutation
+# kills, clean 264-file Biome lint, both TypeScript configurations, production
+# build, 154 passed mobile-browser scenarios (one environment-skipped live
+# catalog test) and 5/5 production-PWA scenarios. Story 3.4 moves to done.
+# Alpha-only composition is 14 done and 21 review stories; (14 * 1 + 21 * 0.8)
+# / 35 = 88.0% ready and 12.0% remaining. G-READY and physical/public release
+# gates remain NOT_READY.
+#
+# 2026-08-29 independent acceptance and close-out: the Product Owner verified
+# the repaired core flow on physical Samsung S24 Ultra and iPhone 15 Pro Max,
+# both in Chrome and as installed PWA. This is direct acceptance of the
+# working navigation/placement path; it is not represented as the complete
+# NFR-15 device-lab matrix. Independent 3D/item and history reviewers found
+# no unresolved story-local issue in 4.2, 5.4, 5.5, 7.2 or 7.3. Their accepted
+# evidence covers camera navigation and display-only Room surfaces; 2D/3D
+# selection, floor move and 45-degree rotation with durable save; collision
+# feedback and parametric placeholder; cancellation without a history trace;
+# and stable rejected-action explanation/correction.
+#
+# Final current regression evidence: 1,672/1,672 Rstest, clean 273-file Biome
+# lint, both TypeScript configurations, production Rspack build, 166 passed
+# mobile-browser scenarios with one explicitly skipped live-catalog case, and
+# 9/9 production-PWA scenarios. The PWA suite also now proves that an activated
+# update waits for an explicit safe reload and disables that reload again while
+# a new undurable draft exists. Focused manual UI mutations of the reload-ready
+# state and disabled safeguard were both killed by PWA-E2E-03. The configured
+# automated mutator intentionally scopes domain/application code, so no
+# automatic UI-only mutation percentage is claimed.
+#
+# Therefore Stories 4.2, 5.4, 5.5, 7.2 and 7.3 move to done. The remaining
+# review stories are deliberately retained: 4.4 still needs RS-2/thermal
+# performance traces; 8.2, 8.3 and 8.7 each need their respective physical
+# deletion, Safari/iOS handoff and installed-update/recovery verification.
+#
+# 2026-08-29 final local close-out: `RESOURCE-E2E-01`, placement/browser
+# regressions, 1,672/1,672 Rstest, 166 passed (one intentionally skipped live
+# catalog scenario) and 9/9 production-PWA scenarios pass. The Product Owner
+# previously accepted placement on Samsung S24 Ultra and iPhone 15 Pro Max in
+# Chrome and installed-PWA contexts. Story 5.2 is therefore done; its
+# technical pin/backup/cancel/fence-loss/crash lifecycle is covered, while
+# NFR-15 remains a separate device-lab release gate. The Alpha ledger is now
+# 31 done and 4 review stories (35 active stories total); retired and Alpha+
+# stories are excluded. Alpha release gates, especially NFR-15, remain
+# NOT_READY.
+#
+# 2026-08-29 Product Owner physical acceptance: Story 8.2 was executed with
+# disposable `DEL-…` and `KEEP-…` Projects. Cancelling deletion, closing and
+# reopening preserved both Projects; confirming deletion, closing and reopening
+# left only `KEEP-…`. Story 8.3 was executed on iPhone in Safari and then its
+# Home Screen PWA: Safari-created data did not silently appear in the separate
+# PWA context, and a Portable Backup exported in Safari imported and reopened
+# successfully in the PWA. These story-level confirmations close 8.2 and 8.3;
+# they do not stand in for NFR-15's independently witnessed device-lab matrix.
+# The active Alpha ledger is now 33 done and 2 review stories (35 total).
+#
+# 2026-08-29 Product Owner physical acceptance: Story 8.7 was performed as a
+# coordinated installed-PWA update. `UPDATE-1` first reached a Durable Revision
+# on V1; a distinct V2 service worker was then served on the same origin. The
+# PWA showed the waiting-update notice, did not reload automatically, disabled
+# restart during an active Wall draft, re-enabled it after cancel, and reopened
+# the same Project without the cancelled wall after the explicit restart.
+# Story 8.7 and Epic 8 are done. The active Alpha ledger is now 34 done and
+# one review story (35 total). NFR-15 remains a separate release gate.
+development_status:
+  epic-1: done
+  1-1-bootstrap-web-root-and-durable-project: done
+  1-2-open-and-rename-project: done
+  1-3-protect-project-from-concurrent-writer: done
+  1-4-confirm-cancel-and-undo-first-change: done
+  epic-1-retrospective: optional
+
+  epic-2: done
+  2-1-create-and-measure-rectangular-room: done
+  2-2-draw-constrained-wall-with-touch-or-numeric-input: done
+  2-3-move-vertex-without-breaking-plan-graph: done
+  2-4-join-or-split-wall-at-shared-vertex: done
+  2-5-change-wall-thickness-with-derived-room-height: done
+  2-6-delete-wall-or-vertex-with-consequence-preview: done
+  epic-2-retrospective: optional
+
+  epic-3: done
+  3-1-derive-stable-rooms-from-closed-topology: done
+  3-2-name-type-and-set-room-height: done
+  3-3-add-valid-door-or-window-on-wall: done
+  3-4-preserve-or-safely-change-opening-after-wall-edit: done
+  epic-3-retrospective: optional
+
+  epic-4: done
+  4-1-switch-durable-revision-between-plan-and-3d: done
+  4-2-inspect-3d-plan-without-room-selection: done
+  4-4-keep-3d-responsive-and-recoverable: done
+  4-5-enter-focus-without-changing-project: retired
+  epic-4-retrospective: optional
+
+  epic-5: done
+  5-1-find-suitable-item-in-catalog: done
+  5-2-place-backup-ready-item-on-room-floor: done
+  5-3-place-wall-item-with-stable-host: done
+  5-4-precisely-edit-and-protect-placed-item: done
+  5-5-see-collision-and-create-parametric-placeholder: done
+  5-6-fetch-versioned-catalog-without-uploading-project: done
+  epic-5-retrospective: optional
+
+  epic-6: done
+  6-1-change-allowed-item-variant-or-color: done
+  6-2-apply-finish-to-addressed-room-floor: retired
+  6-3-apply-finish-to-addressed-room-ceiling: retired
+  6-4-finish-specific-side-of-shared-wall: retired
+  6-5-make-assigned-finish-offline-ready-and-portable: retired
+  epic-6-retrospective: optional
+
+  epic-7: done
+  7-1-undo-or-redo-durable-session-change: done
+  7-2-cancel-active-gesture-without-history-trace: done
+  7-3-explain-why-action-was-not-applied: done
+  epic-7-retrospective: optional
+
+  epic-8: done
+  8-1-create-independent-project-variant: retired
+  8-2-permanently-delete-project-after-confirmation: done
+  8-3-install-pwa-and-explain-local-context-boundary: done
+  8-4-open-and-save-existing-project-in-airplane-mode: done
+  8-5-show-storage-pressure-before-data-loss: done
+  8-6-recover-project-from-resource-integrity-failure: done
+  8-7-survive-pwa-update-without-unsafe-reload: done
+  8-8-export-self-contained-portable-backup: done
+  8-9-import-backup-atomically-as-new-project: done
+  # 2026-08-25 Product Owner retired Story 8.10. Historical PNG evidence is
+  # superseded: no PNG helper, UI action, share/download route or test remains.
+  8-10-save-or-share-compliant-png: retired
+  8-11-verify-focus-in-pwa-and-physical-device-matrix: retired
+  epic-8-retrospective: optional
+
+  epic-9: in-progress
+  9-1-safely-validate-or-reject-local-glb: in-progress
+  9-2-confirm-semantics-and-register-custom-asset: in-progress
+  9-3-reuse-delete-and-transfer-custom-asset: backlog
+  epic-9-retrospective: optional

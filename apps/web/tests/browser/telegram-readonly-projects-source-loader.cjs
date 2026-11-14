@@ -1,0 +1,2 @@
+const {createHash}=require('node:crypto');
+module.exports=function(source){const sha=createHash('sha256').update(source).digest('hex');return `globalThis.__READONLY_LEAF_SUBJECT__={sha:${JSON.stringify(process.env.READONLY_LEAF_UI_BAD_MARKER === "1" ? "invalid-source-marker" : sha)},instrumented:${source.includes('function stryNS_9fa48(')},readActive:()=>typeof stryNS_9fa48==='function'?stryNS_9fa48().activeMutant:null};\n${source}`;};

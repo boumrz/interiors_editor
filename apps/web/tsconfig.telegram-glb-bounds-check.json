@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/ui/bounded-local-glb-files.ts",
+    "src/ui/bounded-local-glb-files.test.tsx"
+  ]
+}

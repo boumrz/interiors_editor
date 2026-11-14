@@ -1,0 +1,12 @@
+{
+  "scoped-project-repository.ts": "src/adapters/persistence/scoped-project-repository.ts",
+  "telegram-project-repository.ts": "src/adapters/persistence/telegram-project-repository.ts",
+  "scoped-writer-lease.ts": "src/adapters/persistence/scoped-writer-lease.ts",
+  "telegram-writer-lease.ts": "src/adapters/persistence/telegram-writer-lease.ts",
+  "telegram-scope-store.ts": "src/adapters/persistence/telegram-scope-store.ts",
+  "browser-registered-project-repository.ts": "src/adapters/persistence/browser-registered-project-repository.ts",
+  "browser-registered-writer-lease.ts": "src/adapters/persistence/browser-registered-writer-lease.ts",
+  "browser-registered-scope-store.ts": "src/adapters/persistence/browser-registered-scope-store.ts",
+  "browser-registered-runtime.ts": "src/app/browser-registered-runtime.ts",
+  "browser-project-key-lookup.ts": "src/adapters/persistence/browser-project-key-lookup.ts"
+}

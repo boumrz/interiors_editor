@@ -1,0 +1,4 @@
+{
+ "extends":"./tsconfig.helper-resource-set-check.json",
+ "include":["src/application/browser-backup-representability.ts","src/application/browser-backup-representability.test.ts","src/application/browser-backup-safety-boundaries.test.ts","src/application/browser-backup-resource-set-boundaries.test.ts","src/application/browser-backup-plain-data-boundaries.test.ts"]
+}

@@ -1,0 +1,12 @@
+{
+	"scoped-project-repository.ts": "0d61a438e8325d9753bd77ef70d86316b73c89a7c4c27f179d5b5bcf76faab6b",
+	"telegram-project-repository.ts": "749f479318f3c9fa3349b72ba01a5427edd5245b959c8a80cf1a964b946c81ab",
+	"scoped-writer-lease.ts": "f20e962b07efb8f895a5fdfa7b284b3e4ca9d43e8cbb058cf32d31792009398f",
+	"telegram-writer-lease.ts": "b1dba3e457eab84afc5258b5f86589b07393d1e59c7e3406a597447449ccf8ad",
+	"telegram-scope-store.ts": "a635b0d21bdaf33f94dc6a35f7cb2bf3874e1ce09f4f8a0dc72b5ac903888700",
+	"browser-registered-project-repository.ts": "c81c665f692d57498d76b01fb3898f2c39ff52ac6615a4d6e19ed0238f8264d0",
+	"browser-registered-writer-lease.ts": "ab676701c7671c0a94527ece3b909cc03be953917cff62f0df7dfe68c2dd395f",
+	"browser-registered-scope-store.ts": "e05d11eb3537a7a1fe7a156f23db391e6a9b3da5146de450c88ffdac4e69cc2e",
+	"browser-registered-runtime.ts": "482810b3e62d445d5909a28a60f436b53450d4efac77ab131171c1383bdb658c",
+	"browser-project-key-lookup.ts": "e16a5383d160d88ba7717307148151e1d2d04c3c0ecc724599ed8db7da8d3128"
+}

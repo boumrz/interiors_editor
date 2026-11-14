@@ -1,0 +1,21 @@
+{
+  "legacyFamily": "V2",
+  "purpose": "raw-byte candidate retained for a future TCC-A1 legacy-classifier grammar",
+  "project": {
+    "assetDefinitionRefs": [],
+    "assetInstances": [],
+    "createdAt": "2026-08-06T09:10:00.000Z",
+    "level": {
+      "levelId": "level-1",
+      "openings": [],
+      "roomMetadata": [],
+      "vertices": [],
+      "wallSegments": []
+    },
+    "lifecycle": "active",
+    "name": "TCC legacy V2 characterization",
+    "projectId": "legacy-v2-empty",
+    "schemaVersion": 2,
+    "updatedAt": "2026-08-06T09:10:00.000Z"
+  }
+}

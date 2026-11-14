@@ -1,0 +1,19 @@
+{
+  "policy": "MeasurementFormatPolicy V1",
+  "presentationInputs": [
+    {
+      "kind": "exact-q-sqrt2",
+      "operation": "WallCenterlineLength",
+      "value": {
+        "denominator": "1",
+        "rationalNumerator": "3700",
+        "sqrt2Numerator": "1800"
+      }
+    },
+    {
+      "kind": "integer-mm2",
+      "operation": "RoomArea",
+      "value": "12345000"
+    }
+  ]
+}

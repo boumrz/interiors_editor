@@ -1,0 +1,7 @@
+# Current complete registered adapter unit mutation
+
+Exact current subject b7c51c8ff7da737bae2a62632e0ded906bcf8ba725bb35c4edb54dfb3b5f04ad;121 whole-file mutations,17-case current corpus,113Killed/0Timeout/8Survived,93.39 at explicit break80. Raw report SHA6e19b05f8188698f5cbdf3c748d540ed8b1967a3255856be5ab321ec3143b0c1. All121 IDs and2057 per-test four-module loader-input SHA/local namespace observations pass. Both deliberate wrong namespace and poisoned source controls reject; controls are separate from full mutation. No setup/build/corpus failures are accepted as Killed; post-audit invalid list is empty. Four subjects, eight tests, two original configuration files and package/global.css remain exact before/after.
+
+Historical116 report source61b956 and its16-case corpus/96.55 are retained by their original owner; they are not relabelled current. The new catch changes source and yields four additional bounded cancellation/PPJ discriminant survivors; survivor-triage.json describes all8 independently. No unrestricted equivalent label or aggregate S3 score.
+
+One Stryker worker and one Rstest worker; current complete no-bail registered test file, pinned Node24.19.0/pnpm11.20.0, original registered timeout10000/factor2, independent current full scope. Temporary proof-only config/loader/runner and per-command nonce/TMP/output paths do not affect shipped code. All actual raw command logs and activation rows are retained. No production/original edits, app/network/file/device acceptance or Story Done.

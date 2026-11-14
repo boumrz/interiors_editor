@@ -1,0 +1,232 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: telegram-storage-e2e.check.ts >> TMA-STORAGE-11: revoked reopen closes its late native handle and preserves metadata
+- Location: tests/browser/telegram-storage-e2e.check.ts:745:1
+
+# Error details
+
+```
+Error: expect(received).toBe(expected) // Object.is equality
+
+Expected: 0
+Received: 1
+```
+
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]: Native storage test harness
+```
+
+# Test source
+
+```ts
+  665 | }) => {
+  666 | 	await page.evaluate(() =>
+  667 | 		window.__telegramScopeHarness.create("store", "a", "blocked-open"),
+  668 | 	);
+  669 | 	expect(
+  670 | 		await page.evaluate(() =>
+  671 | 			window.__telegramScopeHarness.reserve("store", "attempt"),
+  672 | 		),
+  673 | 	).toMatchObject({ kind: "failed" });
+  674 | 	await page.evaluate(() => window.__telegramScopeHarness.settleOpens());
+  675 | 	expect(
+  676 | 		(await page.evaluate(() => indexedDB.databases())).some(
+  677 | 			(db) => db.name === `interiors-editor-projects:${scopeA}`,
+  678 | 		),
+  679 | 	).toBe(false);
+  680 | 	expect(
+  681 | 		await page.evaluate(() =>
+  682 | 			window.__telegramScopeHarness.reserve("store", "attempt"),
+  683 | 		),
+  684 | 	).toEqual({ kind: "reserved", id: `tma-v1:${scopeA}:attempt:1` });
+  685 | });
+  686 | 
+  687 | test("TMA-STORAGE-09: reservation requires actual strict durability and rejects relaxed fallback", async ({
+  688 | 	page,
+  689 | }) => {
+  690 | 	await page.evaluate(() => window.__telegramScopeHarness.create("store", "a"));
+  691 | 	expect(
+  692 | 		await page.evaluate(() =>
+  693 | 			window.__telegramScopeHarness.reserve("store", "attempt"),
+  694 | 		),
+  695 | 	).toEqual({ kind: "reserved", id: `tma-v1:${scopeA}:attempt:1` });
+  696 | 	expect(
+  697 | 		await page.evaluate(() => window.__telegramScopeHarness.durabilityModes),
+  698 | 	).toEqual(["strict"]);
+  699 | 	await page.evaluate(() =>
+  700 | 		window.__telegramScopeHarness.relaxNextTransaction(),
+  701 | 	);
+  702 | 	expect(
+  703 | 		await page.evaluate(() =>
+  704 | 			window.__telegramScopeHarness.reserve("store", "lease"),
+  705 | 		),
+  706 | 	).toMatchObject({ kind: "failed" });
+  707 | 	expect(
+  708 | 		await page.evaluate(() => window.__telegramScopeHarness.records("a")),
+  709 | 	).toContainEqual({ key: "counter", lastReserved: "1" });
+  710 | 	expect(
+  711 | 		await page.evaluate(() =>
+  712 | 			window.__telegramScopeHarness.reserve("store", "lease"),
+  713 | 		),
+  714 | 	).toEqual({ kind: "reserved", id: `tma-v1:${scopeA}:lease:2` });
+  715 | });
+  716 | 
+  717 | test("TMA-STORAGE-10: revoke pending native open aborts late initialization", async ({
+  718 | 	page,
+  719 | }) => {
+  720 | 	await page.evaluate(() =>
+  721 | 		window.__telegramScopeHarness.create("store", "a", "close-on-open"),
+  722 | 	);
+  723 | 	expect(
+  724 | 		await page.evaluate(() =>
+  725 | 			window.__telegramScopeHarness.reserve("store", "attempt"),
+  726 | 		),
+  727 | 	).toMatchObject({ kind: "failed" });
+  728 | 	await page.evaluate(() => window.__telegramScopeHarness.awaitClose("store"));
+  729 | 	await page.evaluate(() => window.__telegramScopeHarness.settleOpens());
+  730 | 	expect(
+  731 | 		(await page.evaluate(() => indexedDB.databases())).some(
+  732 | 			(db) => db.name === `interiors-editor-projects:${scopeA}`,
+  733 | 		),
+  734 | 	).toBe(false);
+  735 | 	expect(
+  736 | 		await page.evaluate(() =>
+  737 | 			window.__telegramScopeHarness.reserve("store", "lease"),
+  738 | 		),
+  739 | 	).toMatchObject({ kind: "failed" });
+  740 | 	expect(
+  741 | 		await page.evaluate(() => window.__telegramScopeHarness.openCalls),
+  742 | 	).toBe(1);
+  743 | });
+  744 | 
+  745 | test("TMA-STORAGE-11: revoked reopen closes its late native handle and preserves metadata", async ({
+  746 | 	page,
+  747 | }) => {
+  748 | 	await page.evaluate(() => window.__telegramScopeHarness.create("seed", "a"));
+  749 | 	await page.evaluate(() =>
+  750 | 		window.__telegramScopeHarness.reserve("seed", "attempt"),
+  751 | 	);
+  752 | 	await page.evaluate(() => window.__telegramScopeHarness.close("seed"));
+  753 | 	await page.evaluate(() =>
+  754 | 		window.__telegramScopeHarness.create("late", "a", "close-on-open"),
+  755 | 	);
+  756 | 	expect(
+  757 | 		await page.evaluate(() =>
+  758 | 			window.__telegramScopeHarness.reserve("late", "lease"),
+  759 | 		),
+  760 | 	).toMatchObject({ kind: "failed" });
+  761 | 	await page.evaluate(() => window.__telegramScopeHarness.awaitClose("late"));
+  762 | 	await page.evaluate(() => window.__telegramScopeHarness.settleOpens());
+  763 | 	expect(
+  764 | 		await page.evaluate(() => window.__telegramScopeHarness.activeHandles),
+> 765 | 	).toBe(0);
+      |    ^ Error: expect(received).toBe(expected) // Object.is equality
+  766 | 	await page.evaluate(() => window.__telegramScopeHarness.upgrade("a"));
+  767 | 	expect(
+  768 | 		await page.evaluate(() => window.__telegramScopeHarness.records("a")),
+  769 | 	).toContainEqual({ key: "counter", lastReserved: "1" });
+  770 | });
+  771 | 
+  772 | test("TMA-STORAGE-12: close from native put-success drains commit and rejects queued work", async ({
+  773 | 	page,
+  774 | }) => {
+  775 | 	await page.evaluate(() => window.__telegramScopeHarness.create("store", "a"));
+  776 | 	await page.evaluate(() =>
+  777 | 		window.__telegramScopeHarness.reserve("store", "attempt"),
+  778 | 	);
+  779 | 	await page.evaluate(() =>
+  780 | 		window.__telegramScopeHarness.closeOnCounterRequest("store"),
+  781 | 	);
+  782 | 	const results = await page.evaluate(() =>
+  783 | 		Promise.all([
+  784 | 			window.__telegramScopeHarness.reserve("store", "attempt"),
+  785 | 			window.__telegramScopeHarness.reserve("store", "lease"),
+  786 | 		]),
+  787 | 	);
+  788 | 	expect(results[0]).toEqual({
+  789 | 		kind: "reserved",
+  790 | 		id: `tma-v1:${scopeA}:attempt:2`,
+  791 | 	});
+  792 | 	expect(results[1]).toMatchObject({ kind: "failed" });
+  793 | 	await page.evaluate(() => window.__telegramScopeHarness.awaitClose("store"));
+  794 | 	expect(
+  795 | 		await page.evaluate(() => window.__telegramScopeHarness.lifecycle),
+  796 | 	).toEqual(["request-success", "tx-complete", "closed"]);
+  797 | 	await page.evaluate(() => window.__telegramScopeHarness.upgrade("a"));
+  798 | 	expect(
+  799 | 		await page.evaluate(() => window.__telegramScopeHarness.records("a")),
+  800 | 	).toContainEqual({ key: "counter", lastReserved: "2" });
+  801 | });
+  802 | 
+  803 | test("TMA-STORAGE-13: admitted upgrade drains but revoke prevents a following reservation", async ({
+  804 | 	page,
+  805 | }) => {
+  806 | 	await page.evaluate(() => window.__telegramScopeHarness.create("store", "a"));
+  807 | 	await page.evaluate(() =>
+  808 | 		window.__telegramScopeHarness.closeOnCounterRequest("store", true),
+  809 | 	);
+  810 | 	expect(
+  811 | 		await page.evaluate(() =>
+  812 | 			window.__telegramScopeHarness.reserve("store", "attempt"),
+  813 | 		),
+  814 | 	).toMatchObject({ kind: "failed" });
+  815 | 	await page.evaluate(() => window.__telegramScopeHarness.awaitClose("store"));
+  816 | 	expect(
+  817 | 		await page.evaluate(() => window.__telegramScopeHarness.lifecycle),
+  818 | 	).toEqual(["request-success", "tx-complete", "closed"]);
+  819 | 	expect(
+  820 | 		await page.evaluate(() => window.__telegramScopeHarness.records("a")),
+  821 | 	).toContainEqual({ key: "counter", lastReserved: "0" });
+  822 | 	await page.evaluate(() => window.__telegramScopeHarness.upgrade("a"));
+  823 | });
+  824 | 
+  825 | test("TMA-STORAGE-14: controlled read fault rejects and releases scope lock without an ID", async ({
+  826 | 	page,
+  827 | }) => {
+  828 | 	await page.evaluate(() => window.__telegramScopeHarness.create("store", "a"));
+  829 | 	await page.evaluate(() =>
+  830 | 		window.__telegramScopeHarness.reserve("store", "attempt"),
+  831 | 	);
+  832 | 	await page.evaluate(() => window.__telegramScopeHarness.failNextRead());
+  833 | 	expect(
+  834 | 		await page.evaluate(() =>
+  835 | 			window.__telegramScopeHarness.reserve("store", "lease"),
+  836 | 		),
+  837 | 	).toMatchObject({ kind: "failed" });
+  838 | 	expect(
+  839 | 		await page.evaluate(() => window.__telegramScopeHarness.records("a")),
+  840 | 	).toContainEqual({ key: "counter", lastReserved: "1" });
+  841 | 	expect(
+  842 | 		await page.evaluate(() =>
+  843 | 			window.__telegramScopeHarness.reserve("store", "lease"),
+  844 | 		),
+  845 | 	).toEqual({ kind: "reserved", id: `tma-v1:${scopeA}:lease:2` });
+  846 | });
+  847 | 
+  848 | test("TMA-STORAGE-15: an unknown operation kind cannot initialize or reserve in a scope", async ({
+  849 | 	page,
+  850 | }) => {
+  851 | 	await page.evaluate(() => window.__telegramScopeHarness.create("store", "a"));
+  852 | 	expect(
+  853 | 		await page.evaluate(() =>
+  854 | 			window.__telegramScopeHarness.reserve("store", "unknown" as "attempt"),
+  855 | 		),
+  856 | 	).toMatchObject({ kind: "failed" });
+  857 | 	expect(
+  858 | 		await page.evaluate(() => window.__telegramScopeHarness.openCalls),
+  859 | 	).toBe(0);
+  860 | });
+  861 | 
+  862 | test("TMA-STORAGE-16: completed and failed opens release cancellation observers before session close", async ({
+  863 | 	page,
+  864 | }) => {
+  865 | 	await page.evaluate(() =>
+```

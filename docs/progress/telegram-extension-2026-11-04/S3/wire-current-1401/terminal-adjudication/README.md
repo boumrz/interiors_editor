@@ -1,0 +1,1 @@
+Independent exact-source/terminal causality proposal for wire IDs125/134/659. Raw1401/report/statuses unchanged; original whole-run acceptance remains REJECTED pending Root review. Includes real unrelated SIGABRT negative with valid actual4module canary and dead owned worker, explicitly rejected as detection. No production edits, no full rerun, no synthetic score.

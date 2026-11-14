@@ -1,0 +1,13 @@
+# Writer recovery exit/takeover: bounded actual native mutation proof
+
+Frozen AppShell source4dc13f0833703169e7def5db8b7ee4ee6b734cba777a52deb999f2c414661917. Only an isolated copy was instrumented and restored byte-for-byte. Root may now edit its originals; this evidence remains explicitly tied to that source. No original/product source changes.
+
+Baseline native08/09/19/29/30:5PASS.13 precise manual substitutions of ONLY new recovery-exit/copy/takeover/closing terms:10 behavioral failures and3 survivors(M05/M08/M13),zero setup/activation/infrastructure errors. This is not a Stryker run, full-AppShell score or combined score. Every run checks existing HTMLactiveID and an independently executed marker INSIDE the actual AppShell module carrying its exact pre-marker mutated sourceSHA.70 observations match; all sourceSHAs match the matrix; all14 builds use separate native fixtures/browser profiles/loopback delivery and clean owned temp output. Failed mutant runs retain actual Playwright reports/traces; assertion timeouts are behavioral test failures, not a manufactured Stryker Timeout count.
+
+Every detected change fails only UI29(recovery) or UI30(takeover);08/09/19 controls pass across all cohorts. UI29 now checks closing warning before opening Back/leave guard, avoiding masking from the guard's own warning term.
+
+`ui29-preback-warning-assert.patch` is the ONLY small standard-suite integration delta. Apply its one assertion into CURRENT original test29; DO NOT overwrite the current root test file, which has addedUI31 since this frozen snapshot. `proof/telegram-runtime-ui-e2e.check.ts` and proof Playwright config are complete standalone replay inputs with always-on source-canary checks, not blanket replacements for normal root verification. The replay runner injects a test-only module marker; no marker belongs in production.
+
+Per-ID survivors: M05 removes defensive stale-copy identity recheck; no current UI callback replacing copyA withB while modal remains open was established (pending admission/inert controls/suspended children). Public out-of-band controller calls still motivate this guard. M08 omits private ref cleanup on Continue; current next confirmation overwrites before the only reads, but heap retention differs. M13 omits copy effect dependency; covered copy transitions also change saved/project deps, so no claim of all future transitions. Keep all three guards; no blanket equivalence/waiver. Independent child reviewed these bounded preconditions read-only.
+
+No signed-launch, physical Telegram/OS close behavior, complete device acceptance, new GLB/fieldskip behavior, or Web/PWA-wide regression claimed by this proof.

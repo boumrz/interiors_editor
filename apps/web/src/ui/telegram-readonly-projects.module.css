@@ -1,0 +1,30 @@
+.shell {
+	box-sizing: border-box;
+	height: var(--editor-viewport-height, 100dvh);
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: calc(1.5rem + var(--editor-safe-area-top, env(safe-area-inset-top, 0px))) calc(1rem + var(--editor-safe-area-right, env(safe-area-inset-right, 0px))) calc(2rem + var(--editor-safe-area-bottom, env(safe-area-inset-bottom, 0px))) calc(1rem + var(--editor-safe-area-left, env(safe-area-inset-left, 0px)));
+	background: var(--canvas, #f4f1ea);
+	color: var(--ink, #172033);
+	overflow-wrap: anywhere;
+}
+.content { max-width: 46rem; margin-inline: auto; display: grid; gap: 1.25rem; }
+.header h1 { margin: 0.35rem 0 0.85rem; font-family: var(--font-display, inherit); font-size: 2rem; line-height: 1.12; letter-spacing: -0.035em; }
+.header p { max-width: 40rem; margin-block: 0; line-height: 1.5; }
+.eyebrow { color: var(--muted, #667085); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+.shell button { min-height: 2.75rem; border: 1px solid var(--line, #b8b7b2); border-radius: 0.55rem; padding: 0.7rem 0.85rem; background: var(--surface, #ffffff); color: var(--ink, #172033); font: inherit; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; cursor: pointer; }
+.shell button:focus-visible { outline: 3px solid var(--blue, #2563eb); outline-offset: 3px; }
+.shell button:disabled { cursor: default; opacity: 0.55; }
+.notice { margin: 0; border-left: 3px solid var(--blue, #2563eb); padding: 1rem; background: var(--surface, #ffffff); line-height: 1.5; }
+.projects { display: grid; gap: 0.8rem; margin: 0; padding: 0; list-style: none; }
+.card { display: grid; gap: 1rem; min-width: 0; padding: 1.1rem; border: 1px solid var(--line-soft, #deddd7); border-radius: 0.75rem; background: var(--surface, #ffffff); }
+.card h2 { margin: 0.3rem 0 0; font-size: 1.15rem; line-height: 1.35; }
+.cardLabel { margin: 0; color: var(--muted, #667085); font-size: 0.8rem; line-height: 1.4; }
+.shell .prepare { border-color: var(--editor-host-primary-fill, var(--blue, #2563eb)); background: var(--editor-host-primary-fill, var(--blue, #2563eb)); color: var(--editor-host-on-primary, #ffffff); }
+.caption { margin: 0.9rem 0 0; color: var(--ink, #172033); font-size: 0.9rem; line-height: 1.5; }
+.source { min-width: 0; margin: 0; padding: 0; border: 0; }
+.source > h2 { font-size: 1.1rem; }
+.source > p { line-height: 1.5; }
+@media (min-width: 42rem) { .card { grid-template-columns: minmax(0, 1fr) minmax(12rem, 0.6fr); align-items: center; } }

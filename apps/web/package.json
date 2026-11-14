@@ -1,0 +1,45 @@
+{
+  "name": "@interiors/web",
+  "private": true,
+  "version": "0.1.0-alpha.1",
+  "type": "module",
+  "engines": {
+    "node": "24.19.0",
+    "pnpm": "11.20.0"
+  },
+  "scripts": {
+    "check:runtime": "node scripts/check-runtime.mjs",
+    "dev": "pnpm run check:runtime && rspack serve --mode development --config rspack.config.mjs",
+    "build": "pnpm run check:runtime && rspack build --mode production --config rspack.config.mjs",
+    "lint": "pnpm run check:runtime && biome lint src tests",
+    "typecheck": "pnpm run check:runtime && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.domain.json",
+    "test": "pnpm run check:runtime && rstest run --config rstest.config.mjs",
+    "test:coverage": "pnpm run check:runtime && rstest run --config rstest.config.mjs --coverage --coverage.provider v8 --coverage.reporters text-summary --coverage.reporters json-summary --coverage.reportsDirectory reports/coverage",
+    "test:e2e": "pnpm run check:runtime && playwright test --config playwright.config.mjs && playwright test --config playwright.pwa.config.mjs",
+    "test:mutation": "pnpm run check:runtime && stryker run stryker.config.mjs",
+    "check:architecture": "node --test ../../scripts/check-boundaries.test.mjs && node ../../scripts/check-boundaries.mjs",
+    "test:delivery": "node --test scripts/pwa-preview-server.test.mjs scripts/catalog-package.test.mjs scripts/stryker-recovery-scopes.test.mjs scripts/telegram-sdk-delivery.test.mjs scripts/telegram-sdk-delivery-build.test.mjs",
+    "test:mutation:hardening": "pnpm run check:runtime && stryker run stryker.preview-server.config.mjs && stryker run stryker.preloaded-glb-resource.config.mjs && stryker run stryker.project-mutation-publication.config.mjs && stryker run stryker.catalog-wall-domain.config.mjs && stryker run stryker.recovery-codec.config.mjs && stryker run stryker.recovery-controller.config.mjs && stryker run stryker.recovery-resources.config.mjs && stryker run stryker.recovery-publication.config.mjs"
+  },
+  "dependencies": {
+    "fflate": "0.8.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.7",
+    "@playwright/test": "1.62.1",
+    "@rspack/cli": "2.1.8",
+    "@rspack/core": "2.1.8",
+    "@rspack/dev-server": "2.2.0",
+    "@rstest/adapter-rspack": "0.11.5",
+    "@rstest/core": "0.11.5",
+    "@rstest/coverage-v8": "0.11.5",
+    "@stryker-mutator/core": "9.6.1",
+    "@types/react": "19.2.8",
+    "@types/react-dom": "19.2.3",
+    "@types/three": "0.185.0",
+    "typescript": "7.0.2"
+  }
+}

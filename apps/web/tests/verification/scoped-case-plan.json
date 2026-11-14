@@ -1,0 +1,1213 @@
+[
+  {
+    "id": "6626134c82f33a301189-3fc0111f600ec994c5a1",
+    "title": "SCOPED-CAS-write-pinned-version: exact stored metadata must still match after actual Blob verification",
+    "file": "00-scoped-resource-cas-e2e.check.ts",
+    "line": 5,
+    "column": 2
+  },
+  {
+    "id": "6626134c82f33a301189-30e318ef2fe6b97a791c",
+    "title": "SCOPED-CAS-write-pinned-creationLeaseId: exact stored metadata must still match after actual Blob verification",
+    "file": "00-scoped-resource-cas-e2e.check.ts",
+    "line": 5,
+    "column": 2
+  },
+  {
+    "id": "6626134c82f33a301189-7d4be54fceff02d984b3",
+    "title": "SCOPED-CAS-write-pinned-roots: exact stored metadata must still match after actual Blob verification",
+    "file": "00-scoped-resource-cas-e2e.check.ts",
+    "line": 5,
+    "column": 2
+  },
+  {
+    "id": "6626134c82f33a301189-53275a0a9575e0bb421f",
+    "title": "SCOPED-CAS-write-pinned-durable: exact stored metadata must still match after actual Blob verification",
+    "file": "00-scoped-resource-cas-e2e.check.ts",
+    "line": 5,
+    "column": 2
+  },
+  {
+    "id": "6626134c82f33a301189-3707c6153b3fcd392c3f",
+    "title": "SCOPED-CAS-register-library-version: exact stored metadata must still match after actual Blob verification",
+    "file": "00-scoped-resource-cas-e2e.check.ts",
+    "line": 5,
+    "column": 2
+  },
+  {
+    "id": "6626134c82f33a301189-dcebc156372c0566bd82",
+    "title": "SCOPED-CAS-register-library-creationLeaseId: exact stored metadata must still match after actual Blob verification",
+    "file": "00-scoped-resource-cas-e2e.check.ts",
+    "line": 5,
+    "column": 2
+  },
+  {
+    "id": "6626134c82f33a301189-42a175a3cea8fbe4ab10",
+    "title": "SCOPED-CAS-register-library-roots: exact stored metadata must still match after actual Blob verification",
+    "file": "00-scoped-resource-cas-e2e.check.ts",
+    "line": 5,
+    "column": 2
+  },
+  {
+    "id": "6626134c82f33a301189-20b2a716fc093ba7bee7",
+    "title": "SCOPED-CAS-register-library-durable: exact stored metadata must still match after actual Blob verification",
+    "file": "00-scoped-resource-cas-e2e.check.ts",
+    "line": 5,
+    "column": 2
+  },
+  {
+    "id": "660bfa173e900268f4a3-8434c6d88aee7513fa01",
+    "title": "SCOPED-REPAIR-missing-roots: rejected input cannot change any current/history resource or technical row",
+    "file": "01-scoped-repair-boundaries-e2e.check.ts",
+    "line": 4,
+    "column": 2
+  },
+  {
+    "id": "660bfa173e900268f4a3-5d43c61272bf75939060",
+    "title": "SCOPED-REPAIR-empty-input: rejected input cannot change any current/history resource or technical row",
+    "file": "01-scoped-repair-boundaries-e2e.check.ts",
+    "line": 4,
+    "column": 2
+  },
+  {
+    "id": "660bfa173e900268f4a3-be7fd581654ea1694515",
+    "title": "SCOPED-REPAIR-foreign-history: rejected input cannot change any current/history resource or technical row",
+    "file": "01-scoped-repair-boundaries-e2e.check.ts",
+    "line": 4,
+    "column": 2
+  },
+  {
+    "id": "660bfa173e900268f4a3-bca3eb819069edaccd1a",
+    "title": "SCOPED-REPAIR-duplicate-input: rejected input cannot change any current/history resource or technical row",
+    "file": "01-scoped-repair-boundaries-e2e.check.ts",
+    "line": 4,
+    "column": 2
+  },
+  {
+    "id": "660bfa173e900268f4a3-5e845d670346651162d1",
+    "title": "SCOPED-REPAIR-unreferenced-input: rejected input cannot change any current/history resource or technical row",
+    "file": "01-scoped-repair-boundaries-e2e.check.ts",
+    "line": 4,
+    "column": 2
+  },
+  {
+    "id": "660bfa173e900268f4a3-b03bcd7b5969b006fff6",
+    "title": "SCOPED-REPAIR-wrong-exact-bytes: rejected input cannot change any current/history resource or technical row",
+    "file": "01-scoped-repair-boundaries-e2e.check.ts",
+    "line": 4,
+    "column": 2
+  },
+  {
+    "id": "9044a92d02715264ef48-0bd0c4a0dfb5770567d3",
+    "title": "SCOPED-LIBRARY-MATRIX: unknown ownership or malformed asset metadata cannot be listed, removed, or adopted",
+    "file": "02-scoped-library-boundaries-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "1b4a3e0f78f425bb360a-257ac0214eeb88723d24",
+    "title": "SCOPED-LIBRARY-INPUT: invalid incoming metadata or inexact bytes cannot create a local card or mutate a published resource",
+    "file": "03-scoped-library-input-e2e.check.ts",
+    "line": 3,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-a8baf22b842bb0795f92",
+    "title": "BROWSER-PROJECT-01: native browser profile publishes through the shared kernel without touching the real existing Web Project",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 17,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-a8e307947a4f20ebd64c",
+    "title": "BROWSER-PROJECT-02: two native contexts preserve one fenced writer and a stale context cannot publish after explicit takeover",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 71,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-3ad767a94a00c938c9a8",
+    "title": "BROWSER-PROJECT-03: aborting a real pointer put keeps the previous Project and explicit takeover cleans only the prepared attempt",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 137,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-a549cfecfcb7f7ddb8f1",
+    "title": "BROWSER-PROJECT-04: exact owned historical Revision remains a valid history target",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 202,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-02a4b43b1b378c2163a7",
+    "title": "BROWSER-PROJECT-05: retained no-publish journal prevents reusing its Project and Revision identity for different content",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 222,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-793f0821c8b053c223c2",
+    "title": "BROWSER-PROJECT-06: pair identity does not invent a global forever Revision-ID ban after explicit Project deletion",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 280,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-077cf37a5347592e44ec",
+    "title": "BROWSER-KEY-01: an absent current store is queried without creating a database or granting a writable capability",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 303,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-20e7940bc8a842b18719",
+    "title": "BROWSER-KEY-02: direct legacy pointer keys include unreadable rows and remain exact/case-sensitive",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 318,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-dfe8e96de8c5f7e0d529",
+    "title": "BROWSER-KEY-03: the same raw ID has independently queried browser storage owners",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 337,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-72b8a0f663202e90f2e7",
+    "title": "BROWSER-KEY-04: a cancelled lookup does not issue an IndexedDB request",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 357,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-3096821fa18b4993b4bc",
+    "title": "BROWSER-KEY-05: a provider's real attempted upgrade is aborted and never misclassified as absent/free",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 370,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-e30ded7155c43bbead9f",
+    "title": "BROWSER-KEY-06-cancel: abandoned native open closes its own late handle and preserves existing data",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 390,
+    "column": 2
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-f61567ad12f1f771d200",
+    "title": "BROWSER-KEY-06-timeout: abandoned native open closes its own late handle and preserves existing data",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 390,
+    "column": 2
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-e3c8e6ab378608a6afbf",
+    "title": "BROWSER-KEY-07: unknown existing schema is unavailable, preserved, and never reset into an empty known scope",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 410,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-485caba9455a8c89ebde",
+    "title": "BROWSER-RUNTIME-01: actual private composition remains existing-only until explicit validated import, then ordinary edit/history and both file formats use its own native storage",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 427,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-d69c519129f44da305e8",
+    "title": "BROWSER-RUNTIME-02: actual private ordinary Room/model/library commands keep legacy backup representability and a real registered reimport retains exact shared pinned bytes under a new Project",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 504,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-b387217576e69c6549d5",
+    "title": "BROWSER-RUNTIME-03: a detected future private schema stays explicitly recovery-required and never re-admits or changes retained native rows",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 569,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-ec0d72a808692a593dda",
+    "title": "BROWSER-RUNTIME-04: a held real scope lock yields bounded coalesced directory unavailability without creating DB or revoking the healthy generation",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 602,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-c893481ed615429c2add",
+    "title": "BROWSER-RUNTIME-05: disposing a timed-out queued directory aborts only its real pending lock request and drains before the unrelated holder releases",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 647,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-6165d06e2ca10427ccf7",
+    "title": "BROWSER-RUNTIME-06: actual two-source facade keeps legacy untouched during private import and qualifies future equal raw Project/Revision IDs with stale UI capability rejection",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 681,
+    "column": 1
+  },
+  {
+    "id": "48edc5c237e7e472a6d8-94e909bec49960145c96",
+    "title": "BROWSER-RUNTIME-07: retained old empty file imports in the real legacy context, qualified directory exports wire, and strict Telegram imports a new exact empty Project",
+    "file": "browser-registered-project-e2e.check.ts",
+    "line": 733,
+    "column": 1
+  },
+  {
+    "id": "7e83abbb6a853c1eacfd-8bc101d994d634894dfc",
+    "title": "SCOPED-OWNER: mutable composition options cannot lend another live writer identity to an existing runtime",
+    "file": "scoped-composition-owner-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "5ec0d13d092f40afb08c-48508558b33abc955cdf",
+    "title": "SCOPED-OPERATION-SCOPE: a valid receipt cannot lend its creation operation to another embedded scope",
+    "file": "scoped-cross-scope-operation-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "51627368dcbda26bc04f-b7b6ca8572c76e626a86",
+    "title": "SCOPED-JOURNAL-MATRIX: each uncertain receipt or pending ownership fact is quarantined without changing any stored value",
+    "file": "scoped-journal-boundary-matrix-e2e.check.ts",
+    "line": 11,
+    "column": 1
+  },
+  {
+    "id": "d123c0130cfb8910339b-3bf2e72fb890cf973c93",
+    "title": "SCOPED-INPUT-checksum: invalid incoming candidate cannot publish or mutate any native store",
+    "file": "scoped-public-admission-e2e.check.ts",
+    "line": 40,
+    "column": 2
+  },
+  {
+    "id": "d123c0130cfb8910339b-5792a332fe5e40fc7dc9",
+    "title": "SCOPED-INPUT-domain: invalid incoming candidate cannot publish or mutate any native store",
+    "file": "scoped-public-admission-e2e.check.ts",
+    "line": 40,
+    "column": 2
+  },
+  {
+    "id": "d123c0130cfb8910339b-3fe29bcb6045ec9a5043",
+    "title": "SCOPED-LOSS: fresh and healthy runtime has no false loss, a real takeover reports loss once without releasing its fence",
+    "file": "scoped-public-admission-e2e.check.ts",
+    "line": 80,
+    "column": 1
+  },
+  {
+    "id": "5178bd99e625fc575c51-7079f7eb82c472e85c84",
+    "title": "SCOPED-SPARSE-MANIFEST: a native sparse metadata array cannot become the exact published empty manifest",
+    "file": "scoped-sparse-manifest-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "a7b5d5fd1c3d7367f113-92a5141ab8e42786ec50",
+    "title": "SCOPED-SPARSE-PIN: a coherent published pin with sparse resource hashes cannot grant a writer",
+    "file": "scoped-sparse-pin-e2e.check.ts",
+    "line": 3,
+    "column": 1
+  },
+  {
+    "id": "69ed78382cbee3cb7184-9821c51f9c52a7b036db",
+    "title": "SCOPED-SPARSE-ROOTS: a native sparse root array cannot authorize reading an otherwise exact resource",
+    "file": "scoped-sparse-roots-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "f4649b72734830e71847-3439674f590b2c10dd80",
+    "title": "SCOPED-VERIFY-expiry-exact: a verified digest cannot authorize a stale fence or changed resource generation",
+    "file": "scoped-verification-boundary-e2e.check.ts",
+    "line": 9,
+    "column": 2
+  },
+  {
+    "id": "f4649b72734830e71847-7ccf3d943d038f034206",
+    "title": "SCOPED-VERIFY-expiry-after: a verified digest cannot authorize a stale fence or changed resource generation",
+    "file": "scoped-verification-boundary-e2e.check.ts",
+    "line": 9,
+    "column": 2
+  },
+  {
+    "id": "f4649b72734830e71847-c6dd8ff2304a548c1d66",
+    "title": "SCOPED-VERIFY-resource-version: a verified digest cannot authorize a stale fence or changed resource generation",
+    "file": "scoped-verification-boundary-e2e.check.ts",
+    "line": 9,
+    "column": 2
+  },
+  {
+    "id": "5adea6bc892a26ded756-29f47113aa6fec71944d",
+    "title": "TMA-ATOMIC-01: pointer abort rolls back the published receipt and resource-root promotion together",
+    "file": "telegram-atomicity-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "5adea6bc892a26ded756-1cab86e83919094fe228",
+    "title": "TMA-ATOMIC-02: cancel abort after native byte deletion rolls back no-publish, stage, Revision, lease and bytes",
+    "file": "telegram-atomicity-e2e.check.ts",
+    "line": 56,
+    "column": 1
+  },
+  {
+    "id": "5adea6bc892a26ded756-48b61209e1c948d9231e",
+    "title": "TMA-ATOMIC-03: interrupted adoption retains the exact old roots under the new fence and retries explicitly",
+    "file": "telegram-atomicity-e2e.check.ts",
+    "line": 120,
+    "column": 1
+  },
+  {
+    "id": "5adea6bc892a26ded756-1810070ca25e647a54cb",
+    "title": "TMA-ATOMIC-04: deletion abort after a native Revision delete preserves the Project and all owned revisions",
+    "file": "telegram-atomicity-e2e.check.ts",
+    "line": 193,
+    "column": 1
+  },
+  {
+    "id": "22e610e789aeb1fc3f55-ce12ea328de0f5b72864",
+    "title": "TMA-LIBRARY-01: atomic library registration protects a prepared resource from cancellation and card removal preserves bytes",
+    "file": "telegram-library-repair-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "22e610e789aeb1fc3f55-6811fb2df59d06649c5b",
+    "title": "TMA-REPAIR-01: exact batch repair covers current and history roots atomically without making a new Revision",
+    "file": "telegram-library-repair-e2e.check.ts",
+    "line": 63,
+    "column": 1
+  },
+  {
+    "id": "22e610e789aeb1fc3f55-1e120c529cbeec540d89",
+    "title": "TMA-REPAIR-02: unrelated bytes or a stale writer cannot replace even one member of a repair batch",
+    "file": "telegram-library-repair-e2e.check.ts",
+    "line": 129,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-a8d55a10a8ab449079fe",
+    "title": "TMA-PROJECT-12: a prepared attempt with missing pin stays quarantined before writer renewal or takeover",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 19,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-1a9c2f3f8440c6282f9c",
+    "title": "TMA-PROJECT-12: a prepared attempt with other-project pin stays quarantined before writer renewal or takeover",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 19,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-ca0fd503513f0b46ad51",
+    "title": "TMA-PROJECT-12: a prepared attempt with published-unmarked pin stays quarantined before writer renewal or takeover",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 19,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-73af11dbe93e81a99832",
+    "title": "TMA-PROJECT-12: a prepared attempt with no-publish-other-project pin stays quarantined before writer renewal or takeover",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 19,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-2cf98a50cd024db9c313",
+    "title": "TMA-PROJECT-10: missing-revision quarantines a current Project before writer renewal or publication",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 133,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-bbce1756e0bff71eab69",
+    "title": "TMA-PROJECT-10: missing-receipt quarantines a current Project before writer renewal or publication",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 133,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-bf5a15b2f5f253581cc9",
+    "title": "TMA-PROJECT-10: changed-revision quarantines a current Project before writer renewal or publication",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 133,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-8441144bed5d3bfa4cfa",
+    "title": "TMA-PROJECT-10: changed-creation-id quarantines a current Project before writer renewal or publication",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 133,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-083f7e6ddf5acbeecf29",
+    "title": "TMA-PROJECT-10: wrong-digest quarantines a current Project before writer renewal or publication",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 133,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-80e9a03673cd67047b27",
+    "title": "TMA-PROJECT-10: non-index-array-property quarantines a current Project before writer renewal or publication",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 133,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-43409d31a7e85c7a143c",
+    "title": "TMA-PROJECT-10: invalid-domain quarantines a current Project before writer renewal or publication",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 133,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-969e768d5d64aa874557",
+    "title": "TMA-PROJECT-11: orphaned prepared pin roots quarantine a Project with an existing fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 210,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-91a960faa19a6498bc6e",
+    "title": "TMA-PROJECT-09: a surviving prepared pin root prevents fresh Project ID reuse without affecting other Projects",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 268,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-9fb854b16431687225d0",
+    "title": "TMA-PROJECT-08: observing another writer remains read-only after expiry and a fresh runtime in the same context",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 333,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-42fb2a20d0154832bb59",
+    "title": "TMA-PROJECT-07: history cannot promote a prepared Revision whose pointer transaction aborted",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 388,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-9fac32fc06b49809b3db",
+    "title": "TMA-PROJECT-06: a missing persisted fence cannot reset an existing Project to token one",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 442,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-8823219e1eb12edb52cb",
+    "title": "TMA-PROJECT-05: a borrowed valid candidate cannot satisfy another Project pointer",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 506,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-99c5123c56a0acb71b28",
+    "title": "TMA-PROJECT-01: real shared create and first-room commands save and reopen in their isolated scope",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 540,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-7a431b5a2c331c20df77",
+    "title": "TMA-PROJECT-02: explicit takeover fences the old runtime before staging without deleting its current Revision",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 606,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-36b5343b4da188caf3fb",
+    "title": "TMA-PROJECT-03: global Revision collision and stale base preserve the original immutable Revision",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 677,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-1cf4ed858505353c19ce",
+    "title": "TMA-PROJECT-04: history uses a new receipt and an exact existing Revision without overwriting or duplicating it",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 719,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-d8feaf435bae797c0665",
+    "title": "TMA-PROJECT-13: a vanished prepublication fence cannot reissue token one to its remembered owner",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 810,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-7572fecc3d65b88bcb89",
+    "title": "TMA-PROJECT-14: revision-and-receipt claims prevent fresh Project ID reuse when pointer and fence vanished",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 855,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-adab26dfc31c3faabe1d",
+    "title": "TMA-PROJECT-14: revision-only claims prevent fresh Project ID reuse when pointer and fence vanished",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 855,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-2e175d966e6dbc3c9cdd",
+    "title": "TMA-PROJECT-14: receipt-only claims prevent fresh Project ID reuse when pointer and fence vanished",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 855,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-c835a71e2404d75cbf76",
+    "title": "TMA-PROJECT-14: no-publish-only claims prevent fresh Project ID reuse when pointer and fence vanished",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 855,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-8d6fbd2681d6fe0f6190",
+    "title": "TMA-PROJECT-15: mismatched prepared pin scope quarantines the exact Project without cleanup",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 945,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-ad37620b9d7bcbaed26d",
+    "title": "TMA-PROJECT-15: mismatched prepared pin extra quarantines the exact Project without cleanup",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 945,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-8c3079d17806d117ef6d",
+    "title": "TMA-PROJECT-15: mismatched prepared pin attempt quarantines the exact Project without cleanup",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 945,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-acba7d925639a64fc57f",
+    "title": "TMA-PROJECT-15: mismatched prepared pin revision quarantines the exact Project without cleanup",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 945,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-5c445e40211fcd77c959",
+    "title": "TMA-PROJECT-15: mismatched prepared pin hashes quarantines the exact Project without cleanup",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 945,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-7ff19e68609377178a20",
+    "title": "TMA-PROJECT-15: mismatched prepared pin lease quarantines the exact Project without cleanup",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 945,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-f32c66e765819d347726",
+    "title": "TMA-PROJECT-16: pointer-extra does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-11f11f023ad469a09122",
+    "title": "TMA-PROJECT-16: pointer-scope does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-c0b025ebce21a4dc0815",
+    "title": "TMA-PROJECT-16: pointer-name does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-d30526efaf9d1db08f12",
+    "title": "TMA-PROJECT-16: revision-extra does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-b24636c5d4ef64fca132",
+    "title": "TMA-PROJECT-16: revision-scope does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-fde00f4c2dc550cb5f9f",
+    "title": "TMA-PROJECT-16: revision-project does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-8cb90e30142f5f5c6fde",
+    "title": "TMA-PROJECT-16: creation-project does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-1e7bf7150a05122e6a1f",
+    "title": "TMA-PROJECT-16: creation-revision does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-b5d7cb6cd46b1e27e342",
+    "title": "TMA-PROJECT-16: creation-intent does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-c0dc2a1421b5ab8ee566",
+    "title": "TMA-PROJECT-16: creation-checksum does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-fdb535de7473524e99f7",
+    "title": "TMA-PROJECT-16: creation-serialization does not weaken current Project proof admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1035,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-17fb81c0e1a6ab055fbb",
+    "title": "TMA-PROJECT-17: a relabelled receipt cannot lend a healthy foreign candidate to another Project pointer",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1115,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-975bacdb76a8f12e03bf",
+    "title": "TMA-PROJECT-18: awaited native SHA cannot admit a coherently replaced current proof before fence write",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1171,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-d54b5007d540632a7239",
+    "title": "TMA-PROJECT-19: a missing source Revision cannot hide another exact unverified recovery source",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1214,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-91c66d28739e8f26b5c8",
+    "title": "TMA-PROJECT-20: foreign projects scope never exposes unverified source bytes",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1268,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-c335c70782a7659f042d",
+    "title": "TMA-PROJECT-20: foreign revisions scope never exposes unverified source bytes",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1268,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-a03c8bdd52bfe1a5eb25",
+    "title": "TMA-PROJECT-21: a valid two-resource preparation renews and publishes with both exact roots",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1311,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-050dece44eca7b79a951",
+    "title": "TMA-PROJECT-22: same-owner cannot silently adopt a changed remembered writer identity",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1368,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-61876cd0775f5f295c47",
+    "title": "TMA-PROJECT-22: expired-foreign cannot silently adopt a changed remembered writer identity",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1368,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-561ffc4d7bdbc0fbf634",
+    "title": "TMA-PROJECT-22: owner-only-corruption cannot silently adopt a changed remembered writer identity",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1368,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-fc0077b306702f723db1",
+    "title": "TMA-PROJECT-23: a completed no-publish pin allows a fresh exact preparation under the same live fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1426,
+    "column": 1
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-cedfde1199aea31d6a0e",
+    "title": "TMA-PROJECT-24: missing-revision prepared immutable ownership refuses access before changing the fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1497,
+    "column": 3
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-c09d5bdba6af1a1ae6ee",
+    "title": "TMA-PROJECT-24: missing-revision prepared immutable ownership refuses takeover before changing the fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1497,
+    "column": 3
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-0cdce97b6ad12bc19a00",
+    "title": "TMA-PROJECT-24: invalid-creation-id prepared immutable ownership refuses access before changing the fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1497,
+    "column": 3
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-7ad0738005c7b85082df",
+    "title": "TMA-PROJECT-24: invalid-creation-id prepared immutable ownership refuses takeover before changing the fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1497,
+    "column": 3
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-c97aa96bd75e6a18c283",
+    "title": "TMA-PROJECT-24: foreign-creation-id prepared immutable ownership refuses access before changing the fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1497,
+    "column": 3
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-4d275334d2de3ebb2f03",
+    "title": "TMA-PROJECT-24: foreign-creation-id prepared immutable ownership refuses takeover before changing the fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1497,
+    "column": 3
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-da8d806207e9ae5dfc78",
+    "title": "TMA-PROJECT-24: changed-candidate prepared immutable ownership refuses access before changing the fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1497,
+    "column": 3
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-10ff9ff5ba648b0a27e7",
+    "title": "TMA-PROJECT-24: changed-candidate prepared immutable ownership refuses takeover before changing the fence",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1497,
+    "column": 3
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-8a72ba124dd5027c7989",
+    "title": "TMA-PROJECT-25: prepared history revision ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-a4e62e85ec21c5e7bdc6",
+    "title": "TMA-PROJECT-25: prepared history creation-receipt ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-847cf8dd3ada811248eb",
+    "title": "TMA-PROJECT-25: prepared history creation-project ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-6948bd85c0816c77815b",
+    "title": "TMA-PROJECT-25: prepared history creation-revision ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-f353016ef5b6b5b8ced6",
+    "title": "TMA-PROJECT-25: prepared history creation-intent ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-281f722fc1544c672069",
+    "title": "TMA-PROJECT-25: prepared history creation-checksum ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-6d6dcbe80d8d08ed16f5",
+    "title": "TMA-PROJECT-25: prepared history creation-serialization ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-cddf5e2630d77cb6021b",
+    "title": "TMA-PROJECT-25: prepared history creation-manifest ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-5ba18441540c9ac011da",
+    "title": "TMA-PROJECT-25: prepared history creation-no-publish ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-1ff27b67552006794faa",
+    "title": "TMA-PROJECT-25: prepared history foreign-creation-id ownership refuses writer admission",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1588,
+    "column": 2
+  },
+  {
+    "id": "9d81923c81c4fff34dbe-a5b73f02ef519c065ce4",
+    "title": "TMA-PROJECT-26: a complete interrupted history attempt retains its original creation receipt and retries exactly",
+    "file": "telegram-project-e2e.check.ts",
+    "line": 1712,
+    "column": 1
+  },
+  {
+    "id": "1cb0169ae82690422d4b-0c3dc5fdaedf0829c14d",
+    "title": "TMA-RECOVERY-04: unsupported stored source stays exportable without blocking healthy cards or changing any durable record",
+    "file": "telegram-recovery-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "1cb0169ae82690422d4b-def2f2a18dbe61cdb630",
+    "title": "TMA-RECOVERY-03: an unregistered journal field remains uninterpreted and cannot authorize write or deletion",
+    "file": "telegram-recovery-e2e.check.ts",
+    "line": 18,
+    "column": 1
+  },
+  {
+    "id": "1cb0169ae82690422d4b-32943d67d9fa7aa13aaf",
+    "title": "TMA-RECOVERY-01: unknown staging is retained and blocks only its Project while startup stays read-only",
+    "file": "telegram-recovery-e2e.check.ts",
+    "line": 62,
+    "column": 1
+  },
+  {
+    "id": "1cb0169ae82690422d4b-60d34b8e141ae04014db",
+    "title": "TMA-RECOVERY-02: confirmed Project deletion keeps the counter and permanent fence tombstone and cannot reuse IDs",
+    "file": "telegram-recovery-e2e.check.ts",
+    "line": 117,
+    "column": 1
+  },
+  {
+    "id": "717be47fcc4b1adb367c-f04a0d71cae1b42b7264",
+    "title": "TMA-RESOURCE-07: a different repository owner cannot mark, pin, cancel or complete another owner's exact lease",
+    "file": "telegram-resources-e2e.check.ts",
+    "line": 4,
+    "column": 1
+  },
+  {
+    "id": "717be47fcc4b1adb367c-6738a0e024ec21a60022",
+    "title": "TMA-RESOURCE-01: the immutable publication journal precedes bytes and commits their exact manifest with the pointer",
+    "file": "telegram-resources-e2e.check.ts",
+    "line": 80,
+    "column": 1
+  },
+  {
+    "id": "717be47fcc4b1adb367c-aae8e68b21f07c6a6f3e",
+    "title": "TMA-RESOURCE-02: a second prepared consumer protects the same bytes from the first cancellation",
+    "file": "telegram-resources-e2e.check.ts",
+    "line": 156,
+    "column": 1
+  },
+  {
+    "id": "717be47fcc4b1adb367c-9aeb4c97624ceeba4314",
+    "title": "TMA-RESOURCE-03: cancellation closes only its attempt and cannot publish or reuse its lease afterward",
+    "file": "telegram-resources-e2e.check.ts",
+    "line": 212,
+    "column": 1
+  },
+  {
+    "id": "717be47fcc4b1adb367c-557f52c3f8d24095a13d",
+    "title": "TMA-RESOURCE-04: takeover refuses the old writer's cleanup and adopts its complete unpublished attempt",
+    "file": "telegram-resources-e2e.check.ts",
+    "line": 261,
+    "column": 1
+  },
+  {
+    "id": "717be47fcc4b1adb367c-ac84b8b2622de58a3aee",
+    "title": "TMA-RESOURCE-05: a receipt survives a later pointer and startup does not guess publication from the current Revision",
+    "file": "telegram-resources-e2e.check.ts",
+    "line": 324,
+    "column": 1
+  },
+  {
+    "id": "717be47fcc4b1adb367c-9c10ca0998cb61236d13",
+    "title": "TMA-RESOURCE-06: cancellation winning before the second protection requires fresh verified admission",
+    "file": "telegram-resources-e2e.check.ts",
+    "line": 384,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-658aa97819ab810d6655",
+    "title": "TMA-STORAGE-27: generic transactions return their committed result and abort successful writes on callback failure",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 6,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-cb65c1779c148580a2a9",
+    "title": "TMA-STORAGE-28: callback failure and pending drain revoke escaped composite access",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 18,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-87b866c3d16f7b5116fb",
+    "title": "TMA-STORAGE-29: generic access rejects malformed metadata without requiring ID reservation and reads an exhausted healthy scope",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 28,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-5af560cdcf3ac012b5a3",
+    "title": "TMA-STORAGE-30-out-of-line: unsupported v1 schema refuses before upgrade commit",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 53,
+    "column": 2
+  },
+  {
+    "id": "6f35791f91631362d0ea-3c112a3052e9a5c140c3",
+    "title": "TMA-STORAGE-30-auto-increment: unsupported v1 schema refuses before upgrade commit",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 53,
+    "column": 2
+  },
+  {
+    "id": "6f35791f91631362d0ea-b015d836db9961a7895e",
+    "title": "TMA-STORAGE-30-index: unsupported v1 schema refuses before upgrade commit",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 53,
+    "column": 2
+  },
+  {
+    "id": "6f35791f91631362d0ea-5d1c96d84c30964be0ca",
+    "title": "TMA-STORAGE-31-store: unsupported v2 inventory preserves metadata and closes its handle",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 66,
+    "column": 2
+  },
+  {
+    "id": "6f35791f91631362d0ea-c78225aa76bfe7a9a51d",
+    "title": "TMA-STORAGE-31-index: unsupported v2 inventory preserves metadata and closes its handle",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 66,
+    "column": 2
+  },
+  {
+    "id": "6f35791f91631362d0ea-faac16a4e611ed0345ed",
+    "title": "TMA-STORAGE-23: a composite operation reserves IDs without recursively acquiring its lock",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 88,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-3f5236e80ae6655b9637",
+    "title": "TMA-STORAGE-24: abandoned failed transactions reject the enclosing operation and escaped access cannot write",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 107,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-c25ae5a4289a856f619d",
+    "title": "TMA-STORAGE-25: correct store names with a foreign key schema cannot issue IDs",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 132,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-824db3df57d974571575",
+    "title": "TMA-STORAGE-26: unknown metadata in an existing v2 database blocks reservation without mutation",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 153,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-a7c8963e7abc11d7a929",
+    "title": "TMA-STORAGE-19: upgrades metadata v1 atomically while preserving the exact uint64 counter",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 182,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-481cded81ca45dbdf896",
+    "title": "TMA-STORAGE-20: corrupt existing metadata aborts migration without adding stores or resetting bytes",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 209,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-6cf28661b6bc3d2fee8f",
+    "title": "TMA-STORAGE-21: an unknown v1 store prevents upgrade and preserves all metadata",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 237,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-c5ab8718805560e71e03",
+    "title": "TMA-STORAGE-22: extra metadata records are not silently promoted or removed by upgrade",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 263,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-6f5de931d87e7eba0a7c",
+    "title": "TMA-STORAGE-01: native contexts reserve durable unique IDs, reopen and isolate scopes",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 302,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-4a11ae876561745b00cc",
+    "title": "TMA-STORAGE-02: unsupported or queued/revoked lock never opens storage",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 368,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-3964dbce8795502adcb6",
+    "title": "TMA-STORAGE-03: counter remains exact above 2^53 and never wraps uint64",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 418,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-78001330b63602c358e6",
+    "title": "TMA-STORAGE-04: corrupt or missing metadata is retained and never reset",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 463,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-4d2c2309be5d6a911719",
+    "title": "TMA-STORAGE-05: abort after a successful put returns no ID and rolls back atomically",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 587,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-ac8836905e54b5025a8e",
+    "title": "TMA-STORAGE-06: initialization rollback leaves no half marker and retries safely",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 612,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-0ddb1aa58091c3bf911d",
+    "title": "TMA-STORAGE-07: version change closes the old generation and older schema refuses writing",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 636,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-1ff22752a301810126ad",
+    "title": "TMA-STORAGE-08: rejected open aborts late initialization and retries without reset",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 662,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-14d559b0b58d2d6c6f28",
+    "title": "TMA-STORAGE-09: reservation requires actual strict durability and rejects relaxed fallback",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 686,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-7e4cf350ae0c070c2830",
+    "title": "TMA-STORAGE-10: revoke pending native open aborts late initialization",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 716,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-6d56bd78c206942df989",
+    "title": "TMA-STORAGE-11: revoked reopen closes its late native handle and preserves metadata",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 744,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-b6e01d1416f6ae280124",
+    "title": "TMA-STORAGE-12: close from native put-success drains commit and rejects queued work",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 771,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-2588d5a48d0a5febbe55",
+    "title": "TMA-STORAGE-13: admitted upgrade drains but revoke prevents a following reservation",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 802,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-b266106fc1036f42184c",
+    "title": "TMA-STORAGE-14: controlled read fault rejects and releases scope lock without an ID",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 824,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-e845332edef1141d5b3b",
+    "title": "TMA-STORAGE-15: an unknown operation kind cannot initialize or reserve in a scope",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 847,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-34ba2d9572c125e8e45c",
+    "title": "TMA-STORAGE-16: completed and failed opens release cancellation observers before session close",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 861,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-37643ead4b0cea137c0e",
+    "title": "TMA-STORAGE-17: whole array records with valid-looking fields remain corrupt and unchanged",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 908,
+    "column": 1
+  },
+  {
+    "id": "6f35791f91631362d0ea-cafedfe6d33d355657db",
+    "title": "TMA-STORAGE-18: prevented-default native write error cannot expose an unpersisted ID",
+    "file": "telegram-storage-e2e.check.ts",
+    "line": 959,
+    "column": 1
+  }
+]

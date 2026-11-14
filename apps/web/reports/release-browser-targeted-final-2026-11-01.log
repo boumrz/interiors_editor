@@ -1,0 +1,10 @@
+
+Running 2 tests using 1 worker
+
+(node:76846) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/2] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8328:1 › RECONCILIATION-E2E-02D: a wall panel remains intact when the removed split route is unavailable
+[2/2] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:12329:1 › ROOM-E2E-01: the separate phone Room directory saves only type and height while preserving legacy names as one durable command
+  2 passed (14.9s)

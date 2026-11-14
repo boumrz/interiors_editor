@@ -1,0 +1,5 @@
+Verification-only followup to immutable hfofjh0j two-file policy packet. No Source F/K changes or Native execution.
+
+AST-derived finally-block line spans from the canonical TS case file include nested page.evaluate callbacks. Any error.location or matching stack frame in a finalizer is refused even if another stack frame is an otherwise valid case-body caller. This excludes fixture lock-release/watchdog cleanup from behavioral kills. Runtime04/05 actual finally headers627/670 and release statements628/672 are covered. The genuine helper-body caller and ordinary Runtime04 body failure remain positive.
+
+Pinned existing @babel/parser7.29.8 is resolved through installed @stryker-mutator/core -> instrumenter dependencies; no dependency changes. Forty-six CPU policy controls pass (original39 retained, seven added). RED records the four missing finalizer guards against hfofjh0j; independent package-resolution exploration was setup-only, not a behavioral test result. Parent separately tags harness releaseScopeLock failures for browser errors whose mapped stack may show only the outer evaluate callsite. Body-probe/nav.PID API unchanged.

@@ -1,0 +1,59 @@
+
+Running 7 tests using 1 worker
+
+(node:99175) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1/7] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:4380:1 › EDITOR-E2E-02A: each confirmed wall returns to Hand and the next wall starts from an explicit tool choice
+[2/7] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:7403:1 › EDITOR-E2E-10: dragging an item across a wall is rejected and keeps its last durable position
+[3/7] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8101:1 › RECONCILIATION-E2E-02G: a T contact through a wall panel requires explicit atomic removal
+[4/7] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8262:1 › RECONCILIATION-E2E-02F: a phone-drawn X junction keeps an unaffected divider panel in place
+[5/7] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8543:1 › ITEM-E2E-04B: a locked wall panel survives reload and requires explicit unlock before editing
+[6/7] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:8928:1 › ITEM-E2E-04C: a locked floor item survives reload and requires explicit unlock before any edit
+[7/7] [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:10568:1 › ITEM-E2E-03: selecting a placed item exposes deletion and persists its removal
+  1) [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:10568:1 › ITEM-E2E-03: selecting a placed item exposes deletion and persists its removal 
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByText('Предмет заблокирован. Разблокируйте его, чтобы изменить параметры, цвет, положение или удалить.')
+    Expected: visible
+    Timeout: 5000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 5000ms
+      - waiting for getByText('Предмет заблокирован. Разблокируйте его, чтобы изменить параметры, цвет, положение или удалить.')
+
+
+      10651 | 			"Предмет заблокирован. Разблокируйте его, чтобы изменить параметры, цвет, положение или удалить.",
+      10652 | 		),
+    > 10653 | 	).toBeVisible();
+            | 	  ^
+      10654 | 	await expect(
+      10655 | 		session.page.getByTestId("project-durability-status"),
+      10656 | 	).toContainText("Сохранено локально");
+        at /Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web/tests/browser/editor-workspace-e2e.spec.ts:10653:4
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-second-fix-results/editor-workspace-e2e-ITEM--5b040-on-and-persists-its-removal-mobile-browser-emulation/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    attachment #2: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-second-fix-results/editor-workspace-e2e-ITEM--5b040-on-and-persists-its-removal-mobile-browser-emulation/test-failed-2.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ../../../../../../../tmp/interiors-workspace-release-second-fix-results/editor-workspace-e2e-ITEM--5b040-on-and-persists-its-removal-mobile-browser-emulation/error-context.md
+
+    attachment #4: trace (application/zip) ─────────────────────────────────────────────────────────
+    ../../../../../../../tmp/interiors-workspace-release-second-fix-results/editor-workspace-e2e-ITEM--5b040-on-and-persists-its-removal-mobile-browser-emulation/trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ../../../../../../../tmp/interiors-workspace-release-second-fix-results/editor-workspace-e2e-ITEM--5b040-on-and-persists-its-removal-mobile-browser-emulation/trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+  1 failed
+    [mobile-browser-emulation] › tests/browser/editor-workspace-e2e.spec.ts:10568:1 › ITEM-E2E-03: selecting a placed item exposes deletion and persists its removal 
+  6 passed (36.0s)

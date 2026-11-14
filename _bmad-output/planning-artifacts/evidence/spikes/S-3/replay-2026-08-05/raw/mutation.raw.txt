@@ -1,0 +1,1621 @@
+
+> interiors-editor-s3-durability-spike@0.0.0-experimental mutation
+> stryker run
+
+[32m01:19:34 (58977) INFO ProjectReader[39m Found 1 of 62 file(s) to be mutated.
+[32m01:19:34 (58977) INFO Instrumenter[39m Instrumented 1 source file(s) with 915 mutant(s)
+[32m01:19:34 (58977) INFO ConcurrencyTokenProvider[39m Creating 4 test runner process(es).
+[32m01:19:35 (58977) INFO DryRunExecutor[39m Starting initial test run (vitest test runner with "perTest" coverage analysis). This may take a while.
+[32m01:19:35 (58977) INFO DryRunExecutor[39m Initial test run succeeded. Ran 63 tests in 0 seconds (net 177.59283600000003 ms, overhead 187.40716399999997 ms).
+
+All tests
+  mutation/durability.mutation.test.mjs
+    ✓ a pre-pointer fault leaves the prior pointer durable while an after-swap fault recovers the replacement (killed 20)
+    ~ takeover fence rejects the stale writer and accepts the new fence (covered 501)
+    ✓ retention rejection preserves a nonempty redo branch, but a permitted durable publish replaces it (killed 12)
+    ✓ history-only corruption changes no pointer on cancel and clears only history after explicit confirm (killed 5)
+  unit/durability.test.mjs
+    ✓ rejects malformed public coordinator inputs before durable state changes (killed 241)
+    ✓ a stale lease cannot mark a healthy history corrupt after takeover (killed 7)
+    ✓ a stale lease cannot discard corrupt session history after takeover (killed 32)
+    ✓ history cancellation requires a supplied current lease before returning its no-op result (killed 13)
+    ✓ rejects non-boolean public controls before they can alter durable state (killed 10)
+    ✓ rejects a mutation whose resulting synthetic value is not a safe integer (killed 39)
+    ✓ missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating (killed 31)
+    ✓ durable-state query rejects a missing pointer when the project still retains durable evidence (killed 7)
+    ✓ durable-state query treats either retained history or retained revisions as pointer-loss evidence (killed 4)
+    ✓ durable-state query rejects a malformed pointer before IndexedDB can raise a raw key error (killed 12)
+    ✓ either retained history or retained revisions independently blocks recreation after pointer loss (killed 2)
+    ✓ retained history without a pointer blocks mutation, undo and redo before any new staging begins (killed 1)
+    ✓ malformed durable pointers stay read-only and preserve retained project evidence (killed 21)
+    ✓ missing or malformed persisted history blocks commands until an explicit confirmed canonical history discard (killed 31)
+    ✓ every reachable history root is validated before mutation, undo, or redo can discard it (killed 29)
+    ✓ structurally invalid history records remain history-only corruption until confirmation (killed 20)
+    ✓ confirmed history discard preserves corrupt bytes unless the current durable revision is healthy (killed 8)
+    ✓ confirmed history discard maps a malformed current pointer to controlled recovery without resetting corrupt history (killed 3)
+    ✓ confirmed history discard maps missing current pointer with retained evidence to controlled recovery without resetting history (killed 1)
+    ✓ confirmed history discard rejects boundary-count overflow without writing durable state (killed 3)
+    ✓ same-lease overlapping publications compare pointer and history before committing (killed 22)
+    ✓ same-lease recovery rejects a live initial-create publication without deleting its staging record (killed 16)
+    ✓ same-lease recovery rejects a live mutation publication without deleting its staging record (killed 4)
+    ✓ a takeover writer can recover a live prior-writer stage while the fenced command cannot publish (killed 41)
+    ✓ the local pending guard requires the exact project, owner and fence (killed 15)
+    ✓ recovery is fenced at staging deletion and a project without a durable revision is a safe no-op (killed 22)
+    ✓ recovery cleans initial-create staging without manufacturing a durable revision and remains fenced (killed 1)
+    ✓ a failed initial create requires explicit fenced recovery before a retry can publish (killed 5)
+    ✓ a post-staging initial-create fault clears its active marker before requiring recovery (killed 3)
+    ~ a takeover after preflight fences stale create and mutation publication commits (covered 528)
+    ✓ a takeover after history resolution fences stale undo and redo pointer commits (killed 8)
+    ✓ a takeover before a history write fences stale corruption marking and history discard (killed 4)
+    ~ corrupt undo and redo targets pass their leases into the fenced history write (covered 615)
+    ~ publishes an immutable candidate only after staging, checksum, and atomic pointer swap (covered 349)
+    ✓ fault before-staging recovers the previous durable revision without publishing a candidate (killed 3)
+    ~ fault after-staging recovers the previous durable revision without publishing a candidate (covered 546)
+    ✓ fault after-checksum recovers the previous durable revision without publishing a candidate (killed 1)
+    ✓ fault before-pointer-swap recovers the previous durable revision without publishing a candidate (killed 2)
+    ✓ a fault after the pointer swap is durable and restart recovers the new revision (killed 1)
+    ✓ a stale writer cannot publish after explicit takeover increments the fence (killed 4)
+    ~ an in-flight stale writer cannot publish after another writer takes over (covered 552)
+    ~ an in-flight stale writer cannot repoint history during undo after another writer takes over (covered 577)
+    ~ a lease that matches only the owner or only the fence cannot publish a mutation (covered 358)
+    ✓ a pointer cannot resolve a checksum-valid revision owned by another synthetic project (killed 1)
+    ~ a corrupt undo target is blocked without moving the pointer and requires explicit history resolution (covered 605)
+    ~ a corrupt redo target is blocked without moving the pointer and requires explicit history resolution (covered 635)
+    ✓ a checksum-valid history target owned by another project is blocked and marked for explicit resolution (killed 8)
+    ✓ retention rejection preserves current, undo and redo roots until a later successful publish replaces redo (killed 9)
+    ✓ history-only corruption requires an explicit confirm; cancel preserves history and confirm creates no project revision (killed 1)
+    ✓ undo and redo repoint existing durable revisions without creating a new revision (killed 6)
+    ✓ a history-only corruption blocks mutations until explicit discard, while cancel leaves the pointer intact (killed 1)
+    ~ checksum corruption is detected before recovery exposes a revision (covered 417)
+    ✓ a second writer is denied before takeover, and same-writer reacquisition does not advance its fence (killed 7)
+    ✓ a staged fault is recovered per project without clearing another project staging record (killed 4)
+    ✓ a fault during initial create never creates a pointer, then a normal retry creates the default synthetic title (killed 5)
+    ✓ empty undo and redo are explicit no-op results, and both are blocked by history-only corruption (killed 6)
+    ✓ missing pointer target and non-corrupt discard are rejected with stable recovery reasons (killed 8)
+    ~ tampering the immutable persisted document is detected by its durable checksum (covered 411)
+    ✓ durable state returns a complete immutable revision and current pointer after publication (killed 1)
+
+[NoCoverage] BlockStatement
+src/durability.mjs:74:123
+-     if (!Object.isFrozen(revision) || !Object.isFrozen(revision.document) || !Object.isFrozen(revision.document.resources)) {
+-       throw new Error('Synthetic candidate must remain immutable before staging.');
+-     }
++     if (!Object.isFrozen(revision) || !Object.isFrozen(revision.document) || !Object.isFrozen(revision.document.resources)) {}
+
+[NoCoverage] StringLiteral
+src/durability.mjs:75:21
+-       throw new Error('Synthetic candidate must remain immutable before staging.');
++       throw new Error("");
+
+[NoCoverage] LogicalOperator
+src/durability.mjs:98:36
+-       request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
++       request.onerror = () => reject(request.error && new Error('IndexedDB request failed'));
+
+[NoCoverage] StringLiteral
+src/durability.mjs:98:63
+-       request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
++       request.onerror = () => reject(request.error ?? new Error(""));
+
+[NoCoverage] LogicalOperator
+src/durability.mjs:105:40
+-       transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed'));
++       transaction.onerror = () => reject(transaction.error && new Error('IndexedDB transaction failed'));
+
+[NoCoverage] StringLiteral
+src/durability.mjs:105:71
+-       transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed'));
++       transaction.onerror = () => reject(transaction.error ?? new Error(""));
+
+[NoCoverage] LogicalOperator
+src/durability.mjs:124:36
+-       request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'));
++       request.onerror = () => reject(request.error && new Error('IndexedDB open failed'));
+
+[NoCoverage] StringLiteral
+src/durability.mjs:124:63
+-       request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'));
++       request.onerror = () => reject(request.error ?? new Error(""));
+
+[NoCoverage] StringLiteral
+src/durability.mjs:233:18
+-     databaseName = 's3-durability-spike',
++     databaseName = "",
+
+[NoCoverage] BlockStatement
+src/durability.mjs:239:26
+-     if (!indexedDBFactory) {
+-       throw new Error('An IndexedDB factory is required for the S-3 experiment.');
+-     }
++     if (!indexedDBFactory) {}
+
+[NoCoverage] StringLiteral
+src/durability.mjs:240:21
+-       throw new Error('An IndexedDB factory is required for the S-3 experiment.');
++       throw new Error("");
+
+[NoCoverage] BlockStatement
+src/durability.mjs:244:89
+-     if (testOnlyBeforeCommit !== undefined && typeof testOnlyBeforeCommit !== 'function') {
+-       throw new TypeError('testOnlyBeforeCommit must be a function when provided.');
+-     }
++     if (testOnlyBeforeCommit !== undefined && typeof testOnlyBeforeCommit !== 'function') {}
+
+[NoCoverage] StringLiteral
+src/durability.mjs:245:25
+-       throw new TypeError('testOnlyBeforeCommit must be a function when provided.');
++       throw new TypeError("");
+
+[NoCoverage] BlockStatement
+src/durability.mjs:394:13
+-       } catch {
+-         return undefined;
+-       }
++       } catch {}
+
+[NoCoverage] StringLiteral
+src/durability.mjs:409:84
+-       return (await findInvalidHistoryRoot(projectId, history, currentRevisionId)) ? 'HISTORY_TARGET_CORRUPT' : undefined;
++       return (await findInvalidHistoryRoot(projectId, history, currentRevisionId)) ? "" : undefined;
+
+[NoCoverage] BlockStatement
+src/durability.mjs:481:90
+-       if (actual !== stagingRecord.checksum || actual !== stagingRecord.revision.checksum) {
+-         throw new RecoveryRequiredError('Synthetic staging checksum mismatch.', 'STAGING_CHECKSUM_MISMATCH');
+-       }
++       if (actual !== stagingRecord.checksum || actual !== stagingRecord.revision.checksum) {}
+
+[NoCoverage] StringLiteral
+src/durability.mjs:482:39
+-         throw new RecoveryRequiredError('Synthetic staging checksum mismatch.', 'STAGING_CHECKSUM_MISMATCH');
++         throw new RecoveryRequiredError("", 'STAGING_CHECKSUM_MISMATCH');
+
+[NoCoverage] StringLiteral
+src/durability.mjs:482:79
+-         throw new RecoveryRequiredError('Synthetic staging checksum mismatch.', 'STAGING_CHECKSUM_MISMATCH');
++         throw new RecoveryRequiredError('Synthetic staging checksum mismatch.', "");
+
+[NoCoverage] BlockStatement
+src/durability.mjs:547:90
+-       if (currentRecords.some((record, index) => !snapshotsMatch(record, records[index]))) {
+-         await abortCommit(transaction, completion, new DurableStateConflictError());
+-       }
++       if (currentRecords.some((record, index) => !snapshotsMatch(record, records[index]))) {}
+
+[NoCoverage] BlockStatement
+src/durability.mjs:678:43
+-       if (usableHistory.historyOnlyCorrupt) {
+-         throw new RecoveryRequiredError('Session history is corrupt and requires explicit resolution.');
+-       }
++       if (usableHistory.historyOnlyCorrupt) {}
+
+[NoCoverage] StringLiteral
+src/durability.mjs:679:39
+-         throw new RecoveryRequiredError('Session history is corrupt and requires explicit resolution.');
++         throw new RecoveryRequiredError("");
+
+[NoCoverage] BlockStatement
+src/durability.mjs:706:20
+-       if (!revision) {
+-         await markHistoryCorrupt({ projectId, history, lease, expectedPointer, expectedHistory });
+-         throw new RecoveryRequiredError(
+-           'Synthetic history target is corrupt and requires explicit history resolution.',
+-           'HISTORY_TARGET_CORRUPT'
+-         );
+-       }
++       if (!revision) {}
+
+[NoCoverage] ObjectLiteral
+src/durability.mjs:707:32
+-         await markHistoryCorrupt({ projectId, history, lease, expectedPointer, expectedHistory });
++         await markHistoryCorrupt({});
+
+[NoCoverage] StringLiteral
+src/durability.mjs:709:9
+-           'Synthetic history target is corrupt and requires explicit history resolution.',
++           "",
+
+[NoCoverage] StringLiteral
+src/durability.mjs:710:9
+-           'HISTORY_TARGET_CORRUPT'
++           ""
+
+[Survived] StringLiteral
+src/durability.mjs:27:11
+-       super('Synthetic durable state changed before this command could publish.');
++       super("");
+Tests ran:
+    same-lease overlapping publications compare pointer and history before committing
+
+
+[Survived] StringLiteral
+src/durability.mjs:28:17
+-       this.name = 'DurableStateConflictError';
++       this.name = "";
+Tests ran:
+    same-lease overlapping publications compare pointer and history before committing
+
+
+[Survived] StringLiteral
+src/durability.mjs:35:11
+-       super('A local durable publication is still pending; wait for it before recovery.');
++       super("");
+Tests ran:
+    same-lease recovery rejects a live initial-create publication without deleting its staging record
+    same-lease recovery rejects a live mutation publication without deleting its staging record
+
+
+[Survived] StringLiteral
+src/durability.mjs:43:11
+-       super(`Synthetic history would retain ${rootCount} roots, exceeding ${limit}.`);
++       super(``);
+Tests ran:
+    retention rejection preserves current, undo and redo roots until a later successful publish replaces redo
+    retention rejection preserves a nonempty redo branch, but a permitted durable publish replaces it
+
+
+[Survived] LogicalOperator
+src/durability.mjs:64:7
+-     if (value && typeof value === 'object' && !Object.isFrozen(value)) {
++     if (value && typeof value === 'object' || !Object.isFrozen(value)) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:64:7
+-     if (value && typeof value === 'object' && !Object.isFrozen(value)) {
++     if (true && !Object.isFrozen(value)) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:64:7
+-     if (value && typeof value === 'object' && !Object.isFrozen(value)) {
++     if (value || typeof value === 'object' && !Object.isFrozen(value)) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:64:16
+-     if (value && typeof value === 'object' && !Object.isFrozen(value)) {
++     if (value && true && !Object.isFrozen(value)) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] BlockStatement
+src/durability.mjs:73:45
+-   function assertImmutableCandidate(revision) {
+-     if (!Object.isFrozen(revision) || !Object.isFrozen(revision.document) || !Object.isFrozen(revision.document.resources)) {
+-       throw new Error('Synthetic candidate must remain immutable before staging.');
+-     }
+-   }
++   function assertImmutableCandidate(revision) {}
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:74:7
+-     if (!Object.isFrozen(revision) || !Object.isFrozen(revision.document) || !Object.isFrozen(revision.document.resources)) {
++     if (false) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:74:7
+-     if (!Object.isFrozen(revision) || !Object.isFrozen(revision.document) || !Object.isFrozen(revision.document.resources)) {
++     if ((!Object.isFrozen(revision) || !Object.isFrozen(revision.document)) && !Object.isFrozen(revision.document.resources)) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:74:7
+-     if (!Object.isFrozen(revision) || !Object.isFrozen(revision.document) || !Object.isFrozen(revision.document.resources)) {
++     if (false || !Object.isFrozen(revision.document.resources)) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:74:7
+-     if (!Object.isFrozen(revision) || !Object.isFrozen(revision.document) || !Object.isFrozen(revision.document.resources)) {
++     if (!Object.isFrozen(revision) && !Object.isFrozen(revision.document) || !Object.isFrozen(revision.document.resources)) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:80:7
+-     if (Array.isArray(value)) {
++     if (false) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] BlockStatement
+src/durability.mjs:80:29
+-     if (Array.isArray(value)) {
+-       return `[${value.map(canonicalize).join(',')}]`;
+-     }
++     if (Array.isArray(value)) {}
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:81:12
+-       return `[${value.map(canonicalize).join(',')}]`;
++       return ``;
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:81:45
+-       return `[${value.map(canonicalize).join(',')}]`;
++       return `[${value.map(canonicalize).join("")}]`;
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:83:7
+-     if (value && typeof value === 'object') {
++     if (false) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] EqualityOperator
+src/durability.mjs:83:16
+-     if (value && typeof value === 'object') {
++     if (value && typeof value !== 'object') {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:83:33
+-     if (value && typeof value === 'object') {
++     if (value && typeof value === "") {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] BlockStatement
+src/durability.mjs:83:43
+-     if (value && typeof value === 'object') {
+-       return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
+-     }
++     if (value && typeof value === 'object') {}
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] MethodExpression
+src/durability.mjs:84:16
+-       return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
++       return `{${Object.keys(value).map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:84:114
+-       return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
++       return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join("")}}`;
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:92:85
+-     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
++     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "")).join('');
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:92:96
+-     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
++     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join("Stryker was here!");
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ArrowFunction
+src/durability.mjs:98:23
+-       request.onerror = () => reject(request.error ?? new Error('IndexedDB request failed'));
++       request.onerror = () => undefined;
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] ArrowFunction
+src/durability.mjs:105:27
+-       transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed'));
++       transaction.onerror = () => undefined;
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:106:40
+-       transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted'));
++       transaction.onabort = () => reject(transaction.error && new Error('IndexedDB transaction aborted'));
+Tests ran:
+    a takeover writer can recover a live prior-writer stage while the fenced command cannot publish
+    the local pending guard requires the exact project, owner and fence
+    recovery is fenced at staging deletion and a project without a durable revision is a safe no-op
+  and 6 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:106:71
+-       transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted'));
++       transaction.onabort = () => reject(transaction.error ?? new Error(""));
+Tests ran:
+    a takeover writer can recover a live prior-writer stage while the fenced command cannot publish
+    the local pending guard requires the exact project, owner and fence
+    recovery is fenced at staging deletion and a project without a durable revision is a safe no-op
+  and 6 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:116:27
+-         staging.createIndex('projectId', 'projectId', { unique: false });
++         staging.createIndex("", 'projectId', { unique: false });
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:116:40
+-         staging.createIndex('projectId', 'projectId', { unique: false });
++         staging.createIndex('projectId', "", { unique: false });
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] ObjectLiteral
+src/durability.mjs:116:53
+-         staging.createIndex('projectId', 'projectId', { unique: false });
++         staging.createIndex('projectId', 'projectId', {});
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:118:29
+-         revisions.createIndex('projectId', 'projectId', { unique: false });
++         revisions.createIndex("", 'projectId', { unique: false });
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:118:42
+-         revisions.createIndex('projectId', 'projectId', { unique: false });
++         revisions.createIndex('projectId', "", { unique: false });
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] ObjectLiteral
+src/durability.mjs:118:55
+-         revisions.createIndex('projectId', 'projectId', { unique: false });
++         revisions.createIndex('projectId', 'projectId', {});
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] ArrowFunction
+src/durability.mjs:124:23
+-       request.onerror = () => reject(request.error ?? new Error('IndexedDB open failed'));
++       request.onerror = () => undefined;
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:145:11
+-       kind: 'synthetic-s3-document',
++       kind: "",
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ArrayDeclaration
+src/durability.mjs:148:16
+-       resources: ['synthetic-resource-v1']
++       resources: []
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:148:17
+-       resources: ['synthetic-resource-v1']
++       resources: [""]
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:162:7
+-     if (typeof value !== 'string' || value.trim().length === 0) {
++     if (false || value.trim().length === 0) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:197:7
+-     if (!history || typeof history !== 'object' || Array.isArray(history) || history.projectId !== projectId) {
++     if (!history && typeof history !== 'object' || Array.isArray(history) || history.projectId !== projectId) {
+Tests ran:
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+    rejects non-boolean public controls before they can alter durable state
+  and 41 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:197:19
+-     if (!history || typeof history !== 'object' || Array.isArray(history) || history.projectId !== projectId) {
++     if (!history || false || Array.isArray(history) || history.projectId !== projectId) {
+Tests ran:
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+    rejects non-boolean public controls before they can alter durable state
+  and 41 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:197:76
+-     if (!history || typeof history !== 'object' || Array.isArray(history) || history.projectId !== projectId) {
++     if (!history || typeof history !== 'object' || Array.isArray(history) || false) {
+Tests ran:
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+    rejects non-boolean public controls before they can alter durable state
+  and 41 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:204:44
+-     return revisionIds.every((revisionId) => typeof revisionId === 'string' && revisionId.trim().length > 0)
++     return revisionIds.every((revisionId) => true && revisionId.trim().length > 0)
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    every reachable history root is validated before mutation, undo, or redo can discard it
+  and 12 more tests!
+
+
+[Survived] MethodExpression
+src/durability.mjs:204:78
+-     return revisionIds.every((revisionId) => typeof revisionId === 'string' && revisionId.trim().length > 0)
++     return revisionIds.every((revisionId) => typeof revisionId === 'string' && revisionId.length > 0)
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    every reachable history root is validated before mutation, undo, or redo can discard it
+  and 12 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:213:5
+-       pointer
+-       && typeof pointer === 'object'
+-       && !Array.isArray(pointer)
+-       && pointer.projectId === projectId
++       true
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 47 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:213:5
+-       pointer
+-       && typeof pointer === 'object'
+-       && !Array.isArray(pointer)
+-       && pointer.projectId === projectId
++       pointer && typeof pointer === 'object' && !Array.isArray(pointer) || pointer.projectId === projectId
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 47 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:213:5
+-       pointer
+-       && typeof pointer === 'object'
+-       && !Array.isArray(pointer)
++       true
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 47 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:213:5
+-       pointer
+-       && typeof pointer === 'object'
+-       && !Array.isArray(pointer)
++       pointer && typeof pointer === 'object' || !Array.isArray(pointer)
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 47 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:213:5
+-       pointer
+-       && typeof pointer === 'object'
++       true
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 47 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:213:5
+-       pointer
+-       && typeof pointer === 'object'
++       pointer || typeof pointer === 'object'
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 47 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:214:8
+-       && typeof pointer === 'object'
++       && true
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 47 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:216:8
+-       && pointer.projectId === projectId
++       && true
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 47 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:218:8
+-       && pointer.revisionId.trim().length > 0
++       && true
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 46 more tests!
+
+
+[Survived] EqualityOperator
+src/durability.mjs:218:8
+-       && pointer.revisionId.trim().length > 0
++       && pointer.revisionId.trim().length >= 0
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 46 more tests!
+
+
+[Survived] MethodExpression
+src/durability.mjs:218:8
+-       && pointer.revisionId.trim().length > 0
++       && pointer.revisionId.length > 0
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 46 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:219:8
+-       && typeof pointer.checksum === 'string'
++       && true
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 46 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:220:8
+-       && pointer.checksum.trim().length > 0
++       && true
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 46 more tests!
+
+
+[Survived] EqualityOperator
+src/durability.mjs:220:8
+-       && pointer.checksum.trim().length > 0
++       && pointer.checksum.trim().length >= 0
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 46 more tests!
+
+
+[Survived] MethodExpression
+src/durability.mjs:220:8
+-       && pointer.checksum.trim().length > 0
++       && pointer.checksum.length > 0
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 46 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:239:7
+-     if (!indexedDBFactory) {
++     if (false) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:244:7
+-     if (testOnlyBeforeCommit !== undefined && typeof testOnlyBeforeCommit !== 'function') {
++     if (false) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:242:48
+-     assertPositiveSafeInteger(retentionMaxRoots, 'retentionMaxRoots');
++     assertPositiveSafeInteger(retentionMaxRoots, "");
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 60 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:265:12
+-       return result === undefined ? undefined : clone(result);
++       return false ? undefined : clone(result);
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:285:16
+-         pointer: pointer === undefined ? undefined : clone(pointer),
++         pointer: false ? undefined : clone(pointer),
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:286:16
+-         history: history === undefined ? undefined : clone(history)
++         history: false ? undefined : clone(history)
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:333:7
+-         'Synthetic durable pointer is missing or malformed.',
++         "",
+Tests ran:
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    durable-state query rejects a missing pointer when the project still retains durable evidence
+    durable-state query treats either retained history or retained revisions as pointer-loss evidence
+  and 6 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:324:37
+-       assertNonEmptyString(projectId, 'projectId');
++       assertNonEmptyString(projectId, "");
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:340:7
+-         'Synthetic staging requires explicit recovery before creating a project.',
++         "",
+Tests ran:
+    a failed initial create requires explicit fenced recovery before a retry can publish
+    a post-staging initial-create fault clears its active marker before requiring recovery
+
+
+[Survived] StringLiteral
+src/durability.mjs:368:9
+-           'Synthetic session history is missing or malformed.',
++           "",
+Tests ran:
+    missing or malformed persisted history blocks commands until an explicit confirmed canonical history discard
+    structurally invalid history records remain history-only corruption until confirmation
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:378:7
+-         !revision
+-         || revision.id !== revisionId
++         false
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    every reachable history root is validated before mutation, undo, or redo can discard it
+    a takeover after history resolution fences stale undo and redo pointer commits
+  and 10 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:378:7
+-         !revision
+-         || revision.id !== revisionId
++         !revision && revision.id !== revisionId
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    every reachable history root is validated before mutation, undo, or redo can discard it
+    a takeover after history resolution fences stale undo and redo pointer commits
+  and 10 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:379:10
+-         || revision.id !== revisionId
++         || false
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    every reachable history root is validated before mutation, undo, or redo can discard it
+    a takeover after history resolution fences stale undo and redo pointer commits
+  and 10 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:382:10
+-         || revision.sequence <= 0
++         || false
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    every reachable history root is validated before mutation, undo, or redo can discard it
+    a takeover after history resolution fences stale undo and redo pointer commits
+  and 9 more tests!
+
+
+[Survived] EqualityOperator
+src/durability.mjs:382:10
+-         || revision.sequence <= 0
++         || revision.sequence < 0
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    every reachable history root is validated before mutation, undo, or redo can discard it
+    a takeover after history resolution fences stale undo and redo pointer commits
+  and 9 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:448:14
+-         id: id('synthetic-revision'),
++         id: id(""),
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:462:14
+-         id: id('synthetic-stage'),
++         id: id(""),
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:481:9
+-       if (actual !== stagingRecord.checksum || actual !== stagingRecord.revision.checksum) {
++       if (false) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 58 more tests!
+
+
+[Survived] LogicalOperator
+src/durability.mjs:481:9
+-       if (actual !== stagingRecord.checksum || actual !== stagingRecord.revision.checksum) {
++       if (actual !== stagingRecord.checksum && actual !== stagingRecord.revision.checksum) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 58 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:481:9
+-       if (actual !== stagingRecord.checksum || actual !== stagingRecord.revision.checksum) {
++       if (false || actual !== stagingRecord.revision.checksum) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 58 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:481:46
+-       if (actual !== stagingRecord.checksum || actual !== stagingRecord.revision.checksum) {
++       if (actual !== stagingRecord.checksum || false) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 58 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:517:11
+-         if (snapshotsMatch(stageInTransaction, stagingRecord)) {
++         if (true) {
+Tests ran:
+    same-lease overlapping publications compare pointer and history before committing
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:534:9
+-       if (records.length === 0) return false;
++       if (false) return false;
+Tests ran:
+    a takeover writer can recover a live prior-writer stage while the fenced command cannot publish
+    the local pending guard requires the exact project, owner and fence
+    recovery is fenced at staging deletion and a project without a durable revision is a safe no-op
+  and 11 more tests!
+
+
+[Survived] BooleanLiteral
+src/durability.mjs:534:38
+-       if (records.length === 0) return false;
++       if (records.length === 0) return true;
+Tests ran:
+    fault before-staging recovers the previous durable revision without publishing a candidate
+    a fault after the pointer swap is durable and restart recovers the new revision
+    a pre-pointer fault leaves the prior pointer durable while an after-swap fault recovers the replacement
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:547:9
+-       if (currentRecords.some((record, index) => !snapshotsMatch(record, records[index]))) {
++       if (false) {
+Tests ran:
+    a takeover writer can recover a live prior-writer stage while the fenced command cannot publish
+    the local pending guard requires the exact project, owner and fence
+    recovery is fenced at staging deletion and a project without a durable revision is a safe no-op
+  and 9 more tests!
+
+
+[Survived] ArrowFunction
+src/durability.mjs:547:29
+-       if (currentRecords.some((record, index) => !snapshotsMatch(record, records[index]))) {
++       if (currentRecords.some(() => undefined)) {
+Tests ran:
+    a takeover writer can recover a live prior-writer stage while the fenced command cannot publish
+    the local pending guard requires the exact project, owner and fence
+    recovery is fenced at staging deletion and a project without a durable revision is a safe no-op
+  and 9 more tests!
+
+
+[Survived] MethodExpression
+src/durability.mjs:547:9
+-       if (currentRecords.some((record, index) => !snapshotsMatch(record, records[index]))) {
++       if (currentRecords.every((record, index) => !snapshotsMatch(record, records[index]))) {
+Tests ran:
+    a takeover writer can recover a live prior-writer stage while the fenced command cannot publish
+    the local pending guard requires the exact project, owner and fence
+    recovery is fenced at staging deletion and a project without a durable revision is a safe no-op
+  and 9 more tests!
+
+
+[Survived] ArrayDeclaration
+src/durability.mjs:557:44
+-         ...(pointer ? [pointer.revisionId] : []),
++         ...(pointer ? [pointer.revisionId] : ["Stryker was here"]),
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ArrayDeclaration
+src/durability.mjs:558:39
+-         ...(history?.undoRevisionIds ?? []),
++         ...(history?.undoRevisionIds ?? ["Stryker was here"]),
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ArrayDeclaration
+src/durability.mjs:559:39
+-         ...(history?.redoRevisionIds ?? []),
++         ...(history?.redoRevisionIds ?? ["Stryker was here"]),
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:571:39
+-         throw new RecoveryRequiredError('Pointer references a missing synthetic revision.', 'POINTER_TARGET_MISSING');
++         throw new RecoveryRequiredError("", 'POINTER_TARGET_MISSING');
+Tests ran:
+    missing pointer target and non-corrupt discard are rejected with stable recovery reasons
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:568:9
+-       if (!pointer) return undefined;
++       if (false) return undefined;
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 46 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:574:39
+-         throw new RecoveryRequiredError('Pointer references a revision from another synthetic project.', 'POINTER_PROJECT_MISMATCH');
++         throw new RecoveryRequiredError("", 'POINTER_PROJECT_MISMATCH');
+Tests ran:
+    malformed durable pointers stay read-only and preserve retained project evidence
+    a pointer cannot resolve a checksum-valid revision owned by another synthetic project
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:573:9
+-       if (pointer.projectId !== projectId || revision.projectId !== projectId) {
++       if (false || revision.projectId !== projectId) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 45 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:583:39
+-         throw new RecoveryRequiredError('Synthetic durable revision checksum mismatch.', 'DURABLE_CHECKSUM_MISMATCH');
++         throw new RecoveryRequiredError("", 'DURABLE_CHECKSUM_MISMATCH');
+Tests ran:
+    malformed durable pointers stay read-only and preserve retained project evidence
+    confirmed history discard preserves corrupt bytes unless the current durable revision is healthy
+    checksum corruption is detected before recovery exposes a revision
+  and 1 more test!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:582:40
+-       if (actual !== pointer.checksum || actual !== revision.checksum) {
++       if (actual !== pointer.checksum || false) {
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 42 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:595:9
+-           'A current durable revision is required for this command.',
++           "",
+Tests ran:
+    recovery is fenced at staging deletion and a project without a durable revision is a safe no-op
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:605:11
+-         if (error instanceof RecoveryRequiredError) throw pointerRecoveryRequired();
++         if (true) throw pointerRecoveryRequired();
+Tests ran:
+    malformed durable pointers stay read-only and preserve retained project evidence
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:627:11
+-         if (error instanceof RecoveryRequiredError) throw pointerRecoveryRequired();
++         if (true) throw pointerRecoveryRequired();
+Tests ran:
+    malformed durable pointers stay read-only and preserve retained project evidence
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:678:9
+-       if (usableHistory.historyOnlyCorrupt) {
++       if (false) {
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    durable-state query rejects a missing pointer when the project still retains durable evidence
+  and 28 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:690:9
+-           'Synthetic history target is corrupt and requires explicit history resolution.',
++           "",
+Tests ran:
+    every reachable history root is validated before mutation, undo, or redo can discard it
+    a corrupt undo target is blocked without moving the pointer and requires explicit history resolution
+    a corrupt redo target is blocked without moving the pointer and requires explicit history resolution
+  and 1 more test!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:706:9
+-       if (!revision) {
++       if (false) {
+Tests ran:
+    every reachable history root is validated before mutation, undo, or redo can discard it
+    a takeover after history resolution fences stale undo and redo pointer commits
+    corrupt undo and redo targets pass their leases into the fenced history write
+  and 7 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:774:67
+-         currentRetentionMaxRoots = assertPositiveSafeInteger(limit, 'retentionMaxRoots');
++         currentRetentionMaxRoots = assertPositiveSafeInteger(limit, "");
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    retention rejection preserves current, undo and redo roots until a later successful publish replaces redo
+    retention rejection preserves a nonempty redo branch, but a permitted durable publish replaces it
+
+
+[Survived] StringLiteral
+src/durability.mjs:778:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] ObjectLiteral
+src/durability.mjs:788:32
+-         await preflightRetention({ pointer: expectedPointer, history: expectedHistory, candidateId: revision.id });
++         await preflightRetention({});
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+  and 59 more tests!
+
+
+[Survived] BlockStatement
+src/durability.mjs:813:45
+-         if (shapedHistory.historyOnlyCorrupt) {
+-           throw new RecoveryRequiredError('Session history is corrupt and requires explicit resolution.');
+-         }
++         if (shapedHistory.historyOnlyCorrupt) {}
+Tests ran:
+    a history-only corruption blocks mutations until explicit discard, while cancel leaves the pointer intact
+
+
+[Survived] StringLiteral
+src/durability.mjs:814:41
+-           throw new RecoveryRequiredError('Session history is corrupt and requires explicit resolution.');
++           throw new RecoveryRequiredError("");
+Tests ran:
+    a history-only corruption blocks mutations until explicit discard, while cancel leaves the pointer intact
+
+
+[Survived] StringLiteral
+src/durability.mjs:807:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    rejects non-boolean public controls before they can alter durable state
+    rejects a mutation whose resulting synthetic value is not a safe integer
+  and 34 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:813:11
+-         if (shapedHistory.historyOnlyCorrupt) {
++         if (false) {
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    durable-state query rejects a missing pointer when the project still retains durable evidence
+  and 30 more tests!
+
+
+[Survived] ObjectLiteral
+src/durability.mjs:846:42
+-           await verifyStage(stagingRecord, { ignoreFaults });
++           await verifyStage(stagingRecord, {});
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    durable-state query rejects a missing pointer when the project still retains durable evidence
+  and 23 more tests!
+
+
+[Survived] ObjectLiteral
+src/durability.mjs:844:56
+-           stagingRecord = await stageCandidate(revision, { ignoreFaults });
++           stagingRecord = await stageCandidate(revision, {});
+Tests ran:
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    durable-state query rejects a missing pointer when the project still retains durable evidence
+  and 27 more tests!
+
+
+[Survived] BlockStatement
+src/durability.mjs:864:45
+-         if (shapedHistory.historyOnlyCorrupt) {
+-           throw new RecoveryRequiredError('Session history is corrupt and requires explicit resolution.');
+-         }
++         if (shapedHistory.historyOnlyCorrupt) {}
+Tests ran:
+    empty undo and redo are explicit no-op results, and both are blocked by history-only corruption
+
+
+[Survived] StringLiteral
+src/durability.mjs:865:41
+-           throw new RecoveryRequiredError('Session history is corrupt and requires explicit resolution.');
++           throw new RecoveryRequiredError("");
+Tests ran:
+    empty undo and redo are explicit no-op results, and both are blocked by history-only corruption
+
+
+[Survived] StringLiteral
+src/durability.mjs:860:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    retained history without a pointer blocks mutation, undo and redo before any new staging begins
+    malformed durable pointers stay read-only and preserve retained project evidence
+  and 15 more tests!
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:864:11
+-         if (shapedHistory.historyOnlyCorrupt) {
++         if (false) {
+Tests ran:
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    retained history without a pointer blocks mutation, undo and redo before any new staging begins
+    malformed durable pointers stay read-only and preserve retained project evidence
+  and 13 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:903:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    retained history without a pointer blocks mutation, undo and redo before any new staging begins
+    malformed durable pointers stay read-only and preserve retained project evidence
+  and 8 more tests!
+
+
+[Survived] BlockStatement
+src/durability.mjs:907:45
+-         if (shapedHistory.historyOnlyCorrupt) {
+-           throw new RecoveryRequiredError('Session history is corrupt and requires explicit resolution.');
+-         }
++         if (shapedHistory.historyOnlyCorrupt) {}
+Tests ran:
+    empty undo and redo are explicit no-op results, and both are blocked by history-only corruption
+
+
+[Survived] ConditionalExpression
+src/durability.mjs:907:11
+-         if (shapedHistory.historyOnlyCorrupt) {
++         if (false) {
+Tests ran:
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    retained history without a pointer blocks mutation, undo and redo before any new staging begins
+    malformed durable pointers stay read-only and preserve retained project evidence
+  and 6 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:908:41
+-           throw new RecoveryRequiredError('Session history is corrupt and requires explicit resolution.');
++           throw new RecoveryRequiredError("");
+Tests ran:
+    empty undo and redo are explicit no-op results, and both are blocked by history-only corruption
+
+
+[Survived] ArrayDeclaration
+src/durability.mjs:931:26
+-           undoRevisionIds: [...history.undoRevisionIds, current.id],
++           undoRevisionIds: [],
+Tests ran:
+    a takeover after history resolution fences stale undo and redo pointer commits
+    undo and redo repoint existing durable revisions without creating a new revision
+
+
+[Survived] StringLiteral
+src/durability.mjs:946:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    either retained history or retained revisions independently blocks recreation after pointer loss
+    malformed durable pointers stay read-only and preserve retained project evidence
+  and 19 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:977:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 11 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:992:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+    rejects non-boolean public controls before they can alter durable state
+  and 15 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:1002:41
+-           throw new RecoveryRequiredError('There is no history-only corruption to discard.', 'HISTORY_NOT_CORRUPT');
++           throw new RecoveryRequiredError("", 'HISTORY_NOT_CORRUPT');
+Tests ran:
+    missing pointer target and non-corrupt discard are rejected with stable recovery reasons
+
+
+[Survived] StringLiteral
+src/durability.mjs:1010:11
+-             'Synthetic session history cannot increment its boundary count safely.',
++             "",
+Tests ran:
+    confirmed history discard rejects boundary-count overflow without writing durable state
+
+
+[Survived] StringLiteral
+src/durability.mjs:1041:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    missing durable pointer with retained evidence enters controlled recovery instead of creating or mutating
+    durable-state query rejects a missing pointer when the project still retains durable evidence
+    durable-state query treats either retained history or retained revisions as pointer-loss evidence
+  and 23 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:1036:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+    rejects non-boolean public controls before they can alter durable state
+  and 41 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:1052:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    rejects malformed public coordinator inputs before durable state changes
+    rejects a mutation whose resulting synthetic value is not a safe integer
+    durable-state query rejects a missing pointer when the project still retains durable evidence
+  and 12 more tests!
+
+
+[Survived] StringLiteral
+src/durability.mjs:1046:39
+-         assertNonEmptyString(projectId, 'projectId');
++         assertNonEmptyString(projectId, "");
+Tests ran:
+    a stale lease cannot mark a healthy history corrupt after takeover
+    a stale lease cannot discard corrupt session history after takeover
+    history cancellation requires a supplied current lease before returning its no-op result
+  and 16 more tests!
+
+
+Ran 9.09 tests per mutant on average.
+----------------|------------------|----------|-----------|------------|----------|----------|
+                | % Mutation score |          |           |            |          |          |
+File            |  total | covered | # killed | # timeout | # survived | # no cov | # errors |
+----------------|--------|---------|----------|-----------|------------|----------|----------|
+All files       |  83.17 |   85.51 |      761 |         0 |        129 |       25 |        0 |
+ durability.mjs |  83.17 |   85.51 |      761 |         0 |        129 |       25 |        0 |
+----------------|--------|---------|----------|-----------|------------|----------|----------|
+[32m01:20:13 (58977) INFO JsonReporter[39m Your report can be found at: file:///Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/_bmad-output/implementation-artifacts/spikes/W-SPK-2026-08-04/S-3/artifacts/mutation/mutation.json
+[32m01:20:13 (58977) INFO HtmlReporter[39m Your report can be found at: file:///Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/_bmad-output/implementation-artifacts/spikes/W-SPK-2026-08-04/S-3/artifacts/mutation/index.html
+[32m01:20:13 (58977) INFO MutationTestExecutor[39m Done in 38 seconds.

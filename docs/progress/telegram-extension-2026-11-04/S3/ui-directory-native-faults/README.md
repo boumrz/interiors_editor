@@ -1,0 +1,7 @@
+# Qualified directory: bounded native fault injection
+
+Four baseline UI-contract cases pass. Eight exact manual substitutions in the new owner forwarding, observer snapshot reread, EditorApp key and rename intent each produce the intended behavioral failure; the ordinary single-argument Web open control passes in every cohort. Reports/logs/traces and exact before/after substitutions are retained. All20 test activations independently check two executed actual module SHA markers and the fixture HTML active ID:40 module observations,20 HTML observations, zero mismatch or setup failures. Both source modules were restored exactly and match root source hashes at this snapshot.
+
+This is a precise manual fault-injection cohort, not Stryker or a whole-AppShell/application mutation score. The UI fixture intentionally doubles the controller and never proves storage, publication, signed launch, physical Telegram or external file handoff. The real browser facade/routing/storage acceptance remains separate.
+
+M01/M03/M04/M05 fail exact selected-owner arguments; M02 opens the wrong source name; M06 leaves the old directory after a transition during observer registration; M07/M08 fail the required bound rename intent on the instance transition. The green remount scenario also checks that the previous raw input node is disconnected on a subsequent same-ID switch. CSS-only qualified-card layout improvements after this snapshot have separate native UI checks and do not retroactively change these module hashes.

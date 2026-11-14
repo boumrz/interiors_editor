@@ -1,0 +1,59 @@
+{
+  "contractVersion": "catalog-media-profile-1",
+  "cases": [
+    {
+      "id": "png-rgba-1x1",
+      "profile": "CatalogThumbnailPngProfile-1",
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "outcome": "accepted"
+    },
+    {
+      "id": "png-corrupt-ihdr-crc",
+      "profile": "CatalogThumbnailPngProfile-1",
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAeFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
+      "outcome": "rejected",
+      "reasonCode": "PNG_CRC_INVALID"
+    },
+    {
+      "id": "glb-minimal-static-v2",
+      "profile": "StaticCatalogGlbProfile-1",
+      "base64": "Z2xURgIAAAAwAAAAHAAAAEpTT057ImFzc2V0Ijp7InZlcnNpb24iOiIyLjAifX0g",
+      "outcome": "accepted"
+    },
+    {
+      "id": "glb-version-1",
+      "profile": "StaticCatalogGlbProfile-1",
+      "base64": "Z2xURgEAAAAwAAAAHAAAAEpTT057ImFzc2V0Ijp7InZlcnNpb24iOiIyLjAifX0g",
+      "outcome": "rejected",
+      "reasonCode": "GLB_VERSION_INVALID"
+    },
+    {
+      "id": "glb-json-nul-padding",
+      "profile": "StaticCatalogGlbProfile-1",
+      "base64": "Z2xURgIAAAAwAAAAHAAAAEpTT057ImFzc2V0Ijp7InZlcnNpb24iOiIyLjAifX0A",
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_RESOURCE_MEDIA_INVALID"
+    },
+    {
+      "id": "png-invalid-scanline-filter",
+      "profile": "CatalogThumbnailPngProfile-1",
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP9z8DwHwAFGQIEfQUW8QAAAABJRU5ErkJggg==",
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_RESOURCE_MEDIA_INVALID"
+    },
+    {
+      "id": "glb-forbidden-animation",
+      "profile": "StaticCatalogGlbProfile-1",
+      "base64": "Z2xURgIAAABAAAAALAAAAEpTT057ImFzc2V0Ijp7InZlcnNpb24iOiIyLjAifSwiYW5pbWF0aW9ucyI6W119IA==",
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_RESOURCE_MEDIA_INVALID"
+    },
+    {
+      "id": "glb-invalid-embedded-image",
+      "profile": "StaticCatalogGlbProfile-1",
+      "base64": "Z2xURgIAAADIAAAAqAAAAEpTT057ImFzc2V0Ijp7InZlcnNpb24iOiIyLjAifSwiYnVmZmVycyI6W3siYnl0ZUxlbmd0aCI6NH1dLCJidWZmZXJWaWV3cyI6W3siYnVmZmVyIjowLCJieXRlT2Zmc2V0IjowLCJieXRlTGVuZ3RoIjo0fV0sImltYWdlcyI6W3siYnVmZmVyVmlldyI6MCwibWltZVR5cGUiOiJpbWFnZS9wbmcifV19ICAEAAAAQklOAAAAAAA=",
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_RESOURCE_MEDIA_INVALID"
+    }
+  ]
+}

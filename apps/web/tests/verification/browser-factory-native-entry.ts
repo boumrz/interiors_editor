@@ -1,0 +1,11 @@
+import "../../src/adapters/persistence/scoped-project-repository.ts";
+import "../../src/adapters/persistence/telegram-project-repository.ts";
+import "../../src/adapters/persistence/scoped-writer-lease.ts";
+import "../../src/adapters/persistence/telegram-writer-lease.ts";
+import "../../src/adapters/persistence/telegram-scope-store.ts";
+import "../../src/adapters/persistence/browser-registered-project-repository.ts";
+import "../../src/adapters/persistence/browser-registered-writer-lease.ts";
+import "../../src/adapters/persistence/browser-registered-scope-store.ts";
+import "../../src/app/browser-registered-runtime.ts";
+import "../../src/adapters/persistence/browser-project-key-lookup.ts";
+import "../browser/browser-registered-project-harness";

@@ -1,0 +1,4 @@
+import {defineConfig,devices} from '@playwright/test';
+const root=process.env.READER_PUBLIC_INVOCATION;if(!root)throw Error('READER_PUBLIC_PROOF_INVALID: owned invocation required');
+if(!process.argv.includes('--list')&&process.env.READER_PUBLIC_NATIVE_SLOT!=='reserved')throw Error('READER_PUBLIC_PROOF_INVALID: explicit Native lease required');
+export default defineConfig({testDir:'./tests/browser',testMatch:'browser-readonly-public-regressions-e2e.check.ts',workers:1,retries:0,timeout:15000,outputDir:root+'/results',reporter:[['list'],['./scripts/run-reader-public-regressions.mjs'],['json',{outputFile:root+'/report.json'}]],metadata:{readerPublicScope:'browser8',sourceHashes:JSON.parse(process.env.READER_PUBLIC_SOURCE_HASHES??'null')},use:{...devices['iPhone 13'],browserName:'chromium',channel:'chrome',baseURL:process.env.READER_PUBLIC_BASE_URL,trace:'retain-on-failure',screenshot:'only-on-failure'}});

@@ -1,0 +1,3764 @@
+.startShell { align-items: center; background:var(--canvas); display: grid; min-height: var(--editor-viewport-height, 100dvh); padding: max(24px, var(--editor-safe-area-top, env(safe-area-inset-top))) 20px max(24px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }
+.createCard { background:var(--surface); border:1px solid var(--line); box-shadow: 8px 9px 0 var(--shadow); display: grid; gap: 15px; margin: 0 auto; max-width: 460px; padding: 28px 23px; width: 100%; }
+.startMark, .editorMark { align-items: center; background:var(--ink); color:var(--surface); display: inline-flex; font-family: var(--font-display); font-weight: 800; justify-content: center; letter-spacing: -0.08em; text-decoration: none; }
+.startMark { font-size: 1.25rem; height: 42px; width: 42px; }
+.eyebrow, .panelHeading span, .contourPanel > span, .inlineMetrics dt, .viewportHint { color:var(--muted); font-family: var(--font-mono); font-size: 0.64rem; font-weight: 800; letter-spacing: 0.11em; margin: 0; }
+.createCard h1 { font-family: var(--font-display); font-size: clamp(2.45rem, 13vw, 4.4rem); letter-spacing: -0.075em; line-height: 0.86; margin: 0; }
+.createForm { display: grid; gap: 8px; }
+.createForm label, .selectionPanel label, .contourFields label { display: grid; font-size: 0.79rem; font-weight: 800; gap: 5px; }
+.createForm input, .selectionPanel input, .contourFields input { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 48px; padding: 0 11px; width: 100%; }
+.createForm input:focus-visible, .selectionPanel input:focus-visible, .contourFields input:focus-visible, button:focus-visible, .editorMark:focus-visible { outline:3px solid color-mix(in srgb, var(--editor-host-primary, var(--blue)) 52%, transparent); outline-offset: 2px; }
+.primaryAction, .secondaryAction, .textAction, .retryButton { cursor: pointer; font: inherit; font-weight: 800; min-height: 46px; }
+.primaryAction { background:var(--ink); border:1px solid var(--ink); color:var(--surface); padding: 0 14px; }
+.primaryAction:disabled { cursor: wait; opacity: 0.55; }
+.secondaryAction { background:var(--surface); border:1px solid var(--ink); color:var(--ink); padding: 0 14px; }
+.fieldError, .canvasError { color:var(--danger); font-size: 0.84rem; font-weight: 700; line-height: 1.35; margin: 0; }
+.fieldWarning { color:var(--editor-host-warning, #854d0e); font-size: 0.84rem; font-weight: 700; line-height: 1.35; margin: 0; }
+.projectTransferStatus { background:color-mix(in srgb, var(--blue) 7%, var(--surface)); border:1px solid color-mix(in srgb, var(--blue) 40%, var(--line)); display: grid; gap: 9px; padding: 11px; }
+.projectTransferStatus span { color:var(--muted); font-family: var(--font-mono); font-size: 0.68rem; font-weight: 800; line-height: 1.35; }
+.projectTransferStatus progress { accent-color:var(--editor-host-primary, var(--blue)); inline-size: 100%; }
+.projectTransferStatus button { background:var(--surface); border:1px solid var(--ink); color:var(--ink); cursor: pointer; font: inherit; font-weight: 800; min-height: 44px; }
+.startStatus { color:var(--muted); font-size: 0.85rem; }
+.firstRunGuidance { align-items: center; background:color-mix(in srgb, var(--editor-accent) 8%, var(--surface)); border:1px solid color-mix(in srgb, var(--editor-accent) 21%, var(--line)); border-radius:999px; color:color-mix(in srgb, var(--editor-accent) 68%, var(--ink)); display: inline-flex; font-family: var(--font-mono); font-size: 0.63rem; font-weight: 800; justify-self: start; letter-spacing: 0.04em; line-height: 1; margin: 0; padding: 8px 10px; }
+.firstRunHelp { background:color-mix(in srgb, var(--canvas) 54%, var(--surface)); border:1px solid color-mix(in srgb, var(--line) 86%, transparent); border-radius:14px; color:var(--muted); font-size: 0.76rem; line-height: 1.4; padding: 0 12px; }.firstRunHelp summary { align-items: center; color:var(--ink); cursor: pointer; display: flex; font-size: 0.77rem; font-weight: 800; justify-content: space-between; min-height: 44px; }.firstRunHelp summary::-webkit-details-marker { display: none; }.firstRunHelp summary::after { color:var(--muted); content: "+"; font-size: 1.15rem; font-weight: 400; }.firstRunHelp[open] summary::after { content: "−"; }.firstRunHelp ul { display: grid; gap: 6px; margin: 0 0 11px; padding-left: 18px; }
+.textAction { background:transparent; border:0; color:var(--editor-host-primary, var(--blue)); padding: 0; text-align: left; text-decoration: underline; }
+.projectDirectory { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.projectDirectoryCard { align-items: center; border:1px solid var(--line); display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; padding: 10px; }
+.projectDirectoryCard > div { display: grid; gap: 3px; min-width: 0; }
+.projectDirectoryCard strong { font-family: var(--font-display); font-size: 1.2rem; letter-spacing: -0.035em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projectDirectoryCard small { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projectDirectoryCard button { background:var(--surface); border:1px solid var(--ink); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.75rem; font-weight: 800; min-height: 44px; padding: 0 10px; }
+
+.projectIdentity { align-items: start; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); box-shadow: 2px 3px 0 color-mix(in srgb, var(--shadow) 58%, transparent); color:var(--ink); cursor: pointer; display: grid; gap: 2px; left: 12px; max-width: min(180px, calc(100% - 142px)); min-height: 44px; padding: 6px 9px; position: absolute; text-align: left; top: 12px; z-index: 3; }.projectIdentity span { font-family: var(--font-display); font-size: 0.86rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }.projectIdentity small { color:var(--muted); font-family: var(--font-mono); font-size: 0.54rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }.projectIdentity:disabled { color:var(--muted); cursor: wait; }
+.renameProjectDialog { background:var(--surface); border:1px solid var(--line); box-shadow: 5px 6px 0 var(--shadow); display: grid; gap: 12px; left: 50%; max-width: min(360px, calc(100% - 32px)); padding: 18px; position: absolute; top: 50%; transform: translate(-50%, -50%); width: 100%; z-index: 12; }.renameProjectDialog strong { font-family: var(--font-display); font-size: 1.3rem; letter-spacing: -0.04em; }.renameProjectDialog form { display: grid; gap: 8px; }.renameProjectDialog label { display: grid; font-size: 0.78rem; font-weight: 800; gap: 5px; }.renameProjectDialog input { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 48px; padding: 0 11px; width: 100%; }.renameProjectDialog form > div { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }.renameProjectDialog button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 800; min-height: 44px; padding: 7px; }.renameProjectDialog button[type="submit"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.renameProjectDialog button:disabled { color:var(--muted); cursor: wait; }
+
+.editorShell { background:var(--canvas); height: var(--editor-viewport-height, 100dvh); overflow: hidden; padding: 0; }
+.editorHeader { align-items: center; background:color-mix(in srgb, var(--surface) 93%, transparent); border-bottom:1px solid var(--line-soft); display: grid; gap: 7px; grid-template-columns: 36px minmax(0, 1fr) auto; min-height: 52px; padding: 4px 9px; }
+.editorMark { font-size: 0.95rem; height: 36px; width: 36px; }
+.projectName { font-family: var(--font-display); font-size: 1.12rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.compactStatus { align-items: center; color:var(--muted); display: inline-flex; font-family: var(--font-mono); font-size: 0.65rem; gap: 5px; white-space: nowrap; }
+.statusDot { background:var(--muted); border-radius:50%; height: 7px; width: 7px; }
+.dotsaved { background:var(--safe); }.dotsaving { animation: breathe 800ms ease-in-out infinite alternate; background:var(--blue); }.dotpersist-failed, .dotrecovery-needed { background:var(--danger); }
+.modeSwitcher { border:0; display: inline-flex; margin: 0; min-width: 0; padding: 0; }
+.visuallyHidden { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; inset: 0 auto auto 0; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+.durabilityStatus { background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); box-shadow: 2px 3px 0 color-mix(in srgb, var(--shadow) 58%, transparent); color:var(--ink); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; left: 12px; max-width: calc(100% - 142px); padding: 6px 8px; position: absolute; top: 62px; z-index: 3; }
+.storagePressure { background:color-mix(in srgb, var(--surface) 97%, var(--danger) 3%); border:1px solid var(--danger); box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 58%, transparent); display: grid; gap: 6px; left: 12px; max-width: min(310px, calc(100% - 142px)); padding: 9px; position: absolute; top: 96px; z-index: 4; }.storagePressure[data-risk="warning"] { background:color-mix(in srgb, var(--surface) 97%, var(--blue) 3%); border-color:var(--blue); }.storagePressure[data-risk="unavailable"] { background:color-mix(in srgb, var(--surface) 97%, var(--muted) 3%); border-color:var(--muted); }.storagePressure strong { font-family: var(--font-display); font-size: 1rem; letter-spacing: -0.035em; }.storagePressure p { font-size: 0.72rem; font-weight: 700; line-height: 1.35; margin: 0; }.storagePressure button { background:var(--surface); border:1px solid var(--ink); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.7rem; font-weight: 800; min-height: 44px; padding: 6px 8px; text-align: left; }
+.modeSwitcher button, .headerActions button, .sidePicker button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.76rem; font-weight: 800; min-height: 44px; padding: 0 11px; }
+.modeSwitcher button + button { border-left:0; }.modeSwitcher button[aria-pressed="true"], .sidePicker button[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.modeSwitcher button:disabled, .headerActions button:disabled { color:var(--muted); cursor: not-allowed; }
+.canvasArea { height: 100%; min-height: 0; overflow: hidden; position: relative; }
+.toolRail { align-items: stretch; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); display: flex; flex-direction: column; gap: 3px; max-height: calc(100% - max(24px, var(--editor-safe-area-top, env(safe-area-inset-top)) + var(--editor-safe-area-bottom, env(safe-area-inset-bottom)))); overflow-y: auto; padding: 5px; position: absolute; right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right))); top: max(12px, var(--editor-safe-area-top, env(safe-area-inset-top))); width: 104px; z-index: 4; }.toolRail button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.66rem; font-weight: 800; line-height: 1.05; min-height: 44px; padding: 4px; text-align: center; }.toolRail button[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.toolRail button:disabled { color:var(--muted); cursor: not-allowed; }.railActiveTool { color:var(--editor-host-primary, var(--blue)); font-family: var(--font-mono); font-size: 0.55rem; font-weight: 800; letter-spacing: 0.08em; padding: 3px 2px 1px; text-align: center; text-transform: uppercase; }.toolRailHistory { display: grid; gap: 3px; grid-template-columns: 1fr 1fr; }.toolRailHistory button { font-family: var(--font-display); font-size: 1.35rem; padding: 0; }
+.selectToolButton { align-items: center; display: inline-flex; justify-content: center; padding: 0 !important; }
+.selectToolButton svg { display: block; height: 24px; width: 24px; }
+.mobileChromeHide, .mobileChromeRestore { display: none; }
+.roomDirectoryToggle { background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.7rem; font-weight: 800; min-height: 44px; padding: 0 11px; position: absolute; right: 128px; top: 12px; z-index: 4; }.roomDirectoryToggle[aria-expanded="true"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.roomDirectoryToggle:disabled { color:var(--muted); cursor: wait; }
+.returnToDrawing { align-items: center; aspect-ratio: 1; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); border-radius:50%; bottom: 12px; box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 1.15rem; font-weight: 800; justify-content: center; left: 12px; min-height: 48px; padding: 0; position: absolute; width: 48px; z-index: 5; }.drawingCompassArrow { display: block; line-height: 1; transition: transform 160ms ease-out; }
+.restartProjectDialog { background:var(--surface); border:1px solid var(--line); box-shadow: 4px 5px 0 var(--shadow); display: grid; gap: 12px; left: 50%; max-width: min(340px, calc(100% - 32px)); padding: 18px; position: fixed; top: 50%; transform: translate(-50%, -50%); width: 100%; z-index: 12; }.restartProjectDialog strong { font-family: var(--font-display); font-size: 1.3rem; }.restartProjectDialog p { color:var(--muted); font-size: 0.84rem; line-height: 1.35; margin: 0; }.restartProjectDialog > div { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }.restartProjectDialog button { background:var(--surface); border:1px solid var(--line); color:var(--ink); font: inherit; font-size: 0.72rem; font-weight: 800; min-height: 44px; padding: 7px; }.restartProjectDialog .restartProjectConfirm { background:var(--ink); border-color:var(--ink); color:var(--surface); }
+.planSvg, .emptyCanvas, .scenePanel { height: 100%; inset: 0; position: absolute; width: 100%; }
+.planSvg { display: block; touch-action: none; user-select: none; }
+.planReferenceMarkers { fill: var(--ink); opacity: 0.88; }
+.planScaleLabel, .planOrientationLabel { fill: var(--ink); font-family: var(--font-mono); font-size: 10px; font-weight: 800; }
+.planScaleLine, .planOrientationArrow { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+.wallAlignmentGuide { pointer-events: none; stroke: var(--blue); stroke-dasharray: 3 3; stroke-width: 1.3; }.wallSnapCheckpoint { fill: var(--blue); pointer-events: none; stroke: var(--surface); stroke-width: 1.5; }
+.doorOpeningHandle { cursor: ew-resize; fill: var(--surface); stroke: var(--danger); stroke-width: 2; }.doorOpeningHandleHitArea { cursor: grab; fill: transparent; stroke: transparent; }
+.gridFill { fill: var(--canvas); }.roomFill { fill: color-mix(in srgb, var(--blue) 8%, var(--surface)); }.planGridLine { stroke: color-mix(in srgb, var(--ink) 13%, transparent); stroke-width: 0.55; vector-effect: non-scaling-stroke; }.planGridMajor { stroke: color-mix(in srgb, var(--ink) 25%, transparent); stroke-width: 0.8; vector-effect: non-scaling-stroke; }.wallOutline { fill: none; stroke: var(--ink); stroke-linecap: square; }.wallHitArea { cursor: pointer; }.selectedWall { stroke: var(--blue); }.doorwayEligibleWall { stroke: var(--blue); stroke-dasharray: 6 3; }.previewCollisionWall { stroke: var(--danger); stroke-dasharray: 6 3; }.doorOpeningCutout { stroke: var(--canvas); }.doorOpeningMarker, .doorLeaf, .doorSwing { fill: none; stroke: var(--blue); stroke-width: 1.4; }.doorLeaf { stroke-width: 2; }.doorSwing { opacity: 0.72; stroke-dasharray: 3 2; }.previewCollisionDoor { stroke: var(--danger); stroke-width: 3; }.draftWall { stroke: var(--danger); stroke-dasharray: 8 6; stroke-width: 4; vector-effect: non-scaling-stroke; }.wallMovePreview { pointer-events: none; stroke: var(--blue); stroke-dasharray: 8 5; stroke-width: 5; }.wallSplitPreview { fill: var(--surface); pointer-events: none; stroke: var(--blue); stroke-width: 3; }.wallVertexMoveHandleHitArea { cursor: grab; fill: transparent; stroke: transparent; }.wallVertexMoveHandle { fill: var(--surface); stroke: var(--blue); stroke-width: 3; }.draftRoom { fill: color-mix(in srgb, var(--blue) 14%, transparent); pointer-events: none; stroke: var(--blue); stroke-dasharray: 8 6; stroke-width: 3; }.schematicItem { cursor: grab; stroke: var(--ink); stroke-width: 2; }.itemFrontMarker { fill: var(--surface); stroke: var(--ink); stroke-width: 1.2; }.selectedItem { filter: brightness(1.08); stroke: var(--blue); stroke-width: 4; }.previewCollisionItem { stroke: var(--danger); stroke-dasharray: 5 3; stroke-width: 4; }.rotationGizmo { fill: none; pointer-events: none; stroke: var(--blue); stroke-dasharray: 3 3; stroke-width: 2.4; }.rotationHitArea { cursor: grab; fill: none; pointer-events: stroke; stroke: rgb(0 0 0); stroke-opacity: 0.001; stroke-width: 32; }.rotationHandle { cursor: grab; fill: var(--surface); pointer-events: all; stroke: var(--blue); stroke-dasharray: none; stroke-width: 3; }.rotationAlignmentGuide { opacity: 0.65; }.dimensionLine, .dimensionTick { stroke: var(--blue); stroke-width: 1.4; }.selectedDimension { stroke: var(--danger); stroke-width: 3; }.roomMetric { fill: var(--ink); font-family: var(--font-display); font-size: 29px; font-weight: 700; }.roomSubmetric { fill: var(--muted); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }.roomLabel { fill: var(--blue); font-family: var(--font-mono); font-size: 9px; font-weight: 800; letter-spacing: 0.08em; pointer-events: none; text-transform: uppercase; }.roomMeasurement { pointer-events: none; }.roomMeasurementFrame { fill: color-mix(in srgb, var(--surface) 40%, transparent); stroke: none; }.roomMeasurementSize { fill: var(--ink); font-family: var(--font-mono); font-size: 10px; font-weight: 800; }.roomMeasurementArea { fill: var(--blue); font-family: var(--font-mono); font-size: 8px; font-weight: 800; }
+.emptyCanvas { align-items: center; color:var(--muted); display: grid; font-family: var(--font-display); font-size: 1.65rem; justify-content: center; letter-spacing: -0.04em; padding: 28px; text-align: center; }
+.selectionPanel, .contourPanel, .wallThicknessControl { background:color-mix(in srgb, var(--surface) 96%, transparent); border:1px solid var(--line); bottom: 12px; box-shadow: 3px 4px 0 var(--shadow); display: grid; gap: 9px; left: 12px; max-width: calc(100% - 24px); padding: 12px; position: absolute; width: 300px; z-index: 3; }.wallThicknessControl { bottom: auto; font-family: var(--font-mono); font-size: 0.65rem; font-weight: 800; left: 12px; pointer-events: none; top: 12px; width: 168px; }.wallThicknessControl input { background:var(--canvas); border:1px solid var(--line); font: inherit; min-height: 36px; padding: 0 7px; pointer-events: auto; width: 100%; }.wallThicknessControl small { color:var(--muted); font-size: 0.55rem; }.itemDimensions { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }.itemDimensions label { font-size: 0.62rem; min-width: 0; }.itemDimensions input { font-size: 0.84rem; min-height: 42px; padding: 0 6px; }
+.selectionPanel[hidden] { display: none; }
+.itemNudgeControls { border:0; display: grid; gap: 5px; margin: 0; min-inline-size: 0; padding: 0; }.itemNudgeControls legend { color:var(--muted); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.1em; padding: 0; text-transform: uppercase; }.itemNudgeControls > div { display: grid; gap: 5px; grid-template-columns: 1fr 1fr; }.itemNudgeControls button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.63rem; font-weight: 800; min-height: 42px; padding: 4px; }.itemNudgeControls button:disabled { cursor: wait; opacity: 0.55; }
+.planInspectorToggle, .planInspectorClose, .selectionInspectorToggle, .selectionInspectorCue { display: none; }
+.selectedWallThicknessControl { display: grid; font-family: var(--font-mono); font-size: 0.65rem; font-weight: 800; gap: 5px; }.selectedWallThicknessControl small { color:var(--muted); font-size: 0.55rem; }.wallMoveGestureAction { background:var(--surface); border:1px solid var(--blue); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 800; min-height: 44px; padding: 7px; }.wallMoveGestureAction[aria-pressed="true"] { background:var(--blue); color:var(--surface); }.wallMoveGestureAction:disabled { cursor: wait; opacity: 0.55; }
+.itemDimensions select { font-size: 0.84rem; min-height: 42px; padding: 0 6px; }
+.planDimensionsSave { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-weight: 800; min-height: 44px; padding: 0 11px; }.planDimensionsSave:disabled { cursor: wait; opacity: 0.55; }
+.planDimensionForm { display: grid; gap: 8px; }
+.quickPalette { border:0; margin: 0; min-inline-size: 0; padding: 0; }.quickPalette legend { color:var(--muted); font-family: var(--font-mono); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.1em; margin-bottom: 5px; padding: 0; text-transform: uppercase; }.quickPalette > div { display: flex; gap: 5px; overflow-x: auto; overscroll-behavior-inline: contain; padding-bottom: 1px; scroll-snap-type: inline mandatory; }.quickPalette button { align-content: center; background:var(--canvas); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: grid; flex: 0 0 64px; font: inherit; font-size: 0.65rem; font-weight: 800; gap: 3px; min-height: 52px; min-width: 0; padding: 4px 3px; scroll-snap-align: start; text-align: center; }.quickPalette button[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.quickPalette button:disabled { cursor: wait; opacity: 0.55; }.quickPalette small { color:var(--muted); font-family: var(--font-mono); font-size: 0.48rem; font-weight: 800; line-height: 1.1; white-space: nowrap; }.quickPalette button[aria-pressed="true"] small { color:color-mix(in srgb, var(--surface) 72%, transparent); }.itemColorSwatch { border:1px solid color-mix(in srgb, var(--ink) 45%, transparent); border-radius:50%; box-shadow: inset 0 0 0 2px color-mix(in srgb, white 30%, transparent); height: 21px; justify-self: center; width: 21px; }
+.panelHeading { align-items: baseline; display: flex; justify-content: space-between; }.panelHeading strong { font-family: var(--font-display); font-size: 1.2rem; letter-spacing: -0.04em; }.sidePicker { border:0; display: grid; grid-template-columns: 1fr 1fr; margin: 0; min-inline-size: 0; padding: 0; }.sidePicker button { font-size: 0.67rem; min-height: 44px; padding: 4px; }.sidePicker button + button { border-left:0; }.selectionPanel input { font-family: var(--font-mono); font-size: 1.05rem; }.inlineMetrics { border-top:1px solid var(--line-soft); display: grid; grid-template-columns: 1fr 1fr; margin: 1px 0 0; padding-top: 8px; }.inlineMetrics div { display: grid; gap: 3px; }.inlineMetrics dd { font-family: var(--font-mono); font-size: 0.82rem; font-weight: 800; margin: 0; }
+.draftActions { display: flex; gap: 7px; position: absolute; right: 12px; top: 12px; z-index: 2; }.draftActions button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.75rem; font-weight: 800; min-height: 44px; padding: 0 11px; }.draftActions button:first-child { background:var(--ink); border-color:var(--ink); color:var(--surface); }
+.wallDraftActions, .wallMoveDraftActions { background:color-mix(in srgb, var(--surface) 96%, transparent); border:1px solid var(--line); bottom: 18px; box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); display: grid; gap: 6px; left: 12px; max-width: min(280px, calc(100% - 24px)); padding: 9px; position: absolute; z-index: 6; }.wallDraftActions strong, .wallMoveDraftActions strong { font-family: var(--font-display); font-size: 1rem; }.wallDraftActions span, .wallMoveDraftActions span { color:var(--muted); font-family: var(--font-mono); font-size: 0.65rem; font-weight: 800; }.wallDraftActions div, .wallMoveDraftActions div { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; }.wallDraftActions button, .wallMoveDraftActions button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.68rem; font-weight: 800; min-height: 44px; padding: 4px; }.wallDraftActions button:first-child, .wallMoveDraftActions button:first-child { background:var(--ink); border-color:var(--ink); color:var(--surface); }.wallMoveDraftActions button:disabled { cursor: wait; opacity: 0.55; }
+.windowDraftPanel { bottom: 18px; left: 12px; position: absolute; z-index: 6; }.windowDraftPanel form, .windowDraftPanel > div { background:color-mix(in srgb, var(--surface) 96%, transparent); border:1px solid var(--line); box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); color:var(--ink); display: grid; font: inherit; gap: 7px; max-width: min(310px, calc(100vw - 24px)); padding: 9px; }.windowDraftPanel strong { font-family: var(--font-display); font-size: 1rem; }.windowDraftPanel form > span, .windowDraftPanel > div > span { color:var(--muted); font-family: var(--font-mono); font-size: 0.65rem; font-weight: 800; line-height: 1.3; }.windowDraftPanel label { display: grid; font-family: var(--font-mono); font-size: 0.64rem; gap: 3px; }.windowDraftPanel input { background:var(--canvas); border:1px solid var(--line); font: inherit; min-height: 38px; padding: 0 7px; }.windowDraftPanel p { color:var(--danger); font-size: 0.7rem; line-height: 1.25; margin: 0; }.windowDraftPanel form > div, .windowDraftPanel > div > div { display: grid; gap: 6px; grid-template-columns: 1fr 1fr; }.windowDraftPanel button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.7rem; font-weight: 800; min-height: 44px; padding: 4px; }.windowDraftPanel button[type="submit"], .windowDraftPanel > div > div button:first-child { background:var(--ink); border-color:var(--ink); color:var(--surface); }.windowDraftPanel button:disabled { cursor: wait; opacity: 0.55; }
+.deleteAction { background:transparent; border:1px solid var(--danger); color:var(--danger); cursor: pointer; font: inherit; font-size: 0.78rem; font-weight: 800; min-height: 44px; padding: 0 11px; }.deleteAction:disabled { cursor: wait; opacity: 0.55; }
+.rotationHint { border-top:1px solid var(--line-soft); color:var(--muted); font-size: 0.7rem; font-weight: 700; line-height: 1.35; margin: 0; padding-top: 8px; }.openingRow button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.68rem; font-weight: 800; min-height: 42px; padding: 4px; }.openingRow button:disabled { color:var(--muted); cursor: wait; }.openingRow { align-items: center; border-top:1px solid var(--line-soft); display: grid; gap: 7px; grid-template-columns: 1fr; padding-top: 8px; }.openingRow label { display: grid; font-family: var(--font-mono); font-size: 0.65rem; font-weight: 800; gap: 4px; }.openingRow label small { color:var(--muted); font-family: system-ui, sans-serif; font-size: 0.65rem; font-weight: 700; line-height: 1.25; }.openingRow input { background:var(--canvas); border:1px solid var(--line); font: inherit; min-height: 32px; padding: 0 6px; width: 100%; }.openingRow button { min-height: 36px; }
+.contourPanel { bottom: auto; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(330px, calc(100% - 32px)); }.contourFields { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }.contourFields label { font-size: 0.64rem; min-width: 0; }.contourFields input { font-family: var(--font-mono); font-size: 0.85rem; min-height: 42px; padding: 0 6px; }
+.canvasError, .canvasStatus { bottom: 12px; position: absolute; right: 12px; }.canvasError, .canvasStatus { background:var(--surface); max-width: 230px; padding: 9px; }.canvasError {  }.canvasError p { margin: 0; }.canvasErrorAction { background:var(--surface); border:1px solid var(--danger); color:var(--danger); cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 800; margin-top: 8px; min-height: 42px; padding: 4px 7px; width: 100%; }.canvasStatus {  color:var(--safe); font-size: 0.84rem; font-weight: 700; line-height: 1.35; margin: 0; pointer-events: none; }.retryActions { bottom: 12px; display: grid; gap: 6px; position: absolute; right: 12px; z-index: 6; }.retryButton { background:var(--surface); border:1px solid var(--ink); color:var(--ink); padding: 0 12px; }
+.pwaUpdateNotice { background:var(--surface); border:1px solid var(--ink); bottom: max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 3px 4px 0 var(--shadow); display: grid; gap: 6px; left: 12px; max-width: min(300px, calc(100% - 24px)); padding: 11px; position: absolute; width: 100%; z-index: 7; }.pwaUpdateNotice[data-blocked="true"] { pointer-events: none; }.pwaUpdateNotice strong { font-family: var(--font-display); font-size: 1.08rem; letter-spacing: -0.03em; }.pwaUpdateNotice p { color:var(--muted); font-size: 0.72rem; font-weight: 700; line-height: 1.35; margin: 0; }.pwaUpdateNotice button { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.pwaUpdateNotice button:disabled { background:var(--canvas); border-color:var(--line); color:var(--muted); cursor: not-allowed; }
+.historyRecoveryNotice { background:var(--surface); border:2px solid var(--danger); bottom: max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 3px 4px 0 var(--shadow); display: grid; gap: 6px; left: 12px; max-width: min(320px, calc(100% - 24px)); padding: 11px; position: absolute; width: 100%; z-index: 8; }.historyRecoveryNotice strong { font-family: var(--font-display); font-size: 1.08rem; letter-spacing: -0.03em; }.historyRecoveryNotice p { color:var(--muted); font-size: 0.72rem; font-weight: 700; line-height: 1.35; margin: 0; }.historyRecoveryNotice button { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.historyRecoveryNotice button:disabled { background:var(--canvas); border-color:var(--line); color:var(--muted); cursor: not-allowed; }
+.pwaInstallGuide { border-top:1px solid var(--line-soft); display: grid; gap: 7px; margin-top: 4px; padding-top: 14px; }.pwaInstallGuide strong { font-family: var(--font-display); font-size: 1.16rem; letter-spacing: -0.03em; }.pwaInstallGuide p { color:var(--muted); font-size: 0.76rem; font-weight: 700; line-height: 1.4; margin: 0; }.pwaInstallGuide button { background:var(--surface); border:1px solid var(--ink); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.75rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.pwaInstallGuide button:disabled { color:var(--muted); cursor: wait; }
+.writerLeaseNotice { background:var(--surface); border:2px solid var(--danger); bottom: max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 3px 4px 0 var(--shadow); display: grid; gap: 6px; left: 12px; max-width: min(320px, calc(100% - 24px)); padding: 11px; position: absolute; width: 100%; z-index: 8; }.writerLeaseNotice strong { font-family: var(--font-display); font-size: 1.08rem; letter-spacing: -0.03em; }.writerLeaseNotice p { color:var(--muted); font-size: 0.72rem; font-weight: 700; line-height: 1.35; margin: 0; }.writerLeaseNotice button { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.writerLeaseNotice button:disabled { background:var(--canvas); border-color:var(--line); color:var(--muted); cursor: wait; }
+.legacyReadOnly { background:var(--surface);  bottom: 12px; color:var(--ink); font-size: 0.78rem; font-weight: 700; left: 12px; line-height: 1.35; margin: 0; max-width: min(310px, calc(100% - 24px)); padding: 9px; position: absolute; }
+.itemCount, .itemDraftHint, .planRoomStatus { background:var(--surface); border:1px solid var(--line); font-family: var(--font-mono); font-size: 0.68rem; font-weight: 800; left: 12px; padding: 7px 9px; position: absolute; top: 12px; }.itemDraftHint { color:var(--editor-host-primary, var(--blue)); max-width: calc(100% - 24px); }.planRoomStatus { color:var(--editor-host-primary, var(--blue)); }
+.editorRail { align-items: center; background:var(--surface); border-top:1px solid var(--line-soft); display: flex; gap: 0; min-height: 58px; overflow-x: auto; padding: 6px 9px; }.editorRail button { border-right:0; min-width: 76px; }.editorRail button:last-of-type { border-right:1px solid var(--line); }.editorRail .historyAction { font-family: var(--font-display); font-size: 1.35rem; line-height: 1; min-width: 44px; padding: 0; width: 44px; }.editorRail .historyAction + .historyAction { border-right:1px solid var(--line); }.editorRail .historyAction:disabled { color:var(--muted); cursor: not-allowed; }.viewportHint { margin-left: auto; padding: 0 9px; }
+.scenePanel { background:var(--editor-host-canvas, #fafbfc); border:0; margin: 0; min-height: 0; }.sceneCanvas { display: block; height: 100%; width: 100%; }.sceneCaption { bottom: 8px; left: 9px; }.sceneRecovery { inset: 12px; }
+@keyframes breathe { to { opacity: 0.3; transform: scale(0.8); } }
+@media (max-width: 559px) {
+  .toolRail { align-items: stretch; bottom: max(16px, calc(var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 8px)); display: grid; gap: 3px; grid-template-columns: repeat(7, minmax(0, 1fr)); height: auto; left: 8px; max-height: none; overflow: hidden; padding: 5px; right: 8px; top: auto; width: auto; }
+  .toolRail button { font-size: 0.62rem; line-height: 1.05; min-height: 44px; min-width: 0; padding: 3px; width: auto; }
+  .railActiveTool { display: none; }
+  .toolRailHistory { display: contents; }
+  .toolRailHistory button { font-size: 1.35rem; min-width: 0; width: auto; }
+  .mobileChromeHide { display: block; position: static; z-index: auto; }
+  .mobileChromeRestore { align-items: center; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); bottom: max(16px, calc(var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 8px)); border-radius:12px; box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.8rem; font-weight: 800; justify-content: center; left: 8px; min-height: 52px; min-width: 132px; padding: 0 12px; position: absolute; z-index: 5; }
+  /* The full two-row dock keeps its controls visible; transient sheets stop
+     above it instead of competing for the same lower screen area. */
+  .selectionPanel { bottom: calc(128px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: 8px; max-height: min(46dvh, 390px); max-width: calc(100% - 16px); overflow-y: auto; padding: 12px; width: calc(100% - 16px); z-index: 5; }
+  .planDimensionsSave { bottom: 0; position: sticky; }
+  .selectionInspectorPanel[data-inspector-expanded="false"] { gap: 0; height: 80px; max-height: 80px; overflow: hidden; padding: 10px 12px; }
+  .selectionInspectorPanel[data-inspector-expanded="false"] > :not(.panelHeading) { display: none; }
+  .selectionInspectorPanel .panelHeading { align-items: center; display: grid; gap: 0 10px; grid-template-columns: minmax(0, 1fr) auto; }
+  .selectionInspectorPanel .panelHeading span { align-self: end; grid-column: 1; grid-row: 1; }
+  .selectionInspectorPanel .panelHeading strong { grid-column: 1; grid-row: 2; line-height: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .planInspectorPanel[data-inspector-open="false"] { display: none; }
+  .planInspectorToggle { background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.66rem; font-weight: 800; left: auto; min-height: 44px; padding: 0 10px; position: absolute; right: 8px; top: 8px; z-index: 3; }
+  .roomDirectoryToggle { left: 110px; right: auto; top: 8px; }
+  .planInspectorClose { align-items: center; background:transparent; border:1px solid var(--line); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 1.2rem; justify-content: center; min-height: 44px; min-width: 44px; padding: 0; }
+  .selectionInspectorToggle { align-items: center; align-self: stretch; background:color-mix(in srgb, var(--editor-accent) 12%, var(--surface)); border:1px solid color-mix(in srgb, var(--editor-accent) 30%, var(--line)); border-radius:12px; color:color-mix(in srgb, var(--editor-accent) 82%, var(--ink)); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.6rem; font-weight: 800; grid-column: 2; grid-row: 1 / span 2; justify-content: center; margin-left: 0; min-height: 50px; padding: 0 10px; }
+  .selectionInspectorCue { display: none; }
+  /* iOS Safari zooms the page on focus for controls below 16px.  Editor
+     fields deliberately retain the same visual size, but their computed text
+     size stays at the platform's no-auto-zoom threshold. */
+  .createForm input, .selectionPanel input, .contourFields input, .wallThicknessControl input, .renameProjectDialog input, .catalogFilters input, .catalogFilters select, .windowDraftPanel input { font-size: 16px; }
+  /* This is read-only secondary information.  Keeping it off the phone
+     canvas prevents it from covering an item or its rotation ring. */
+  .threeDimensionalMetrics { display: none; }
+  .wallThicknessControl { left: 8px; top: 8px; width: 154px; }
+  .planRoomStatus { left: 170px; max-width: calc(100% - 178px); top: 8px; }
+  .projectIdentity { left: 8px; max-width: none; right: 8px; top: 60px; }
+  /* In 3D the title must not sit over the scale or room controls. The
+     compact slot between the scale and cutaway controls preserves both. */
+  .scenePanel ~ .projectIdentity { left: 64px; max-width: none; right: 160px; top: 12px; }
+  /* Keep durable-state text visibly available without covering stacked 3D
+     controls. */
+  .editorShell[data-view-mode="three-dimensional"] .durabilityStatus { bottom: calc(128px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: auto; right: 8px; top: auto; }
+  .storagePressure { left: 8px; max-width: calc(100% - 16px); top: 100px; }.editorShell[data-view-mode="three-dimensional"] .storagePressure { bottom: calc(180px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: 8px; right: 8px; top: auto; }
+  .canvasError, .canvasStatus { bottom: calc(128px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); right: 8px; z-index: 6; }.retryActions { bottom: calc(128px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); right: 8px; }
+  .wallDraftActions, .wallMoveDraftActions { bottom: calc(128px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: 8px; max-width: calc(100% - 16px); width: min(280px, calc(100% - 16px)); }
+  .windowDraftPanel { bottom: calc(128px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: 8px; max-width: calc(100% - 16px); }.windowDraftPanel form, .windowDraftPanel > div { max-block-size: calc(var(--editor-viewport-height, 100dvh) - 144px - var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }.windowDraftPanel label { font-size: 0.8125rem; line-height: 1.2; }.windowDraftPanel input { font-size: 1rem; min-height: 44px; }.windowDraftPanel button { font-size: 0.9375rem; }
+  /* A waiting PWA update is non-blocking and remains above the action rail. */
+  .pwaUpdateNotice { bottom: calc(148px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: 8px; max-width: calc(100% - 16px); width: calc(100% - 16px); }
+  .historyRecoveryNotice { bottom: calc(148px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: 8px; max-width: calc(100% - 16px); width: calc(100% - 16px); }
+  .returnToDrawing { bottom: calc(128px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: 8px; }
+}
+@media (min-width: 560px) { .selectionPanel { bottom: 16px; left: 16px; }.editorRail { justify-content: center; }.viewportHint { margin-left: 16px; } }
+
+.headerActions { align-items: center; display: flex; gap: 0; }.headerActions button + button { border-left:0; }.headerActions .historyAction { font-family: var(--font-display); font-size: 1.35rem; line-height: 1; min-width: 44px; padding: 0; width: 44px; }.headerActions button:first-child { align-items: center; display: inline-flex; gap: 5px; white-space: nowrap; }.activeToolChip { color:var(--editor-host-primary, var(--blue)); font-family: var(--font-mono); font-size: 0.57rem; letter-spacing: 0.04em; }.headerActions button:first-child[aria-expanded="true"] .activeToolChip { color:inherit; }
+.dialogHeading { align-items: start; display: flex; justify-content: space-between; }.dialogHeading span { color:var(--muted); display: block; font-family: var(--font-mono); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.11em; }.dialogHeading strong { display: block; font-family: var(--font-display); font-size: 1.38rem; letter-spacing: -0.04em; }.dialogHeading > button { background:transparent; border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 1.3rem; line-height: 1; min-height: 44px; width: 44px; }.viewportHint { color:var(--muted); font-family: var(--font-mono); font-size: 0.63rem; font-weight: 800; letter-spacing: 0.08em; }
+.roomDirectoryDialog { background:var(--canvas); display: grid; gap: 14px; grid-template-rows: auto auto minmax(0, 1fr); inset: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: max(16px, var(--editor-safe-area-top, env(safe-area-inset-top))) 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); position: fixed; z-index: 20; }.roomDirectoryNote, .roomGeometryNote, .roomPropertyConfirmation { color:var(--muted); font-size: 0.82rem; line-height: 1.4; margin: 0; }.roomDirectoryContent { align-content: start; display: grid; gap: 14px; min-height: 0; }.roomDirectoryList { display: grid; gap: 8px; }.roomDirectoryList button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: grid; font: inherit; gap: 4px; min-height: 58px; padding: 9px 11px; text-align: left; }.roomDirectoryList button[aria-pressed="true"] { border-color:var(--blue); box-shadow: 3px 3px 0 color-mix(in srgb, var(--blue) 42%, transparent); }.roomDirectoryList strong { font-size: 0.95rem; }.roomDirectoryList small { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }.roomPropertyForm { background:var(--surface); border:1px solid var(--line); display: grid; gap: 11px; padding: 14px; }.roomPropertyForm label { display: grid; font-size: 0.82rem; font-weight: 800; gap: 5px; }.roomPropertyForm input, .roomPropertyForm select { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; font-size: 1rem; min-height: 48px; padding: 0 11px; width: 100%; }.roomPropertyForm select { appearance: auto; }.roomPropertyForm input:disabled, .roomPropertyForm select:disabled { color:var(--muted); }.roomPropertySave { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 800; min-height: 48px; padding: 7px 11px; }.roomPropertySave:disabled { cursor: wait; opacity: 0.55; }.roomPropertyConfirmation { color:var(--editor-host-primary, var(--blue)); font-weight: 800; }
+.roomDirectoryDialog { background:color-mix(in srgb, var(--ink) 24%, transparent); display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; padding: max(54px, var(--editor-safe-area-top, env(safe-area-inset-top))) 0 0; }
+.roomDirectorySheet { align-self: end; background:var(--surface); border-radius:28px 28px 0 0; box-shadow: 0 -16px 38px color-mix(in srgb, var(--ink) 23%, transparent); display: grid; gap: 0; grid-template-rows: 24px auto auto minmax(0, 1fr); max-height: calc(var(--editor-viewport-height, 100dvh) - max(54px, var(--editor-safe-area-top, env(safe-area-inset-top)))); min-height: min(520px, calc(var(--editor-viewport-height, 100dvh) - max(54px, var(--editor-safe-area-top, env(safe-area-inset-top))))); overflow: hidden; padding: 0 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }
+.roomDirectorySheetHandle { align-self: center; background:color-mix(in srgb, var(--ink) 26%, transparent); border-radius:999px; height: 5px; justify-self: center; width: 38px; }
+.roomDirectorySheet .dialogHeading { align-items: center; min-height: 52px; }.roomDirectorySheet .dialogHeading span { color:var(--editor-host-primary, var(--blue)); font-size: 0.58rem; letter-spacing: 0.1em; }.roomDirectorySheet .dialogHeading strong { font-size: 1.38rem; }.roomDirectorySheet .dialogHeading > button { align-items: center; background:color-mix(in srgb, var(--canvas) 80%, var(--surface)); border:0; border-radius:50%; display: inline-flex; font-size: 1.45rem; justify-content: center; min-height: 38px; width: 38px; }
+.roomDirectoryNote { background:color-mix(in srgb, var(--blue) 7%, var(--surface)); border-radius:12px; color:color-mix(in srgb, var(--ink) 76%, var(--muted)); font-size: 0.75rem; line-height: 1.34; margin: 6px 0 12px; padding: 9px 11px; }
+.roomDirectoryContent { display: grid; gap: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 2px; }.roomDirectoryList { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 1px 1px 4px; scroll-snap-type: inline mandatory; }.roomDirectoryList button { background:color-mix(in srgb, var(--canvas) 76%, var(--surface)); border:1px solid transparent; border-radius:14px; flex: 0 0 min(186px, 58vw); gap: 3px; min-height: 70px; padding: 10px 12px; scroll-snap-align: start; }.roomDirectoryList button[aria-pressed="true"] { background:color-mix(in srgb, var(--blue) 11%, var(--surface)); border-color:color-mix(in srgb, var(--blue) 55%, var(--line)); box-shadow: none; }.roomDirectoryList strong { font-family: var(--font-display); font-size: 1.02rem; letter-spacing: -0.025em; }.roomDirectoryList small { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }
+.roomPropertyForm { background:color-mix(in srgb, var(--canvas) 74%, var(--surface)); border:0; border-radius:18px; gap: 11px; padding: 13px; }.roomPropertyForm label { color:var(--muted); font-size: 0.7rem; gap: 5px; }.roomPropertyForm label > span { font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }.roomPropertyForm input, .roomPropertyForm select { background:var(--surface); border:1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius:11px; font-size: 1rem; font-weight: 700; min-height: 46px; padding: 0 12px; }.roomGeometryNote { border-top:1px solid color-mix(in srgb, var(--line) 72%, transparent); font-size: 0.71rem; line-height: 1.35; padding-top: 10px; }.roomPropertySave { background:var(--blue); border-color:var(--blue); border-radius:12px; box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 24%, transparent); font-size: 0.91rem; min-height: 50px; }.roomPropertyConfirmation { color:var(--editor-host-primary, var(--blue)); }
+.roomOpeningConflict { background:color-mix(in srgb, var(--danger) 5%, var(--canvas)); border:1px solid color-mix(in srgb, var(--danger) 52%, var(--line)); display: grid; gap: 10px; padding: 12px; }.roomOpeningConflict > strong { font-size: 1rem; }.roomOpeningConflict > p { color:var(--muted); font-size: 0.78rem; line-height: 1.35; margin: 0; }.roomOpeningResolution { border-top:1px solid var(--line-soft); display: grid; gap: 7px; grid-template-columns: 1fr 1fr; padding-top: 10px; }.roomOpeningResolution > span { font-size: 0.75rem; font-weight: 800; grid-column: 1 / -1; }.roomOpeningResolution button, .roomOpeningConflictActions button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 800; min-height: 44px; padding: 6px; }.roomOpeningResolution button[aria-pressed="true"] { background:var(--blue); border-color:var(--blue); color:var(--surface); }.roomOpeningConflictActions { display: grid; gap: 7px; grid-template-columns: 1fr 1fr; }.roomOpeningConflictActions button:last-child { background:var(--ink); border-color:var(--ink); color:var(--surface); }.roomOpeningResolution button:disabled, .roomOpeningConflictActions button:disabled { cursor: wait; opacity: 0.55; }
+.catalogDialog { background:var(--canvas); display: grid; gap: 10px; grid-template-rows: auto auto auto auto auto 48px minmax(0, 1fr) auto; inset: 0; overflow: hidden; padding: max(14px, var(--editor-safe-area-top, env(safe-area-inset-top))) 14px max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); position: fixed; z-index: 20; }.catalogNote { color:var(--muted); font-size: 0.74rem; line-height: 1.3; margin: 0; }.catalogImport { align-items: center; background:color-mix(in srgb, var(--blue) 7%, var(--surface)); border:1px solid color-mix(in srgb, var(--blue) 40%, var(--line)); display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; padding: 8px; }.catalogImport > div { display: grid; gap: 2px; min-width: 0; }.catalogImport strong { font-family: var(--font-display); font-size: 0.95rem; letter-spacing: -0.03em; }.catalogImport small, .catalogImportStatus span { color:var(--muted); font-family: var(--font-mono); font-size: 0.57rem; font-weight: 800; line-height: 1.3; }.catalogImport > button, .catalogImportStatus button { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.68rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.catalogImportStatus { align-items: center; display: flex; flex: 1 1 100%; flex-wrap: wrap; gap: 7px; grid-column: 1 / -1; }.catalogImportStatus span { flex: 1 1 180px; }.catalogImportStatus button + button { background:var(--surface); border-color:var(--line); color:var(--ink); }.catalogCategoryTabs { display: flex; gap: 7px; margin: 0 -14px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 1px 14px 4px; scroll-snap-type: inline mandatory; }.catalogCategoryTabs button { align-items: center; background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: inline-flex; flex: 0 0 auto; font: inherit; font-size: 0.72rem; font-weight: 800; gap: 5px; justify-content: center; min-height: 44px; padding: 0 11px; scroll-snap-align: start; }.catalogCategoryTabs button span { color:var(--editor-host-primary, var(--blue)); font-family: var(--font-display); font-size: 1.05rem; line-height: 1; }.catalogCategoryTabs button[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.catalogCategoryTabs button[aria-pressed="true"] span { color:var(--editor-host-on-primary, var(--surface)); }.catalogGrid { align-content: start; display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1px 1px 12px; }.catalogCard { align-content: stretch; background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: grid; font: inherit; gap: 0; grid-template-rows: 148px auto; min-height: 0; overflow: hidden; padding: 0; text-align: left; }.catalogCard:hover, .catalogCard[aria-pressed="true"] { border-color:var(--blue); box-shadow: 3px 3px 0 color-mix(in srgb, var(--blue) 45%, transparent); }.catalogCard:focus-visible { outline:3px solid color-mix(in srgb, var(--editor-host-primary, var(--blue)) 52%, transparent); outline-offset: 2px; }.catalogCardDetails { align-content: start; border-top:1px solid var(--line-soft); display: grid; gap: 4px; min-height: 72px; padding: 8px; }.catalogCard strong { font-family: var(--font-display); font-size: 1.1rem; letter-spacing: -0.03em; }.catalogCard small, .catalogCardDetails span { color:var(--muted); font-family: var(--font-mono); font-size: 0.59rem; font-weight: 800; line-height: 1.2; }.catalogCardDetails span { color:var(--editor-host-primary, var(--blue)); text-transform: uppercase; }.greyboxPreview { background:linear-gradient(135deg, color-mix(in srgb, var(--canvas) 80%, white), var(--canvas)); border:0; border-bottom:1px solid var(--line-soft); display: block; height: 148px; min-height: 0; width: 100%; }.previewFloor { fill: color-mix(in srgb, var(--ink) 8%, transparent); }.previewbase { filter: brightness(0.87); }.previewhighlight { filter: brightness(1.18); }.previewshadow { filter: brightness(0.62); }
+.customGlbPreview { background:var(--canvas); border:1px solid var(--line); display: grid; gap: 6px; min-height: 0; padding: 6px; }.customGlbPreview canvas { display: block; height: 190px; min-height: 0; width: 100%; }.customGlbPreview output { color:var(--muted); font-family: var(--font-mono); font-size: 0.6rem; font-weight: 800; line-height: 1.3; }
+.placeholderComposer { display: grid; gap: 9px; grid-column: 1 / -1; }.placeholderComposer > label, .placeholderDimensions label { display: grid; font-size: 0.62rem; font-weight: 800; gap: 4px; }.placeholderComposer input { appearance: none; background:var(--surface); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 40px; min-width: 0; padding: 0 7px; width: 100%; }.placeholderDimensions { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }.placeholderPalette { border:0; margin: 0; min-inline-size: 0; padding: 0; }.placeholderPalette legend { font-size: 0.62rem; font-weight: 800; margin-bottom: 4px; padding: 0; }.placeholderPalette > div { display: flex; flex-wrap: wrap; gap: 5px; }.placeholderPalette button { align-items: center; background:var(--surface); border:1px solid var(--line); cursor: pointer; display: inline-flex; height: 36px; justify-content: center; padding: 4px; width: 36px; }.placeholderPalette button[aria-pressed="true"] { border-color:var(--blue); box-shadow: 2px 2px 0 color-mix(in srgb, var(--blue) 45%, transparent); }.placeholderPalette .itemColorSwatch { height: 20px; width: 20px; }.placeholderHost { color:var(--muted); font-family: var(--font-mono); font-size: 0.6rem; font-weight: 800; margin: 0; }
+.customGlbCatalogPreview, .customGlbCatalogPlaceholder { background:linear-gradient(135deg, color-mix(in srgb, var(--canvas) 84%, white), var(--canvas)); border:0; border-bottom:1px solid var(--line-soft); height: 148px; min-height: 148px; padding: 0; width: 100%; }.customGlbCatalogPreview canvas { height: 148px; width: 100%; }.customGlbCatalogPreview output { display: none; }.customGlbCatalogPlaceholder { align-items: center; color:var(--muted); display: grid; font-family: var(--font-mono); font-size: 0.6rem; font-weight: 800; justify-items: center; padding: 12px; text-align: center; }
+.customGlbReview { display: grid; gap: 9px; grid-column: 1 / -1; }.customGlbFields { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }.customGlbFields label:first-child { grid-column: 1 / -1; }.customGlbFields label { display: grid; font-size: 0.62rem; font-weight: 800; gap: 4px; }.customGlbFields input { background:var(--surface); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 40px; min-width: 0; padding: 0 7px; width: 100%; }
+.catalogFilters { display: grid; gap: 4px; }.catalogFilters label { display: grid; font-size: 0.7rem; font-weight: 800; gap: 4px; }.catalogFilters input { appearance: none; background:var(--surface); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 44px; padding: 0 9px; width: 100%; }.catalogFilters output { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }.catalogPlacementBar { align-items: center; background:var(--surface); border:1px solid var(--line); box-shadow: 0 -3px 0 color-mix(in srgb, var(--shadow) 35%, transparent); display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; min-height: 60px; padding: 7px; }.catalogPlacementBar > div { display: grid; gap: 3px; min-width: 0; }.catalogPlacementBar strong { font-family: var(--font-display); font-size: 1rem; letter-spacing: -0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.catalogPlacementBar small { color:var(--muted); font-family: var(--font-mono); font-size: 0.56rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.catalogPlacementBar button { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.7rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.catalogPlacementBar button:disabled { background:var(--canvas); border-color:var(--line); color:var(--muted); cursor: not-allowed; }.catalogEmpty { color:var(--muted); font-size: 0.8rem; font-weight: 700; line-height: 1.35; margin: 0; }
+
+.catalogPlacementSelection { align-items: center; display: grid; gap: 9px; grid-template-columns: 44px minmax(0, 1fr); min-width: 0; }.catalogPlacementPreview { align-items: center; background:color-mix(in srgb, var(--blue) 8%, var(--canvas)); border:1px solid color-mix(in srgb, var(--blue) 22%, var(--line)); border-radius:12px; display: grid; height: 44px; justify-items: center; overflow: hidden; width: 44px; }.catalogPlacementPreview img { display: block; height: 100%; object-fit: contain; width: 100%; }.catalogPlacementPreview > span { color:var(--editor-host-primary, var(--blue)); font-family: var(--font-display); font-size: 1.25rem; line-height: 1; }.catalogPlacementCopy { display: grid; gap: 3px; min-width: 0; }
+
+.catalogModelLoadingStatus { align-items: center; color:var(--editor-host-primary, var(--blue)) !important; display: grid; gap: 4px; grid-template-columns: minmax(0, 1fr) 72px; overflow: visible !important; text-overflow: clip !important; white-space: normal !important; }.catalogModelLoadingStatus span { min-width: 0; }.catalogModelLoadingStatus progress { accent-color:var(--editor-host-primary, var(--blue)); height: 6px; margin: 0; width: 72px; }
+
+/* The card grid is a scrollable gallery, not a fluid masonry layout. Explicit
+   rows stop the grid algorithm from shrinking cards below their own preview. */
+.catalogGrid { grid-auto-rows: 230px; }
+.catalogCard { grid-template-rows: 148px minmax(72px, 1fr); }
+
+@media (max-width: 559px) {
+  /* The import review can be taller than a short phone viewport. The dialog
+     itself is the scroll owner, so every required field and action stays
+     reachable instead of being clipped below the catalogue grid. */
+  .catalogDialog { display: flex; flex-direction: column; gap: 14px; grid-template-rows: none; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; }
+  .catalogDialog > * { flex: 0 0 auto; }
+  .catalogDialog .catalogNote { font-size: 0.875rem; line-height: 1.45; }
+  .catalogImport { border-radius:12px; gap: 12px; grid-template-columns: 1fr; padding: 14px; }
+  .catalogImport strong { font-family: inherit; font-size: 1.05rem; letter-spacing: 0; }
+  .catalogImport small, .catalogImportStatus span { font-family: inherit; font-size: 0.8125rem; line-height: 1.4; }
+  .catalogImport > button, .catalogImportStatus button { border-radius:8px; font-size: 0.9375rem; min-height: 48px; }
+  .catalogCategoryTabs { margin: 0 -14px; padding-bottom: 6px; }
+  .catalogCategoryTabs button { border-radius:10px; font-size: 0.875rem; min-height: 48px; }
+  .catalogGrid { flex: 0 0 auto; grid-auto-rows: 248px; grid-template-columns: 1fr; overflow: visible; }
+  .catalogCard { border-radius:12px; grid-template-rows: 160px minmax(82px, 1fr); }
+  .greyboxPreview { height: 160px; }
+  .catalogCardDetails { gap: 6px; min-height: 82px; padding: 11px; }
+  .catalogCard strong { font-family: inherit; font-size: 1.1rem; letter-spacing: 0; }
+  .catalogCard small, .catalogCardDetails span { font-family: inherit; font-size: 0.8125rem; line-height: 1.3; }
+  .customGlbFields { grid-template-columns: 1fr; }
+  .customGlbFields label:first-child { grid-column: auto; }
+  .customGlbFields label { font-size: 0.875rem; }
+  .customGlbFields input { min-height: 48px; }
+	.placeholderComposer > label, .placeholderDimensions label { font-size: 0.875rem; }.placeholderComposer input { min-height: 48px; }.placeholderDimensions { grid-template-columns: 1fr; }.placeholderPalette legend { font-size: 0.875rem; }.placeholderPalette button { border-radius:8px; height: 44px; width: 44px; }.placeholderHost { font-family: inherit; font-size: 0.8125rem; }
+  .catalogPlacementBar { bottom: 0; border-radius:12px 12px 0 0; min-height: 68px; padding: 10px; position: sticky; z-index: 1; }
+  .catalogPlacementBar button { border-radius:8px; font-size: 0.875rem; min-height: 48px; }
+}
+
+/* Keep the placement action outside the catalog's scroll region. The content
+   can grow for imports and result cards, but it must never push the action
+   below the viewport. */
+.catalogDialog { grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.catalogContent { align-content: start; display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1px 1px 12px; }
+.catalogContent > * { flex: 0 0 auto; }
+.catalogContent .catalogGrid { flex: 1 0 230px; min-height: 230px; }
+.catalogContent { grid-row: 3; }
+.catalogPlacementBar { grid-row: 4; }
+.catalogPlacementBar[hidden] { display: none; }
+
+@media (max-width: 559px) {
+  .catalogDialog { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; overflow: hidden; }
+  .catalogDialog > * { flex: none; }
+  .catalogContent { display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+  .catalogContent .catalogGrid { flex: 0 0 auto; min-height: 0; overflow: visible; }
+  .catalogPlacementBar { bottom: auto; position: static; }
+
+	/* Choosing an item is the primary phone task. Keep the gallery in the
+	   first viewport; authoring/import stays available after it as a deliberate
+	   advanced action, without introducing a second navigation layer. */
+	.catalogContent > .catalogImportStatus { order: -5; }
+	.catalogContent > .catalogFilters { order: -4; }
+	.catalogContent > .catalogCategoryTabs { order: -3; }
+	.catalogContent > .catalogGrid { order: -2; }
+	.catalogContent > .catalogEmpty { order: -1; }
+	.catalogContent > .catalogImport { order: 1; }
+}
+
+@media (min-width: 900px) {
+  .catalogDialog { border:1px solid var(--line); box-shadow: 6px 7px 0 var(--shadow); inset: 12px auto 12px 12px; padding: 12px; width: min(380px, calc(100vw - 24px)); }
+  .roomDirectoryDialog { border:1px solid var(--line); box-shadow: 6px 7px 0 var(--shadow); inset: 12px auto 12px 12px; width: min(430px, calc(100vw - 24px)); }
+  .catalogNote { display: none; }
+  .catalogCategoryTabs { margin: 0; padding: 1px 0 4px; }
+  .catalogGrid { gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .catalogCard { grid-template-rows: 92px auto; }
+  .greyboxPreview { height: 92px; }
+  .catalogCardDetails { min-height: 66px; padding: 6px; }
+  .catalogCard strong { font-size: 0.9rem; }
+  .catalogCard small, .catalogCardDetails span { font-size: 0.52rem; }
+  .catalogGrid { grid-auto-rows: 160px; }
+  .catalogCard { grid-template-rows: 92px minmax(0, 1fr); }
+}
+
+.itemPlacementPreviewValid { fill: color-mix(in srgb, var(--surface) 72%, transparent); pointer-events: none; stroke: var(--blue); stroke-dasharray: 5 3; stroke-width: 2; }
+.itemPlacementPreviewWarning { fill: color-mix(in srgb, #f59e0b 35%, transparent); pointer-events: none; stroke: #b45309; stroke-dasharray: 5 3; stroke-width: 2; }
+.itemPlacementPreviewInvalid { fill: color-mix(in srgb, var(--danger) 40%, transparent); pointer-events: none; stroke: var(--danger); stroke-dasharray: 5 3; stroke-width: 2; }
+.planSvg .itemPlacementFeedback,
+.planSvg .itemPlacementActionBar { display: none; }
+.itemPlacementDock { --placement-primary: #1976b9; background:var(--editor-host-surface, #fff); border:1px solid var(--editor-host-line, #dbe2e8); border-radius:28px; bottom: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent); display: grid; gap: 10px; left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left))); padding: 11px 12px 12px; position: absolute; right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right))); z-index: 9; }
+.itemPlacementDockHandle { background:#c8cdd2; border-radius:999px; height: 4px; justify-self: center; width: 44px; }
+.itemPlacementDock .itemPlacementFeedback { color:var(--ink); font: 700 0.82rem/1.35 system-ui, sans-serif; margin: 0; text-align: center; }
+.itemPlacementDock[data-placement-tier="warning"] .itemPlacementFeedback { color:var(--editor-host-warning, #8a5800); }
+.itemPlacementDock[data-placement-tier="invalid"] .itemPlacementFeedback { color:var(--danger); }
+.itemPlacementDockActions { display: grid; gap: 8px; grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr); }
+.itemPlacementDockActions button { border-radius:14px; cursor: pointer; font: 800 0.92rem/1 system-ui, sans-serif; min-height: 48px; padding: 0 12px; }
+.itemPlacementDock .itemPlacementCancel { background:var(--editor-host-surface, #fff); border:1.5px solid var(--editor-host-primary, var(--placement-primary)); color:var(--editor-host-primary, var(--placement-primary)); }
+.itemPlacementDock .itemPlacementConfirm { background:var(--placement-primary); border:1.5px solid var(--editor-host-primary, var(--placement-primary)); color:#fff; }
+.itemPlacementDock .itemPlacementConfirm:disabled,
+.itemPlacementDock .itemPlacementCancel:disabled { cursor: not-allowed; opacity: .48; }
+
+/* Curated cards use a rendered model thumbnail, so the gallery remains fast
+   while the full GLB is fetched only after a deliberate selection. */
+.catalogThumbnail { background:var(--canvas); border:0; border-bottom:1px solid var(--line-soft); display: block; height: 148px; object-fit: cover; width: 100%; }
+.catalogThumbnailFallback { align-items: center; background:linear-gradient(135deg, color-mix(in srgb, var(--canvas) 84%, white), var(--canvas)); border-bottom:1px solid var(--line-soft); color:var(--muted); display: grid; font-family: var(--font-mono); font-size: 0.66rem; font-weight: 800; height: 148px; justify-items: center; text-align: center; width: 100%; }
+
+@media (max-width: 559px) {
+  .catalogThumbnail, .catalogThumbnailFallback { height: 160px; }
+}
+
+@media (min-width: 900px) {
+  .catalogThumbnail, .catalogThumbnailFallback { height: 92px; }
+}
+
+/* Phone editor shell: a calm canvas, one compact header and a task-first dock.
+   The catalog, geometry and history commands deliberately stay in the secondary
+   menu instead of competing with direct Plan actions. */
+.editorShell {
+	--editor-accent: #2fbf6d;
+	--editor-glass: color-mix(in srgb, var(--surface) 92%, transparent);
+	background:radial-gradient(circle at 50% -18%, color-mix(in srgb, var(--blue) 8%, transparent), transparent 42%),
+		var(--canvas);
+}
+
+.editorTopBar {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+	justify-content: space-between;
+	left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	pointer-events: none;
+	position: absolute;
+	right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	top: max(10px, var(--editor-safe-area-top, env(safe-area-inset-top)));
+	z-index: 6;
+}
+
+.editorTopBar > * { pointer-events: auto; }
+
+.projectIdentity {
+	align-items: start;
+	background:var(--editor-glass);
+	backdrop-filter: blur(18px);
+	border:1px solid color-mix(in srgb, var(--line) 74%, transparent);
+	border-radius:14px;
+	box-shadow: 0 8px 22px color-mix(in srgb, var(--ink) 11%, transparent);
+	flex: 1 1 auto;
+	left: auto;
+	max-width: none;
+	min-height: 48px;
+	padding: 7px 11px;
+	position: static;
+	top: auto;
+}
+
+.projectIdentity span {
+	font-family: var(--font-display);
+	font-size: 0.93rem;
+	letter-spacing: -0.025em;
+}
+
+.projectIdentity small {
+	font-family: var(--font-mono);
+	font-size: 0.56rem;
+	letter-spacing: 0.035em;
+}
+
+.editorViewSwitch {
+	background:var(--editor-glass);
+	backdrop-filter: blur(18px);
+	border:1px solid color-mix(in srgb, var(--line) 74%, transparent);
+	border-radius:14px;
+	box-shadow: 0 8px 22px color-mix(in srgb, var(--ink) 11%, transparent);
+	display: grid;
+	grid-template-columns: 1.35fr 0.84fr;
+	margin: 0;
+	min-inline-size: 0;
+	overflow: hidden;
+	padding: 3px;
+}
+
+.editorViewSwitch button {
+	background:transparent;
+	border:0;
+	border-radius:10px;
+	color:var(--muted);
+	cursor: pointer;
+	font: 800 0.72rem/1 var(--font-display);
+	min-height: 40px;
+	padding: 0 12px;
+}
+
+.editorViewSwitch button[aria-pressed="true"] {
+	background:var(--ink);
+	box-shadow: 0 2px 7px color-mix(in srgb, var(--ink) 22%, transparent);
+	color:var(--surface);
+}
+
+.editorViewSwitch button:disabled { cursor: not-allowed; opacity: 0.48; }
+
+.durabilityStatus {
+	background:color-mix(in srgb, var(--surface) 86%, transparent);
+	backdrop-filter: blur(14px);
+	border:1px solid color-mix(in srgb, var(--line) 66%, transparent);
+	border-radius:999px;
+	box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 9%, transparent);
+	font-family: var(--font-mono);
+	font-size: 0.58rem;
+	left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	max-width: calc(100% - 20px - var(--editor-safe-area-left, env(safe-area-inset-left)) - var(--editor-safe-area-right, env(safe-area-inset-right)));
+	padding: 5px 9px;
+	top: calc(max(10px, var(--editor-safe-area-top, env(safe-area-inset-top))) + 55px);
+}
+
+.toolRail {
+	background:transparent;
+	border:0;
+	bottom: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	box-shadow: none;
+	display: block;
+	left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	max-height: none;
+	overflow: visible;
+	padding: 0;
+	right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	top: auto;
+	width: auto;
+	z-index: 8;
+}
+
+.railActiveTool {
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	height: 1px;
+	overflow: hidden;
+	padding: 0;
+	position: absolute;
+	white-space: nowrap;
+	width: 1px;
+}
+
+.editorActionDock {
+	background:color-mix(in srgb, var(--surface) 93%, transparent);
+	backdrop-filter: blur(22px);
+	border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
+	border-radius:20px;
+	box-shadow: 0 14px 32px color-mix(in srgb, var(--ink) 18%, transparent);
+	display: grid;
+	gap: 4px;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+	padding: 5px;
+	position: relative;
+}
+
+.toolRail .editorActionDock button,
+.editorActionMenu button {
+	border:0;
+	border-radius:15px;
+	font-family: var(--font-display);
+	font-size: 0.72rem;
+	font-weight: 800;
+	line-height: 1.1;
+	min-height: 50px;
+	padding: 6px;
+}
+
+.toolRail .editorActionDock button {
+	background:transparent;
+	color:var(--ink);
+}
+
+.toolRail .editorActionDock button[aria-pressed="true"] {
+	background:color-mix(in srgb, var(--editor-accent) 14%, var(--surface));
+	color:color-mix(in srgb, var(--editor-accent) 82%, var(--ink));
+}
+
+.toolRail .editorActionDock button:disabled {
+	background:transparent;
+	color:color-mix(in srgb, var(--muted) 72%, transparent);
+}
+
+.selectToolButton {
+	align-content: center;
+	align-items: center;
+	display: grid;
+	gap: 2px;
+	justify-items: center;
+}
+
+.selectToolButton svg { height: 20px; width: 20px; }
+.selectToolButton span { font-size: 0.66rem; }
+
+.dockAction {
+	align-content: center;
+	align-items: center;
+	display: grid;
+	gap: 2px;
+	justify-items: center;
+}
+
+.dockAction svg { height: 20px; width: 20px; }
+.dockAction span { font-size: 0.66rem; }
+
+/* The four frequent plan tools retain a predictable left-to-right muscle
+   memory. Secondary actions stay present, but live as a quiet overflow chip
+   rather than consuming one of the primary mobile slots. */
+.roomDockAction { order: 1; }
+.wallDockAction { order: 2; }
+.itemDockAction { order: 3; }
+.selectToolButton { order: 4; }
+
+.editorActionMenu {
+	background:color-mix(in srgb, var(--surface) 96%, transparent);
+	backdrop-filter: blur(24px);
+	border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
+	border-radius:20px;
+	bottom: 68px;
+	box-shadow: 0 18px 38px color-mix(in srgb, var(--ink) 19%, transparent);
+	display: grid;
+	gap: 5px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	left: 0;
+	max-height: min(49dvh, 368px);
+	overflow-y: auto;
+	padding: 7px;
+	position: absolute;
+	right: 0;
+}
+
+.editorActionMenu[hidden] { display: none; }
+
+.editorActionMenuHandle { display: none; }
+
+.editorActionMenuHeader {
+	align-items: center;
+	display: flex;
+	grid-column: 1 / -1;
+	justify-content: space-between;
+	padding: 0 2px 2px 5px;
+}
+
+.editorActionMenuHeader span {
+	color:var(--ink);
+	font-family: var(--font-display);
+	font-size: 0.84rem;
+	font-weight: 900;
+}
+
+.editorActionMenu .editorActionMenuHeader button {
+	background:transparent;
+	border:0;
+	border-radius:10px;
+	color:var(--muted);
+	font-size: 0.68rem;
+	min-height: 32px;
+	padding: 4px 7px;
+}
+
+.editorActionMenu button {
+	background:color-mix(in srgb, var(--canvas) 62%, var(--surface));
+	border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
+	color:var(--ink);
+	min-height: 46px;
+	padding: 6px 8px;
+}
+
+.editorActionMenu button[aria-pressed="true"] {
+	background:var(--ink);
+	border-color:var(--ink);
+	color:var(--surface);
+}
+
+.editorActionMenu button:disabled { color:var(--muted); cursor: not-allowed; }
+
+.editorActionMenu .menuDangerAction {
+	background:color-mix(in srgb, var(--danger) 7%, var(--surface));
+	border-color:color-mix(in srgb, var(--danger) 24%, var(--line));
+	color:var(--danger);
+}
+
+@media (max-width: 559px) {
+	.editorActionMenu {
+		border-radius:24px 24px 18px 18px;
+		gap: 6px;
+		padding: 5px 7px 7px;
+	}
+
+	.editorActionMenuHandle {
+		background:color-mix(in srgb, var(--ink) 25%, transparent);
+		border-radius:999px;
+		display: block;
+		grid-column: 1 / -1;
+		height: 4px;
+		justify-self: center;
+		margin: 3px 0 -1px;
+		width: 36px;
+	}
+
+	.editorActionMenuHeader { padding: 0 3px 1px 6px; }
+	.editorActionMenuHeader span { font-size: 0.92rem; }
+}
+
+.toolRailHistory { display: grid; gap: 5px; grid-template-columns: 1fr 1fr; }
+
+.toolRail .toolRailHistory button {
+	font-size: 1.3rem;
+	padding: 0;
+}
+
+@media (max-width: 559px) {
+	.selectionPanel,
+	.contourPanel {
+		border-radius:18px;
+		bottom: calc(max(84px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 74px));
+		box-shadow: 0 16px 36px color-mix(in srgb, var(--ink) 17%, transparent);
+		left: 10px;
+		max-height: min(53dvh, 440px);
+		overflow-y: auto;
+		padding: 14px;
+		right: 10px;
+		width: auto;
+	}
+
+	.contourPanel {
+		top: auto;
+		transform: none;
+	}
+
+	.wallThicknessControl {
+		border-radius:14px;
+		left: 10px;
+		top: 94px;
+	}
+
+	.itemCount,
+	.itemDraftHint,
+	.planRoomStatus {
+		border-radius:999px;
+		left: 10px;
+		top: 94px;
+	}
+
+	.canvasError,
+	.canvasStatus,
+	.retryActions {
+		bottom: calc(max(84px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 74px));
+		right: 10px;
+	}
+
+	/* A save confirmation is transient, but it must not cover the selected
+	   wall card it describes. A collapsed selected-item inspector is hidden on
+	   phones, so its confirmation can sit directly above the four-action dock. */
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"][data-inspector-expanded="false"]:not([hidden]) ~ .canvasStatus {
+		bottom: calc(max(84px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 74px) + 94px);
+	}
+
+	.selectionInspectorPanel[data-inspector-expanded="true"]:not([hidden]) ~ .canvasStatus {
+		bottom: calc(max(84px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 74px) + min(53dvh, 440px) + 14px);
+	}
+}
+
+.pwaInstallGuide {
+	border-top:0;
+	margin: 0;
+	padding: 0;
+}
+
+.pwaInstallDisclosure {
+	background:color-mix(in srgb, var(--canvas) 52%, var(--surface));
+	border:1px solid color-mix(in srgb, var(--line) 70%, transparent);
+	border-radius:15px;
+	padding: 0 13px;
+}
+
+.pwaInstallDisclosure summary {
+	align-items: center;
+	cursor: pointer;
+	display: flex;
+	font-family: var(--font-display);
+	font-size: 0.84rem;
+	font-weight: 800;
+	justify-content: space-between;
+	letter-spacing: -0.02em;
+	min-height: 46px;
+	list-style: none;
+}
+
+.pwaInstallDisclosure summary::-webkit-details-marker { display: none; }
+.pwaInstallDisclosure summary::after { color:var(--muted); content: "+"; font-size: 1.25rem; }
+.pwaInstallDisclosure[open] summary::after { content: "−"; }
+.pwaInstallDisclosure p { padding-bottom: 11px; }
+.pwaInstallDisclosure button { margin-bottom: 12px; }
+
+@media (min-width: 560px) {
+	.editorTopBar { left: 16px; right: 16px; }
+	.durabilityStatus { left: 16px; }
+	.toolRail { bottom: 16px; left: auto; right: 16px; width: 286px; }
+	.editorActionMenu { bottom: 68px; left: auto; width: 286px; }
+}
+
+/* Project hub: the PWA opens like a focused native library, with project
+   creation and import available immediately but never competing with the
+   actual list of rooms the person is returning to. */
+.startShell {
+	--projects-primary: #1976b9;
+	--projects-line: #d9e1e8;
+	--projects-canvas:var(--editor-host-canvas, #f4f6f8);
+	align-content: start;
+	align-items: start;
+	background:var(--projects-canvas);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	gap: 24px;
+	padding: max(32px, var(--editor-safe-area-top, env(safe-area-inset-top))) max(20px, var(--editor-safe-area-right, env(safe-area-inset-right))) max(24px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))) max(20px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+}
+
+.createCard {
+	background:transparent;
+	border:0;
+	box-shadow: none;
+	gap: 24px;
+	max-width: 520px;
+	min-width: 0;
+	padding: 0;
+}
+
+/* First-run is a single focused task.  It shares the calm project-hub shell,
+   but gives the project name and the create action a much clearer hierarchy. */
+.createCard[aria-labelledby="create-heading"] h1 {
+	font-family: inherit;
+	font-size: 1.9rem;
+	font-weight: 650;
+	letter-spacing: -0.035em;
+	line-height: 1.15;
+}
+
+.createCard[aria-labelledby="create-heading"] .createForm {
+	background:var(--surface);
+	border:1px solid var(--projects-line);
+	border-radius:20px;
+	gap: 14px;
+	padding: 20px;
+}
+
+.createCard[aria-labelledby="create-heading"] .createForm label {
+	font-size: 0.875rem;
+	font-weight: 500;
+}
+
+.createCard[aria-labelledby="create-heading"] .createForm input {
+	background:var(--surface);
+	border-radius:12px;
+	font-size: 1rem;
+	min-width: 0;
+}
+
+.createCard[aria-labelledby="create-heading"] .createForm .primaryAction {
+	background:var(--projects-primary);
+	border-color:var(--editor-host-primary, var(--projects-primary));
+	border-radius:12px;
+	font-weight: 600;
+	min-height: 52px;
+	padding-block: 12px;
+}
+
+.projectHubHeading { display: grid; gap: 8px; }
+.projectHubHeading p { color:var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0; }
+.projectHubHeading h1 {
+	font-family: inherit;
+	font-size: 1.9rem;
+	font-weight: 650;
+	letter-spacing: -0.035em;
+	line-height: 1.15;
+	margin: 0;
+}
+
+.projectHubHeading h1:focus { outline:0; }
+
+.projectHubActions { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+
+.projectHubActions .primaryAction,
+.projectHubActions .secondaryAction {
+	align-items: center;
+	border-radius:14px;
+	display: inline-flex;
+	font-size: 0.875rem;
+	font-weight: 600;
+	justify-content: center;
+	min-height: 50px;
+	padding: 12px;
+}
+
+.projectHubActions .primaryAction {
+	background:var(--projects-primary);
+	border-color:var(--editor-host-primary, var(--projects-primary));
+}
+
+.projectHubActions .secondaryAction {
+	background:var(--surface);
+	border-color:var(--projects-line);
+}
+
+.projectDirectory { gap: 10px; }
+
+.projectDirectoryEmpty {
+	align-content: center;
+	background:color-mix(in srgb, var(--projects-canvas) 42%, var(--surface));
+	border:1px solid color-mix(in srgb, var(--projects-line) 72%, transparent);
+	border-radius:18px;
+	display: grid;
+	gap: 8px;
+	justify-items: center;
+	min-height: 208px;
+	overflow: hidden;
+	padding: 22px;
+	position: relative;
+	text-align: center;
+}
+
+.projectDirectoryGrid {
+	background-image:
+		linear-gradient(color-mix(in srgb, var(--projects-line) 65%, transparent) 1px, transparent 1px),
+		linear-gradient(90deg, color-mix(in srgb, var(--projects-line) 65%, transparent) 1px, transparent 1px);
+	background-size: 20px 20px;
+	inset: 0;
+	opacity: 0.55;
+	position: absolute;
+}
+
+.projectDirectoryEmpty strong,
+.projectDirectoryEmpty p {
+	position: relative;
+}
+
+.projectDirectoryEmpty strong {
+	font-family: var(--font-display);
+	font-size: 1.18rem;
+	letter-spacing: -0.035em;
+}
+
+.projectDirectoryEmpty p {
+	color:var(--muted);
+	font-family: inherit;
+	font-size: 0.875rem;
+	font-weight: 400;
+	line-height: 1.45;
+	margin: 0;
+	max-width: 235px;
+}
+
+.projectDirectoryCard {
+	background:var(--surface);
+	border:1px solid var(--projects-line);
+	border-radius:18px;
+	column-gap: 0;
+	grid-template-columns: minmax(0, 1fr) 44px;
+	padding: 8px;
+}
+
+.projectDirectoryCard strong {
+	font-family: inherit;
+	font-size: 1rem;
+	font-weight: 600;
+	letter-spacing: -0.015em;
+	line-height: 1.4;
+	overflow: visible;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.projectDirectoryCard small { font-family: inherit; font-size: 0.75rem; font-weight: 400; line-height: 1.4; overflow: visible; white-space: normal; }
+
+.projectDirectoryCard button {
+	background:var(--surface);
+	border:1px solid var(--projects-line);
+	border-radius:11px;
+	font-size: 0.875rem;
+	font-weight: 500;
+	min-height: 44px;
+	min-width: 0;
+	padding: 10px;
+}
+
+.projectDirectoryCard .projectCardOpen {
+	align-items: center;
+	border:0;
+	display: grid;
+	gap: 12px;
+	grid-template-columns: 64px minmax(0, 1fr);
+	padding: 8px;
+	text-align: left;
+	width: 100%;
+}
+
+.projectCardOpen:hover { background:var(--editor-host-canvas, #f4f6f8); }
+.projectCardPreview { align-items: center; background:var(--editor-host-canvas, #f0f3f5); border-radius:12px; color:var(--editor-host-muted, #8393a1); display: flex; height: 80px; justify-content: center; }
+.projectCardPreview svg { height: 44px; width: 44px; }
+.projectCardCopy { display: grid; gap: 6px; min-width: 0; }
+
+.projectDirectoryActions { position: relative; }
+
+.projectCreationBack {
+	align-items: center;
+	background:transparent;
+	border:0;
+	color:var(--editor-host-primary, var(--projects-primary));
+	cursor: pointer;
+	display: inline-flex;
+	font: 800 0.78rem/1 var(--font-display);
+	justify-self: start;
+	min-height: 44px;
+	min-width: 44px;
+	padding: 0;
+}
+
+.projectDirectoryActions summary {
+	align-items: center;
+	background:color-mix(in srgb, var(--surface) 76%, transparent);
+	border:1px solid color-mix(in srgb, var(--projects-line) 78%, transparent);
+	border-radius:11px;
+	color:var(--muted);
+	cursor: pointer;
+	display: flex;
+	font-family: var(--font-display);
+	font-size: 1rem;
+	font-weight: 800;
+	min-height: 44px;
+	min-width: 44px;
+	justify-content: center;
+	letter-spacing: 0.08em;
+	list-style: none;
+}
+
+.projectDirectoryActions summary::-webkit-details-marker { display: none; }
+
+.projectDirectoryActions[open] summary {
+	background:color-mix(in srgb, var(--editor-accent, var(--projects-primary)) 13%, var(--surface));
+	border-color:color-mix(in srgb, var(--editor-accent, var(--editor-host-primary, var(--projects-primary))) 32%, var(--projects-line));
+	color:color-mix(in srgb, var(--editor-accent, var(--editor-host-primary, var(--projects-primary))) 90%, var(--ink));
+}
+
+.projectDirectoryActions[open] {
+	grid-column: 1 / -1;
+}
+
+.projectDirectoryActions[open] summary {
+	justify-content: space-between;
+	padding: 0 12px;
+}
+
+.projectDirectoryActions[open] summary span { display: none; }
+
+.projectDirectoryActions[open] summary::before {
+	color:var(--ink);
+	content: "Действия";
+	font-family: var(--font-mono);
+	font-size: 0.62rem;
+	letter-spacing: 0.06em;
+}
+
+.projectDirectoryActions[open] summary::after {
+	color:var(--muted);
+	content: "−";
+	font-family: var(--font-display);
+	font-size: 1.15rem;
+	font-weight: 400;
+}
+
+.projectDirectoryActions[open] > div {
+	background:color-mix(in srgb, var(--surface) 97%, transparent);
+	border:1px solid color-mix(in srgb, var(--projects-line) 78%, transparent);
+	border-radius:13px;
+	display: grid;
+	gap: 6px;
+	grid-template-columns: minmax(0, 1fr);
+	margin-top: 7px;
+	min-width: 0;
+	padding: 7px;
+}
+
+.projectDirectoryActions[open] button {
+	background:color-mix(in srgb, var(--projects-canvas) 62%, var(--surface));
+	border-color:color-mix(in srgb, var(--projects-line) 82%, transparent);
+	color:var(--ink);
+	font-size: 0.875rem;
+	justify-content: flex-start;
+	padding: 12px;
+	text-align: left;
+	width: 100%;
+}
+
+/* The phone editor is framed as an iOS/PWA workspace: navigation and state
+   live in a quiet top bar, while the plan itself remains the main surface. */
+.editorShell { --editor-accent: #0876d5; }
+
+/* A waiting update is an optional, safe next step. Its card may visually sit
+   above the canvas or project list, but only its explicit action may capture
+   a touch — the underlying editor remains usable while a person defers it. */
+.pwaUpdateNotice { pointer-events: none; }
+.pwaUpdateNotice button { pointer-events: auto; }
+
+.editorTopBar {
+	align-items: center;
+	background:color-mix(in srgb, var(--surface) 96%, transparent);
+	backdrop-filter: blur(20px);
+	border-bottom:1px solid color-mix(in srgb, var(--line) 70%, transparent);
+	display: grid;
+	gap: 8px 6px;
+	grid-template-columns: minmax(66px, 1fr) minmax(0, 1.7fr) minmax(66px, 1fr);
+	grid-template-rows: 43px 40px;
+	left: 0;
+	padding: max(9px, var(--editor-safe-area-top, env(safe-area-inset-top))) 14px 10px;
+	right: 0;
+	top: 0;
+}
+
+.editorBackAction {
+	background:transparent;
+	border:0;
+	color:var(--editor-host-primary, var(--blue));
+	cursor: pointer;
+	font: 700 0.8rem/1 var(--font-display);
+	justify-self: start;
+	min-height: 42px;
+	padding: 0;
+}
+
+.editorBackAction::before { content: "‹"; font-size: 1.75rem; font-weight: 400; line-height: 0; margin-right: 3px; vertical-align: -2px; }
+.editorBackAction:disabled { color:var(--muted); cursor: wait; }
+
+.projectIdentity {
+	background:transparent;
+	border:0;
+	box-shadow: none;
+	grid-column: 2;
+	justify-self: center;
+	max-width: 100%;
+	min-height: 42px;
+	padding: 0;
+	text-align: center;
+}
+
+.projectIdentity span {
+	font-size: 0.98rem;
+	letter-spacing: -0.02em;
+}
+
+.editorSaveState {
+	color:var(--editor-host-primary, var(--blue));
+	font: 700 0.72rem/1 var(--font-display);
+	justify-self: end;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.editorViewSwitch {
+	background:color-mix(in srgb, var(--surface) 90%, transparent);
+	border-color:color-mix(in srgb, var(--line) 85%, transparent);
+	border-radius:11px;
+	box-shadow: none;
+	grid-column: 1 / -1;
+	grid-row: 2;
+	grid-template-columns: 1fr 1fr;
+	justify-self: center;
+	padding: 2px;
+	width: min(266px, 100%);
+}
+
+.editorViewSwitch button {
+	border-radius:8px;
+	color:var(--ink);
+	font-family: var(--font-display);
+	font-size: 0.78rem;
+	min-height: 36px;
+}
+
+.editorViewSwitch button[aria-pressed="true"] {
+	background:var(--blue);
+	box-shadow: 0 3px 8px color-mix(in srgb, var(--blue) 22%, transparent);
+}
+
+/* The same durable state is now in the top bar, exactly where a person looks
+   before leaving an editor. Avoid duplicating a floating badge on the plan. */
+.editorShell .durabilityStatus { display: none; }
+
+/* Canvas annotations must start below the persistent editor chrome. */
+.editorShell .itemCount,
+.editorShell .itemDraftHint,
+.editorShell .planRoomStatus,
+.editorShell .roomDirectoryToggle,
+.editorShell .planInspectorToggle,
+.editorShell .wallThicknessControl {
+	top: calc(max(10px, var(--editor-safe-area-top, env(safe-area-inset-top))) + 108px);
+}
+
+/* The scale begins directly below the fixed editor chrome. The lightweight
+   count sits on its own line so those two screen-fixed canvas cues do not
+   obscure each other on a phone. */
+.editorShell .itemCount {
+	top: calc(max(10px, var(--editor-safe-area-top, env(safe-area-inset-top))) + 148px);
+}
+
+.editorShell .roomDirectoryToggle,
+.editorShell .planInspectorToggle {
+	align-items: center;
+	background:color-mix(in srgb, var(--surface) 94%, transparent);
+	backdrop-filter: blur(14px);
+	border-color:color-mix(in srgb, var(--line) 72%, transparent);
+	border-radius:999px;
+	box-shadow: 0 5px 14px color-mix(in srgb, var(--ink) 10%, transparent);
+	display: inline-flex;
+	height: 44px;
+	justify-content: center;
+	min-height: 44px;
+	padding: 0;
+	width: 44px;
+}
+
+.editorShell .roomDirectoryToggle {
+	left: calc(max(10px, var(--editor-safe-area-left, env(safe-area-inset-left))) + 98px);
+	right: auto;
+}
+
+.editorShell .planInspectorToggle {
+	left: auto;
+	right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+}
+
+.editorShell .roomDirectoryToggle svg,
+.editorShell .planInspectorToggle svg { height: 21px; width: 21px; }
+
+@media (max-width: 559px) {
+	/* The phone catalog is a gallery first: two concise visual choices fit in
+	   the first glance, while optional local import stays below the browse flow. */
+	.catalogContent { gap: 10px; }
+
+	.catalogContent > .catalogImportStatus[role="alert"] {
+		align-items: center;
+		background:color-mix(in srgb, var(--blue) 5%, var(--surface));
+		border:1px solid color-mix(in srgb, var(--blue) 26%, var(--line));
+		border-radius:12px;
+		display: grid;
+		gap: 8px;
+		grid-template-columns: minmax(0, 1fr) auto;
+		padding: 8px;
+	}
+
+	.catalogPublicationNotice {
+		display: grid;
+		gap: 2px;
+		min-width: 0;
+	}
+
+	.catalogPublicationNotice strong {
+		font-family: var(--font-display);
+		font-size: 0.78rem;
+		letter-spacing: -0.02em;
+		line-height: 1.1;
+	}
+
+	.catalogPublicationNotice small {
+		color:var(--muted);
+		font-family: var(--font-mono);
+		font-size: 0.57rem;
+		font-weight: 800;
+		line-height: 1.2;
+	}
+
+	.catalogContent > .catalogImportStatus[role="alert"] button {
+		border-radius:9px;
+		font-size: 0.66rem;
+		min-height: 38px;
+		padding-inline: 11px;
+	}
+
+	/* The selected asset is the one decisive action in the catalogue. Give its
+	   call-to-action the same confident blue as the Plan/3D switch instead of
+	   making it compete with neutral controls. */
+	.catalogPlacementBar {
+		background:color-mix(in srgb, var(--surface) 97%, transparent);
+		border-color:color-mix(in srgb, var(--line) 78%, transparent);
+		border-radius:16px;
+		box-shadow: 0 -8px 20px color-mix(in srgb, var(--ink) 12%, transparent);
+		padding: 8px;
+	}
+
+	.catalogPlacementBar button {
+		background:var(--blue);
+		border-color:var(--blue);
+		border-radius:12px;
+		box-shadow: 0 7px 16px color-mix(in srgb, var(--blue) 20%, transparent);
+		min-height: 48px;
+		padding-inline: 12px;
+	}
+
+	.catalogContent .catalogGrid {
+		gap: 9px;
+		grid-auto-rows: 198px;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+
+	.catalogContent .catalogCard {
+		border-radius:15px;
+		grid-template-rows: 118px minmax(0, 1fr);
+	}
+
+	.catalogContent .catalogThumbnail,
+	.catalogContent .catalogThumbnailFallback,
+	.catalogContent .greyboxPreview,
+	.catalogContent .customGlbCatalogPreview,
+	.catalogContent .customGlbCatalogPlaceholder {
+		height: 118px;
+		min-height: 118px;
+	}
+
+	.catalogContent .catalogCardDetails {
+		gap: 3px;
+		min-height: 0;
+		padding: 8px;
+	}
+
+	.catalogContent .catalogCard strong {
+		font-size: 0.79rem;
+		line-height: 1.08;
+	}
+
+	.catalogContent .catalogCard small,
+	.catalogContent .catalogCardDetails span {
+		font-size: 0.54rem;
+		line-height: 1.15;
+	}
+}
+
+/* Card metadata is intentionally filtered for a phone-sized gallery. The
+   full catalog source remains in the accessible card name; the visual layer
+   only keeps the decision-making signals: category, host and readiness. */
+.catalogCardMeta {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	min-width: 0;
+}
+
+.catalogCardDetails .catalogCardMeta > span {
+	border:0;
+	border-radius:999px;
+	color:var(--muted);
+	font-family: var(--font-mono);
+	font-size: 0.54rem;
+	font-weight: 800;
+	letter-spacing: 0;
+	line-height: 1;
+	padding: 0;
+	text-transform: none;
+}
+
+.catalogCardDetails .catalogCardMeta > .catalogCardCategory {
+	background:color-mix(in srgb, var(--blue) 9%, var(--surface));
+	color:var(--editor-host-primary, var(--blue));
+	padding: 3px 5px;
+}
+
+.catalogCardDetails .catalogCardMeta > .catalogCardReadiness {
+	margin-left: auto;
+	white-space: nowrap;
+}
+
+.catalogCardDetails .catalogCardMeta > .catalogCardVariantCount { display: none; }
+
+/* Categories are small visual destinations, not a row of admin filters. The
+   label stays explicit, while the line icon makes scanning with a thumb fast. */
+.catalogCategoryTabs button[data-testid="catalog-category-filter"] {
+	border-radius:14px;
+	gap: 7px;
+	min-height: 48px;
+	padding: 0 12px 0 8px;
+}
+
+.catalogCategoryGlyph {
+	align-items: center;
+	background:color-mix(in srgb, var(--blue) 8%, var(--surface));
+	border-radius:10px;
+	color:var(--editor-host-primary, var(--blue));
+	display: inline-flex;
+	height: 32px;
+	justify-content: center;
+	width: 32px;
+}
+
+.catalogCategoryGlyph svg {
+	height: 19px;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 1.6;
+	width: 19px;
+}
+
+.catalogCategoryLabel {
+	font: 800 0.7rem/1 var(--font-display);
+	white-space: nowrap;
+}
+
+.catalogCategoryTabs button[data-testid="catalog-category-filter"][aria-pressed="true"] {
+	background:var(--editor-host-primary-fill, var(--blue));
+	border-color:var(--blue);
+	box-shadow: 0 5px 12px color-mix(in srgb, var(--blue) 22%, transparent);
+}
+
+.catalogCategoryTabs button[data-testid="catalog-category-filter"][aria-pressed="true"] .catalogCategoryGlyph {
+	background:color-mix(in srgb, var(--surface) 18%, transparent);
+	color:var(--editor-host-on-primary, var(--surface));
+}
+
+@media (max-width: 559px) {
+	.catalogContent .catalogCardDetails .catalogCardMeta > span {
+		font-size: 0.58rem;
+		line-height: 1;
+	}
+
+	.catalogContent .catalogCardDetails .catalogCardMeta > .catalogCardVariantCount {
+		display: none;
+	}
+}
+
+/* New windows and opening edits use one reachable, native-feeling sheet. The
+   field labels stay short; their full precise names remain available to assistive
+   technology on the corresponding inputs. */
+.editorShell .windowDraftPanel {
+	bottom: 0;
+	left: 0;
+	right: 0;
+	width: 100%;
+	z-index: 11;
+}
+
+.editorShell .windowDraftPanel form,
+.editorShell .windowDraftPanel > div {
+	background:color-mix(in srgb, var(--surface) 98%, transparent);
+	border:1px solid color-mix(in srgb, var(--line) 70%, transparent);
+	border-bottom:0;
+	border-radius:24px 24px 0 0;
+	box-shadow: 0 -10px 28px color-mix(in srgb, var(--shadow) 18%, transparent);
+	gap: 11px;
+	max-width: none;
+	padding: 34px 20px calc(18px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	position: relative;
+	width: 100%;
+}
+
+.editorShell .windowDraftPanel form::before,
+.editorShell .windowDraftPanel > div::before {
+	background:color-mix(in srgb, var(--muted) 45%, transparent);
+	border-radius:999px;
+	content: "";
+	height: 4px;
+	left: 50%;
+	position: absolute;
+	top: 12px;
+	transform: translateX(-50%);
+	width: 38px;
+}
+
+.editorShell .windowDraftPanel strong {
+	font-size: 1rem;
+	letter-spacing: -0.02em;
+}
+
+.editorShell .windowDraftPanel form > span { display: none; }
+
+.editorShell .windowDraftPanel label {
+	align-items: center;
+	font-family: var(--font-display);
+	font-size: 0.84rem;
+	font-weight: 650;
+	grid-template-columns: minmax(0, 1fr) 142px;
+	position: relative;
+}
+
+.editorShell .windowDraftPanel label::after {
+	color:var(--muted);
+	content: "мм";
+	font: 700 0.66rem/1 var(--font-mono);
+	pointer-events: none;
+	position: absolute;
+	right: 13px;
+}
+
+.editorShell .windowDraftPanel input {
+	border-color:color-mix(in srgb, var(--line) 70%, transparent);
+	border-radius:10px;
+	font-family: var(--font-mono);
+	font-size: 0.82rem;
+	min-height: 42px;
+	padding-left: 10px;
+	padding-right: 31px;
+	text-align: center;
+}
+
+.editorShell .windowDraftPanel form > div {
+	gap: 10px;
+	margin-top: 5px;
+}
+
+.editorShell .windowDraftPanel form > div button {
+	border-color:color-mix(in srgb, var(--blue) 48%, var(--line));
+	border-radius:10px;
+	color:var(--editor-host-primary, var(--blue));
+	font-size: 0.78rem;
+	min-height: 50px;
+}
+
+.editorShell .windowDraftPanel form > div button[type="submit"] {
+	background:var(--blue);
+	border-color:var(--blue);
+	box-shadow: 0 4px 10px color-mix(in srgb, var(--blue) 22%, transparent);
+	color:var(--surface);
+	order: 2;
+}
+
+.editorShell .windowDraftPanel form > div button[type="button"] { order: 1; }
+
+/* The selected object keeps its on-canvas handles as the primary editing
+   surface.  This compact card only identifies the object and offers one clear
+   route to its precise fields, so it does not compete with the plan. */
+@media (max-width: 559px) {
+	/* The plan itself communicates selection through the four-point frame.
+	   Keep the phone canvas as clear as the reference and expose precision
+	   fields through the header's existing overflow menu instead of a second
+	   persistent card above the dock. */
+	.selectionInspectorPanel[data-testid="selected-item-inspector"][data-inspector-expanded="false"] {
+		display: none;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .panelHeading {
+		min-height: 64px;
+		grid-template-columns: 40px minmax(0, 1fr) auto;
+		padding-left: 0;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .selectionItemInspectorIcon {
+		align-items: center;
+		background:color-mix(in srgb, var(--blue) 12%, var(--surface));
+		border:1px solid color-mix(in srgb, var(--blue) 26%, transparent);
+		border-radius:14px;
+		color:var(--editor-host-primary, var(--blue));
+		display: flex;
+		grid-column: 1;
+		grid-row: 1 / span 2;
+		height: 40px;
+		justify-content: center;
+		width: 40px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .selectionItemInspectorIcon svg {
+		display: block;
+		height: 22px;
+		width: 22px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"][data-item-locked="true"] .selectionItemInspectorIcon {
+		background:color-mix(in srgb, var(--muted) 12%, var(--surface));
+		border-color:color-mix(in srgb, var(--muted) 26%, transparent);
+		color:var(--muted);
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .selectionItemInspectorCategory {
+		color:var(--editor-host-primary, var(--blue));
+		font-size: 0.57rem;
+		grid-column: 2;
+		grid-row: 1;
+		letter-spacing: 0.09em;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .panelHeading strong {
+		font-size: 1.06rem;
+		grid-column: 2;
+		grid-row: 2;
+		letter-spacing: -0.035em;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .selectionInspectorToggle {
+		background:color-mix(in srgb, var(--blue) 10%, var(--surface));
+		border-color:color-mix(in srgb, var(--blue) 18%, transparent);
+		border-radius:12px;
+		box-shadow: none;
+		color:var(--editor-host-primary, var(--blue));
+		font-size: 0.66rem;
+		grid-column: 3;
+		grid-row: 1 / span 2;
+		min-height: 46px;
+		padding: 0 10px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions label {
+		position: relative;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions label > span {
+		color:var(--muted);
+		font-family: var(--font-mono);
+		font-size: 0.57rem;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions label::after {
+		bottom: 13px;
+		color:var(--muted);
+		content: "мм";
+		font: 800 0.57rem/1 var(--font-mono);
+		pointer-events: none;
+		position: absolute;
+		right: 9px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions label:last-child::after {
+		content: "°";
+	}
+
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions input {
+		border-radius:10px;
+		padding-right: 25px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"][data-inspector-expanded="false"] {
+		background:color-mix(in srgb, var(--surface) 97%, transparent);
+		border-color:color-mix(in srgb, var(--blue) 22%, var(--line));
+		border-radius:18px;
+		box-shadow: 0 14px 30px color-mix(in srgb, var(--ink) 16%, transparent);
+		height: 86px;
+		max-height: 86px;
+		padding: 10px 12px 10px 13px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .panelHeading {
+		grid-template-columns: 40px minmax(0, 1fr) auto;
+		min-height: 64px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectionWallInspectorIcon {
+		align-items: center;
+		background:color-mix(in srgb, var(--blue) 12%, var(--surface));
+		border:1px solid color-mix(in srgb, var(--blue) 26%, transparent);
+		border-radius:14px;
+		color:var(--editor-host-primary, var(--blue));
+		display: flex;
+		grid-column: 1;
+		grid-row: 1 / span 2;
+		height: 40px;
+		justify-content: center;
+		width: 40px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectionWallInspectorIcon svg {
+		display: block;
+		height: 22px;
+		width: 22px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectionWallInspectorCategory {
+		color:var(--editor-host-primary, var(--blue));
+		font-size: 0.57rem;
+		grid-column: 2;
+		grid-row: 1;
+		letter-spacing: 0.09em;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .panelHeading strong {
+		font-size: 1.06rem;
+		grid-column: 2;
+		grid-row: 2;
+		letter-spacing: -0.035em;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectionInspectorToggle {
+		background:color-mix(in srgb, var(--blue) 10%, var(--surface));
+		border-color:color-mix(in srgb, var(--blue) 18%, transparent);
+		border-radius:12px;
+		box-shadow: none;
+		color:var(--editor-host-primary, var(--blue));
+		font-size: 0.66rem;
+		grid-column: 3;
+		grid-row: 1 / span 2;
+		min-height: 46px;
+		padding: 0 10px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectedWallThicknessControl {
+		background:color-mix(in srgb, var(--canvas) 74%, var(--surface));
+		border-radius:14px;
+		padding: 10px;
+		position: relative;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectedWallThicknessControl > span {
+		color:var(--muted);
+		font-family: var(--font-mono);
+		font-size: 0.57rem;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectedWallThicknessControl::after {
+		bottom: 39px;
+		color:var(--muted);
+		content: "мм";
+		font: 800 0.57rem/1 var(--font-mono);
+		pointer-events: none;
+		position: absolute;
+		right: 20px;
+	}
+
+	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectedWallThicknessControl input {
+		background:var(--surface);
+		border-radius:10px;
+		font-family: var(--font-mono);
+		font-size: 1rem;
+		min-height: 44px;
+		padding-right: 31px;
+	}
+}
+
+@media (max-width: 359px) {
+	.editorTopBar { grid-template-columns: minmax(54px, 1fr) minmax(0, 1.45fr) minmax(54px, 1fr); padding-inline: 10px; }
+	.editorBackAction, .editorSaveState { font-size: 0.67rem; }
+}
+
+@media (max-width: 379px) {
+	.projectHubActions { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 559px) {
+	/* Status belongs below the compact top bar, not in the same lower corner as
+	   3D diagnostics and the persistent action dock. */
+	.editorShell[data-view-mode="three-dimensional"] .durabilityStatus {
+		bottom: auto;
+		left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+		right: auto;
+		top: calc(max(10px, var(--editor-safe-area-top, env(safe-area-inset-top))) + 55px);
+	}
+
+	/* A phone plan is an editing surface, not a dimension report. Keep the
+	   room name, size and area on-canvas; the perimeter stays available in the
+	   exact inspector without taking over the room. */
+	.roomMeasurementPerimeter { display: none; }
+
+	/* Confirmations follow the same bottom-sheet rhythm as the room and action
+	   sheets. Context stays visible behind them, while the next safe choice is
+	   kept close to the thumb zone. */
+	.restartProjectDialog {
+		border:0;
+		border-radius:26px 26px 0 0;
+		bottom: 0;
+		box-shadow: 0 -14px 38px color-mix(in srgb, var(--ink) 21%, transparent);
+		gap: 11px;
+		left: 0;
+		max-width: none;
+		padding: 0 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+		right: 0;
+		top: auto;
+		transform: none;
+		width: auto;
+	}
+
+	.restartProjectDialog::before {
+		align-self: center;
+		background:color-mix(in srgb, var(--ink) 25%, transparent);
+		border-radius:999px;
+		content: "";
+		display: block;
+		height: 5px;
+		margin: 9px 0 1px;
+		width: 38px;
+	}
+
+	.restartProjectDialog strong {
+		font-size: 1.22rem;
+		letter-spacing: -0.035em;
+	}
+
+	.restartProjectDialog p {
+		font-size: 0.82rem;
+		line-height: 1.42;
+	}
+
+	.restartProjectDialog > div {
+		gap: 8px;
+		padding-top: 3px;
+	}
+
+	.restartProjectDialog button {
+		border-radius:13px;
+		font-size: 0.76rem;
+		min-height: 50px;
+	}
+
+	.restartProjectDialog .restartProjectConfirm {
+		background:var(--blue);
+		border-color:var(--blue);
+		box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 22%, transparent);
+	}
+
+	.projectDeletionDialog .restartProjectConfirm {
+		background:var(--danger);
+		border-color:var(--danger);
+		box-shadow: none;
+	}
+
+	/* Exact values are an intentional edit, not a technical overlay. The
+	   inspector adopts the same calm, thumb-friendly sheet language as other
+	   phone actions while preserving every existing dimension control. */
+	.planInspectorPanel {
+		background:color-mix(in srgb, var(--surface) 97%, transparent);
+		border:0;
+		border-radius:24px;
+		box-shadow: 0 12px 28px color-mix(in srgb, var(--ink) 18%, transparent);
+		gap: 10px;
+		padding: 0 14px 14px;
+	}
+
+	.planDimensionsSheetHandle {
+		align-self: center;
+		background:color-mix(in srgb, var(--ink) 25%, transparent);
+		border-radius:999px;
+		display: block;
+		height: 5px;
+		margin: 9px 0 0;
+		justify-self: center;
+		width: 38px;
+	}
+
+	.planInspectorPanel .panelHeading {
+		align-items: center;
+		display: grid;
+		gap: 0 9px;
+		grid-template-columns: minmax(0, 1fr) 40px;
+		min-height: 42px;
+	}
+
+	.planInspectorPanel .panelHeading span {
+		align-self: end;
+		color:var(--editor-host-primary, var(--blue));
+		font-size: 0.57rem;
+		grid-column: 1;
+		grid-row: 1;
+		letter-spacing: 0.1em;
+	}
+
+	.planInspectorPanel .panelHeading strong {
+		align-self: start;
+		font-size: 1.16rem;
+		grid-column: 1;
+		grid-row: 2;
+		letter-spacing: -0.04em;
+	}
+
+	.planInspectorPanel .planInspectorClose {
+		align-self: center;
+		background:color-mix(in srgb, var(--canvas) 78%, var(--surface));
+		border:0;
+		border-radius:50%;
+		font-size: 1.35rem;
+		grid-column: 2;
+		grid-row: 1 / span 2;
+		min-height: 38px;
+		min-width: 38px;
+		width: 38px;
+	}
+
+	.planInspectorPanel .itemDimensions {
+		gap: 7px;
+		grid-template-columns: 1fr;
+	}
+
+	.planInspectorPanel .itemDimensions label {
+		align-items: center;
+		background:color-mix(in srgb, var(--canvas) 78%, var(--surface));
+		border:1px solid color-mix(in srgb, var(--line) 84%, transparent);
+		border-radius:12px;
+		display: grid;
+		font-size: 0.72rem;
+		grid-template-columns: minmax(0, 1fr) 118px;
+		min-height: 48px;
+		overflow: hidden;
+		padding-left: 11px;
+	}
+
+	.planInspectorPanel .itemDimensions label span {
+		color:var(--muted);
+		font-family: var(--font-mono);
+		font-size: 0.61rem;
+		font-weight: 800;
+		letter-spacing: 0.03em;
+	}
+
+	.planInspectorPanel .itemDimensions input {
+		background:var(--surface);
+		border:0;
+		border:1px solid color-mix(in srgb, var(--line) 80%, transparent);
+		border-radius:0;
+		font-family: var(--font-mono);
+		font-size: 0.94rem;
+		min-height: 46px;
+		padding: 0 12px;
+		text-align: right;
+	}
+
+	.planInspectorPanel .planDimensionsSave {
+		background:var(--blue);
+		border-color:var(--blue);
+		border-radius:13px;
+		box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 22%, transparent);
+		font-size: 0.78rem;
+		min-height: 50px;
+		position: static;
+	}
+
+	.planInspectorPanel .inlineMetrics {
+		background:color-mix(in srgb, var(--canvas) 62%, var(--surface));
+		border:0;
+		border-radius:13px;
+		gap: 0;
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+		margin: 0;
+		padding: 9px 10px;
+	}
+
+	.planInspectorPanel .inlineMetrics div { gap: 2px; }
+	.planInspectorPanel .inlineMetrics dt { font-size: 0.52rem; letter-spacing: 0.06em; }
+	.planInspectorPanel .inlineMetrics dd { font-size: 0.66rem; }
+
+	/* Editing a project name is a one-field action. On phone it shares the
+	   bottom-sheet grammar of confirmations, with the save action in the
+	   natural right-thumb position and no competing technical chrome. */
+	.renameProjectDialog {
+		border:0;
+		border-radius:26px 26px 0 0;
+		bottom: 0;
+		box-shadow: 0 -14px 38px color-mix(in srgb, var(--ink) 21%, transparent);
+		gap: 12px;
+		left: 0;
+		max-width: none;
+		padding: 0 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+		right: 0;
+		top: auto;
+		transform: none;
+		width: auto;
+	}
+
+	.renameProjectSheetHandle {
+		align-self: center;
+		background:color-mix(in srgb, var(--ink) 25%, transparent);
+		border-radius:999px;
+		display: block;
+		height: 5px;
+		margin: 9px 0 1px;
+		width: 38px;
+	}
+
+	.renameProjectDialog strong {
+		font-size: 1.22rem;
+		letter-spacing: -0.035em;
+	}
+
+	.renameProjectDialog form { gap: 10px; }
+
+	.renameProjectDialog label {
+		color:var(--muted);
+		font-family: var(--font-mono);
+		font-size: 0.63rem;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+
+	.renameProjectDialog input {
+		background:color-mix(in srgb, var(--canvas) 80%, var(--surface));
+		border:1px solid color-mix(in srgb, var(--line) 82%, transparent);
+		border-radius:13px;
+		min-height: 52px;
+		padding-inline: 13px;
+	}
+
+	.renameProjectDialog form > div {
+		gap: 8px;
+		grid-template-columns: 1fr 1fr;
+		padding-top: 2px;
+	}
+
+	.renameProjectDialog button {
+		border-radius:13px;
+		font-size: 0.76rem;
+		min-height: 50px;
+	}
+
+	.renameProjectDialog button[type="submit"] {
+		background:var(--blue);
+		border-color:var(--blue);
+		box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 22%, transparent);
+		grid-column: 2;
+		grid-row: 1;
+	}
+
+	.renameProjectDialog form > div > button:last-child:not([type="submit"]) {
+		grid-column: 1;
+		grid-row: 1;
+	}
+
+	.renameProjectDialog form > div > button:not([type="submit"]):not(:last-child) {
+		grid-column: 1 / -1;
+		grid-row: 2;
+	}
+}
+
+@media (max-width: 559px) {
+	/* In 3D the camera deck owns the lower thumb zone. A durable placement
+	   message is useful feedback, but it should read as a light, temporary
+	   toast under the header instead of covering camera controls. */
+	.editorShell[data-view-mode="three-dimensional"] [data-testid="item-placement-durable-status"] {
+		background:color-mix(in srgb, var(--surface) 94%, transparent);
+		border:1px solid color-mix(in srgb, var(--safe) 30%, var(--line));
+		
+		border-radius:12px;
+		bottom: auto;
+		box-shadow: 0 8px 18px color-mix(in srgb, var(--ink) 12%, transparent);
+		font-size: 0.72rem;
+		max-width: min(220px, calc(100% - 20px));
+		padding: 8px 10px;
+		right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+		top: 10px;
+		z-index: 5;
+	}
+}
+
+@media (max-width: 559px) {
+	/* The catalog is a visual picker first. It shares the relaxed, native
+	   phone rhythm of the editor: one short heading, a search field, category
+	   chips and calm object cards instead of a technical control surface. */
+	.catalogDialog {
+		background:var(--surface);
+		display: grid;
+		gap: 8px;
+		grid-template-rows: auto minmax(0, 1fr) auto;
+		overflow: hidden;
+		padding: max(8px, var(--editor-safe-area-top, env(safe-area-inset-top))) 12px max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	}
+
+	.catalogDialog .dialogHeading { min-height: 50px; }
+	.catalogDialog .dialogHeading span,
+	.catalogDialog > .catalogNote { display: none; }
+
+	.catalogDialog .dialogHeading strong {
+		font-size: 1.2rem;
+		letter-spacing: -0.04em;
+	}
+
+	.catalogDialog .dialogHeading > button {
+		align-items: center;
+		background:color-mix(in srgb, var(--canvas) 78%, var(--surface));
+		border:0;
+		border-radius:50%;
+		display: inline-flex;
+		font-size: 1.35rem;
+		justify-content: center;
+		min-height: 38px;
+		width: 38px;
+	}
+
+	.catalogDialog > .dialogHeading { grid-row: 1; }
+	.catalogContent {
+		contain: layout paint;
+		gap: 10px;
+		grid-row: 2;
+		max-height: 100%;
+		min-height: 0;
+	}
+
+	.catalogContent > .catalogImportStatus {
+		align-items: center;
+		background:color-mix(in srgb, var(--blue) 6%, var(--surface));
+		border:1px solid color-mix(in srgb, var(--blue) 18%, var(--line));
+		border-radius:12px;
+		color:var(--editor-host-primary, var(--blue));
+		font-family: var(--font-mono);
+		font-size: 0.6rem;
+		font-weight: 800;
+		line-height: 1.2;
+		min-height: 34px;
+		padding: 7px 10px;
+	}
+
+	.catalogPublicationSummary { display: block; }
+	.catalogContent > .catalogImportStatus[role="alert"] {
+		gap: 7px;
+		grid-template-columns: minmax(0, 1fr) auto;
+		min-height: 42px;
+		padding: 6px 8px 6px 10px;
+	}
+
+	.catalogContent > .catalogImportStatus[role="alert"] .catalogPublicationNotice strong {
+		font-size: 0.7rem;
+		line-height: 1.05;
+	}
+
+	.catalogContent > .catalogImportStatus[role="alert"] .catalogPublicationNotice small {
+		font-size: 0.5rem;
+		line-height: 1.1;
+	}
+
+	.catalogContent > .catalogImportStatus[role="alert"] button {
+		border-radius:10px;
+		font-size: 0.62rem;
+		min-height: 34px;
+		padding-inline: 10px;
+	}
+
+	.catalogPublicationDetails,
+	.catalogFilters output,
+	.catalogPlacementBar [data-testid="catalog-selected-resource-metadata"] {
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		height: 1px;
+		overflow: hidden;
+		position: absolute;
+		white-space: nowrap;
+		width: 1px;
+	}
+
+	.catalogFilters { position: relative; }
+	.catalogFilters label { gap: 0; }
+	.catalogFilters label > span {
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		height: 1px;
+		overflow: hidden;
+		position: absolute;
+		white-space: nowrap;
+		width: 1px;
+	}
+
+	.catalogFilters label::before {
+		color:var(--muted);
+		content: "⌕";
+		font: 800 1.15rem/1 var(--font-display);
+		left: 14px;
+		pointer-events: none;
+		position: absolute;
+		top: 50%;
+		transform: translateY(-50%);
+		z-index: 1;
+	}
+
+	.catalogFilters input {
+		background:color-mix(in srgb, var(--canvas) 70%, var(--surface));
+		border:0;
+		border-radius:14px;
+		font-size: 0.84rem;
+		min-height: 48px;
+		padding: 0 12px 0 38px;
+	}
+
+	.catalogCategoryTabs {
+		gap: 7px;
+		margin: 0 -12px;
+		padding: 0 12px 2px;
+	}
+
+	.catalogCategoryTabs button {
+		background:color-mix(in srgb, var(--canvas) 76%, var(--surface));
+		border:0;
+		border-radius:12px;
+		font-size: 0.67rem;
+		gap: 4px;
+		min-height: 40px;
+		padding: 0 10px;
+	}
+
+	.catalogCategoryTabs button span { font-size: 0.96rem; }
+	.catalogCategoryTabs button[aria-pressed="true"] {
+		background:var(--editor-host-primary-fill, var(--blue));
+		border-color:var(--blue);
+		box-shadow: 0 5px 12px color-mix(in srgb, var(--blue) 22%, transparent);
+	}
+
+	.catalogContent .catalogGrid {
+		gap: 12px;
+		grid-auto-rows: 214px;
+		padding: 2px 1px 14px;
+	}
+
+	.catalogContent .catalogCard {
+		background:var(--surface);
+		border:1px solid color-mix(in srgb, var(--line) 62%, transparent);
+		border-radius:18px;
+		box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 7%, transparent);
+		grid-template-rows: 126px minmax(80px, 1fr);
+	}
+
+	.catalogContent .catalogCard:hover,
+	.catalogContent .catalogCard[aria-pressed="true"] {
+		border-color:var(--blue);
+		box-shadow: 0 7px 18px color-mix(in srgb, var(--blue) 18%, transparent);
+	}
+
+	.catalogContent .catalogThumbnail,
+	.catalogContent .catalogThumbnailFallback,
+	.catalogContent .greyboxPreview,
+	.catalogContent .customGlbCatalogPreview,
+	.catalogContent .customGlbCatalogPlaceholder {
+		background:color-mix(in srgb, var(--canvas) 72%, var(--surface));
+		height: 126px;
+		min-height: 126px;
+		object-fit: contain;
+	}
+
+	.catalogContent .customGlbCatalogPreview canvas { height: 126px; }
+
+	.catalogContent .catalogCardDetails {
+		border-top:1px solid color-mix(in srgb, var(--line) 56%, transparent);
+		gap: 3px;
+		min-height: 80px;
+		padding: 9px 10px;
+	}
+
+	.catalogContent .catalogCard strong {
+		font-size: 0.78rem;
+		line-height: 1.1;
+	}
+
+	.catalogContent .catalogCard small,
+	.catalogContent .catalogCardDetails span { font-size: 0.54rem; }
+
+	.catalogContent .catalogCardDetails .catalogCardMeta { margin-top: 1px; }
+	.catalogContent .catalogCardDetails .catalogCardMeta > .catalogCardCategory {
+		padding: 3px 6px;
+	}
+
+	.catalogContent .catalogCardDetails .catalogCardMeta > .catalogCardReadiness {
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
+		height: 1px;
+		overflow: hidden;
+		position: absolute;
+		white-space: nowrap;
+		width: 1px;
+	}
+
+	.catalogPlacementBar {
+		background:color-mix(in srgb, var(--surface) 96%, transparent);
+		border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
+		border-radius:18px;
+		box-shadow: 0 10px 24px color-mix(in srgb, var(--ink) 12%, transparent);
+		gap: 10px;
+		min-height: 66px;
+		padding: 8px 9px 8px 12px;
+		grid-row: 3;
+	}
+
+	.catalogPlacementBar strong { font-size: 0.86rem; }
+	.catalogPlacementBar small { font-size: 0.56rem; }
+	.catalogPlacementBar .catalogModelLoadingStatus {
+		gap: 6px;
+		grid-template-columns: minmax(0, 1fr) 66px;
+	}
+
+	.catalogPlacementBar .catalogModelLoadingStatus span {
+		font-size: 0;
+		height: 12px;
+	}
+
+	.catalogPlacementBar .catalogModelLoadingStatus span::after {
+		content: "Готовим для офлайн…";
+		font: 800 0.55rem/1.15 var(--font-mono);
+	}
+
+	.catalogPlacementBar .catalogModelLoadingStatus progress { width: 66px; }
+	.catalogPlacementBar button {
+		border-radius:13px;
+		font-size: 0.75rem;
+		min-height: 48px;
+		padding: 0 14px;
+	}
+}
+
+/* A personal model is a deliberate authoring path, not a third card in the
+   furniture gallery. Keeping it collapsed protects the browse-first flow on
+   a phone while still making every local import route one tap away. */
+.catalogAuthoring {
+	background:linear-gradient(
+		135deg,
+		color-mix(in srgb, var(--blue) 8%, var(--surface)),
+		var(--surface)
+	);
+	border:1px solid color-mix(in srgb, var(--blue) 22%, var(--line));
+	border-radius:18px;
+	overflow: clip;
+}
+
+.catalogAuthoring > summary {
+	align-items: center;
+	cursor: pointer;
+	display: grid;
+	gap: 10px;
+	grid-template-columns: 34px minmax(0, 1fr) auto;
+	list-style: none;
+	min-height: 62px;
+	padding: 10px 12px;
+	user-select: none;
+}
+
+.catalogAuthoring > summary::-webkit-details-marker { display: none; }
+
+.catalogAuthoring > summary:focus-visible {
+	box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--blue) 48%, transparent);
+	outline:none;
+}
+
+.catalogAuthoringIcon {
+	align-items: center;
+	background:var(--blue);
+	border-radius:11px;
+	box-shadow: 0 6px 12px color-mix(in srgb, var(--blue) 24%, transparent);
+	color:var(--surface);
+	display: inline-flex;
+	font-family: var(--font-display);
+	font-size: 1.02rem;
+	height: 34px;
+	justify-content: center;
+	line-height: 1;
+	width: 34px;
+}
+
+.catalogAuthoringCopy {
+	display: grid;
+	gap: 3px;
+	min-width: 0;
+}
+
+.catalogAuthoringCopy strong {
+	font-family: var(--font-display);
+	font-size: 0.92rem;
+	letter-spacing: -0.025em;
+}
+
+.catalogAuthoringCopy small {
+	color:var(--muted);
+	font-family: var(--font-mono);
+	font-size: 0.57rem;
+	font-weight: 800;
+	line-height: 1.2;
+}
+
+.catalogAuthoringChevron {
+	color:var(--editor-host-primary, var(--blue));
+	font-family: var(--font-display);
+	font-size: 1.2rem;
+	line-height: 1;
+	transition: transform 160ms ease;
+}
+
+.catalogAuthoring[open] .catalogAuthoringChevron { transform: rotate(180deg); }
+
+.catalogAuthoringContent {
+	border-top:1px solid color-mix(in srgb, var(--blue) 16%, var(--line));
+	display: grid;
+	gap: 9px;
+	padding: 10px;
+}
+
+.catalogAuthoringContent .catalogImport {
+	background:color-mix(in srgb, var(--surface) 88%, var(--canvas));
+	border:1px solid color-mix(in srgb, var(--line) 76%, transparent);
+	border-radius:13px;
+}
+
+.catalogCard { position: relative; }
+
+.catalogCardSelectedMark {
+	align-items: center;
+	background:var(--blue);
+	border:2px solid var(--surface);
+	border-radius:50%;
+	box-shadow: 0 5px 12px color-mix(in srgb, var(--blue) 32%, transparent);
+	color:var(--surface);
+	display: inline-flex;
+	font-family: var(--font-mono);
+	font-size: 0.7rem;
+	font-weight: 900;
+	height: 25px;
+	justify-content: center;
+	line-height: 1;
+	position: absolute;
+	right: 9px;
+	top: 9px;
+	width: 25px;
+	z-index: 2;
+}
+
+.catalogCard[data-selected="true"] .catalogThumbnail,
+.catalogCard[data-selected="true"] .catalogThumbnailFallback,
+.catalogCard[data-selected="true"] .greyboxPreview,
+.catalogCard[data-selected="true"] .customGlbCatalogPreview,
+.catalogCard[data-selected="true"] .customGlbCatalogPlaceholder {
+	background-color:color-mix(in srgb, var(--blue) 7%, var(--canvas));
+}
+
+.catalogEmpty {
+	align-items: center;
+	background:color-mix(in srgb, var(--canvas) 70%, var(--surface));
+	border:1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+	border-radius:16px;
+	display: grid;
+	gap: 7px;
+	justify-items: center;
+	min-height: 128px;
+	padding: 18px;
+	text-align: center;
+}
+
+.catalogEmpty::before {
+	align-items: center;
+	background:color-mix(in srgb, var(--blue) 10%, var(--surface));
+	border-radius:50%;
+	color:var(--editor-host-primary, var(--blue));
+	content: "⌕";
+	display: inline-flex;
+	font: 900 1.35rem/1 var(--font-display);
+	height: 36px;
+	justify-content: center;
+	width: 36px;
+}
+
+.catalogEmpty[data-testid="custom-catalog-empty-state"]::before {
+	content: "✦";
+	font-size: 1.15rem;
+}
+
+.catalogEmpty[data-testid="custom-catalog-empty-state"] strong {
+	color:var(--ink);
+	font-family: var(--font-display);
+	font-size: 0.94rem;
+	letter-spacing: -0.025em;
+}
+
+.catalogEmpty[data-testid="custom-catalog-empty-state"] span {
+	color:var(--muted);
+	font-size: 0.68rem;
+	font-weight: 700;
+	line-height: 1.3;
+}
+
+.catalogContent > .catalogImportStatus[role="status"] {
+	position: relative;
+	overflow: hidden;
+}
+
+.catalogContent > .catalogImportStatus[role="status"]::after {
+	background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 72%, transparent), transparent);
+	content: "";
+	inset: 0 auto 0 -35%;
+	pointer-events: none;
+	position: absolute;
+	width: 30%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.catalogContent > .catalogImportStatus[role="status"]::after {
+		animation: catalogStatusSweep 1.8s ease-in-out infinite;
+	}
+}
+
+@keyframes catalogStatusSweep {
+	to { transform: translateX(480%); }
+}
+
+@media (max-width: 559px) {
+	.catalogContent > .catalogAuthoring { order: 1; }
+
+	.catalogAuthoring {
+		border-radius:16px;
+		margin: 0 1px;
+	}
+
+	.catalogAuthoring > summary { min-height: 58px; }
+	.catalogAuthoringCopy strong { font-size: 0.88rem; }
+	.catalogAuthoringCopy small { font-size: 0.54rem; }
+
+	.catalogAuthoringContent {
+		gap: 8px;
+		padding: 9px;
+	}
+
+	.catalogAuthoringContent .catalogImport {
+		gap: 8px;
+		padding: 10px;
+	}
+
+	.catalogAuthoringContent .catalogImport strong { font-size: 0.8rem; }
+	.catalogAuthoringContent .catalogImport small { font-size: 0.58rem; }
+	.catalogAuthoringContent .catalogImport > button,
+	.catalogAuthoringContent .catalogImportStatus button {
+		font-size: 0.68rem;
+		min-height: 39px;
+	}
+
+	.catalogCardSelectedMark {
+		height: 23px;
+		right: 7px;
+		top: 7px;
+		width: 23px;
+	}
+
+	.catalogEmpty {
+		font-size: 0.7rem;
+		min-height: 112px;
+	}
+}
+
+/* Plan is deliberately a measured drawing surface: quiet paper, a fine grid,
+   physical walls and only the currently selected construction in blue. */
+.planSvg {
+	background:var(--editor-host-surface, #fcfbf9);
+}
+
+.gridFill { fill: var(--editor-host-plan-canvas, #fcfbf9); }
+.roomFill { fill: color-mix(in srgb, #ffffff 82%, #e7e2da); }
+
+.planGridLine {
+	stroke: color-mix(in srgb, #cfc6bb 43%, transparent);
+	stroke-width: 0.6;
+}
+
+.planGridMajor {
+	stroke: color-mix(in srgb, #bcb2a6 55%, transparent);
+	stroke-width: 0.9;
+}
+
+.wallOutline {
+	stroke: var(--editor-host-ink, #55534f);
+	stroke-linecap: butt;
+	stroke-linejoin: miter;
+}
+
+.selectedWall {
+	filter: drop-shadow(0 0 2px color-mix(in srgb, var(--blue) 34%, transparent));
+	stroke: var(--blue);
+}
+
+.doorOpeningCutout { stroke: #fcfbf9; }
+
+.doorOpeningMarker,
+.doorLeaf,
+.doorSwing {
+	stroke: var(--editor-host-ink, #4e4d49);
+	stroke-linecap: round;
+}
+
+.doorLeaf { stroke-width: 1.8; }
+.doorSwing { opacity: 0.58; stroke-dasharray: 2.4 2.4; }
+
+.selectedOpening {
+	stroke: var(--blue);
+}
+
+.doorOpeningHandle {
+	fill: var(--surface);
+	filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--ink) 20%, transparent));
+	stroke: var(--blue);
+}
+
+.wallVertexMoveHandle {
+	filter: drop-shadow(0 2px 3px color-mix(in srgb, var(--ink) 16%, transparent));
+}
+
+.schematicItem {
+	fill: color-mix(in srgb, var(--surface) 88%, #e7e2da);
+	stroke: var(--editor-host-ink, #4b4a47);
+	stroke-width: 1.7;
+}
+
+/* Deliberately line-only: the enclosing rectangle stays the exact durable
+   footprint, while these cues let a user read familiar furniture as a plan. */
+.schematicItemDetail {
+	fill: none;
+	pointer-events: none;
+	stroke: var(--editor-host-ink, #4b4a47);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 1.15;
+	vector-effect: non-scaling-stroke;
+}
+
+.itemFrontMarker {
+	fill: #fcfbf9;
+	stroke: var(--editor-host-ink, #4b4a47);
+}
+
+.selectedItem {
+	filter: drop-shadow(0 0 3px color-mix(in srgb, var(--blue) 35%, transparent));
+	stroke: var(--blue);
+	stroke-width: 3.2;
+}
+
+.itemSelectionFrame {
+	pointer-events: none;
+}
+
+.itemSelectionFrame rect {
+	fill: none;
+	stroke: var(--blue);
+	stroke-width: 1.35;
+	vector-effect: non-scaling-stroke;
+}
+
+.itemSelectionFrame circle {
+	fill: var(--blue);
+	stroke: var(--surface);
+	stroke-width: 1.6;
+	vector-effect: non-scaling-stroke;
+}
+
+.rotationGizmo > circle:first-child {
+	/* The four-point frame owns the quiet selected state. The full-size hit
+	   target stays mounted, but the ring itself appears only while turning. */
+	opacity: 0;
+	stroke-dasharray: 2 6;
+	stroke-width: 1.25;
+}
+
+.rotationHandle {
+	opacity: 0;
+	stroke-width: 1.6;
+}
+
+.rotationGizmo[data-rotation-active="true"] > circle:first-child {
+	opacity: 0.4;
+}
+
+.rotationGizmo[data-rotation-active="true"] .rotationHandle {
+	opacity: 0.9;
+}
+
+.editorActionDock {
+	border-color:color-mix(in srgb, var(--line) 76%, transparent);
+	box-shadow: 0 12px 28px color-mix(in srgb, var(--ink) 15%, transparent);
+}
+
+.toolRail .editorActionDock button[aria-pressed="true"] {
+	background:color-mix(in srgb, var(--blue) 13%, var(--surface));
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 16%, transparent);
+	color:var(--editor-host-primary, var(--blue));
+}
+
+.editorShell .wallDraftActions,
+.editorShell .wallMoveDraftActions,
+.editorShell .windowDraftPanel form,
+.editorShell .windowDraftPanel > div {
+	background:color-mix(in srgb, var(--surface) 97%, transparent);
+	backdrop-filter: blur(18px);
+	border-color:color-mix(in srgb, var(--line) 76%, transparent);
+	border-radius:18px;
+	box-shadow: 0 14px 30px color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.editorShell .wallDraftActions button:first-child,
+.editorShell .wallMoveDraftActions button:first-child,
+.editorShell .windowDraftPanel button[type="submit"],
+.editorShell .windowDraftPanel > div > div button:first-child {
+	background:var(--blue);
+	border-color:var(--blue);
+	box-shadow: 0 6px 14px color-mix(in srgb, var(--blue) 20%, transparent);
+}
+
+@media (max-width: 559px) {
+	/* The reference is a calm technical drawing: geometry comes first, while
+	   generated room metrics remain available in the inspector and semantic SVG
+	   tree without occupying the drawing itself. */
+	.editorShell[data-view-mode="plan"] .roomMeasurementFrame,
+	.editorShell[data-view-mode="plan"] .roomMeasurementSize,
+	.editorShell[data-view-mode="plan"] .roomMeasurementArea,
+	.editorShell[data-view-mode="plan"] .roomMeasurementPerimeter {
+		display: none;
+	}
+
+	/* A resting plan names geometry through its walls, openings and scale. Room
+	   labels are retained for the semantic SVG tree and inspector, but not
+	   printed over the paper surface. */
+	.editorShell[data-view-mode="plan"] .roomLabel {
+		display: none;
+	}
+
+	.editorShell .planRoomStatus {
+		display: none;
+	}
+
+	/* Item totals remain present for the live status model and tests, but a
+	   resting drawing does not need a second floating badge next to its scale. */
+	.editorShell .itemCount {
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	/* Their full workflows live in the bottom dock and overflow sheet. Keep
+	   these legacy shortcuts available to existing automation without placing
+	   two unrelated circular controls over the technical canvas. */
+	.editorShell .roomDirectoryToggle,
+	.editorShell .planInspectorToggle {
+		opacity: 0;
+	}
+
+	.editorShell,
+	.editorShell .editorTopBar,
+	.editorShell .editorActionDock,
+	.editorShell .editorActionDock button,
+	.editorShell .editorViewSwitch button,
+	.editorShell .editorBackAction,
+	.editorShell .editorSaveState,
+	.editorShell .projectIdentity span,
+	.editorShell .wallThicknessControl {
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	}
+
+	.editorTopBar {
+		background:var(--editor-host-surface, #ffffff);
+		gap: 5px 6px;
+		grid-template-rows: 40px 38px;
+		padding-bottom: 8px;
+	}
+
+	.editorBackAction {
+		font-size: 0.78rem;
+		font-weight: 500;
+		min-height: 40px;
+	}
+
+	.editorBackAction::before {
+		font-size: 1.55rem;
+		font-weight: 300;
+	}
+
+	.projectIdentity span {
+		font-size: 0.86rem;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+	}
+
+	.editorSaveState {
+		font-size: 0.76rem;
+		font-weight: 500;
+	}
+
+	.editorViewSwitch {
+		border-radius:10px;
+		width: min(266px, calc(100% - 58px));
+	}
+
+	.editorViewSwitch button {
+		border-radius:8px;
+		font-size: 0.76rem;
+		font-weight: 500;
+		min-height: 34px;
+	}
+
+	.planSvg { background:var(--editor-host-surface, #fdfdfc); }
+	.gridFill { fill: var(--editor-host-plan-canvas, #fdfdfc); }
+	.roomFill { fill: var(--editor-host-plan-canvas, #ffffff); }
+	.planGridLine { stroke: color-mix(in srgb, #b8b8b5 28%, transparent); }
+	.planGridMajor { stroke: color-mix(in srgb, #a5a5a1 38%, transparent); }
+	.wallOutline { stroke: var(--editor-host-ink, #555552); }
+	/* Preserve the one selected construction in blue after the mobile paper
+	   palette overrides the neutral wall outline. */
+	.wallOutline.selectedWall { stroke: var(--blue); }
+	.planReferenceMarkers { opacity: 0.82; }
+	.planScaleLabel,
+	.planOrientationLabel {
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		font-size: 8px;
+		font-weight: 500;
+	}
+
+	.toolRail .editorActionDock button {
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+		font-weight: 500;
+	}
+
+	/* 3D owns its single presentation deck; duplicating the 2D authoring dock
+	   below it makes the phone canvas feel crowded and hides the scene. */
+	.editorShell[data-view-mode="three-dimensional"] .editorActionDock {
+		display: none;
+	}
+
+	.planGridLine { stroke-width: 0.55; }
+	.planGridMajor { stroke-width: 0.78; }
+
+	.editorActionDock { border-radius:21px; }
+	.toolRail .editorActionDock button { min-height: 52px; }
+
+	/* Drawing a wall needs one editable dimension, not a competing inspector.
+	   Keep the value beside the thumb zone, immediately above the persistent
+	   tool dock, so the plan stays visible while consecutive walls are drawn. */
+	.editorShell .wallThicknessControl {
+		align-items: center;
+		backdrop-filter: blur(14px);
+		background:color-mix(in srgb, var(--surface) 95%, transparent);
+		border-color:color-mix(in srgb, var(--line) 76%, transparent);
+		border-radius:12px;
+		bottom: calc(max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))) + 72px);
+		box-shadow: 0 5px 14px color-mix(in srgb, var(--ink) 12%, transparent);
+		display: grid;
+		gap: 5px;
+		grid-template-columns: auto auto;
+		left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+		max-width: calc(100% - 20px);
+		padding: 7px 9px;
+		top: auto;
+		width: auto;
+	}
+
+	.editorShell .wallThicknessControl > span[aria-hidden="true"] {
+		color:var(--muted);
+		font-family: var(--font-mono);
+		font-size: 0.58rem;
+		font-weight: 800;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+	}
+
+	.editorShell .wallThicknessControl input {
+		background:transparent;
+		border:0;
+		color:var(--ink);
+		font-family: var(--font-display);
+		font-size: 16px;
+		font-weight: 800;
+		min-height: 28px;
+		padding: 0;
+		text-align: right;
+		width: 42px;
+	}
+
+	.editorShell .wallDraftActions,
+	.editorShell .wallMoveDraftActions,
+	.editorShell .windowDraftPanel form,
+	.editorShell .windowDraftPanel > div {
+		border-radius:20px;
+	}
+
+	/* Large enough to judge the silhouette before downloading the full model.
+	   The fixed row preserves the scroll rhythm and keeps the final action bar
+	   on screen after a card is selected. */
+	.catalogContent .catalogGrid { grid-auto-rows: 248px; }
+	.catalogContent .catalogCard { grid-template-rows: 160px minmax(80px, 1fr); }
+	.catalogContent .catalogThumbnail,
+	.catalogContent .catalogThumbnailFallback,
+	.catalogContent .greyboxPreview,
+	.catalogContent .customGlbCatalogPreview,
+	.catalogContent .customGlbCatalogPlaceholder {
+		height: 160px;
+		min-height: 160px;
+	}
+
+	.catalogContent .customGlbCatalogPreview canvas { height: 160px; }
+}
+
+/* P1a: the editor itself is a calm technical instrument. Its persistent
+   chrome is deliberately solid so the canvas remains the only textured
+   surface, matching the phone references without changing editor semantics. */
+.editorShell {
+	--editor-accent: #1976b9;
+	--editor-line:var(--editor-host-line, #d9e1e8);
+	--editor-primary: #1976b9;
+	--editor-selected: var(--editor-host-primary-soft, #e7f3fb);
+	--editor-status-top: calc(max(9px, var(--editor-safe-area-top, env(safe-area-inset-top))) + 116px);
+	background:var(--editor-host-surface, #fdfdfc);
+}
+
+.editorShell[data-view-mode="plan"] .storagePressure {
+	top: var(--editor-status-top);
+}
+
+.planScaleReference {
+	transform: translateY(calc(max(9px, var(--editor-safe-area-top, env(safe-area-inset-top))) - 9px));
+}
+
+.threeDimensionalMeasurementAction {
+	background:var(--editor-host-surface, #fff);
+	border:1px solid var(--editor-host-line, #d9e1e8);
+	border-radius:12px;
+	color:var(--editor-host-primary, #1976b9);
+	cursor: pointer;
+	font: 600 0.875rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	max-width: calc(100% - 24px);
+	min-height: 44px;
+	padding: 10px 14px;
+	position: absolute;
+	top: var(--editor-status-top);
+	z-index: 5;
+}
+
+.editorShell .sceneRecoveryNotices {
+	display: grid;
+	gap: 12px;
+	left: max(16px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	max-height: calc(100% - var(--editor-status-top) - 140px - var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	overflow-y: auto;
+	position: absolute;
+	right: max(16px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	top: var(--editor-status-top);
+	z-index: 6;
+}
+
+.sceneRecoveryNotices .sceneRecovery {
+	background:var(--editor-host-surface, #fff);
+	border:1px solid var(--editor-line);
+	border-radius:20px;
+	display: grid;
+	font-size: 0.875rem;
+	gap: 12px;
+	line-height: 1.4;
+	padding: 16px;
+}
+
+.sceneRecoveryNotices button {
+	background:var(--editor-primary);
+	border:0;
+	border-radius:12px;
+	color:#fff;
+	cursor: pointer;
+	font: inherit;
+	min-height: 44px;
+	padding: 10px 14px;
+}
+
+/* WebGL canvases can be promoted above normal painted siblings on mobile
+   Chromium/WebKit. A local stacking context and composited top bar keep its
+   actual controls hit-testable in both Plan and 3D. */
+.editorShell .canvasArea {
+	isolation: isolate;
+	z-index: 0;
+}
+
+.editorShell .editorTopBar {
+	background:var(--editor-host-surface, #fff);
+	backdrop-filter: none;
+	border-bottom-color:var(--editor-line);
+	grid-template-columns: minmax(58px, 1fr) minmax(44px, 1.7fr) auto 44px;
+	grid-template-rows: 44px 50px;
+	isolation: isolate;
+	transform: translateZ(0);
+	z-index: 12;
+}
+
+.editorShell .editorTopBar button {
+	min-height: 44px;
+	min-width: 44px;
+}
+
+.editorShell .editorSaveState {
+	grid-column: 3;
+	grid-row: 1;
+}
+
+/* A healthy local Project stays fully editable without a network connection.
+   This is deliberately a calm, non-interactive status line rather than an
+   outage card, scrim or secondary error surface. */
+.healthyOfflineStatus {
+	background:color-mix(in srgb, var(--editor-host-primary-soft, #eef5fb) 92%, var(--editor-host-surface, #ffffff));
+	border:1px solid color-mix(in srgb, var(--editor-host-primary, var(--editor-primary)) 20%, var(--editor-line));
+	border-radius:999px;
+	box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 7%, transparent);
+	color:var(--editor-host-muted, #50637a);
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+	font-size: 0.72rem;
+	font-weight: 500;
+	left: 50%;
+	margin: 0;
+	max-width: calc(100% - 32px - var(--editor-safe-area-left, env(safe-area-inset-left)) - var(--editor-safe-area-right, env(safe-area-inset-right)));
+	padding: 7px 12px;
+	pointer-events: none;
+	position: absolute;
+	top: var(--editor-status-top);
+	transform: translateX(-50%);
+	white-space: nowrap;
+	z-index: 11;
+}
+
+@media (max-width: 359px) {
+	.healthyOfflineStatus {
+		font-size: 0.68rem;
+		padding-inline: 10px;
+	}
+}
+
+/* Rare project actions stay reachable from the persistent header rather than
+   breaking the four-action dock into a detached fifth control. */
+.editorHeaderMenuTrigger {
+	align-items: center;
+	background:transparent;
+	border:0;
+	border-radius:12px;
+	color:var(--editor-host-muted, #6b778d);
+	cursor: pointer;
+	display: inline-flex;
+	grid-column: 4;
+	grid-row: 1;
+	justify-content: center;
+	min-height: 40px;
+	min-width: 40px;
+	padding: 0;
+}
+
+.editorHeaderMenuTrigger svg {
+	display: block;
+	height: 22px;
+	width: 22px;
+}
+
+.editorHeaderMenuTrigger[aria-expanded="true"] {
+	background:var(--editor-selected);
+	color:var(--editor-host-primary, var(--editor-primary));
+}
+
+.editorShell .editorViewSwitch {
+	background:var(--editor-host-surface, #fff);
+	border-color:var(--editor-line);
+	box-shadow: none;
+}
+
+.editorShell .editorViewSwitch button[aria-pressed="true"] {
+	background:var(--editor-primary);
+	box-shadow: none;
+	color:#fff;
+}
+
+.editorShell .editorActionDock {
+	background:var(--editor-host-surface, #fff);
+	backdrop-filter: none;
+	border-color:var(--editor-line);
+	border-radius:28px;
+	box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.toolRail .editorActionDock button[aria-pressed="true"] {
+	background:var(--editor-selected);
+	box-shadow: inset 0 0 0 1px #cae4f4;
+	color:var(--editor-host-primary, var(--editor-primary));
+}
+
+.editorShell .editorActionMenu {
+	background:var(--editor-host-surface, #fff);
+	backdrop-filter: none;
+	border-color:var(--editor-line);
+	border-radius:28px;
+	box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent);
+	z-index: 9;
+}
+
+.editorShell .wallThicknessControl {
+	background:var(--editor-host-surface, #fff);
+	backdrop-filter: none;
+	border-color:var(--editor-line);
+}
+
+@media (max-width: 559px) {
+	/* The sheet is a sibling of the rail, so the rail can safely contain the
+	   four primary actions without clipping the rare-action sheet. */
+	.editorShell .toolRail {
+		bottom: max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+		overflow: hidden;
+	}
+
+	.editorShell .editorActionMenu {
+		bottom: calc(max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))) + 68px);
+		left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+		right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	}
+
+	.editorShell .wallThicknessControl {
+		bottom: calc(max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))) + 72px);
+	}
+}
+
+@media (max-width: 359px) {
+	.editorShell .editorTopBar {
+		grid-template-columns: minmax(48px, 1fr) minmax(0, 1.45fr) auto 36px;
+	}
+
+	.editorHeaderMenuTrigger {
+		min-height: 36px;
+		min-width: 36px;
+	}
+}
+
+/* P1b: creating an opening is a single deliberate publish flow.  The sheet is
+   intentionally solid and quiet so it reads as part of the technical plan,
+   not a floating translucent inspector. */
+.editorShell .openingCreationSheet {
+	align-items: end;
+	bottom: 0;
+	display: grid;
+	left: 0;
+	margin: 0;
+	position: absolute;
+	right: 0;
+	top: 0;
+	z-index: 20;
+}
+
+.editorShell .openingCreationSheet form {
+	background:var(--editor-host-surface, #fff);
+	border:1px solid var(--editor-line);
+	border-bottom:0;
+	border-radius:24px 24px 0 0;
+	box-shadow: 0 -12px 32px color-mix(in srgb, var(--ink) 15%, transparent);
+	color:var(--ink);
+	display: grid;
+	gap: 13px;
+	padding: 33px 20px calc(18px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	position: relative;
+}
+
+.editorShell .openingCreationSheetHandle {
+	background:#c5c5c2;
+	border-radius:999px;
+	height: 4px;
+	left: 50%;
+	position: absolute;
+	top: 12px;
+	transform: translateX(-50%);
+	width: 38px;
+}
+
+.editorShell .openingCreationSheet strong {
+	font: 750 1.08rem/1.15 var(--font-display);
+	letter-spacing: -0.025em;
+}
+
+.editorShell .openingCreationHost {
+	color:var(--muted);
+	font: 750 0.71rem/1.2 var(--font-mono);
+	letter-spacing: 0.02em;
+	margin: -5px 0 1px;
+}
+
+.editorShell .openingCreationKindPicker {
+	border:0;
+	display: grid;
+	gap: 8px;
+	grid-template-columns: 1fr 1fr;
+	margin: 0;
+	min-inline-size: 0;
+	padding: 0;
+}
+
+.editorShell .openingCreationKindPicker button {
+	background:var(--editor-host-surface, #fff);
+	border:1px solid var(--editor-line);
+	border-radius:10px;
+	color:var(--muted);
+	cursor: pointer;
+	font: 720 0.82rem/1 var(--font-display);
+	min-height: 42px;
+	padding: 0 10px;
+}
+
+.editorShell .openingCreationKindPicker button[aria-pressed="true"] {
+	background:var(--editor-selected);
+	border-color:#8dc5e3;
+	color:var(--editor-host-primary, var(--editor-primary));
+}
+
+.editorShell .openingCreationFields {
+	display: grid;
+	gap: 9px;
+}
+
+.editorShell .openingCreationFields label {
+	align-items: center;
+	display: grid;
+	font: 680 0.84rem/1.2 var(--font-display);
+	gap: 10px;
+	grid-template-columns: minmax(0, 1fr) 142px;
+	position: relative;
+}
+
+.editorShell .openingCreationFields label::after {
+	color:var(--muted);
+	content: "мм";
+	font: 750 0.66rem/1 var(--font-mono);
+	pointer-events: none;
+	position: absolute;
+	right: 13px;
+}
+
+.editorShell .openingCreationFields input {
+	background:var(--editor-host-surface, #fff);
+	border:1px solid var(--editor-line);
+	border-radius:10px;
+	color:var(--ink);
+	font: 700 0.83rem/1 var(--font-mono);
+	min-height: 42px;
+	padding: 0 32px 0 10px;
+	text-align: center;
+}
+
+.editorShell .openingCreationFields input[aria-invalid="true"] {
+	border-color:var(--danger);
+}
+
+.editorShell .openingCreationSheet p[role="alert"] {
+	color:var(--danger);
+	font: 650 0.77rem/1.32 var(--font-display);
+	margin: -2px 0 0;
+}
+
+.editorShell .openingCreationActions {
+	display: grid;
+	gap: 10px;
+	grid-template-columns: 1fr 1fr;
+	margin-top: 2px;
+}
+
+.editorShell .openingCreationActions button {
+	background:var(--editor-host-surface, #fff);
+	border:1px solid #8dc5e3;
+	border-radius:11px;
+	color:var(--editor-host-primary, var(--editor-primary));
+	cursor: pointer;
+	font: 760 0.85rem/1 var(--font-display);
+	min-height: 50px;
+	padding: 0 10px;
+}
+
+.editorShell .openingCreationActions button[type="submit"] {
+	background:var(--editor-primary);
+	border-color:var(--editor-host-primary, var(--editor-primary));
+	box-shadow: 0 5px 12px color-mix(in srgb, var(--editor-primary) 23%, transparent);
+	color:#fff;
+}
+
+.editorShell .openingCreationKindPicker button:disabled,
+.editorShell .openingCreationActions button:disabled {
+	cursor: not-allowed;
+	opacity: 0.48;
+}
+
+.editorShell .openingCreationPreview {
+	fill: none;
+	stroke: var(--editor-primary);
+	stroke-dasharray: 5 3;
+	stroke-linecap: butt;
+}
+
+.editorShell .doorOpeningMarker {
+	fill: none;
+	stroke: var(--editor-host-ink, #4e4d49);
+	stroke-linecap: butt;
+}
+
+.editorShell .doorOpeningMarker.selectedOpening {
+	stroke: var(--editor-primary);
+}
+
+/* A Window remains a neutral wall-hosted Opening, but its two slim parallel
+   panes distinguish it from a Door's single calm threshold line in Plan. */
+.editorShell .windowOpeningPane {
+	fill: none;
+	stroke: var(--editor-host-ink, #4e4d49);
+	stroke-linecap: butt;
+}
+
+.editorShell .windowOpeningPane.selectedOpening {
+	stroke: var(--editor-primary);
+}
+
+.editorShell .windowOpeningPane.previewCollisionDoor {
+	stroke: var(--danger);
+}
+
+.editorShell .openingMarkerHitArea {
+	cursor: grab;
+	fill: transparent;
+	stroke: transparent;
+}
+
+@media (max-width: 559px) {
+	.editorShell .openingCreationSheet form {
+		max-block-size: calc(var(--editor-viewport-height, 100dvh) - 8px - var(--editor-safe-area-top, env(safe-area-inset-top)));
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.editorShell .openingCreationFields input {
+		font-size: 16px;
+	}
+}
+
+/* A catalogue request failure is local to browsing, never a Project-level
+   recovery state. Keep the editable Plan visible and put one deliberate retry
+   choice in the same calm bottom-sheet language as the approved reference. */
+.catalogOutageDialog {
+	background:var(--surface);
+	border:1px solid var(--line);
+	border-radius:26px 26px 0 0;
+	bottom: 0;
+	box-shadow: 0 -14px 38px color-mix(in srgb, var(--ink) 21%, transparent);
+	display: grid;
+	gap: 12px;
+	left: 50%;
+	max-width: min(480px, 100vw);
+	padding: 0 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	position: fixed;
+	transform: translateX(-50%);
+	width: 100%;
+	z-index: 24;
+}
+
+.catalogOutageDialog::before {
+	align-self: center;
+	background:color-mix(in srgb, var(--ink) 25%, transparent);
+	border-radius:999px;
+	content: "";
+	display: block;
+	height: 5px;
+	margin: 10px 0 1px;
+	width: 38px;
+}
+
+.catalogOutageDialog strong {
+	font-family: var(--font-display);
+	font-size: 1.22rem;
+	letter-spacing: -0.035em;
+	line-height: 1.14;
+}
+
+.catalogOutageDialog p {
+	color:var(--muted);
+	font-size: 0.82rem;
+	line-height: 1.42;
+	margin: -4px 0 4px;
+}
+
+.catalogOutageActions {
+	display: grid;
+	gap: 10px;
+}
+
+.catalogOutageActions button {
+	background:var(--blue);
+	border:1px solid var(--blue);
+	border-radius:13px;
+	box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 22%, transparent);
+	color:var(--surface);
+	cursor: pointer;
+	font: 760 0.85rem/1 var(--font-display);
+	min-height: 54px;
+	padding: 0 12px;
+}
+
+.catalogOutageActions button + button {
+	background:var(--surface);
+	border-color:color-mix(in srgb, var(--blue) 58%, var(--line));
+	box-shadow: none;
+	color:var(--editor-host-primary, var(--blue));
+}
+
+.catalogOutageActions button:focus-visible {
+	outline:3px solid color-mix(in srgb, var(--editor-host-primary, var(--blue)) 38%, transparent);
+	outline-offset: 2px;
+}
+
+@media (min-width: 560px) {
+	.catalogOutageDialog {
+		bottom: 18px;
+		border-radius:22px;
+		padding-bottom: 18px;
+	}
+}
+
+/* On a phone, choosing a published model is a focused inspection state, not
+   a cramped extra row in the catalogue grid. The browse layer becomes
+   transparent, so the person still sees the editable Plan while preparation
+   remains explicitly non-durable. */
+@media (max-width: 559px) {
+	.catalogDialog[data-focused-preloaded-selection="true"] {
+		background:transparent;
+		display: block;
+		overflow: visible;
+		padding: 0;
+		pointer-events: none;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .dialogHeading,
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogContent {
+		display: none;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementBar {
+		align-items: stretch;
+		background:var(--surface);
+		border:0;
+		border-radius:28px 28px 0 0;
+		bottom: 0;
+		box-shadow: 0 -14px 38px color-mix(in srgb, var(--ink) 21%, transparent);
+		display: grid;
+		gap: 16px;
+		grid-template-columns: minmax(0, 1fr);
+		left: 0;
+		min-height: min(46dvh, 392px);
+		padding: 0 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+		pointer-events: auto;
+		position: absolute;
+		right: 0;
+		width: auto;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementBar::before {
+		align-self: center;
+		background:color-mix(in srgb, var(--ink) 25%, transparent);
+		border-radius:999px;
+		content: "";
+		display: block;
+		height: 5px;
+		justify-self: center;
+		margin: 10px 0 -2px;
+		width: 38px;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementSelection {
+		align-items: start;
+		gap: 14px;
+		grid-template-columns: 112px minmax(0, 1fr);
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementPreview {
+		border-radius:18px;
+		height: 136px;
+		width: 112px;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementPreview > span {
+		font-size: 2rem;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementCopy {
+		display: contents;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementBar strong {
+		align-self: end;
+		font-size: 1.32rem;
+		grid-column: 2;
+		line-height: 1.12;
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementCopy > small:not([data-testid]) {
+		align-self: start;
+		font-family: var(--font-display);
+		font-size: 1.02rem;
+		font-weight: 500;
+		grid-column: 2;
+		line-height: 1.25;
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] [data-testid="catalog-selected-resource-metadata"] {
+		display: none;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogModelLoadingStatus,
+	.catalogDialog[data-focused-preloaded-selection="true"] [data-testid="preloaded-catalog-ready-status"],
+	.catalogDialog[data-focused-preloaded-selection="true"] [data-testid="preloaded-catalog-resource-status"] {
+		border-top:1px solid color-mix(in srgb, var(--line) 68%, transparent);
+		grid-column: 1 / -1;
+		margin-top: 2px;
+		padding-top: 18px;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogModelLoadingStatus {
+		align-items: stretch;
+		gap: 10px;
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogModelLoadingStatus span,
+	.catalogDialog[data-focused-preloaded-selection="true"] [data-testid="preloaded-catalog-ready-status"],
+	.catalogDialog[data-focused-preloaded-selection="true"] [data-testid="preloaded-catalog-resource-status"] {
+		color:var(--ink);
+		font-family: var(--font-display);
+		font-size: 1.06rem;
+		font-weight: 500;
+		height: auto;
+		line-height: 1.3;
+		overflow: visible;
+		text-overflow: clip;
+		white-space: normal;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogModelLoadingStatus span::after {
+		content: none;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogModelLoadingStatus progress {
+		height: 8px;
+		width: 100%;
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] [data-testid="preloaded-catalog-ready-status"] {
+		color:var(--ink);
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] [data-testid="preloaded-catalog-resource-status"] {
+		color:var(--danger);
+	}
+
+	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementBar > button {
+		border-radius:13px;
+		font: 760 0.92rem/1 var(--font-display);
+		min-height: 54px;
+		padding: 0 12px;
+		width: 100%;
+	}
+
+	.catalogDialog[data-preloaded-resource-state="loading"] .catalogPlacementBar > button,
+	.catalogDialog[data-preloaded-resource-state="unavailable"] .catalogPlacementBar > button + button {
+		background:var(--surface);
+		border-color:color-mix(in srgb, var(--blue) 58%, var(--line));
+		box-shadow: none;
+		color:var(--editor-host-primary, var(--blue));
+	}
+}
+
+.catalogContent .catalogCardDetails .catalogCardMeta > .catalogCardHost { display: inline-flex; white-space: normal; }
+
+/* Header controls keep their intrinsic width; text enlargement may add rows.
+   Canvas offsets follow the measured header instead of a fixed row count. */
+.editorShell .editorTopBar { display: flex; flex-wrap: wrap; }
+.editorShell .editorBackAction { flex: 0 0 auto; max-width: 100%; white-space: nowrap; }
+.editorShell .projectIdentity { flex: 1 1 44px; min-width: 44px; }
+.editorShell .editorHeaderMenuTrigger { flex: 0 0 44px; }
+.editorShell .editorViewRow { flex: 0 0 100%; }
+.editorShell .editorSaveState { display: block; line-height: 1.3; overflow: visible; overflow-wrap: anywhere; white-space: normal; }
+.toolRail .editorActionDock button { height: auto; line-height: 1.2; min-height: 52px; white-space: normal; }
+.toolRail .editorActionDock button span { overflow-wrap: anywhere; white-space: normal; }
+.editorShell[data-view-mode="three-dimensional"] [data-testid="item-placement-durable-status"] { top: calc(var(--editor-header-bottom, 116px) + 10px); }
+
+.catalogContent .catalogGrid { grid-auto-rows: minmax(214px, auto); }
+.customCatalogEntry { display: grid; grid-template-rows: minmax(214px, 1fr) auto auto; gap: 6px; min-width: 0; }
+.customCatalogEntry > .catalogCard { width: 100%; }
+.customCatalogEntry > small { color:var(--muted); font-size: .68rem; line-height: 1.35; overflow-wrap: anywhere; }
+.customCatalogRemove { background:var(--surface); border:1px solid var(--line); border-radius:10px; color:var(--ink); cursor: pointer; font: inherit; font-size: .78rem; min-height: 44px; padding: 8px; }
+.customCatalogRemove:focus-visible { outline:3px solid var(--editor-host-primary, var(--blue)); outline-offset: 2px; }
+
+/* Direct manipulation and compact phone inspectors, October 2026. */
+.openingMoveDot { fill: var(--blue); stroke: white; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.editorShell .selectionInspectorPanel .panelHeading { align-items: center; column-gap: 10px; min-height: 48px; }
+.editorShell .selectionInspectorPanel .selectionInspectorToggle { align-self: center; min-height: 48px; min-width: 48px; padding: 8px 12px; line-height: 1.25; height: auto; }
+.editorShell .selectionWallInspectorCategory { display: none; }
+.editorShell .selectionWallInspectorIcon { align-self: center; width: 36px; height: 36px; margin: 0; }
+.editorShell .selectionWallInspectorIcon svg { width: 24px; height: 24px; }
+.editorShell .selectionInspectorPanel:has(.selectionWallInspectorIcon) .panelHeading { display: grid; grid-template-columns: 36px minmax(0,1fr) auto; grid-template-rows: auto; }
+.editorShell .selectionInspectorPanel:has(.selectionWallInspectorIcon) .panelHeading > strong { grid-column: 2; grid-row: 1; align-self: center; margin: 0; font-size: 1rem; line-height: 1.3; overflow-wrap: anywhere; }
+.editorShell .selectionInspectorPanel:has(.selectionWallInspectorIcon) .panelHeading > .selectionWallInspectorIcon { grid-column: 1; grid-row: 1; }
+.editorShell .selectionInspectorPanel:has(.selectionWallInspectorIcon) .panelHeading > button { grid-column: 3; grid-row: 1; }
+.editorShell .selectionInspectorCue { display: none; }
+.editorShell .openingCreationFields input, .editorShell .openingDraftFields input { min-height: 48px; font-size: max(16px,1rem); }
+.editorShell .openingCreationKindPicker button, .editorShell .openingCreationActions button, .editorShell .windowDraftPanel button, .editorShell .openingRow button { min-height: 48px; line-height: 1.3; padding: 10px 12px; }
+.editorShell .openingCreationActions { align-items: stretch; }
+
+.editorShell .selectionInspectorPanel:has(.selectionWallInspectorIcon) .panelHeading > .selectionWallInspectorIcon { align-self: center; width: 36px; height: 36px; }
+.editorShell .selectionInspectorPanel:has(.selectionWallInspectorIcon) .panelHeading > strong { white-space: normal; overflow: visible; }
+.editorShell .openingCreationSheet form { max-height: var(--editor-viewport-height, 100dvh); min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
+
+.drawingDimensions { pointer-events: none; }
+.drawingDimensions line { stroke: color-mix(in srgb, var(--ink) 72%, transparent); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.drawingDimensions text { fill: var(--ink); font: 500 14px/1 var(--font-mono); paint-order: stroke; stroke: var(--canvas); stroke-width: 5px; stroke-linejoin: round; }
+
+.openingMoveDotInvalid { fill: var(--danger); }
+[data-testid="opening-move-feedback"][data-invalid="true"] { color:var(--danger); }
+
+
+
+/* Display preferences share the view row without adding a canvas overlay. */
+.editorViewRow { align-items: center; display: flex; gap: 8px; grid-column: 1 / -1; grid-row: 2; justify-content: center; min-width: 0; width: 100%; }
+.editorShell .editorViewRow .editorViewSwitch { flex: 1 1 180px; grid-column: auto; grid-row: auto; max-width: 266px; min-width: 0; width: auto; }
+.dimensionFilterTrigger { background:var(--surface); border:1px solid var(--line-soft); border-radius:10px; color:var(--ink); cursor: pointer; flex: 0 1 auto; font: 500 .78rem/1.2 var(--font-display); min-height: 48px; min-width: 76px; overflow-wrap: anywhere; padding: 8px 12px; }
+.dimensionFilterTrigger:disabled { cursor: not-allowed; opacity: .45; }
+.dimensionFilterTrigger:focus-visible { outline:3px solid var(--editor-host-primary, var(--blue)); outline-offset: 2px; }
+
+/* Release controls share the same touch geometry and quiet surface styling. */
+.dimensionFilterTrigger { align-items: center; display: inline-flex; gap: 6px; justify-content: center; min-width: 48px; }
+.dimensionFilterTrigger svg { flex: 0 0 20px; height: 20px; width: 20px; }
+.projectDirectoryCard { grid-template-columns: minmax(0, 1fr) 44px 44px; }
+.projectDirectoryCard .projectDeleteAction { align-items: center; border:1px solid var(--line-soft); border-radius:12px; color:var(--danger); display: flex; height: 44px; justify-content: center; padding: 10px; width: 44px; }
+.projectDeleteAction svg { height: 22px; width: 22px; }
+.canvasHistory, .planZoomControls { align-items: center; background:var(--surface); border:1px solid var(--line); border-radius:16px; bottom: calc(96px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 4px 16px #19283c14; display: flex; gap: 2px; padding: 4px; position: absolute; z-index: 7; }
+.canvasHistory { left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left))); }
+.editorShell[data-view-mode="three-dimensional"] .canvasHistory { bottom: auto; top: calc(var(--editor-header-bottom, 116px) + 8px); }
+.planZoomControls { right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right))); }
+.canvasHistory button, .planZoomControls button { align-items: center; background:transparent; border:0; border-radius:12px; color:var(--ink); cursor: pointer; display: flex; font: 500 24px/1 var(--font-display); height: 44px; justify-content: center; min-height: 44px; min-width: 44px; padding: 0; width: 44px; }
+.canvasHistory button:disabled, .planZoomControls button:disabled { color:var(--muted); cursor: default; opacity: .45; }
+.canvasHistory button:focus-visible, .planZoomControls button:focus-visible { outline:2px solid var(--editor-host-primary, var(--blue)); outline-offset: -2px; }
+.editorShell .selectionInspectorPanel { bottom: calc(160px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); max-height: calc(var(--editor-viewport-height, 100dvh) - 292px - var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }
+.openingContext { align-items: center; background:var(--surface); border:1px solid var(--line); border-radius:18px; bottom: calc(160px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 4px 16px #19283c14; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto auto; left: 12px; padding: 12px; position: absolute; right: 12px; z-index: 7; }
+.openingContext strong { grid-column: 1; }
+.openingContext span { color:var(--muted); font-size: .8rem; grid-column: 1; }
+.openingContext button { background:var(--surface); border:1px solid var(--line); border-radius:12px; color:var(--editor-host-primary, var(--blue)); font: inherit; grid-row: 1 / 3; min-height: 44px; padding: 8px 12px; }
+.openingContext button:first-of-type { grid-column: 2; }
+.openingContext button:last-of-type { grid-column: 3; }
+.editorShell .returnToDrawing { background:var(--editor-host-primary-fill, var(--blue)); border:2px solid var(--surface); bottom: calc(96px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 4px 16px #1976b940; color:#fff; font-size: 1.75rem; height: 52px; left: calc(50% - 26px); width: 52px; z-index: 7; }
+.editorShell .canvasError { background:var(--surface); border:1px solid var(--line);  border-radius:16px; bottom: auto; box-shadow: 0 8px 24px #19283c20; left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left))); max-width: none; padding: 14px 54px 14px 16px; right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right))); top: calc(var(--editor-header-bottom, 116px) + 8px); z-index: 15; }
+.notificationClose { align-items: center; background:transparent; border:0; border-radius:10px; color:var(--ink); cursor: pointer; display: flex; font: 500 24px/1 var(--font-display); height: 44px; justify-content: center; position: absolute; right: 4px; top: 4px; width: 44px; }
+.catalogDialog, .catalogContent, .catalogAuthoringContent, .placeholderComposer { min-width: 0; overflow-x: hidden; }
+.catalogContent > .catalogAuthoring { order: -10; }
+.catalogContent > .catalogInlineError { order: -9; }
+.catalogInlineError { align-items: center; background:var(--editor-host-warning-soft, #fff4ed); border:1px solid #d8aa8b; border-radius:14px; color:var(--editor-host-warning, #843e20); display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+.catalogInlineError strong { flex: 1 1 170px; font-size: .9rem; }
+.catalogInlineError button { background:var(--surface); border:1px solid currentColor; border-radius:10px; color:inherit; font: inherit; min-height: 44px; padding: 8px 12px; }
+.catalogCategoryTabs { flex-wrap: wrap; margin: 0; overflow: visible; padding: 0; }
+.catalogCategoryTabs button { flex: 1 1 auto; min-height: 44px; min-width: 0; white-space: normal; }
+.catalogCategoryTabs button[aria-pressed="true"] { background:var(--editor-host-primary-fill, var(--blue)); color:#fff; }
+.catalogAuthoringContent .placeholderComposer > .primaryAction { background:var(--editor-host-primary-fill, var(--blue)); border:1px solid var(--blue); border-radius:12px; color:#fff; font: 600 .9rem/1.4 var(--font-display); min-height: 48px; padding: 12px 16px; width: 100%; }
+.wallBody { stroke: none; }
+.wallBodyOutline { fill: none; stroke: var(--editor-host-ink, #55534f); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.wallHatchLine { stroke: #aaa59d; stroke-width: .7; vector-effect: non-scaling-stroke; }
+.canvasHistory { margin: 0; min-inline-size: 0; }
+.catalogAuthoringContent .catalogImport > button, .catalogAuthoringContent .catalogImportStatus button { min-height: 44px; }
+.catalogImportStatus, .catalogCardMeta { font-family: var(--font-display); }
+.catalogContent .catalogCard strong, .catalogContent .catalogCardDetails span, .catalogContent .catalogCard small { overflow-wrap: anywhere; }
+.catalogAuthoringContent input { background:var(--surface); border:1px solid var(--line); border-radius:12px; color:var(--ink); font: 400 1rem/1.4 var(--font-display); min-height: 48px; min-width: 0; padding: 10px 12px; width: 100%; }
+@media (max-width: 360px) {
+	.openingContext { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+	.openingContext strong, .openingContext span { grid-column: 1 / -1; }
+	.openingContext button { grid-row: 3; }
+	.openingContext button:first-of-type { grid-column: 1; }
+	.openingContext button:last-of-type { grid-column: 2; }
+}
+.itemPlacementIdentity { display: block; font: 650 .9rem/1.3 var(--font-display); overflow-wrap: anywhere; text-align: center; }
+/* Old in-room metric blocks duplicate the drawing dimensions and bypass filters. */
+.roomMeasurement { display: none; }
+.editorTopBar { grid-template-rows: auto auto; }
+
+.placementRotationActions { align-items: center; display: flex; gap: 16px; justify-content: center; }
+.placementRotationActions button { background:var(--surface); border:1px solid var(--line-soft); border-radius:10px; color:var(--ink); cursor: pointer; font: 600 1.4rem/1 var(--font-display); min-height: 48px; min-width: 52px; }
+.placementRotationActions output { font: 650 .9rem/1.3 var(--font-display); min-width: 48px; text-align: center; }
+.placementRotationControl { color:var(--editor-host-primary, var(--blue)); cursor: grab; }
+
+/* Forms and draft actions occupy their own space above the canvas controls. */
+.editorShell .contourPanel,
+.editorShell .wallDraftActions,
+.editorShell .wallMoveDraftActions {
+	background:var(--surface);
+	backdrop-filter: none;
+	border:1px solid var(--editor-line);
+	border-radius:20px;
+	bottom: calc(160px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	box-shadow: 0 8px 24px rgb(25 40 60 / 10%);
+	font-family: var(--font-display);
+	gap: 12px;
+	left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+	max-height: calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 116px) - 172px - var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	max-width: none;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 16px;
+	right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	scroll-padding-block: 12px;
+	top: auto;
+	transform: none;
+	width: auto;
+	z-index: 6;
+}
+
+.editorShell .contourPanel > span,
+.editorShell .wallDraftActions span,
+.editorShell .wallMoveDraftActions span {
+	color:var(--muted);
+	font: 400 .875rem/1.4 var(--font-display);
+	letter-spacing: normal;
+	overflow-wrap: anywhere;
+}
+
+.editorShell .contourFields {
+	gap: 12px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+}
+
+.editorShell .contourFields label {
+	font: 500 .875rem/1.4 var(--font-display);
+	gap: 6px;
+}
+
+.editorShell .contourFields input {
+	background:var(--surface);
+	border:1px solid var(--editor-line);
+	border-radius:12px;
+	font: 400 1rem/1.4 var(--font-display);
+	min-height: 48px;
+	min-width: 0;
+	padding: 10px 12px;
+}
+
+.editorShell .wallDraftActions > div,
+.editorShell .wallMoveDraftActions > div {
+	gap: 12px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+}
+
+.editorShell .contourPanel button,
+.editorShell .wallDraftActions button,
+.editorShell .wallMoveDraftActions button {
+	background:var(--surface);
+	border:1px solid var(--editor-line);
+	border-radius:12px;
+	box-shadow: none;
+	color:var(--editor-host-primary, var(--editor-primary));
+	font: 600 1rem/1.35 var(--font-display);
+	min-height: 48px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	padding: 12px;
+	white-space: normal;
+}
+
+.editorShell .contourPanel .primaryAction,
+.editorShell .wallDraftActions button:first-child,
+.editorShell .wallMoveDraftActions button:first-child {
+	background:var(--editor-primary);
+	border-color:var(--editor-host-primary, var(--editor-primary));
+	color:#fff;
+}
+
+/* The overflow menu is an independent dialog, never a row in the editor. */
+.editorShell .editorActionMenu {
+	background:var(--surface);
+	border:1px solid var(--editor-line);
+	border-radius:24px;
+	bottom: auto;
+	box-shadow: 0 12px 36px rgb(25 40 60 / 16%);
+	gap: 10px;
+	grid-template-columns: minmax(0, 1fr);
+	left: auto;
+	margin: 0;
+	max-height: calc(var(--editor-viewport-height, 100dvh) - max(12px, var(--editor-safe-area-top, env(safe-area-inset-top))) - max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))));
+	max-width: calc(100vw - 24px);
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	padding: 16px;
+	position: fixed;
+	right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	scroll-padding-block: 12px;
+	top: max(12px, var(--editor-safe-area-top, env(safe-area-inset-top)));
+	width: min(380px, calc(100vw - 24px));
+}
+
+.editorShell dialog.editorActionMenu:not([open]) { display: none; }
+.editorActionMenu::backdrop { background:rgb(11 23 32 / 32%); }
+.editorActionMenu .editorActionMenuHandle { display: none; }
+.editorActionMenu .editorActionMenuHeader { gap: 12px; padding: 0 0 4px; }
+.editorActionMenu .editorActionMenuHeader span { font: 650 1.125rem/1.3 var(--font-display); }
+.editorActionMenu button,
+.editorActionMenu .editorActionMenuHeader button {
+	background:var(--surface);
+	border:1px solid var(--editor-line);
+	border-radius:12px;
+	color:var(--ink);
+	font: 500 1rem/1.4 var(--font-display);
+	min-height: 48px;
+	min-width: 44px;
+	overflow-wrap: anywhere;
+	padding: 12px;
+	white-space: normal;
+}
+.editorActionMenu .editorActionMenuHeader button { border-color:transparent; color:var(--editor-host-primary, var(--editor-primary)); }
+.editorActionMenu .menuDangerAction { background:var(--surface); border-color:var(--editor-line); color:var(--danger); }
+
+.wallBody[data-selected="true"] { fill: var(--editor-host-primary-soft, #d8ebfa); }
+.wallBodyOutline[data-selected="true"] { stroke: var(--editor-host-primary, #1976b9); stroke-width: 2.5; }
+
+.catalogDialog .dialogHeading > button {
+	align-items: center;
+	display: flex;
+	flex: 0 0 48px;
+	font: 400 24px/1 var(--font-display);
+	height: 48px;
+	justify-content: center;
+	min-height: 48px;
+	min-width: 48px;
+	padding: 0;
+	width: 48px;
+}
+
+.catalogCategoryTabs button[data-testid="catalog-category-filter"] { padding: 10px 12px; }
+.catalogCategoryTabs .catalogCategoryGlyph { flex: 0 0 32px; }
+.catalogCategoryTabs .catalogCategoryLabel {
+	font: 600 .875rem/1.4 var(--font-display);
+	min-width: 0;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.editorShell .selectionInspectorPanel[data-testid="selected-wall-inspector"] {
+	background:var(--surface);
+	border:1px solid var(--editor-line);
+	border-radius:20px;
+	gap: 12px;
+	max-height: calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 116px) - 172px - var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scroll-padding-block: 12px;
+}
+.editorShell .selectionInspectorPanel[data-testid="selected-wall-inspector"] button {
+	background:var(--surface);
+	border:1px solid var(--editor-line);
+	border-radius:12px;
+	color:var(--editor-host-primary, var(--editor-primary));
+	font: 600 .875rem/1.4 var(--font-display);
+	min-height: 48px;
+	min-width: 44px;
+	overflow-wrap: anywhere;
+	padding: 12px;
+	white-space: normal;
+}
+.editorShell .selectionInspectorPanel[data-testid="selected-wall-inspector"] .deleteAction { color:var(--danger); }
+
+/* The dock can grow with text size, long translated labels and safe areas. */
+.editorShell[data-view-mode="plan"] .canvasHistory,
+.editorShell .planZoomControls,
+.editorShell .returnToDrawing { bottom: calc(var(--editor-dock-inset, 84px) + 12px); }
+
+.editorShell .contourPanel,
+.editorShell .wallDraftActions,
+.editorShell .wallMoveDraftActions,
+.editorShell .selectionInspectorPanel[data-testid="selected-wall-inspector"],
+.editorShell .openingContext {
+	bottom: calc(var(--editor-dock-inset, 84px) + 76px);
+	max-height: calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 116px) - var(--editor-dock-inset, 84px) - 88px);
+}
+
+
+.starterProjectStack { display: contents; }
+.editorShell .starterProjectStack[data-has-storage-notice="true"] {
+    bottom: calc(var(--editor-dock-inset, 84px) + 76px);
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    position: absolute;
+    right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+    scroll-padding-block: 12px;
+    top: calc(var(--editor-header-bottom, 116px) + 12px);
+    z-index: 6;
+}
+.editorShell .starterProjectStack[data-has-storage-notice="true"] > .storagePressure,
+.editorShell .starterProjectStack[data-has-storage-notice="true"] > .contourPanel {
+    bottom: auto;
+    left: auto;
+    max-height: none;
+    max-width: none;
+    overflow: visible;
+    position: static;
+    right: auto;
+    top: auto;
+    transform: none;
+    width: 100%;
+}
+.editorShell .starterProjectStack .storagePressure {
+    background:var(--surface);
+    border:1px solid var(--editor-line);
+    border-radius:20px;
+    box-shadow: none;
+    gap: 12px;
+    padding: 16px;
+}
+.editorShell .starterProjectStack .storagePressure button {
+    border:1px solid var(--editor-line);
+    border-radius:12px;
+    color:var(--editor-host-primary, var(--editor-primary));
+    min-height: 48px;
+    padding: 12px;
+}
+
+/* These sheets are fixed to the visible host rectangle while the keyboard is open. */
+main[data-editor-host="telegram"] .roomDirectoryDialog, main[data-editor-host="telegram"] .catalogDialog { height: var(--editor-viewport-height, 100dvh); bottom: auto; }
+.catalogOutageDialog { bottom: calc(100dvh - var(--editor-viewport-height, 100dvh)); }
+
+/* Qualified copies need room for a readable source at enlarged text sizes. */
+.scopedProjectDirectory .projectDirectoryCard { grid-template-columns: minmax(0, 1fr) 44px 44px; }
+.scopedProjectDirectory .projectCardOpen { grid-column: 1 / -1; grid-row: 1; }
+.scopedProjectDirectory .projectDeleteAction { grid-column: 2; grid-row: 2; }
+.scopedProjectDirectory .projectDirectoryActions { grid-column: 3; grid-row: 2; }
+.scopedProjectDirectory .projectDirectoryActions summary span { font-size: 20px; line-height: 1; }
+
+.scopedProjectDirectory .projectDirectoryActions[open] { grid-column: 1 / -1; grid-row: 3; }

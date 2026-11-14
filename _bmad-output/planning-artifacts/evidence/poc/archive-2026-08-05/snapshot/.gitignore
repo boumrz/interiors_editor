@@ -1,0 +1,25 @@
+# Local operating-system files
+.DS_Store
+
+# Disposable waiver-spike dependencies and generated reports.
+# Source, tests, lockfiles, and planning evidence remain visible to Git.
+_bmad-output/implementation-artifacts/spikes/**/node_modules/
+_bmad-output/implementation-artifacts/spikes/**/.fallow/
+_bmad-output/implementation-artifacts/spikes/**/coverage/
+_bmad-output/implementation-artifacts/spikes/**/test-results/
+_bmad-output/implementation-artifacts/spikes/**/artifacts/
+_bmad-output/implementation-artifacts/spikes/**/.stryker-tmp/
+
+# Transient interactive-browser captures. Durable evidence belongs in its
+# explicitly named planning-artifacts/evidence location.
+output/playwright/
+/.playwright-cli/
+
+# Root phone POC: generated dependency, build and test output is never source.
+node_modules/
+apps/*/node_modules/
+apps/web/dist/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/reports/mutation/
+apps/web/.stryker-tmp/

@@ -1,0 +1,79 @@
+{
+  "contract": {
+    "id": "interiors.topology-corpus-contract",
+    "version": 1,
+    "sha256": "d054335c196827aaf9524fd344937bb18f6f9ac244b0b652b51301b035a0a32f"
+  },
+  "corpusId": "interiors.tcc-a1.measurement-legacy-detached-candidates",
+  "corpusRevision": 1,
+  "status": "blocked-not-executable-by-adopted-tcc-runner",
+  "fixtures": [
+    {
+      "fixtureId": "TCC-A1-MEASURE-001",
+      "family": "measurement-and-projections",
+      "rawInputPath": "../raw/TCC-A1-MEASURE-001-bound-distance.json",
+      "rawInputSha256": "d4251b6419a1ddf3593e98e5956d573f3f70e3240a2ed04bfd3df30444481aea",
+      "supportingExpectedObservation": {
+        "closestSourcePointMm": { "xMm": 500, "zMm": 1250 },
+        "closestTargetPointMm": { "xMm": 0, "zMm": 1250 },
+        "distanceMm": 500,
+        "kind": "measured"
+      },
+      "requiredTccExpectedOutcome": "No source-contract outcome variant exists in the adopted runner for a successful measurement observation.",
+      "executorDisposition": "unavailable"
+    },
+    {
+      "fixtureId": "TCC-A1-MEASURE-002",
+      "family": "measurement-and-projections",
+      "rawInputPath": "../raw/TCC-A1-MEASURE-002-stale-bound-request.json",
+      "rawInputSha256": "5ddb53aad037484cfd61323a20c88f0a42e098f833f9659b620dca04ace3169f",
+      "supportingExpectedObservation": { "kind": "stale" },
+      "requiredTccExpectedOutcome": "The source contract requires a stale result with unchanged base/allocation, but the adopted runner exposes only materialization stale-base and cannot execute MeasurementRequest.",
+      "executorDisposition": "unavailable"
+    },
+    {
+      "fixtureId": "TCC-A1-MEASURE-003",
+      "family": "measurement-and-projections",
+      "rawInputPath": "../raw/TCC-A1-MEASURE-003-format-boundary.json",
+      "rawInputSha256": "17ec4bf1700da9b8b577f773126e1147cb9c4f228c951eeb664ec8c2763304ec",
+      "supportingExpectedObservation": {
+        "area": "12,35 м²",
+        "length": "6246 мм"
+      },
+      "requiredTccExpectedOutcome": "The source contract requires one equal formatted result across Preview, Plan 2D, 3D and export. Current tests cover formatter functions only, not the four projections or canvas/numeric same-intent parity.",
+      "executorDisposition": "unavailable"
+    },
+    {
+      "fixtureId": "TCC-A1-LEGACY-001",
+      "family": "legacy-and-ingress-boundary",
+      "rawInputPath": "../raw/TCC-A1-LEGACY-001-v1-characterization-candidate.json",
+      "rawInputSha256": "fae3d4c07d339484e10c523c0e5856bb2efb65bb04e41bb45a125151f4963bca",
+      "requiredTccExpectedOutcome": "A source-owned V1 grammar must first determine legacy-v1-readable, legacy-unmappable or legacy-unreadable. No such recorded grammar or legacy-classifier exists.",
+      "executorDisposition": "unavailable"
+    },
+    {
+      "fixtureId": "TCC-A1-LEGACY-002",
+      "family": "legacy-and-ingress-boundary",
+      "rawInputPath": "../raw/TCC-A1-LEGACY-002-v2-characterization-candidate.json",
+      "rawInputSha256": "2eca5bccacdf0309b0496de19867272dae1c2ace7f35c637a406bf1a389e851c",
+      "requiredTccExpectedOutcome": "A source-owned V2 grammar must first determine legacy-v2-readable, legacy-unmappable or legacy-unreadable. No such recorded grammar or legacy-classifier exists.",
+      "executorDisposition": "unavailable"
+    },
+    {
+      "fixtureId": "TCC-A1-LEGACY-003",
+      "family": "legacy-and-ingress-boundary",
+      "rawInputPath": "../raw/TCC-A1-LEGACY-003-current-envelope-precedence.json",
+      "rawInputSha256": "3da3f3c366991ac0c78a44c64e5e3f58b50a869bc9941991049b430f9b97d7fd",
+      "requiredTccExpectedOutcome": "BACKUP_SCHEMA_UNREADABLE only after safe path, valid manifest, bounded checksum and AST-R1 admission; no migration, pin, ID allocation, Revision or Project publication. Current evidence has no complete executable envelope fixture or legacy-classifier outcome.",
+      "executorDisposition": "unavailable"
+    }
+  ],
+  "policyReferences": [
+    "_bmad-output/specs/spec-interiors-editor-alpha/geometry-contract.md#1",
+    "_bmad-output/specs/spec-interiors-editor-alpha/topology-corpus-contract.md#2",
+    "_bmad-output/specs/spec-interiors-editor-alpha/topology-corpus-contract.md#3",
+    "_bmad-output/specs/spec-interiors-editor-alpha/topology-corpus-contract.md#4",
+    "_bmad-output/specs/spec-interiors-editor-alpha/portable-backup-ingress-registry.md#5",
+    "_bmad-output/specs/spec-interiors-editor-alpha/portable-backup-ingress-registry.md#6"
+  ]
+}

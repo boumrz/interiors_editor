@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "src/ui/local-file-transfer.test.tsx",
+    "src/ui/local-glb-resource.test.tsx",
+    "src/ui/styles.d.ts",
+    "tests/verification/local-file-activation.ts"
+  ]
+}

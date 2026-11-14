@@ -1,0 +1,11 @@
+# Reader783 producer-seeded Native33 qualification
+
+Qualification only; NOT a783 or287 whole mutation score and no production activation. Source browser-readonly-project-source.ts remains34082e1d28653cba216f332c3f7ef9b9f1780de32f990296c19d908dfa566ecd. Existing144 Node cases untouched. Native33 consists of retained7 +14 actual producer-seeded metadata faults +12 actual native manifest faults. Old7 assertions preserved; public mounted-dispose operation moved from finally into BODY. Test-only producer picks actual native currentRevision pointer rather than arbitrary history row.
+
+Separately qualified plain33 allPASS. Current remaining10 controls all expected: off33 and exact-whole-preprocessed33 PASS; both official Reader0 cases genuine named BODY failures; badSource/foreignlocalID/worker/technicalcleanup/global/bodytimeout reject99. Current96 pure controls PASS and scoped TypeScript PASS. No Source editing for score, status carry or test omissions.
+
+Root v7 separate framework artifact envelope13000ms vsactual native RPC+close event2500ms; exact context/test/PID/monotonic time and no-reuse bindings. Recursive errors/cause, BODY/finally ownership, exact initial/served/copied emitted bytes and full immutable-input/formatter-dependency checks. Raw reporter errors biject to JSON via pinned actual Playwright formatError; raw stacks are then used for phase checks. The bounded helper preserves original rejection and appends only actual synchronously captured public invocation stack for pending assertions; no invented frames.
+
+Two earlier attempts are preserved as rejected setup/control evidence: arbitrary historical Revision selection and minified helper line-range overlap. They have no accepted score/status. The actual framework timeout negative has8 entered/7 settled bodies and remains invalid; no timeout counted as behavioral detection.
+
+Independent positive audits reconstruct pinned preprocessing/instrumented4-module hashes and all783 lexical IDs, recompute BODY/context/native closes, copied dist SHA and exact terminal PID sets. All10 owned roots absent/bothaliasPID0 and976 frozen paths restored. Third lease returned Root. Root acceptance pending; no full783/287 authorized here. Schema/resource/CAS/lifecycle fault expansion remains pending.

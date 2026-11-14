@@ -1,0 +1,24 @@
+{
+  "contractVersion": "catalog-http-v1",
+  "cases": [
+    { "id": "metadata-get", "route": "current", "method": "GET", "accept": "application/json", "status": 200 },
+    { "id": "metadata-accept-absent", "route": "current", "method": "GET", "status": 406 },
+    { "id": "metadata-accept-wildcard", "route": "current", "method": "GET", "accept": "*/*", "status": 406 },
+    { "id": "metadata-project-query", "route": "current", "method": "GET", "accept": "application/json", "query": "project=forbidden", "status": 400 },
+    { "id": "metadata-revision-cookie", "route": "current", "method": "GET", "accept": "application/json", "cookie": "revision=forbidden", "status": 400 },
+    { "id": "metadata-history-authorization", "route": "current", "method": "GET", "accept": "application/json", "authorization": "Bearer history-forbidden", "status": 400 },
+    { "id": "metadata-portable-backup-body", "route": "current", "method": "GET", "accept": "application/json", "body": "{\"portableBackup\":\"forbidden\"}", "status": 400 },
+    { "id": "metadata-account-query", "route": "current", "method": "GET", "accept": "application/json", "query": "account=forbidden", "status": 400 },
+    { "id": "metadata-options", "route": "current", "method": "OPTIONS", "status": 405, "allow": "GET" },
+    { "id": "metadata-post", "route": "current", "method": "POST", "status": 405, "allow": "GET" },
+    { "id": "metadata-version-put", "route": "version", "method": "PUT", "status": 405, "allow": "GET" },
+    { "id": "resource-get", "route": "resource", "method": "GET", "accept": "model/gltf-binary", "status": 200 },
+    { "id": "resource-head", "route": "resource", "method": "HEAD", "accept": "model/gltf-binary", "status": 200 },
+    { "id": "resource-head-matching-etag", "route": "resource", "method": "HEAD", "accept": "model/gltf-binary", "ifNoneMatch": "matching", "status": 304 },
+    { "id": "resource-range", "route": "resource", "method": "GET", "accept": "model/gltf-binary", "range": "bytes=0-19", "status": 206 },
+    { "id": "resource-range-clamped-at-eof", "route": "resource", "method": "GET", "accept": "model/gltf-binary", "range": "bytes=0-1048575", "status": 206 },
+    { "id": "resource-open-range", "route": "resource", "method": "GET", "accept": "model/gltf-binary", "range": "bytes=0-", "status": 416 },
+    { "id": "resource-accept-mismatch", "route": "resource", "method": "GET", "accept": "image/png", "status": 406 },
+    { "id": "resource-post", "route": "resource", "method": "POST", "status": 405, "allow": "GET, HEAD" }
+  ]
+}

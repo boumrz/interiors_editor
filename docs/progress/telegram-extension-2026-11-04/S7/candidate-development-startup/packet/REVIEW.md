@@ -1,0 +1,7 @@
+Only files/ is proposed, exact CANDIDATE Main baseline4853 required; no Original edits.
+
+Main mounts only a loading surface before development cleanup; the lazy editor/PWA host starts only after ready. Gate publishes one stable promise before callbacks. It waits for ALL started owned unregistrations, retains foreign registrations, requests one sessionStorage-guarded reload if a controller remains and does not clear caches/mount in that document. Next uncontrolled page clears only interiors-editor-shell-/browse- caches, rechecks controller and clears the technical marker before ready. Failures produce a bounded no-auto-reload dev retry surface; missing guard refuses automatic reload. No IDB, Project data, pin/history/schema/SDK/cloud changes.
+
+Production PWA function body AST and exact root JSX characterized unchanged after removing compile-time dev branch. Parent actual production PWA/native worker replay remains mandatory. Unit native-capability ports are technical doubles, not native service-worker proof. Initial unrelated Root AppShell typefixture issue retained and fixed only by authorized read-copy, not part of this packet.
+
+27 tests cover deferred startup, full drains, cache ownership, registration scope/script identity, current controller after awaits, one reload across documents, marker lifetime, reentrancy/stable promise, every port refusal and API absence. Current wholehelper mutation not claimed yet; immutable files/ can be reviewed while own source is instrumented separately.

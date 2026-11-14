@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://interiors-editor.invalid/contracts/catalog-envelope-v1.schema.json",
+  "title": "InteriorsEditor Catalog Envelope V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "catalogVersion", "publishedAt", "assets"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "catalogVersion": { "$ref": "#/$defs/version" },
+    "publishedAt": {
+      "type": "string",
+      "pattern": "^[2-9][0-9]{3}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?Z$",
+      "maxLength": 32
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/asset" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$",
+      "maxLength": 64
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9.-]{0,62}[a-z0-9])?$",
+      "not": { "const": "current" },
+      "maxLength": 64
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "positiveMm": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100000
+    },
+    "modelResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "byteLength", "mediaType"],
+      "properties": {
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 26214400
+        },
+        "mediaType": { "const": "model/gltf-binary" }
+      }
+    },
+    "thumbnailResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "byteLength", "mediaType"],
+      "properties": {
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "byteLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 262144
+        },
+        "mediaType": { "const": "image/png" }
+      }
+    },
+    "modelResourceVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["variantId", "label", "effect"],
+      "properties": {
+        "variantId": { "$ref": "#/$defs/identifier" },
+        "label": { "$ref": "#/$defs/label" },
+        "effect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "resource"],
+          "properties": {
+            "kind": { "const": "model-resource" },
+            "resource": { "$ref": "#/$defs/modelResource" }
+          }
+        }
+      }
+    },
+    "modelResourceVariantSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slotId", "label", "kind", "variants"],
+      "properties": {
+        "slotId": { "$ref": "#/$defs/identifier" },
+        "label": { "$ref": "#/$defs/label" },
+        "kind": { "const": "model-resource" },
+        "variants": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/modelResourceVariant" }
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assetId",
+        "label",
+        "section",
+        "category",
+        "anchorClass",
+        "frontDirection",
+        "dimensionsMm",
+        "footprintMm",
+        "resource",
+        "variantSlots"
+      ],
+      "properties": {
+        "assetId": { "$ref": "#/$defs/identifier" },
+        "label": { "$ref": "#/$defs/label" },
+        "section": {
+          "enum": [
+            "furniture",
+            "plumbing",
+            "appliances-electronics",
+            "lighting",
+            "accessories"
+          ]
+        },
+        "category": {
+          "enum": [
+            "seating",
+            "tables",
+            "storage",
+            "sleep",
+            "plumbing",
+            "appliance",
+            "electronics",
+            "lighting",
+            "accessory"
+          ]
+        },
+        "anchorClass": { "enum": ["floor", "wall"] },
+        "frontDirection": { "const": "positive-z" },
+        "dimensionsMm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["width", "depth", "height"],
+          "properties": {
+            "width": { "$ref": "#/$defs/positiveMm" },
+            "depth": { "$ref": "#/$defs/positiveMm" },
+            "height": { "$ref": "#/$defs/positiveMm" }
+          }
+        },
+        "footprintMm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "width", "depth"],
+          "properties": {
+            "kind": { "const": "rectangle" },
+            "width": { "$ref": "#/$defs/positiveMm" },
+            "depth": { "$ref": "#/$defs/positiveMm" }
+          }
+        },
+        "resource": { "$ref": "#/$defs/modelResource" },
+        "thumbnail": { "$ref": "#/$defs/thumbnailResource" },
+        "variantSlots": {
+          "type": "array",
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/modelResourceVariantSlot" }
+        }
+      }
+    }
+  }
+}

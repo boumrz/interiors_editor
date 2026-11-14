@@ -1,0 +1,106 @@
+{
+  "contract": {
+    "id": "interiors.topology-corpus-contract",
+    "version": 1,
+    "source": "_bmad-output/specs/spec-interiors-editor-alpha/topology-corpus-contract.md",
+    "sha256": "25fb94edc599a84ae6c06942493d262e6db27904e1bfe72474a2c6eb2b7abb75"
+  },
+  "audit": {
+    "auditId": "W-READY-2026-08-30-S-2-current-product",
+    "date": "2026-08-30",
+    "executor": {
+      "path": "apps/web/src/domain/tcc-a1-corpus-runner.ts",
+      "sha256": "7f2d8a2f899e8c44bd7572e076e97a0ebaa61a63408b987d2f2dd99bb1aa2bb1",
+      "supportedExecutorRoles": ["domain-kernel", "legacy-classifier"]
+    },
+    "executedManifests": [
+      {
+        "corpusId": "interiors.tcc-a1.current-product-boundaries",
+        "corpusRevision": 1,
+        "executorRole": "domain-kernel",
+        "path": "apps/web/src/domain/current-product-tcc-a1-corpus.ts",
+        "sha256": "603dbc96e6fea423d84d8f0c8ea45a8a0e927c906bf81d2361ae32dd5a66e497",
+        "fixtureCount": 43,
+        "executionResult": "passed"
+      },
+      {
+        "corpusId": "interiors.tcc-a1.current-product-legacy-boundary",
+        "corpusRevision": 1,
+        "executorRole": "legacy-classifier",
+        "classifierPath": "apps/web/src/domain/current-ppj-a1-legacy-classifier.ts",
+        "classifierSha256": "9c3b509b3e8ba51ce15355d7a876828a9092620379e1f7d5ba77a3b141dcde30",
+        "fixtureRows": [
+          {
+            "fixtureId": "TCC-A1-LEGACY-CURRENT-PPJ-A1",
+            "classification": "current-ppj-a1",
+            "handoff": "current-ingress",
+            "rawInputSha256": "f46755668b4e34f1b0b539060556c63627fde961ad1bf8d703a51fa6f3ad3f59"
+          },
+          {
+            "fixtureId": "TCC-A1-LEGACY-V1-LIKE",
+            "classification": "legacy-unreadable",
+            "handoff": "ordinary-ingress-precedence",
+            "rawInputSha256": "d49395e2f27599fc4b021111deb37bbb4eb6730dcc618e74c1751a61ca11df02"
+          },
+          {
+            "fixtureId": "TCC-A1-LEGACY-V2-LIKE",
+            "classification": "legacy-unreadable",
+            "handoff": "ordinary-ingress-precedence",
+            "rawInputSha256": "01e282f284e2314ef6e4d90ce9df232161732098c8395635821c3f10c0ac285c"
+          },
+          {
+            "fixtureId": "TCC-A1-LEGACY-UNREGISTERED-FUTURE",
+            "classification": "legacy-unreadable",
+            "handoff": "ordinary-ingress-precedence",
+            "rawInputSha256": "a8c9d98b746f5122ecd3c8d0fbfb6b800391416038de3ac863dcaa2e674ddd06"
+          }
+        ],
+        "noEffect": {
+          "allocationIntent": [],
+          "baseDigestPreserved": true,
+          "sourceBytesCopiedAndFrozen": true,
+          "migrationOrDurablePorts": false
+        },
+        "executionResult": "passed"
+      }
+    ],
+    "portableBackupPrecedenceEvidence": {
+      "path": "apps/web/src/adapters/portable-backup/ppj-a1-canonical-project-member-ingress.test.ts",
+      "testCount": 60,
+      "executionResult": "passed",
+      "assertions": [
+        "factual-size mismatch precedes checksum and AST classification",
+        "checksum mismatch precedes malformed JSON classification",
+        "a staged checksum-valid malformed member reaches BACKUP_SCHEMA_UNREADABLE"
+      ]
+    },
+    "verification": {
+      "focusedTopologyTests": "88/88 passed",
+      "fullWebTests": "1700/1700 passed across 125 files",
+      "typecheck": "passed",
+      "lint": "277 files checked; no fixes applied",
+      "mutation": {
+        "config": "apps/web/stryker.tcc-a1-active-alpha.config.mjs",
+        "mutatedFiles": [
+          "src/domain/current-ppj-a1-legacy-classifier.ts:25-70",
+          "src/domain/current-product-tcc-a1-corpus.ts:497-543",
+          "src/domain/current-product-tcc-a1-corpus.ts:594-612",
+          "src/domain/tcc-a1-corpus-runner.ts:588-700"
+        ],
+        "concurrency": 1,
+        "killed": 286,
+        "survived": 20,
+        "noCoverage": 0,
+        "timeouts": 0,
+        "runtimeErrors": 0,
+        "compileErrors": 0,
+        "score": "93.46%",
+        "highThreshold": "90%",
+        "report": "apps/web/reports/mutation/tcc-a1-active-alpha-mutation.json"
+      }
+    },
+    "humanReviewer": "Roman Zheltov",
+    "humanReviewStatus": "assigned",
+    "gateVerdict": "PASS"
+  }
+}

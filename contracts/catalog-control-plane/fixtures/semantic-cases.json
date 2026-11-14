@@ -1,0 +1,94 @@
+{
+  "contractVersion": "catalog-envelope-v1",
+  "baseFixture": "catalog-envelope-v1.valid.json",
+  "canonicalGolden": {
+    "sha256": "c1e5ac3575807ca7d3fa5cd53f8c4c5b37c0afd5ba34ebb9f0bb93ff0193834c",
+    "utf8": "{\"assets\":[{\"anchorClass\":\"floor\",\"assetId\":\"single-bed\",\"category\":\"sleep\",\"dimensionsMm\":{\"depth\":1075,\"height\":426,\"width\":1769},\"footprintMm\":{\"depth\":1075,\"kind\":\"rectangle\",\"width\":1769},\"frontDirection\":\"positive-z\",\"label\":\"Кровать\",\"resource\":{\"byteLength\":3157360,\"mediaType\":\"model/gltf-binary\",\"sha256\":\"a7bee7a29476970b9ecded133da4cdd4bd679d175d62395fe7994a4f424b1346\"},\"section\":\"furniture\",\"thumbnail\":{\"byteLength\":7640,\"mediaType\":\"image/png\",\"sha256\":\"3f0510cb662ef1fbf8c7c792ca0f9cdb523982fade32d432fbef3d1860eab5a9\"},\"variantSlots\":[]}],\"catalogVersion\":\"alpha-2026-08-26.1\",\"publishedAt\":\"2026-08-26T00:00:00Z\",\"schemaVersion\":1}"
+  },
+  "normalizedRoundTrip": {
+    "rowCounts": {
+      "catalog_publication": 1,
+      "catalog_resource": 2,
+      "catalog_asset": 1,
+      "catalog_variant_slot": 0,
+      "catalog_variant_option": 0
+    },
+    "reconstructedEnvelopeSha256": "c1e5ac3575807ca7d3fa5cd53f8c4c5b37c0afd5ba34ebb9f0bb93ff0193834c"
+  },
+  "cases": [
+    {
+      "id": "valid-model-resource-variant",
+      "operation": "replace",
+      "path": "/assets/0/variantSlots",
+      "value": [{
+        "slotId": "model",
+        "label": "Модель",
+        "kind": "model-resource",
+        "variants": [{
+          "variantId": "cabinet-shape",
+          "label": "Шкаф",
+          "effect": {
+            "kind": "model-resource",
+            "resource": {
+              "sha256": "9dd295594623edf797cee3d4da1818802d723b404df51687d6ca1796f51b4608",
+              "byteLength": 2333896,
+              "mediaType": "model/gltf-binary"
+            }
+          }
+        }]
+      }],
+      "outcome": "accepted"
+    },
+    {
+      "id": "two-variant-slots",
+      "operation": "duplicate-array-item",
+      "path": "/assets/0/variantSlots/0",
+      "sourceCase": "valid-model-resource-variant",
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID"
+    },
+    {
+      "id": "variant-discriminant-mismatch",
+      "operation": "replace",
+      "path": "/assets/0/variantSlots/0/variants/0/effect/kind",
+      "value": "color",
+      "sourceCase": "valid-model-resource-variant",
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_ENVELOPE_SCHEMA_INVALID"
+    },
+    {
+      "id": "unsorted-assets",
+      "operation": "append-clone-with-id",
+      "path": "/assets",
+      "clonePath": "/assets/0",
+      "assetId": "aaa",
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_ASSETS_NOT_SORTED"
+    },
+    {
+      "id": "footprint-mismatch",
+      "operation": "replace",
+      "path": "/assets/0/footprintMm/width",
+      "value": 1770,
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_FOOTPRINT_MISMATCH"
+    },
+    {
+      "id": "invalid-real-date",
+      "operation": "replace",
+      "path": "/publishedAt",
+      "value": "2026-02-30T00:00:00Z",
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_TIMESTAMP_INVALID"
+    },
+    {
+      "id": "label-over-240-utf8-bytes",
+      "operation": "replace-repeat",
+      "path": "/assets/0/label",
+      "value": "😀",
+      "count": 61,
+      "outcome": "rejected",
+      "reasonCode": "CATALOG_LABEL_UTF8_BYTES_LIMIT"
+    }
+  ]
+}

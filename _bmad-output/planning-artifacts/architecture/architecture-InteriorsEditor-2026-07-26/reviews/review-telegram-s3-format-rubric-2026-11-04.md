@@ -1,0 +1,24 @@
+# Reviewer Gate — AD-30 и S3 portable V1
+
+Date: 2026-11-04. Независимая сверка Architecture Spine и `telegram-portable-v1-disposition-2026-11-04.md` с PRD FR-44/45/57/58, SPEC `project-and-backup-contract.md`, `portable-backup-ingress-registry.md`, TCC-A1 и наблюдаемой V1-реализацией. Canonical файлы не редактировались.
+
+## Verdict: concerns; S3 source reconciliation и evidence обязательны
+
+**High — допустимый ранее healthy Durable Project может перестать экспортироваться.** Companion допускает явный отказ export при непредставимости V1, включая произвольный `yawRadians`; существующий `project-json-transfer.ts` принимает любое конечное значение, а его test fixture содержит `0.5`. Между тем SPEC project/backup contract обещает complete offline backup каждого non-corrupt Durable Project текущей policy, а ошибки export для таких Projects относит к environment I/O/quota/corruption, не к неэкспортируемому scope. Недостаточно просто записать «нет округления» и отказ: source owners должны до S3 определить применимость к существующим revisions, безопасную допустимую форму восстановления/точного handoff и связать её с `BackupFeasibilityPolicy`; если полностью сохраняющая policy трактовка невозможна, разногласие нужно прямо передать readiness/owner, без скрытого ослабления. Не делать вывода, что все существующие файлы совместимы.
+
+**Medium — grammar ещё не самостоятельный зарегистрированный контракт.** Таблица задаёт набор ключей, несколько enum/ranges и SHA-256 двух code snapshots; многие scalar ranges, string forms, cross-field constraints, uniqueness, resource/domain validation и точный reason precedence остаются в функциях кода или отсылаются к «current domain/resource validation». Hash идентифицирует содержимое и не сохраняет его, тем более в checkout без commit; два исполнителя могут выбрать разные версии незафиксированных проверок. Документ корректно требует SPEC-owner перенести эти данные в versioned closed tables до S3. Пока этого не произошло, AD-30 — proposal/disposition, не полностью готовая самостоятельная grammar и не разрешение реализации.
+
+**Medium — ambiguous legacy является явно открытой функциональной границей.** PPJ-A1 и empty V1 без root selector действительно могут пересекаться: current registry настаивает на root selector и до регистрации классифицирует V1/V2 как `BACKUP_SCHEMA_UNREADABLE`. Предлагаемая diagnostic intersection check не утверждает provenance и сохраняет данные, но отклоняет часть бывших файлов. FR-57 требует поддерживаемый файл в обе стороны; матрица и acceptance corpus должны явно исключать либо разрешать такой класс отдельным source/product решением и сохранять работающий старый контекст. Нельзя считать S3 portable compatibility или полную совместимость baseline уже доказанными.
+
+## Что прошло проверку
+
+- Отдельный wire selector не меняет internal V1 Revision serializer, IDB names или старые checksums; старый decoder новый selector не понимает и требует обновления.
+- Выбор dispatch по manifest/root, отсутствие decoder fallback, bounded checksum и AST перед schema stage, exact resources и новый Project ID сохраняют запрет на перезапись исходных данных.
+- Наблюдаемая селекция legacy сейчас противоречит действующей закрытой PPJ/TCC регистрации, и companion честно передаёт её SPEC-owner до S3; AD-30 сам SPEC не регистрирует.
+- Матрица различает наблюдение кода и неисполненные real-file/physical iOS/Android roundtrip; отсутствие upload и право сохранить source выдержаны. `NFR-28` и fresh readiness этим обзором не закрыты.
+
+## Повторная проверка после исправлений
+
+**Verdict: pass с открытыми source/evidence gates; не S3 READY.** Первоначальный конкретный high о `yawRadians: 0.5` исправлен: V1-wire сохраняет конечный binary64 без потери поля и materialized rounding, включая сочетание с `yawStep` и существующий приоритет. Добавлено обязательное доказательство representability всего множества healthy Durable V1 в текущей BackupFeasibilityPolicy до замены прежнего browser export; без такого доказательства rollout останавливается и прежний путь сохраняется. Это корректное закрытие архитектурной дыры, не результат доказательства для всех сохранённых данных: до допуска нужно проверить также возможные иные исходные ограничения строк, размеров, точных ресурсов и recovery callers.
+
+Порядок проверки уточнён так, что syntactically valid unknown selector не обходит предшествующие size/checksum/AST границы; решение сохраняет текущую диспозицию PPJ/TCC до source-owned регистрации. Timestamp нового Project/Revision определены. Условия самостоятельной полной регистрации grammar в versioned SPEC и диспозиция пересекающихся legacy остаются явно открытыми и блокируют зависимый S3; актуальный source contract сейчас прежний. Отсутствие физического roundtrip, actual-file corpus и оценки readiness остаётся evidence gap, а не пройденная проверка.

@@ -1,0 +1,7 @@
+# Entry test-only append handoff
+
+Original test base100860c167be… byte-for-byte prefix retained. Only src/app/telegram-editor-app.test.ts changed:6 cases across5 requested public groups (late readonly false afterBready; stale worker rejection afterBready; mixed fulfilled pending start+later owned drain rejection, Error andundefined; exact readonly connectedhostEnvironment; positive actualEDITOR ownership+foreign/old/closed negatives). No production edits.
+
+Plain133 baselinePASS; current139 after appends/formatted suffixPASS; final plain139PASS. Full app tsconfig.json noEmitPASS and scoped Biome lintPASS. New suffix formatted independently, original prefix untouched. Actual installed Instrumenter9.6.1 reproduces ALL568 IDs/locations/mutators/replacements against original3b4997f, using exact2 declared ranges. Instrumented-off139PASS then selected290/396/426/309/506/507/508 each genuine behavioralRED with actualloadedSHA/module-localID/per-case markers, complete owned worker end, no compiler/setup error; source restored3b4997f.
+
+This is test-strength evidence only. Historical accepted whole568/133/raw83.62676 unchanged; no new whole gate or selected percentage claimed. Tests use existing source/signed-launch/core fixtures and port doubles; no native/physical Telegram acceptance. Initial inventory JSON property-order comparison and selected wrapper assumed steps[] are setup-only failed attempts, preserved separately, neither accepted as detection. Final replay and final139 are clean.

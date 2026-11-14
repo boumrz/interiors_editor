@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.json","include":["tests/verification/common-prefix-native-harness.ts","tests/browser/common-prefix-input-pairs-e2e.check.ts"]}

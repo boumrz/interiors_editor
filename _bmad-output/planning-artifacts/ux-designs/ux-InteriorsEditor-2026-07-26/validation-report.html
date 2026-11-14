@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>InteriorsEditor — UX validation report</title>
+  <style>
+    :root {
+      --bg: #fafaf9; --surface: #fff; --border: #e7e5e4;
+      --text: #1c1917; --muted: #78716c; --strong: #16a34a;
+      --adequate: #65a30d; --thin: #d97706; --broken: #dc2626;
+      --blocker: #991b1b; --high: #c2410c; --medium: #a16207;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+    main { max-width: 960px; margin: auto; padding: 32px 24px 64px; }
+    header { border-bottom: 1px solid var(--border); margin-bottom: 24px; padding-bottom: 16px; }
+    h1 { font-size: 24px; margin: 0; }
+    h2 { font-size: 18px; margin: 0 0 12px; }
+    .meta, .muted { color: var(--muted); font-size: 13px; }
+    .summary, section { background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; margin: 14px 0; padding: 20px; }
+    .summary { border-left: 4px solid var(--thin); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+    .verdict { font-weight: 700; text-transform: uppercase; font-size: 12px; }
+    .strong { color: var(--strong); } .thin { color: var(--thin); } .broken { color: var(--broken); }
+    article { border-top: 1px solid var(--border); padding: 14px 0; }
+    article:first-of-type { border-top: 0; padding-top: 0; }
+    .badge { display: inline-block; border-radius: 4px; font-size: 11px; font-weight: 700;
+      letter-spacing: .04em; margin-right: 8px; padding: 2px 7px; text-transform: uppercase; }
+    .blocker { background: #fee2e2; color: var(--blocker); }
+    .high { background: #ffedd5; color: var(--high); }
+    .medium { background: #fef3c7; color: var(--medium); }
+    p { margin: 0 0 10px; } p:last-child { margin-bottom: 0; }
+    ul, ol { margin: 8px 0 0; padding-left: 22px; }
+    footer { border-top: 1px solid var(--border); color: var(--muted); font-size: 12px;
+      margin-top: 32px; padding-top: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>InteriorsEditor — независимая UX-проверка</h1>
+      <div class="meta">DESIGN.md + EXPERIENCE.md · 2026-08-30 · draft package</div>
+    </header>
+
+    <div class="summary">
+      <p>Calm Spatial Studio — сильное направление для phone-first редактора:
+      canvas-first иерархия, короткая микрокопия, честная durability-модель и
+      будущий Telegram adapter подтверждены всеми тремя независимыми lenses.</p>
+      <p>Пакет остаётся draft: два source-contract blocker возвращают retired
+      scope, а reference screens и contract details не доказывают безопасные
+      mobile, accessibility и pre-durability flows.</p>
+    </div>
+
+    <div class="grid" aria-label="Вердикты категорий">
+      <div class="card">Flow coverage<br><span class="verdict broken">broken</span></div>
+      <div class="card">Token completeness<br><span class="verdict broken">broken</span></div>
+      <div class="card">Component coverage<br><span class="verdict thin">thin</span></div>
+      <div class="card">State coverage<br><span class="verdict thin">thin</span></div>
+      <div class="card">Visual reference coverage<br><span class="verdict thin">thin</span></div>
+      <div class="card">Bloat and overspecification<br><span class="verdict strong">strong</span></div>
+      <div class="card">Inheritance discipline<br><span class="verdict thin">thin</span></div>
+      <div class="card">Shape fit<br><span class="verdict strong">strong</span></div>
+    </div>
+
+    <section>
+      <h2>Blocker findings</h2>
+      <article>
+        <span class="badge blocker">blocker</span><strong>Retired Focus remains in the ToolRail companion.</strong>
+        <p>AD-15, PRD and the draft retire Focus/native fullscreen, but the
+        interaction companion still authorizes it. The specification owner must
+        remove the command and related acceptance evidence.</p>
+      </article>
+      <article>
+        <span class="badge blocker">blocker</span><strong>Room finish override remains in the same companion.</strong>
+        <p>Alpha has neutral derived Room surfaces. Replace the acceptance item
+        with a neutral display-projection check; item variants remain allowed.</p>
+      </article>
+    </section>
+
+    <section>
+      <h2>High-priority closure</h2>
+      <article><span class="badge high">high</span><strong>Unify ToolRail and ActionDock.</strong>
+        <p>Declare ActionDock as the contextual mobile presentation of the
+        canonical ToolRail, with visible/disabled/overflow placement for view,
+        tool, history, opening and catalogue controls.</p></article>
+      <article><span class="badge high">high</span><strong>Correct the visual states.</strong>
+        <p>Use neutral Room surfaces; draw offline as a non-blocking banner;
+        separate catalogue retry, persistence failure and true read-only recovery.</p></article>
+      <article><span class="badge high">high</span><strong>Add missing mobile references.</strong>
+        <p>Provide 360px keyboard/safe-area frames and a real recovery screen
+        with placeholders and repair paths.</p></article>
+      <article><span class="badge high">high</span><strong>Make placement boundaries visible.</strong>
+        <p>Show metadata-ready, pin/loading, backup-ready, preview,
+        confirm/cancel, Saving and Saved without calling a preview durable.</p></article>
+      <article><span class="badge high">high</span><strong>Close accessibility and flow gaps.</strong>
+        <p>Add verified dark/on-primary focus tokens, a full DOM Inspector route,
+        structured tokens and UJ-to-UXF numbered flows.</p></article>
+      <article><span class="badge high">high</span><strong>Specify rotation and Opening previews.</strong>
+        <p>Both use the same explicit preview, conflict and durability path;
+        neither may appear as an immediate mutation.</p></article>
+    </section>
+
+    <section>
+      <h2>Medium-priority closure</h2>
+      <ul>
+        <li>Surface × state × copy × actions × Back/focus matrix.</li>
+        <li>Exact wall candidate and measurement entry references.</li>
+        <li>Duplicate and lock/unlock discovery for ItemInstance.</li>
+        <li>Unambiguous Portable Backup language during storage pressure.</li>
+        <li>Non-persistent Door visual convention.</li>
+        <li>Sheet semantics, live-announcement policy and 200% reflow rules.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Recommended closure order</h2>
+      <ol>
+        <li>Reconcile the two retired routes in the source-owned companion.</li>
+        <li>Reconcile ToolRail and ActionDock.</li>
+        <li>Correct and expand reference screens.</li>
+        <li>Close token, flow, state and DOM-accessibility gaps.</li>
+        <li>Re-run the three affected review lenses before setting the spines final.</li>
+      </ol>
+    </section>
+
+    <footer>
+      Reviewer sources: review-rubric.md · review-mobile-accessibility.md ·
+      review-alpha-scope.md. This document is a UX review, not an implementation
+      readiness or device-certification verdict.
+    </footer>
+  </main>
+</body>
+</html>

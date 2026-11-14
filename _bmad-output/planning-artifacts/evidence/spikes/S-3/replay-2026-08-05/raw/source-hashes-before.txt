@@ -1,0 +1,5 @@
+a6575440c81c22e65c92e79ce704b6a642e3af00ee4295c43d108eb9a28de93c  _bmad-output/implementation-artifacts/spikes/W-SPK-2026-08-04/S-3/src/durability.mjs
+393b2cd59a73f34f1f5d9b32ac51394d5edac91ede9775ed48228468b50bf02c  _bmad-output/implementation-artifacts/spikes/W-SPK-2026-08-04/S-3/src/app.mjs
+1e061891d1f472119630fb5dfc3d2d871f2d5bcc80facf70777c9bb71ffd1c1a  _bmad-output/implementation-artifacts/spikes/W-SPK-2026-08-04/S-3/tests/unit/durability.test.mjs
+e768b0e884ca4947ddecbfca4a3b6c2739730874d43c0f07b9b7850dcf14b362  _bmad-output/implementation-artifacts/spikes/W-SPK-2026-08-04/S-3/tests/e2e/durability.spec.mjs
+4a1a29b511b33153c07cb2e26cf0c4c586ae3c5ddd626c74114a2923afd15d79  _bmad-output/implementation-artifacts/spikes/W-SPK-2026-08-04/S-3/package-lock.json

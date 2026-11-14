@@ -1,0 +1,13 @@
+.panel {
+	padding: 1rem;
+	border: 1px solid var(--line, #b8b7b2);
+	border-radius: 0.75rem;
+	background: var(--surface, #ffffff);
+	color: var(--ink, #172033);
+	overflow-wrap: anywhere;
+}
+.panel h2 { margin-top: 0; font-size: 1rem; }
+.panel p { line-height: 1.45; }
+.panel button { min-height: 2.75rem; padding: 0.5rem 0.75rem; font: inherit; }
+.list { display: grid; gap: 0.75rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.list li { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; }

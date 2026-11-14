@@ -1,0 +1,35 @@
+{
+  "baseRevision": {
+    "checksum": "checksum-1",
+    "id": "revision-1",
+    "projectId": "project-1"
+  },
+  "fixtureState": {
+    "asset": {
+      "assetInstanceId": "item-1",
+      "anchorClass": "floor",
+      "depthMm": 500,
+      "heightMm": 750,
+      "roomId": "room-1",
+      "widthMm": 1000,
+      "xMm": 1000,
+      "zMm": 1500
+    },
+    "rectangularPlan": {
+      "depthMm": 3000,
+      "heightMm": 2600,
+      "wallIds": ["wall-1", "wall-2", "wall-3", "wall-4"],
+      "widthMm": 4000
+    }
+  },
+  "intent": {
+    "baseRevisionChecksum": "checksum-1",
+    "baseRevisionId": "revision-1",
+    "operation": "Distance",
+    "projectId": "project-1",
+    "targets": [
+      { "assetInstanceId": "item-1", "kind": "ItemFootprintBoundary" },
+      { "kind": "WallCenterline", "wallSegmentId": "wall-4" }
+    ]
+  }
+}

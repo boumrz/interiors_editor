@@ -1,0 +1,1 @@
+import base from './rspack.scoped-protocol-test.config.mjs';export default (env,args)=>({...base(env,args),entry:process.env.SCOPED_NATIVE_CONTROL==='build'?'./tests/verification/owned-nonexistent-native-entry.ts':'./tests/verification/scoped-public-additional-harness.ts'});

@@ -1,0 +1,101 @@
+---
+tool: "@rstest/core@0.11.5"
+timestamp: "2026-11-01T18:20:17.161Z"
+runtime: {"node":"v24.19.0","platform":"darwin","cwd":"/Users/romanzheltov/Desktop/frontentd-projects/InteriorsEditor/apps/web"}
+---
+
+# Rstest Test Execution Report
+
+## Summary
+
+```json
+{
+  "status": "pass",
+  "counts": {
+    "testFiles": 4,
+    "failedFiles": 0,
+    "tests": 138,
+    "failedTests": 0,
+    "passedTests": 138,
+    "skippedTests": 0,
+    "todoTests": 0
+  },
+  "durationMs": {
+    "total": 282,
+    "build": 117,
+    "tests": 165
+  },
+  "snapshot": {
+    "added": 0,
+    "updated": 0,
+    "unmatched": 0,
+    "removed": 0,
+    "unchecked": 0
+  }
+}
+```
+
+## Tests
+
+### Passed
+
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > loads a strict versioned envelope without credentials or Project data
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > rejects an envelope with an undeclared member
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > enforces the complete closed envelope boundary
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > accepts one complete model variant and rejects its closed nested boundary
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > enforces asset and variant ordering plus descriptor alias identity
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > rejects envelope bytes that do not reproduce the response ETag
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > accepts a checksum-verifiable envelope when a tunnel downgrades its ETag to weak
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > keeps a network outage and cancellation distinct
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > ends a stalled catalog publication after its default 15-second deadline
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > applies the configured publication deadline while the response body is stalled
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > cancels an in-flight publication on caller abort and clears its deadline
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > never requests a publication already cancelled by its caller
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > releases the publication deadline and caller subscription after every completed response
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > accepts only bytes matching the declared media type, length and digest
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > turns a stalled resource request into retryable unavailability
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > keeps an explicit caller cancellation distinct from its resource deadline
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > reports integrity failure without exposing corrupt bytes
+- src/adapters/catalog/http-catalog-gateway.test.ts :: HTTP CatalogGatewayPort > rejects digest-correct bytes outside the declared media profile
+- src/app/project-controller.test.ts :: ProjectController > reports advisory local-storage pressure without inventing a capacity after an estimate failure
+- src/app/project-controller.test.ts :: ProjectController > requests persistent browser storage only after explicit user intent and keeps a refusal visible
+- src/app/project-controller.test.ts :: ProjectController > opens a project with a missing pinned custom GLB only as recovery-needed, including the directory route
+- src/app/project-controller.test.ts :: ProjectController > treats present custom-resource bytes with the wrong content as recovery-needed
+- src/app/project-controller.test.ts :: ProjectController > keeps the legacy one-file repair path from partially writing a multi-resource recovery set
+- src/app/project-controller.test.ts :: ProjectController > atomically recovers every pinned custom GLB only when the selected batch is complete and exact
+- src/app/project-controller.test.ts :: ProjectController > keeps the project in recovery-needed when atomic custom-resource storage fails
+- src/app/project-controller.test.ts :: ProjectController > asks the batch only for unresolved resources and preserves already healthy local bytes
+- src/app/project-controller.test.ts :: ProjectController > reopens the repaired directory card instead of returning to a multi-project picker
+- src/app/project-controller.test.ts :: ProjectController > requires an equipped verifier and batch store, and exposes an incomplete batch write as repaired
+- src/app/project-controller.test.ts :: ProjectController > refuses custom-resource repair outside an equipped recovery state
+- src/app/project-controller.test.ts :: ProjectController > keeps recovery-needed when hashing or storing repair bytes fails and copies accepted bytes
+- src/app/project-controller.test.ts :: ProjectController > exposes custom GLB bytes only through the injected local resource store
+- src/app/project-controller.test.ts :: ProjectController > publishes one confirmed RecoveryChangeSet from the captured current Project and starts a fresh session boundary
+- src/app/project-controller.test.ts :: ProjectController > fails closed instead of publishing a RecoveryChangeSet when the captured hash set changes
+- src/app/project-controller.test.ts :: ProjectController > keeps recovery read-only when the canonical RecoveryChangeSet use case is unavailable
+- src/app/project-controller.test.ts :: ProjectController > fails closed before publication when exact-byte verification throws during RecoveryChangeSet confirmation
+- src/app/project-controller.test.ts :: ProjectController > does not expose stale-base or persistence-failed RecoveryChangeSets as saved revisions
+- src/app/project-controller.test.ts :: ProjectController > rejects a same-sized but different revalidated hash set without publishing a RecoveryChangeSet
+- src/app/project-controller.test.ts :: ProjectController > does not let exact-byte repair race a confirmed RecoveryChangeSet
+- src/app/project-controller.test.ts :: ProjectController > does not report RecoveryChangeSet success when the required integrity reopen fails
+- src/app/project-controller.test.ts :: ProjectController > exports a chosen directory card without opening or mutating another project
+- src/app/project-controller.test.ts :: ProjectController > exports a selected durable Project as a Portable Backup without changing the active session
+- src/app/project-controller.test.ts :: ProjectController > uses the visible project export route to emit a self-contained Portable Backup even when JSON could carry the snapshot
+- src/app/project-controller.test.ts :: ProjectController > fails the visible export route closed when no durable source or Portable Backup exporter is available
+- src/app/project-controller.test.ts :: ProjectController > routes a ZIP-signature project transfer through the self-contained importer instead of JSON
+- src/app/project-controller.test.ts :: ProjectController > opens an imported file as a new durable Project and drops prior session history
+- src/app/project-controller.test.ts :: ProjectController > adds the prior durable Project revision to session history only after rename is published
+- src/app/project-controller.test.ts :: ProjectController > keeps both active history branches intact when a rename loses its base or becomes a retry candidate
+- src/app/project-controller.test.ts :: ProjectController > retains a quota-failed rename as an exact-base retry target
+- src/app/project-controller.test.ts :: ProjectController > keeps a failed rename retry fenced until its CAS base becomes stale
+- src/app/project-controller.test.ts :: ProjectController > turns a lost writer lease during a failed rename into a read-only outcome
+
+Note: list truncated (showing 50 of 138).
+
+### Skipped
+
+None.
+
+## Failures
+
+No test failures reported.

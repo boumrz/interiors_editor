@@ -1,0 +1,1 @@
+{"extends": "./tsconfig.json", "include": ["src/adapters/persistence/indexeddb-custom-asset-resource-store.test.ts", "src/adapters/portable-backup/browser-export-ownership-proof.test.ts", "src/app/telegram-runtime.test.ts", "src/app/registered-project-controller.test.ts"]}

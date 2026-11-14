@@ -1,0 +1,11 @@
+# Two remaining browser export negative oracles
+
+Transfer ONLY the one new test file. Prior four tests and all production sources are unchanged; this packet contains no production/config/dependency change or commit.
+
+One test rejects mixed valid and zero-length invalid descriptors in BOTH orders before any IndexedDB open. The second supplies an actual SHA-verified required static GLB plus a distinct unrelated static GLB from the readonly snapshot port, requiring verification-unavailable before checksum/smoke/writer and therefore no export bytes. Real registered smoke/writer ports remain configured, rather than a fake always-success formatter.
+
+Actual five-file corpus53/53 passes without instrumentation and with the installed Stryker9.6.1 instrumenter's real inactive headers. The instrumenter generated the SAME243 mutations from the exact same3 source ranges; IDs20/157 are checked against prior report by file, mutator, replacement and schema-converted positions before writing any source. Only those two exact IDs were manually activated in separate commands: each53-case run gives52PASS/1FAIL, only its new oracle fails. There is NO new full243 rerun or inferred score. Historical current51-case full95.47 packet remains unchanged.
+
+All159 instrumented-positive/negative per-test observations verify actual namespace ID and three loaded module input SHA values against filesystem source. Setup never assigns activeMutant or fabricates a namespace. Installed instrumenter creates real headers; they initialize from the environment. Controls distinguish actual metadata IO (both orders open once under20) and an otherwise-ready real archive under157 from expected unavailable. No setup/build/canary failure is used as negative evidence. Raw logs, target descriptors and restoration ledger retained.
+
+Application and ES-only domain TypeScript pass; new test lint passes. All three production source, four prior test, package/global.css SHA values are identical before/after; try/finally restored actual instrumented source. Only node_modules are symlinked and source/dependency copies use fresh copyfile. No original edits, broad mutation, storage writes/user upload, file/device or full readiness claim.

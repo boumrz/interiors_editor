@@ -4,7 +4,7 @@ project_name: InteriorsEditor
 user_name: Roman
 status: complete
 created: 2026-07-26
-updated: 2026-11-05
+updated: 2026-11-22
 date: 2026-11-05
 optimized_for_llm: true
 sections_completed:
@@ -21,6 +21,10 @@ sources:
 ---
 
 # Project Context
+
+Telegram Mini App — основное приложение по решению владельца от 22 ноября. Для изменений TMA приёмка и тесты проводятся в Telegram-контуре. Визуальные изменения проверяются также при размере окна Telegram Desktop. При выкладке только TMA используются уже опубликованные файлы Web/PWA. [Срез шторок](implementation-artifacts/tma-sheet-visual-alignment-2026-11-22.md)
+
+Обычная TMA считает общие открытия по умолчанию с возможностью отключить подсчёт до входа и в настройках. Повторные входы на устройстве учитывает только после отдельного разрешения текущей редакции. Служба получает пустые запросы и хранит два суточных итога. Индивидуальный код, облачная настройка, проект и Telegram ID в этот поток не поступают. Чтение документов, просмотр и настройки сами по себе счётчики не увеличивают. [Условия выпуска](planning-artifacts/sprint-change-proposal-2026-11-22-public-candidate.md)
 
 Краткая конституция для будущих AI-агентов. Детали и решения принадлежат SPEC
 и Architecture Spine; этот файл фиксирует правила, которые легко нарушить.
@@ -39,8 +43,9 @@ sources:
   mutation/review gates хранилищ ещё выполняются. Metadata-only evidence не
   заменяет полный AD-26 fencing/receipt protocol. Новый browser registered
   ingress в основном entry остаётся выключенным до AD-31 implementation proof
-  и регресса прежнего Web/PWA. Физическая Telegram-приёмка и writable rollout
-  не разрешены этими локальными результатами; Epic 10/release не READY.
+  и регресса прежнего Web/PWA. Физическая приёмка входит в отдельный gate
+  Epic 10. Разрешённые рабочие выпуски TMA перечислены в
+  [истории публикаций](../docs/progress/tma-editor-release-2026-11-22.md).
   Для каждого следующего scope до применимого `READY` и согласованного planning
   package либо явного written
   waiver не создавать новый extension production code/package/build/test/
@@ -216,7 +221,7 @@ AssetUsageGrant; AGENTS приведён к этому правилу. Влад�
   mesh/indices не сериализуются как source of truth.
 - Errors — stable reason-code discriminated unions; UI локализует их без
   изменения semantics. Logs structured и не содержат asset bytes, file paths
-  или user names; telemetry только по consent.
+  или user names. Для двух суточных итогов действуют раздельные выборы AD-34 и проверка состояния до отправки.
 - Новые Product/Architecture решения меняют документ владельцем источника
   истины (PRD/SPEC/Architecture/UX), а `project-context.md` только конденсирует
   уже утверждённое правило.

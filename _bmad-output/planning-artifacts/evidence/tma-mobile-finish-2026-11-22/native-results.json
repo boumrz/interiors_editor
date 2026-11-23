@@ -1,0 +1,26 @@
+{
+  "android": {
+    "sameProject": true,
+    "storageVersions": [
+      2,
+      3,
+      3
+    ],
+    "rotationGestureDegrees": 56.981,
+    "savedAngleDegrees": 37.5,
+    "statisticsRequests": 0,
+    "rollbackMutation": true
+  },
+  "ios": {
+    "sameProject": true,
+    "storageVersions": [
+      2,
+      3,
+      3
+    ],
+    "rotationGestureDegrees": 56.93,
+    "savedAngleDegrees": 37.5,
+    "statisticsRequests": 0,
+    "rollbackMutation": true
+  }
+}

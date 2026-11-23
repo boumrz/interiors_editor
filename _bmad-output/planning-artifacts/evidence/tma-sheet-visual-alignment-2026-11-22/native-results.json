@@ -1,0 +1,24 @@
+{
+  "ios": {
+    "completed": true,
+    "appBuildId": "526a2465c612f0c9",
+    "exactAngle": 37500,
+    "settingsLeft": 12,
+    "dimensionsLeft": 12,
+    "roomsLeft": 12,
+    "itemPropertiesLeft": 12,
+    "planAngleCentreDeltaPx": 0,
+    "sceneAngleCentreDeltaPx": 0
+  },
+  "android": {
+    "completed": true,
+    "appBuildId": "526a2465c612f0c9",
+    "exactAngle": 37500,
+    "settingsLeft": 12,
+    "dimensionsLeft": 12,
+    "roomsLeft": 12,
+    "itemPropertiesLeft": 12,
+    "planAngleCentreDeltaPx": 0,
+    "sceneAngleCentreDeltaPx": 0
+  }
+}

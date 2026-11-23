@@ -159,6 +159,9 @@ pnpm --filter @interiors/web exec rspack build --mode production --config rspack
 | `INTERIORS_TELEGRAM_LINK` | действующий `https://t.me/...` URL |
 | `INTERIORS_WEB_URL` | `https://www.domiknote.ru/` |
 
+Production-сборка Telegram также использует `INTERIORS_EXACT_FLOOR_YAW=1`
+по AD-35. Этот параметр активирует точное вращение и запись точных углов.
+
 Не использовать Telegram bot token: клиент проверяет подписи по официальному
 публичному Ed25519 ключу. Перед новой сборкой очищать только созданный CI
 output; не трогать пользовательский preview и его retained chunks.

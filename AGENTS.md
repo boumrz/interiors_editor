@@ -2,7 +2,9 @@
 
 ## Current phase
 
-The existing Web/PWA Alpha is implemented; its final historical implementation-readiness verdict is `READY` dated 2026-08-30. The Telegram extension has a separate 2026-11-04 assessment: Epic 10/release readiness remains `NEEDS_WORK`, while the reconciled local slices, including AD-31 browser storage implementation, have their applicable `READY` gates. The separate verified Telegram runtime is implemented and exercised in isolated local verification; deployment and physical client acceptance have not been completed. New browser registered-transfer ingress remains disabled pending its own implementation/proof. See `docs/progress/telegram-extension-2026-11-04/README.md`, `plans/telegram-mini-app-s0-readiness-result-2026-11-04.md` and the current readiness report for exact scope and remaining gates. Do not create new extension application code, package manifests, build configuration, tests, generated assets, deployment configuration, or implementation artifacts until the product owner approves the planning package and the BMAD implementation-readiness gate returns `READY` for the applicable scope or an explicit written waiver exists. Historical Alpha readiness is not Telegram readiness.
+Telegram Mini App (TMA) is the primary application. Product work, visual reviews, and release acceptance default to TMA. Run the TMA checks for TMA-only releases. Keep the already-published Web/PWA assets byte-for-byte for these deployments. Work on other surfaces requires a separate owner request.
+
+The existing Web/PWA Alpha has a historical implementation-readiness verdict of `READY` dated 2026-08-30. Telegram is deployed, with release evidence in `docs/progress/tma-editor-release-2026-11-22.md`. Epic 10 and physical client acceptance have their own assessment. Each approved scope keeps its applicable readiness gate. Browser registered-transfer ingress is disabled. Do not create new extension application code, package manifests, build configuration, tests, generated assets, deployment configuration, or implementation artifacts until the product owner approves the planning package and the BMAD implementation-readiness gate returns `READY` for the applicable scope or an explicit written waiver exists.
 
 During S0–S7 preserve the existing Web/PWA, data and checks while adding Telegram on the shared core. Prepare eventual Web/PWA retirement, but execute removal only after the owner's Telegram verification and a separate retirement decision. See `plans/telegram-mini-app-extension-spec-2026-11-04.md`.
 
@@ -33,7 +35,7 @@ Artifact ownership:
 
 ## Product invariants
 
-- Phone-first installable PWA; desktop authoring is not an alpha target.
+- Phone-first Telegram Mini App. Also verify the layout in the Telegram Desktop viewport when the change affects visual behavior there.
 - Canonical geometry uses integer millimetres.
 - The floor plan is a planar graph; wall segments are centerlines and rooms are derived faces with inward-offset usable polygons, not a second source of truth.
 - `Room.heightMm` is the sole editable height source; wall height is derived.

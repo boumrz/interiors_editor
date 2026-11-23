@@ -551,3 +551,14 @@ does not establish that corpus or implementation has passed.
 This registry defines what evidence must prove. It does not assert that the
 importer, corpus, physical lifecycle/quota handoff, independent review or
 implementation-readiness gate has passed.
+
+## Runtime V1 floor yaw, AD-35
+
+Пара (`interiors.project/runtime-v1-floor-yaw`, `1`) отдельно зарегистрирована
+для Project member со свободным поворотом. Остальные поля, пределы, resource
+mapping, checksum и порядок допуска остаются действующими по Runtime V1
+wire. Единственная дополнительная величина — floor `yawMilliDeg`, raw
+целый лексемный диапазон 0..359999, взаимоисключающий с legacy yaw fields.
+Manifest и root обязаны ссылаться на один селектор. Canonical writer выбирает
+новую пару только при наличии поля. PPJ-A1 и прежние Runtime selectors поле
+не принимают. Точный writer и decoder отката проверяются до активации C.

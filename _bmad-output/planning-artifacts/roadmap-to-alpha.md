@@ -2,7 +2,7 @@
 document_title: "InteriorsEditor — roadmap до самостоятельно полезной Alpha"
 status: draft
 created: 2026-07-26
-updated: 2026-11-04
+updated: 2026-11-22
 owner: Roman
 planning_model: evidence-gated
 calendar_commitments: none
@@ -33,6 +33,8 @@ implementation_plan: ../../plans/alpha-implementation-plan.md
 <!-- markdownlint-disable MD013 MD036 -->
 
 # Roadmap до самостоятельно полезной Alpha
+
+**Обычная сборка Telegram, 22 ноября 2026.** CAP-13 → FR-55–58, FR-61 → NFR-21/28/29 → AD-26/28/34 → истории 10.2, 10.3, 10.5, 10.14, 10.15 и 10.18. Проверяются новая редакция, отключение общего подсчёта до входа и в настройках, отдельное разрешение повторных входов на устройстве, два суточных итога и блокировка прежних маршрутов при переключении и откате. Публичная активация требует фактов о действующей инфраструктуре и физической приёмки. [Условия выпуска](sprint-change-proposal-2026-11-22-public-candidate.md)
 
 > **Актуализация 2026-11-04:** старый Web/PWA Alpha реализован и его итоговый
 > исторический readiness `READY` от 2026-08-30 относится только к прежнему
@@ -1756,3 +1758,11 @@ same-source reselection, partial failure каждой области, полны
 corpus и offline FR-44 backup каждого healthy нового Project. Применимый local
 READY не означает release READY или NFR-28; реальные old/new build-file pairs,
 physical iOS/Android и внешний handoff остаются отдельным evidence.
+
+## Доводка мобильного редактора, 22 ноября
+
+Этапы, зависимости и связь CAP/FR/NFR/AD с Epic 3/5/8/10 зафиксированы в
+[согласованном пакете](sprint-change-proposal-2026-11-22-mobile-editor-finish.md#трассировка-и-подготовка-bmad).
+Мобильный срез проверяется отдельно от записи нового угла. Совместимая сборка
+для отката и сохранность Portable Backup нужны до активации записи. Проверка
+Android и iOS использует тот же архив, что публикация.

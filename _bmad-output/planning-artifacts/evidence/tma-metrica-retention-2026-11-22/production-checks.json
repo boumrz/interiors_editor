@@ -1,0 +1,23 @@
+{
+  "release": "8baf6f31bbac1a44--2fdafe62c3eeee3c",
+  "at": "2026-11-22T08:22:43.796579+00:00",
+  "serverChecks": 248,
+  "externalChecks": 20,
+  "legacyOrigin": {
+    "html": 410,
+    "js": 410,
+    "cache": "no-store"
+  },
+  "collector": "healthy via Unix socket",
+  "negativePublicChecks": {
+    "TMA HEAD each route": 405,
+    "TMA POST without marker each route": 403,
+    "web POST each route": 405,
+    "nonempty total on TMA": 400,
+    "other media type consent on TMA": 415,
+    "64 invalid digest characters accepted by Nginx and rejected by Unix service": 400
+  },
+  "sourceSha256": "bea687ed50ac02d59dda842d46cd69d2c57c490095fdd91a31739b52ecb256d1",
+  "archiveSha256": "d5a7771abc2db235c97fdadb6b26878bcee303ab1a27aa8ed1c99805c19ce762",
+  "externalTestsCompleted": true
+}

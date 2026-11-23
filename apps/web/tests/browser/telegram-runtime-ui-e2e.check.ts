@@ -379,26 +379,81 @@ test("TMA-EXACT-YAW: exact 2D placement restores in 3D and in the compatible run
 	await expect(left).toHaveValue(String(next));
 });
 
-async function expectBalancedRotationRow(left: Locator, angle: Locator, right: Locator) {
-	await expect(angle).toBeVisible();
-	const [first, field, input, last] = await Promise.all([left.boundingBox(), angle.locator("..").boundingBox(), angle.boundingBox(), right.boundingBox()]);
-	if (!first || !field || !input || !last) throw new Error("Missing rotation row controls");
+async function expectBalancedRotationRow(left: Locator, angle: Locator, right: Locator, snap: Locator) {
+	await expect(angle).toBeInViewport({ ratio: 1 });
+	const [first, field, input, last, toggle] = await Promise.all([left.boundingBox(), angle.locator("..").boundingBox(), angle.boundingBox(), right.boundingBox(), snap.boundingBox()]);
+	if (!first || !field || !input || !last || !toggle) throw new Error("Missing rotation row controls");
 	const leftGap = field.x - first.x - first.width;
 	const rightGap = last.x - field.x - field.width;
-	expect.soft(first.width).toBeCloseTo(48, 1);
+	const toggleGap = toggle.x - last.x - last.width;
+	for (const control of [first, field, last, toggle]) {
+		expect.soft(control.width).toBeGreaterThanOrEqual(44);
+		expect.soft(control.height).toBeGreaterThanOrEqual(44);
+	}
 	expect.soft(last.width).toBeCloseTo(first.width, 1);
-	expect.soft(first.height).toBeCloseTo(48, 1);
+	expect.soft(toggle.width).toBeCloseTo(first.width, 1);
 	expect.soft(last.height).toBeCloseTo(first.height, 1);
 	expect.soft(field.height).toBeCloseTo(first.height, 1);
+	expect.soft(toggle.height).toBeCloseTo(first.height, 1);
 	expect.soft(field.y).toBeCloseTo(first.y, 1);
 	expect.soft(last.y).toBeCloseTo(first.y, 1);
-	expect.soft(leftGap).toBeCloseTo(8, 1);
+	expect.soft(toggle.y).toBeCloseTo(first.y, 1);
+	expect.soft(leftGap).toBeGreaterThanOrEqual(4);
 	expect.soft(rightGap).toBeCloseTo(leftGap, 1);
+	expect.soft(toggleGap).toBeCloseTo(leftGap, 1);
 	expect.soft(input.x + input.width / 2).toBeCloseTo(field.x + field.width / 2, 1);
 	expect.soft(await angle.evaluate((input) => getComputedStyle(input).textAlign)).toBe("center");
 }
 
-test("TMA-ROTATION-SPACING: rotation controls have symmetric touch targets and a centred angle in Plan and 3D", async ({ page }) => {
+async function expectRotationRowWhileEditing(page: Page, left: Locator, angle: Locator, right: Locator, snap: Locator) {
+	const cancel = page.getByRole("button", { name: "Отменить ввод угла", exact: true });
+	const apply = page.getByRole("button", { name: "Применить угол", exact: true });
+	const before = await angle.inputValue();
+	const stepMode = await snap.getAttribute("aria-pressed");
+	await expect(angle).toBeInViewport({ ratio: 1 });
+	const idle = await angle.boundingBox();
+	for (const arrow of [left, right]) {
+		expect.soft(await arrow.evaluate((button) => Number.parseFloat(getComputedStyle(button).fontSize))).toBeLessThanOrEqual(22);
+	}
+	await angle.fill("359,999");
+	await expect.soft(left).toBeHidden({ timeout: 800 });
+	await expect.soft(right).toBeHidden({ timeout: 800 });
+	await expectBalancedRotationRow(cancel, angle, apply, snap);
+	for (const action of [cancel, apply]) {
+		const icon = action.locator("svg");
+		await expect.soft(icon).toBeVisible({ timeout: 800 });
+		if (await icon.isVisible()) {
+			const size = await icon.boundingBox();
+			expect.soft(size?.width).toBeLessThanOrEqual(22);
+			expect.soft(size?.height).toBeLessThanOrEqual(22);
+		}
+	}
+	const editing = await angle.boundingBox();
+	expect.soft(editing?.x).toBe(idle?.x);
+	expect.soft(editing?.width).toBe(idle?.width);
+	await cancel.click();
+	await expect(angle).toHaveValue(before);
+	await expect(snap).toHaveAttribute("aria-pressed", stepMode ?? "false");
+	await expect(left).toBeVisible();
+	await expect(right).toBeVisible();
+}
+
+async function expectEditorMenuKeepsItsHeaderRow(page: Page) {
+	const header = page.getByTestId("editor-top-bar");
+	await expect.poll(async () => {
+		const [back, menu, views] = await Promise.all([
+			header.getByRole("button", { name: "Назад", exact: true }).boundingBox(),
+			header.getByRole("button", { name: "Открыть остальные действия", exact: true }).boundingBox(),
+			header.getByTestId("editor-view-switch").boundingBox(),
+		]);
+		if (!back || !menu || !views) return false;
+		const backCentre = back.y + back.height / 2;
+		const menuCentre = menu.y + menu.height / 2;
+		return Math.abs(backCentre - menuCentre) <= 2 && menu.y + menu.height <= views.y;
+	}).toBe(true);
+}
+
+test("TMA-ROTATION-SPACING: four rotation controls stay on one row in Plan and 3D", async ({ page }) => {
 	test.setTimeout(60_000);
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
 	await createRoom(page, "Геометрия поворота");
@@ -408,6 +463,7 @@ test("TMA-ROTATION-SPACING: rotation controls have symmetric touch targets and a
 	const planLeft = page.getByRole("button", { name: "Повернуть размещаемый предмет влево на 1°", exact: true });
 	const planAngle = page.getByRole("textbox", { name: "Угол размещаемого предмета, градусы", exact: true });
 	const planRight = page.getByRole("button", { name: "Повернуть размещаемый предмет вправо на 1°", exact: true });
+	const snap = page.getByRole("button", { name: "Шаг 45°", exact: true });
 	const sceneLeft = page.getByRole("button", { name: "Повернуть предмет на 1° против часовой стрелки", exact: true });
 	const sceneAngle = page.getByRole("textbox", { name: "Поворот предмета в 3D, градусы", exact: true });
 	const sceneRight = page.getByRole("button", { name: "Повернуть предмет на 1° по часовой стрелке", exact: true });
@@ -435,20 +491,53 @@ test("TMA-ROTATION-SPACING: rotation controls have symmetric touch targets and a
 	}
 	for (const layout of layouts) {
 		await setRotationLayout(layout);
-		await expectBalancedRotationRow(planLeft, planAngle, planRight);
+		await expectBalancedRotationRow(planLeft, planAngle, planRight, snap);
+		if (layout.width <= 390) await expectRotationRowWhileEditing(page, planLeft, planAngle, planRight, snap);
 		await page.getByRole("button", { name: "3D", exact: true }).click();
-		await expectBalancedRotationRow(sceneLeft, sceneAngle, sceneRight);
+		await expectBalancedRotationRow(sceneLeft, sceneAngle, sceneRight, snap);
+		if (layout.width <= 390) await expectRotationRowWhileEditing(page, sceneLeft, sceneAngle, sceneRight, snap);
 		await page.getByRole("button", { name: "План 2D", exact: true }).click();
 	}
 	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
 	await saved(page);
 	await page.getByTestId("schematic-item").click();
-	await page.getByRole("button", { name: "3D", exact: true }).click();
+	const selectedPlanLeft = page.getByRole("button", { name: "Повернуть выбранный предмет влево на 1°", exact: true });
+	const selectedPlanAngle = page.getByRole("textbox", { name: "Угол поворота выбранного предмета, градусы", exact: true });
+	const selectedPlanRight = page.getByRole("button", { name: "Повернуть выбранный предмет вправо на 1°", exact: true });
 	for (const layout of layouts) {
 		await setRotationLayout(layout);
-		await expectBalancedRotationRow(sceneLeft, sceneAngle, sceneRight);
+		if (layout.width === 320) await expectEditorMenuKeepsItsHeaderRow(page);
+		await expectBalancedRotationRow(selectedPlanLeft, selectedPlanAngle, selectedPlanRight, snap);
+		if (layout.width <= 390) await expectRotationRowWhileEditing(page, selectedPlanLeft, selectedPlanAngle, selectedPlanRight, snap);
+		await page.getByRole("button", { name: "3D", exact: true }).click();
+		await expectBalancedRotationRow(sceneLeft, sceneAngle, sceneRight, snap);
+		if (layout.width <= 390) await expectRotationRowWhileEditing(page, sceneLeft, sceneAngle, sceneRight, snap);
+		await page.getByRole("button", { name: "План 2D", exact: true }).click();
 	}
 });
+
+async function expectRotationStepButton(button: Locator, pressed: boolean) {
+	await expect(button).toHaveAttribute("aria-pressed", String(pressed));
+	const icon = button.locator("svg");
+	await expect(icon).toBeVisible();
+	const iconBounds = await icon.boundingBox();
+	expect(iconBounds?.width).toBe(30);
+	expect(iconBounds?.height).toBe(30);
+	await expect(icon.locator("path").first()).toBeVisible();
+	await expect(icon.locator("text")).toHaveText("45°");
+	await expect(button).toHaveText("45°");
+	expect(await icon.evaluate((element) => {
+		const orbit = element.querySelector("path")?.getBBox();
+		const label = element.querySelector("text")?.getBBox();
+		return Boolean(orbit && label && label.width > 0 && label.height > 0 &&
+			label.x >= orbit.x && label.y >= orbit.y &&
+			label.x + label.width <= orbit.x + orbit.width &&
+			label.y + label.height <= orbit.y + orbit.height);
+	})).toBe(true);
+	const bounds = await button.boundingBox();
+	expect(bounds?.height).toBeGreaterThanOrEqual(44);
+	expect(bounds?.width).toBeGreaterThanOrEqual(44);
+}
 
 test("TMA-ROTATION-EXPLICIT: angle drafts and snap mode work across plan, 3D and the keyboard", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
@@ -460,23 +549,31 @@ test("TMA-ROTATION-EXPLICIT: angle drafts and snap mode work across plan, 3D and
 	const angle = placement.getByRole("textbox", { name: "Угол размещаемого предмета, градусы" });
 	const apply = page.getByRole("button", { name: "Применить угол", exact: true });
 	const cancel = page.getByRole("button", { name: "Отменить ввод угла", exact: true });
+	const snap = page.getByRole("button", { name: "Шаг 45°", exact: true });
 	const before = await rows(page, "a");
 	await angle.fill("37,5");
 	await placement.getByRole("heading").click();
 	await expect(angle).toHaveValue("37,5");
 	await expect(apply).toBeVisible();
+	await snap.press("Space");
+	await expect(snap).toHaveAttribute("aria-pressed", "true");
+	await expect(angle).toHaveValue("37,5");
+	expect(await rows(page, "a")).toEqual(before);
 	await cancel.click();
 	await expect(angle).toHaveValue("0");
+	await expect(snap).toHaveAttribute("aria-pressed", "true");
+	await snap.press("Space");
 	await angle.fill("37,5");
 	await apply.click();
 	await expect(angle).toHaveValue("37.5");
-	const snap = page.getByRole("checkbox", { name: "Шаг 45°", exact: true });
-	await snap.check();
+	await expectRotationStepButton(snap, false);
+	await snap.press("Space");
+	await expectRotationStepButton(snap, true);
 	await expect(angle).toHaveValue("37.5");
 	await placement.getByRole("button", { name: "Повернуть размещаемый предмет влево на 45°", exact: true }).click();
 	await expect(angle).toHaveValue("45");
 	await page.getByRole("button", { name: "3D", exact: true }).click();
-	await expect(snap).toBeChecked();
+	await expectRotationStepButton(snap, true);
 	const sceneAngle = page.getByRole("textbox", { name: "Поворот предмета в 3D, градусы" });
 	await expect(sceneAngle).toHaveValue("45");
 	await sceneAngle.fill("270");
@@ -523,6 +620,254 @@ test("TMA-ROTATION-EXPLICIT: angle drafts and snap mode work across plan, 3D and
 	expect(await rows(page, "a")).toEqual(placed);
 });
 
+async function selectExactChair(page: Page, name: string) {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, name);
+	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
+	await clickRectangularRoomPoint(page, { x: 0.44, y: 0.48 });
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	await page.getByTestId("schematic-item").click();
+}
+
+async function setRotationVisibleHeight(page: Page, height?: number) {
+	await page.evaluate((visible) => {
+		const styles = document.documentElement.style;
+		if (visible === undefined) {
+			styles.removeProperty("--editor-viewport-height");
+			styles.removeProperty("--editor-keyboard-inset");
+			return;
+		}
+		styles.setProperty("--editor-viewport-height", `${visible}px`);
+		styles.setProperty("--editor-keyboard-inset", `${innerHeight - visible}px`);
+	}, height);
+}
+
+test("TMA-SELECTED-ROTATION: a selected Plan item offers exact angle and shared step mode outside Properties", async ({ page }) => {
+	await selectExactChair(page, "Поворот выбранного предмета");
+	const panel = page.getByTestId("two-dimensional-rotation-editor");
+	const ring = page.getByTestId("two-dimensional-rotation-track");
+	const angleLabel = "Угол поворота выбранного предмета, градусы";
+	const angle = panel.getByRole("textbox", { name: angleLabel, exact: true });
+	const snap = panel.getByRole("button", { name: "Шаг 45°", exact: true });
+	await expect(ring).toBeVisible();
+	await expect(angle).toBeVisible();
+	await expect(angle).toHaveValue("0");
+	await expectRotationStepButton(snap, false);
+	await expect.poll(async () => {
+		const [controls, track, header, footer] = await Promise.all([
+			panel.boundingBox(), ring.boundingBox(), page.getByTestId("editor-top-bar").boundingBox(),
+			page.getByRole("navigation", { name: "Инструменты редактора" }).boundingBox(),
+		]);
+		if (!controls || !track || !header || !footer) return false;
+		const horizontalOffset = Math.abs(controls.x + controls.width / 2 - track.x - track.width / 2);
+		return horizontalOffset <= 44 && controls.y >= header.y + header.height &&
+			controls.y + controls.height <= footer.y;
+	}).toBe(true);
+
+	const inspector = page.getByTestId("selected-item-inspector");
+	if (await inspector.isVisible()) {
+		await page.getByRole("button", { name: "Развернуть панель предмета", exact: true }).click();
+	} else {
+		const properties = page.getByRole("button", { name: "Параметры выбранного предмета", exact: true });
+		if (!await properties.isVisible()) {
+			await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+		}
+		await properties.click();
+	}
+	await expect(inspector.getByRole("textbox", { name: "Слева, мм", exact: true })).toBeVisible();
+	await expect(inspector.getByRole("textbox", { name: angleLabel, exact: true })).toHaveCount(0);
+	await expect(inspector.getByRole("button", { name: "Шаг 45°", exact: true })).toHaveCount(0);
+	await inspector.getByRole("button", { name: "Скрыть панель предмета", exact: true }).click();
+
+	const before = await rows(page, "a");
+	await snap.press("Space");
+	await expect(snap).toHaveAttribute("aria-pressed", "true");
+	await angle.fill("37,125");
+	await angle.press("Tab");
+	await expect(angle).toHaveValue("37,125");
+	expect(await rows(page, "a")).toEqual(before);
+	const header = await page.getByTestId("editor-top-bar").boundingBox();
+	if (!header) throw new Error("No Plan header");
+	const outside = { x: 22, y: header.y + header.height + 52 };
+	expect(await page.getByTestId("plan-canvas").evaluate((canvas, point) => {
+		const target = document.elementFromPoint(point.x, point.y);
+		return !!target && canvas.contains(target) && !target.closest("[data-item-id],[data-wall-id]");
+	}, outside)).toBe(true);
+	await page.mouse.click(outside.x, outside.y);
+	await expect(angle).toHaveValue("37,125");
+	expect(await rows(page, "a")).toEqual(before);
+
+	await angle.focus();
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+	await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
+	await expect(angle).toBeFocused();
+	await expect(angle).toHaveValue("37,125");
+	await angle.press("Escape");
+	await expect(angle).toHaveValue("0");
+	expect(await rows(page, "a")).toEqual(before);
+
+	await angle.fill("37,125");
+	const apply = panel.getByRole("button", { name: "Применить угол", exact: true });
+	const cancel = panel.getByRole("button", { name: "Отменить ввод угла", exact: true });
+	await setRotationVisibleHeight(page, 390);
+	for (const control of [angle, apply, cancel]) {
+		await expect.poll(async () => {
+			const bounds = await control.boundingBox();
+			return Boolean(bounds && bounds.y >= 0 && bounds.y + bounds.height <= 390);
+		}).toBe(true);
+		await control.click({ trial: true });
+	}
+	await cancel.click();
+	await setRotationVisibleHeight(page);
+	await expect(angle).toHaveValue("0");
+	expect(await rows(page, "a")).toEqual(before);
+	await angle.fill("37,125");
+	await apply.click();
+	await expect.poll(async () => (await currentProject(page)).assetInstances[0]).toHaveProperty("yawMilliDeg", 37125);
+	await saved(page);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
+
+	await snap.press("Space");
+	await expect(snap).toHaveAttribute("aria-pressed", "false");
+	await panel.getByRole("button", { name: "Повернуть выбранный предмет влево на 1°", exact: true }).click();
+	await expect.poll(async () => (await currentProject(page)).assetInstances[0]).toHaveProperty("yawMilliDeg", 38125);
+	await saved(page);
+	await expect(angle).toHaveValue("38.125");
+	await page.getByRole("group", { name: "История изменений" }).getByRole("button", { name: /^Отменить действие/ }).click();
+	await expect.poll(async () => (await currentProject(page)).assetInstances[0]).toHaveProperty("yawMilliDeg", 37125);
+	await saved(page);
+	await page.getByTestId("schematic-item").click();
+	await expect(angle).toHaveValue("37.125");
+	await snap.press("Space");
+	await expect(snap).toHaveAttribute("aria-pressed", "true");
+
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	const scene = page.getByTestId("three-dimensional-rotation-editor");
+	await expect(scene.getByRole("textbox", { name: "Поворот предмета в 3D, градусы", exact: true })).toHaveValue("37.125");
+	await expectRotationStepButton(scene.getByRole("button", { name: "Шаг 45°", exact: true }), true);
+});
+
+test("TMA-SELECTED-ROTATION-DOCK: 3D rotation stays clear of the footer through interaction and keyboard resize", async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await selectExactChair(page, "Панель выбранного предмета в 3D");
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	const footer = page.getByTestId("three-dimensional-view-controls");
+	const angle = page.getByRole("textbox", { name: "Поворот предмета в 3D, градусы", exact: true });
+	const panel = page.getByRole("group", { name: "Поворот предмета", exact: true });
+	const apply = panel.getByRole("button", { name: "Применить угол", exact: true });
+	const cancel = panel.getByRole("button", { name: "Отменить ввод угла", exact: true });
+	const camera = page.getByTestId("three-dimensional-camera");
+	const footerAction = footer.getByRole("button", { name: "Предметы интерьера", exact: true });
+	await expect(angle).toBeEnabled();
+	const cameraBefore = await camera.textContent();
+	const itemColor = (await currentProject(page)).assetInstances[0]?.color;
+	if (!itemColor) throw new Error("Missing durable color for the selected chair");
+	const expectMobileFooterAppearance = async (rows: 1 | 2) => {
+		const actions = footer.getByRole("button");
+		await expect(actions).toHaveCount(4);
+		const matching = await footer.evaluate((element, { savedColor, rows }) => {
+			const buttons = [...element.querySelectorAll("button")].filter((button) => button.getClientRects().length > 0);
+			const bounds = buttons.map((button) => button.getBoundingClientRect());
+			const icons = buttons.map((button) => button.querySelector(':scope > svg, :scope > span[aria-hidden="true"]'));
+			const glyphs = icons.map((icon) => icon?.getBoundingClientRect());
+			const swatch = icons[3];
+			if (!swatch || bounds.length !== 4) return false;
+			const columns = 4 / rows;
+			const aligned = bounds.every((box, index) => {
+				const row = Math.floor(index / columns);
+				const column = index % columns;
+				const rowStart = bounds[row * columns];
+				return Math.abs(box.y - rowStart.y) <= 1 &&
+					Math.abs(box.x - bounds[column].x) <= 1 &&
+					(column === 0 || box.x >= bounds[index - 1].right) &&
+					(row === 0 || rowStart.y >= bounds[0].bottom);
+			});
+			const reference = document.createElement("span");
+			reference.style.backgroundColor = savedColor;
+			return aligned && bounds.every((box) => box.width >= 44 && box.height >= 44 &&
+				Math.abs(box.width - bounds[0].width) <= 1 && Math.abs(box.height - bounds[0].height) <= 1) &&
+				glyphs.every((glyph) => glyph && glyph.width >= 20 && glyph.height >= 20 &&
+					glyph.width <= 26 && glyph.height <= 26) &&
+				getComputedStyle(swatch).backgroundColor === reference.style.backgroundColor;
+		}, { savedColor: itemColor, rows });
+		expect(matching).toBe(true);
+	};
+	let visibleHeight = 844;
+	const expectClearFooter = async () => {
+		await expect.poll(async () => {
+			const [rotation, controls] = await Promise.all([
+				page.getByTestId("three-dimensional-rotation-editor").boundingBox(), footer.boundingBox(),
+			]);
+			return Boolean(rotation && controls && rotation.y >= 0 &&
+				controls.y - rotation.y - rotation.height >= 7.95 &&
+				controls.y + controls.height <= visibleHeight + 1);
+		}).toBe(true);
+		await footerAction.click({ trial: true });
+	};
+	await expectClearFooter();
+	await expectMobileFooterAppearance(1);
+
+	await angle.focus();
+	await expectClearFooter();
+	const step = panel.getByRole("button", { name: "Повернуть предмет на 1° против часовой стрелки", exact: true });
+	await step.click();
+	await expect(angle).toHaveValue("1");
+	await saved(page);
+	await expectClearFooter();
+	const before = await rows(page, "a");
+	const ring = await page.getByTestId("three-dimensional-rotation-gizmo").boundingBox();
+	if (!ring) throw new Error("The selected 3D item has no rotation ring");
+	const centre = { x: ring.x + ring.width / 2, y: ring.y + ring.height / 2 };
+	const radius = ring.width * 73 / 200;
+	await page.mouse.move(centre.x, centre.y - radius);
+	await page.mouse.down();
+	await page.mouse.move(centre.x + radius * 0.4, centre.y - radius * 0.92, { steps: 4 });
+	await expect(page.getByTestId("three-dimensional-item-preview")).toHaveText(/^поворот:/);
+	await expectClearFooter();
+	await page.keyboard.press("Escape");
+	await page.mouse.up();
+	await expect(angle).toHaveValue("1");
+	expect(await rows(page, "a")).toEqual(before);
+
+	await angle.fill("37,5");
+	visibleHeight = 390;
+	await setRotationVisibleHeight(page, visibleHeight);
+	await expectClearFooter();
+	await apply.click({ trial: true });
+	await cancel.click({ trial: true });
+	await cancel.click();
+	await expect(angle).toHaveValue("1");
+	expect(await rows(page, "a")).toEqual(before);
+	await expectClearFooter();
+
+	await angle.fill("37,5");
+	await apply.click();
+	await expect.poll(async () => (await currentProject(page)).assetInstances[0]).toHaveProperty("yawMilliDeg", 37500);
+	await saved(page);
+	await expectClearFooter();
+	await setRotationVisibleHeight(page);
+	visibleHeight = 844;
+	await expectClearFooter();
+	await expect(page.getByTestId("three-dimensional-rotation-editor")).toBeVisible();
+	await expect(camera).toHaveText(cameraBefore ?? "");
+	await expect(page.getByTestId("three-dimensional-item-selection-frame")).toBeVisible();
+	await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+	await expectMobileFooterAppearance(2);
+	await page.evaluate(() => { document.documentElement.style.removeProperty("font-size"); });
+
+	await page.setViewportSize({ width: 1024, height: 800 });
+	await expect.poll(async () => {
+		const [rotation, controls] = await Promise.all([panel.boundingBox(), footer.boundingBox()]);
+		if (!rotation || !controls) return false;
+		return rotation.y + rotation.height < controls.y || controls.y + controls.height < rotation.y;
+	}).toBe(true);
+	await footerAction.click({ trial: true });
+	await angle.click({ trial: true });
+});
+
 test("TMA-EXACT-TRANSFER: Undo, Redo and a compatible runtime preserve exact yaw and pinned GLB bytes", async ({ page }) => {
 	test.setTimeout(60_000);
 	const preserved = await browser(page);
@@ -534,17 +879,13 @@ test("TMA-EXACT-TRANSFER: Undo, Redo and a compatible runtime preserve exact yaw
 	await open(page, "Uppercase local model");
 	const original = await currentProject(page);
 	await page.getByTestId("schematic-item").click();
-	const angle = page.getByRole("textbox", { name: "Угол поворота выбранного предмета, градусы", exact: true });
-	if (!(await angle.isVisible())) {
-		await page.getByRole("button", { name: "Развернуть панель предмета", exact: true }).click();
-	}
+	const angle = page.getByTestId("two-dimensional-rotation-editor").getByRole("textbox", { name: "Угол поворота выбранного предмета, градусы", exact: true });
 	await angle.fill("37,5");
 	await angle.press("Enter");
 	await saved(page);
 	const rotated = await currentProject(page);
 	expect(rotated.assetInstances[0]).toHaveProperty("yawMilliDeg", 37500);
 	expect(rotated.assetDefinitionRefs).toEqual(original.assetDefinitionRefs);
-	await page.getByRole("button", { name: "Скрыть панель предмета", exact: true }).click();
 	const history = page.getByRole("group", { name: "История изменений" });
 	await history.getByRole("button", { name: /^Отменить действие/ }).click();
 	await expect.poll(async () => (await currentProject(page)).assetInstances).toEqual(original.assetInstances);

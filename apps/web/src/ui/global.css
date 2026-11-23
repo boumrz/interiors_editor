@@ -18,6 +18,10 @@
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 }
 
+[data-editor-host="telegram"] {
+  --rotation-compact-width: calc(max(96px, 4rem) + 144px);
+}
+
 * { box-sizing: border-box; }
 html, body, #root { background: var(--canvas); min-width: 320px; min-height: 100%; }
 body { margin: 0; }

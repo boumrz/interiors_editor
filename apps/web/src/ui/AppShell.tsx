@@ -161,7 +161,6 @@ import { TelegramItemColor } from "./telegram-item-color";
 import { roomTypeLabels } from "./room-type-labels";
 import { moveDoorOpeningInProject } from "../domain/door-opening-project";
 import { degreesForYawRadians, preciseYawRadiansFromDegrees, yawRadiansFromDegrees } from "./rotation-angle";
-import { RotationAngleActions, RotationModeToggle } from "./FloorRotationAngleField";
 import { SaveFailureNotice } from "./SaveFailureNotice";
 import {
 	isWallMoveGestureSupported,
@@ -2929,9 +2928,8 @@ export function AppShell({
 		roomHeightOpeningConflict !== undefined;
 	const hasRawRenameDraft = isRenameProjectOpen && renameProjectName !== project?.name;
 	const hasRawSelectedItemDraft = !!selectedItem && !!selectedItemFields && (
-		selectedItemFields.widthMm !== String(selectedItem.widthMm) || selectedItemFields.depthMm !== String(selectedItem.depthMm) || selectedItemFields.heightMm !== String(selectedItem.heightMm) || selectedItemFields.label !== selectedItem.label || selectedItemFields.color !== selectedItem.color || selectedItemAngleRaw !== degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem))
+		selectedItemFields.widthMm !== String(selectedItem.widthMm) || selectedItemFields.depthMm !== String(selectedItem.depthMm) || selectedItemFields.heightMm !== String(selectedItem.heightMm) || selectedItemFields.label !== selectedItem.label || (!onRotationStepModeChange && selectedItemAngleRaw !== degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem))) || selectedItemFields.color !== selectedItem.color
 	);
-	const hasRawSelectedItemAngle = !!selectedItem && selectedItemAngleRaw !== degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem));
 	const hasRawRoomPropertyDraft = isRoomDirectoryOpen && !!roomPropertyFields && !!selectedRoomProperty && (
 		roomPropertyFields.heightMm !== selectedRoomProperty.fields.heightMm || roomPropertyFields.type !== selectedRoomProperty.fields.type || roomPropertyFields.name !== selectedRoomProperty.fields.name
 	);
@@ -2946,11 +2944,15 @@ export function AppShell({
 	});
 	const hasRawCustomImportDraft = customGlbImport.kind === "ready" || customGlbImport.kind === "checking" || fbxConversion.kind === "converting";
 	const hasRawEditorDraft = hasRawRenameDraft || hasRawSelectedItemDraft || hasRawRoomPropertyDraft || hasRawProjectNameDraft || hasRawDimensionDraft || hasRawPlaceholderDraft || hasRawWallPositionDraft || hasRawCustomImportDraft || itemColorVariantDraft !== undefined;
+	const isEditorPreview = state.kind === "saved" && (
+		isItemPlacementActive ||
+		(fullTransientNavigationProtection && (hasRawEditorDraft || hasUndurableEditorDraft))
+	);
 	const editorSaveState =
 		state.kind === "saving"
 			? "Сохраняем…"
             : hasRetainedHistoryTarget ? "Правка не сохранена"
-			: state.kind === "saved" && (isItemPlacementActive || (fullTransientNavigationProtection && (hasRawEditorDraft || hasUndurableEditorDraft)))
+			: isEditorPreview
 				? "Предпросмотр — не сохранено"
 				: state.kind === "saved"
 					? "Сохранено"
@@ -3939,13 +3941,6 @@ export function AppShell({
 				),
 			);
 		}
-	};
-
-	const cancelSelectedItemAngle = () => {
-		if (!selectedItem) return;
-		setSelectedItemAngleRaw(degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)));
-		setDimensionError(undefined);
-		document.activeElement instanceof HTMLInputElement && document.activeElement.blur();
 	};
 
 	const activateWallTool = async () => {
@@ -7367,6 +7362,7 @@ export function AppShell({
 					<span
 						aria-live="polite"
 						className={styles.editorSaveState}
+						data-editor-preview={isEditorPreview || undefined}
 						role="status"
 					>
 						{editorSaveState}
@@ -7857,6 +7853,7 @@ export function AppShell({
 				<fieldset
 					aria-label="История изменений"
 					className={styles.canvasHistory}
+					data-plan-rotation-obstacle={viewMode === "plan" || undefined}
 				>
 					<button
 						aria-label={undoActionLabel}
@@ -8963,66 +8960,39 @@ export function AppShell({
 									value={selectedItemFields.heightMm}
 								/>
 							</label>
-							<div className={styles.selectedAngleEditor}>
-							<label data-angle-unit>
-								<span>Поворот</span>
-								<input
-									aria-label="Угол поворота выбранного предмета, градусы"
-									autoComplete="off"
-									disabled={
-										isEditorReadOnly ||
-										selectedItemLocked ||
-										isWorking ||
-										state.kind === "persist-failed" ||
-										state.kind === "recovery-needed"
-									}
-									inputMode="decimal"
-									data-editor-blur-commit={onRotationStepModeChange ? undefined : ""}
-
-							onBlur={(event) => {
-										if (!onRotationStepModeChange && !consumeSkippedNumericBlurCommit(event.currentTarget)) {
-											void commitSelectedItemAngle();
-										}
-									}}
-									onChange={(event) =>
-										setSelectedItemAngleRaw(event.target.value)
-									}
-									onKeyDown={(event) => {
-										if (onRotationStepModeChange) {
-											if (event.key === "Enter") {
-												event.preventDefault();
-												void commitSelectedItemAngle();
-												event.currentTarget.blur();
-											} else if (event.key === "Escape" && hasRawSelectedItemAngle) {
-												event.preventDefault();
-												event.stopPropagation();
-												cancelSelectedItemAngle();
+							{!onRotationStepModeChange ? (
+								<div>
+									<label data-angle-unit>
+										<span>Поворот</span>
+										<input
+											aria-label="Угол поворота выбранного предмета, градусы"
+											autoComplete="off"
+											disabled={
+												isEditorReadOnly ||
+												selectedItemLocked ||
+												isWorking ||
+												state.kind === "persist-failed" ||
+												state.kind === "recovery-needed"
 											}
-											return;
-										}
-										if (
-											cancelNumericDraftOnEscape(
-												event,
-												cancelSelectedItemNumericDraft,
-											)
-										) {
-											return;
-										}
-										commitOnEnter(event);
-									}}
-									value={selectedItemAngleRaw}
-								/>
-							</label>
-							{onRotationStepModeChange && hasRawSelectedItemAngle ? (
-								<RotationAngleActions disabled={isMutationBlocked || isEditorReadOnly || selectedItemLocked}
-									onApply={() => void commitSelectedItemAngle()} onCancel={cancelSelectedItemAngle} />
+											inputMode="decimal"
+											data-editor-blur-commit=""
+											onBlur={(event) => {
+												if (!consumeSkippedNumericBlurCommit(event.currentTarget)) {
+													void commitSelectedItemAngle();
+												}
+											}}
+											onChange={(event) => setSelectedItemAngleRaw(event.target.value)}
+											onKeyDown={(event) => {
+												if (!cancelNumericDraftOnEscape(event, cancelSelectedItemNumericDraft)) {
+													commitOnEnter(event);
+												}
+											}}
+											value={selectedItemAngleRaw}
+										/>
+									</label>
+								</div>
 							) : null}
-							</div>
 						</div>
-						{onRotationStepModeChange && isSelectionInspectorExpanded ? (
-							<RotationModeToggle checked={rotationStepMode} disabled={isMutationBlocked || isEditorReadOnly || selectedItemLocked}
-								onChange={onRotationStepModeChange} />
-						) : null}
 
 						{localGreyboxCatalog || selectedItemHasNoDeclaredColorVariant ? null : (
 							<fieldset className={styles.quickPalette}>

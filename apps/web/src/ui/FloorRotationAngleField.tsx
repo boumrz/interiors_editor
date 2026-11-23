@@ -10,8 +10,16 @@ export function RotationAngleActions({ disabled, onApply, onCancel }: {
 }) {
 	return (
 		<div className={rotationStyles.angleActions}>
-			<button type="button" aria-label="Отменить ввод угла" disabled={disabled} onClick={onCancel}>×</button>
-			<button type="button" aria-label="Применить угол" disabled={disabled} onClick={onApply}>✓</button>
+			<button type="button" aria-label="Отменить ввод угла" disabled={disabled} onClick={onCancel}>
+				<svg aria-hidden="true" focusable="false" height="22" viewBox="0 0 24 24" width="22">
+					<path d="m6.5 6.5 11 11m0-11-11 11" />
+				</svg>
+			</button>
+			<button type="button" aria-label="Применить угол" disabled={disabled} onClick={onApply}>
+				<svg aria-hidden="true" focusable="false" height="22" viewBox="0 0 24 24" width="22">
+					<path d="m5.5 12.5 4.25 4.25 8.75-9.25" />
+				</svg>
+			</button>
 		</div>
 	);
 }
@@ -22,10 +30,37 @@ export function RotationModeToggle({ checked, disabled, onChange }: {
 	readonly onChange: (checked: boolean) => void;
 }) {
 	return (
-		<label className={rotationStyles.modeToggle}>
-			<input type="checkbox" aria-label="Шаг 45°" checked={checked} disabled={disabled} onChange={(event) => onChange(event.currentTarget.checked)} />
-			<span aria-hidden="true">45°</span>
-		</label>
+		<button
+			aria-label="Шаг 45°"
+			aria-pressed={checked}
+			className={rotationStyles.modeToggle}
+			disabled={disabled}
+			onClick={() => onChange(!checked)}
+			title="Шаг поворота 45°"
+			type="button"
+		>
+			<svg aria-hidden="true" focusable="false" height="30" viewBox="0 0 32 32" width="30">
+				<path
+					d="M16 28a12 12 0 1 0-10.4-6M1.7 19.6l3.9 2.4 1.2-4.5"
+					fill="none"
+					stroke="currentColor"
+					strokeLinecap="round"
+					strokeLinejoin="round"
+					strokeWidth="1.8"
+				/>
+				<text
+					fill="currentColor"
+					fontFamily="system-ui, sans-serif"
+					fontSize="10.5"
+					fontWeight="700"
+					lengthAdjust="spacingAndGlyphs"
+					textAnchor="middle"
+					textLength="17"
+					x="16.5"
+					y="19.5"
+				>45°</text>
+			</svg>
+		</button>
 	);
 }
 
@@ -50,7 +85,6 @@ export function FloorRotationAngleField({
 }) {
 	const errorId = useId();
 	const inputRef = useRef<HTMLInputElement>(null);
-	const fieldRef = useRef<HTMLDivElement>(null);
 	const [raw, setRaw] = useState<string>();
 	const [invalid, setInvalid] = useState(false);
 	const angle = degreesForYawRadians(yawRadians);
@@ -61,7 +95,7 @@ export function FloorRotationAngleField({
 		return () => onDraftChange?.(false);
 	}, [editing, onDraftChange]);
 	useLayoutEffect(() => {
-		const field = fieldRef.current;
+		const field = inputRef.current?.closest("label");
 		const container = field?.closest("aside");
 		if (!editing || !field || !container) return;
 		const keepVisible = () => {
@@ -94,7 +128,7 @@ export function FloorRotationAngleField({
 	};
 	return (
 		<div className={className ? `${styles.floorRotationAngleField} ${className}` : styles.floorRotationAngleField}
-			data-angle-draft={editing || undefined} ref={fieldRef}>
+			data-angle-draft={editing || undefined}>
 			<label>
 				<input
 					aria-label={ariaLabel}

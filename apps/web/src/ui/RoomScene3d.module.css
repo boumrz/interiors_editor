@@ -181,16 +181,18 @@
 	z-index: 6;
 }
 
-.rotationEditor:focus-within,
-.rotationEditor:has([data-angle-draft]) {
-	bottom: max(12px, var(--editor-safe-area-bottom, 0px));
-}
+.rotationFooterStack { display: contents; }
 
 .rotationEditor > fieldset {
 	background: var(--surface);
 	border: 1px solid var(--line);
 	border-radius: var(--editor-host-radius, 12px);
 	padding: 8px;
+}
+
+.rotationEditor > fieldset[data-rotation-target="selected"]:has(> button[aria-pressed]) {
+	/* Keep the compact contents wide enough for the angle after this panel's padding and border. */
+	inline-size: min(100%, calc(var(--rotation-compact-width) + 18px));
 }
 
 .rotationGizmo {
@@ -604,6 +606,25 @@ main[data-editor-host="telegram"] .itemPlacementStatus {
 	align-items: center; display: flex; flex-direction: column; font: 700 .74rem/1.15 var(--font-display);
 	gap: 3px; justify-content: center; min-height: 48px; min-width: 0; overflow-wrap: anywhere; padding: 4px 2px; text-align: center;
 }
+@media (max-width: 559px) {
+	.viewControls:is(main[data-editor-host="telegram"] *) :is(.cutawayButton, .threeDimensionalCatalogButton, .colorTrigger) {
+		font-size: clamp(12px, .75rem, 18px);
+		gap: 4px;
+		justify-content: flex-start;
+		line-height: 1.15;
+		padding-block: 5px;
+	}
+
+	main[data-editor-host="telegram"] .viewControls :is(.cutawayButton, .threeDimensionalCatalogButton, .colorTrigger) > :is(svg, span[aria-hidden="true"]) {
+		block-size: clamp(22px, 1.4rem, 26px);
+		flex-shrink: 0;
+		inline-size: clamp(22px, 1.4rem, 26px);
+	}
+
+	main[data-editor-host="telegram"] .viewControls :is(.cutawayButton, .threeDimensionalCatalogButton, .colorTrigger) > span:not([aria-hidden]) {
+		text-wrap: balance;
+	}
+}
 @media (max-width: 559px), (max-height: 550px) {
 	.viewControls[data-scene-color-dock="selected"] {
 		background: var(--editor-host-surface, #fff); border: 1px solid var(--editor-host-line, #d9e1e8);
@@ -657,4 +678,38 @@ main[data-editor-host="telegram"] .itemPlacementStatus {
 	}
 	.viewControls[data-scene-color-dock="selected"] .scaleControls { display: flex; flex-direction: row; }
 	.viewControls[data-scene-color-dock="selected"] .scaleButton + .scaleButton { border: 0; }
+}
+
+@media (max-width: 559px), (max-height: 550px) {
+	/* The bottom row reserves its real height, including wrapped controls. */
+	.rotationFooterStack:has(> .rotationEditor) {
+		--scene-footer-inset: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+		bottom: var(--scene-footer-inset);
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		inset-inline: 10px;
+		max-block-size: max(0px, calc(100% - var(--editor-header-bottom, 106px) - var(--scene-footer-inset) - 8px));
+		pointer-events: none;
+		position: absolute;
+		z-index: 6;
+	}
+
+	.rotationFooterStack:has(> .rotationEditor):has(> .viewControls[data-scene-color-dock="selected"]) {
+		--scene-footer-inset: max(8px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+		inset-inline: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left))) max(10px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	}
+
+	.rotationFooterStack:has(> .rotationEditor) > :is(.rotationEditor, .viewControls) {
+		inset: auto;
+		position: relative;
+	}
+
+	.rotationFooterStack > .rotationEditor {
+		min-block-size: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+
+	.rotationFooterStack:has(> .rotationEditor) > .viewControls { flex: none; }
 }

@@ -19,7 +19,8 @@
 }
 
 .row[data-rotation-target] > .step,
-.row > .cancel {
+.row > .cancel,
+.modeToggle {
 	background: var(--surface);
 	border: 1px solid var(--line);
 	border-radius: var(--editor-host-radius, 10px);
@@ -30,12 +31,15 @@
 	place-content: center;
 }
 
-.row[data-rotation-target] > .step {
+.row[data-rotation-target] > :is(.step, .modeToggle) {
 	block-size: var(--rotation-step-size);
 	inline-size: var(--rotation-step-size);
 	min-block-size: var(--rotation-step-size);
 	min-inline-size: var(--rotation-step-size);
 	padding: 0;
+}
+
+.row[data-rotation-target] > .step {
 	font: 600 1.4rem/1 var(--font-display);
 }
 
@@ -93,40 +97,48 @@
 	font: 650 0.8rem/1.2 var(--font-display);
 }
 
-.modeToggle {
-	align-items: center;
-	color: var(--ink);
-	cursor: pointer;
-	display: flex;
-	font: 600 .8125rem/1.2 var(--font-display);
-	gap: 8px;
-	grid-column: 1 / -1;
-	justify-self: center;
-	min-block-size: 44px;
-	padding: 0 8px;
-	pointer-events: auto;
+.modeToggle[aria-pressed="true"] {
+	background: var(--editor-host-primary-soft, var(--editor-selected));
+	border-color: var(--editor-host-primary, var(--blue));
+	box-shadow: inset 0 0 0 1px var(--editor-host-primary, var(--blue));
 }
 
-.modeToggle input[type="checkbox"] {
-	accent-color: var(--editor-host-primary, var(--blue));
-	block-size: 18px;
-	inline-size: 18px;
-	margin: 0;
+.modeToggle:focus-visible {
+	outline: 2px solid var(--editor-host-focus, var(--editor-host-primary, var(--blue)));
+	outline-offset: 2px;
 }
 
-.row[data-rotation-target="placement"]:has(.modeToggle) {
+.modeToggle:disabled {
+	cursor: default;
+	opacity: .55;
+}
+
+.row[data-rotation-target]:has(> .modeToggle) {
+	--rotation-step-size: 44px;
+	--rotation-control-gap: 4px;
 	grid-template-columns: var(--rotation-step-size) minmax(0, 1fr) var(--rotation-step-size) var(--rotation-step-size);
-	inline-size: min(100%, calc(7rem + 3 * (var(--rotation-step-size) + var(--rotation-control-gap))));
+	inline-size: min(100%, var(--rotation-compact-width, 240px));
 }
 
-.row[data-rotation-target="placement"] .modeToggle {
-	flex-direction: column;
-	gap: 2px;
-	grid-column: 4;
-	grid-row: 1;
-	justify-content: center;
-	min-block-size: var(--rotation-step-size);
-	padding: 0;
+.row:has(> .modeToggle) > .step {
+	font-size: 21px;
+}
+
+.row:has(> .modeToggle) .angle > label {
+	grid-template-columns: 12px minmax(0, 1fr) 12px;
+}
+
+.row:has(> .modeToggle) .angle :is(input, label > span) {
+	font-size: max(16px, .75rem);
+}
+
+.row:has(> .modeToggle) .angle > label:has(input:focus-visible) {
+	outline: 2px solid var(--editor-host-focus, var(--editor-host-primary, var(--blue)));
+	outline-offset: -2px;
+}
+
+.row:has(> .modeToggle) .angle input:focus-visible {
+	outline: none;
 }
 
 .angleActions {
@@ -142,10 +154,20 @@
 	border-radius: var(--editor-host-radius, 10px);
 	color: var(--ink);
 	cursor: pointer;
-	font: 650 1.25rem/1 var(--font-display);
+	display: grid;
 	min-block-size: 44px;
 	min-inline-size: 0;
 	padding: 0;
+	place-items: center;
+}
+
+.angleActions > button > svg {
+	fill: none;
+	pointer-events: none;
+	stroke: currentColor;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-width: 2.2;
 }
 
 .angleActions > button:last-child {
@@ -155,3 +177,44 @@
 }
 
 .angleActions > button:disabled { opacity: .5; }
+
+.row:has(> .modeToggle) > .modeToggle {
+	grid-column: 4;
+	grid-row: 1;
+}
+
+.row:has(> .modeToggle):has(> .angle[data-angle-draft]) > .step {
+	display: none;
+}
+
+.row:has(> .modeToggle) > .angle[data-angle-draft],
+.row:has(> .modeToggle) > .angle[data-angle-draft] > .angleActions {
+	display: contents;
+}
+
+.row:has(> .modeToggle) > .angle[data-angle-draft] > label {
+	grid-column: 2;
+	grid-row: 1;
+}
+
+.row:has(> .modeToggle) > .angle[data-angle-draft] > [role="alert"] {
+	grid-column: 1 / -1;
+	grid-row: 2;
+	margin: 0;
+}
+
+.row:has(> .modeToggle) > .angle[data-angle-draft] .angleActions > button {
+	block-size: var(--rotation-step-size);
+	grid-row: 1;
+	inline-size: var(--rotation-step-size);
+	min-inline-size: var(--rotation-step-size);
+	padding: 0;
+}
+
+.row:has(> .modeToggle) > .angle[data-angle-draft] .angleActions > button:first-child {
+	grid-column: 1;
+}
+
+.row:has(> .modeToggle) > .angle[data-angle-draft] .angleActions > button:last-child {
+	grid-column: 3;
+}

@@ -261,6 +261,14 @@ export function PlanProjection({
 		readonly start: { readonly xMm: number; readonly zMm: number };
 	}>();
 	const [canvasInsets, setCanvasInsets] = useState({ top: 116, bottom: 96 });
+	const [rotationChromeTop, setRotationChromeTop] = useState<number>(
+		initialPlanCanvasSize.canvasHeight,
+	);
+	const [selectedRotationEditor, setSelectedRotationEditor] =
+		useState<HTMLElement | null>(null);
+	const [selectedRotationSize, setSelectedRotationSize] = useState({ width: 0, height: 0 });
+	const [hasSelectedAngleDraft, setHasSelectedAngleDraft] = useState(false);
+	const [selectedAngleEpoch, setSelectedAngleEpoch] = useState(0);
 	const [annotationObstacles, setAnnotationObstacles] = useState<
 		readonly ScreenRect[]
 	>([]);
@@ -625,6 +633,7 @@ export function PlanProjection({
 		pendingDoorOpeningMove !== undefined ||
 		isConfirmingDoorOpeningMove ||
 		itemRotation !== undefined ||
+		hasSelectedAngleDraft ||
 		submittedItemTransform !== undefined ||
 		isConfirmingItemTransform ||
 		isConfirmingItemPlacement ||
@@ -729,6 +738,10 @@ export function PlanProjection({
 	useLayoutEffect(() => {
 		const canvas = planSvgRef.current;
 		if (!canvas) return undefined;
+		const shell = canvas.closest('[data-testid="editor-workspace"]');
+		const rotationObstacles = onRotationStepModeChange
+			? Array.from(shell?.querySelectorAll("[data-plan-rotation-obstacle]") ?? [])
+			: [];
 		// Selection mounts a different inspector; attach observers to that current
 		// surface without changing the fit of the plan when it opens.
 		const inspectorSelectors = [
@@ -741,7 +754,6 @@ export function PlanProjection({
 		];
 		const syncCanvasSize = () => {
 			const bounds = canvas.getBoundingClientRect();
-			const shell = canvas.closest('[data-testid="editor-workspace"]');
 			const header = shell?.querySelector('[data-testid="editor-top-bar"]');
 			const dock = shell?.querySelector('[data-testid="editor-action-dock"]');
 			const top = Math.max(
@@ -749,6 +761,18 @@ export function PlanProjection({
 				(header?.getBoundingClientRect().bottom ?? bounds.top) - bounds.top,
 			);
 			const visibleBottom = Math.min(bounds.bottom, shell?.getBoundingClientRect().bottom ?? bounds.bottom);
+			// The plan extends behind the keyboard so its world projection does
+			// not refit. Bound the rotation panel by the visible workspace.
+			if (onRotationStepModeChange) {
+				const chromeTop = Math.min(
+					visibleBottom,
+					dock?.getBoundingClientRect().top ?? visibleBottom,
+					...rotationObstacles.map((element) => element.getBoundingClientRect())
+						.filter((box) => box.width > 0 && box.height > 0)
+						.map((box) => box.top),
+				);
+				setRotationChromeTop(Math.max(0, chromeTop - bounds.top));
+			}
 			const measuredBottom = Math.max(
 				0,
 				visibleBottom - (dock?.getBoundingClientRect().top ?? visibleBottom),
@@ -796,7 +820,8 @@ export function PlanProjection({
 		syncCanvasSize();
 		const observer = new ResizeObserver(syncCanvasSize);
 		observer.observe(canvas);
-		const shell = canvas.closest('[data-testid="editor-workspace"]');
+		if (shell && onRotationStepModeChange) observer.observe(shell);
+		for (const obstacle of rotationObstacles) observer.observe(obstacle);
 		for (const target of shell?.querySelectorAll(
 			[
 				'[data-testid="editor-top-bar"]',
@@ -806,7 +831,21 @@ export function PlanProjection({
 		) ?? [])
 			observer.observe(target);
 		return () => observer.disconnect();
-	}, [selectedWallId, selectedItemId, activeTool, isInteractionLocked]);
+	}, [selectedWallId, selectedItemId, activeTool, isInteractionLocked, onRotationStepModeChange]);
+
+	useLayoutEffect(() => {
+		if (!selectedRotationEditor) return;
+		const measure = () => {
+			const { offsetWidth: width, offsetHeight: height } = selectedRotationEditor;
+			setSelectedRotationSize((previous) =>
+				previous.width === width && previous.height === height ? previous : { width, height },
+			);
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(selectedRotationEditor);
+		return () => observer.disconnect();
+	}, [selectedRotationEditor]);
 
 	useEffect(() => {
 		if (activeTool !== "wall") {
@@ -1568,6 +1607,11 @@ export function PlanProjection({
 		readonly yawRadians: number;
 	}) => {
 		if (readOnly || isConfirmingItemTransform) return;
+		setSubmittedItemTransform({
+			kind: "rotation",
+			assetInstanceId: rotation.assetInstanceId,
+			yawRadians: yawRadiansFor(floorYawFieldsForRadians(rotation.yawRadians, true)),
+		});
 		setIsConfirmingItemTransform(true);
 		try {
 			const accepted = await onRotateItem(rotation);
@@ -1703,6 +1747,12 @@ export function PlanProjection({
 				setWallDraft(undefined);
 			}
 			beginPinch(activePointers[0], activePointers[1]);
+			return;
+		}
+		if (hasSelectedAngleDraft && activeTool === "select") {
+			// A tap can dismiss the keyboard while the exact angle awaits
+			// Apply or Cancel. The same contact can still pan the plan.
+			startPan(canvasPoint);
 			return;
 		}
 		if (
@@ -2507,7 +2557,6 @@ export function PlanProjection({
 					assetInstanceId: activeItemRotation.assetInstanceId,
 					yawRadians: yawRadiansFor(floorYawFieldsForRadians(activeItemRotation.yawRadians, activeItemRotation.relative?.gesture.exact ?? false)),
 				};
-				setSubmittedItemTransform({ kind: "rotation", ...rotation });
 				void persistItemRotation(rotation);
 			}
 			return;
@@ -2957,6 +3006,7 @@ export function PlanProjection({
 		hostRetainedItemDrag.current = undefined;
 		setItemDrag(undefined); itemDragRef.current = undefined; itemDragPointerIdRef.current = undefined;
 		setItemRotation(undefined); itemRotationRef.current = undefined;
+		if (hasSelectedAngleDraft) setSelectedAngleEpoch((epoch) => epoch + 1);
 		setSubmittedItemTransform(undefined);
 		setDoorOpeningDrag(undefined); doorOpeningDragRef.current = undefined;
 		setPendingDoorOpeningMove(undefined);
@@ -3105,13 +3155,75 @@ export function PlanProjection({
 		height: canvasSize.canvasHeight - canvasInsets.top - canvasInsets.bottom - 24,
 	};
 	const rotationStep = exactFloorYaw && !rotationStepMode ? 1 : 45;
-	const placementStep = (yaw: number, direction: 1 | -1) => exactFloorYaw
+	const stepYaw = (yaw: number, direction: 1 | -1) => exactFloorYaw
 		? steppedYawRadians(yaw, direction, rotationStepMode)
 		: yaw - direction * Math.PI / 4;
 	const transform = `translate(${viewport.panX} ${viewport.panY}) scale(${viewport.zoom})`;
 	const visualGridStep = visualGridStepMm();
 	const retainedHostTransform = retainedHostItemTransform();
 	const gridPhaseMm = PLAN_GRID_STEP_MM / 2;
+	const selectedAsset = onRotationStepModeChange && activeTool === "select" && !isInteractionLocked
+		? project.assetInstances.find((item) => item.assetInstanceId === selectedItemId)
+		: undefined;
+	const rotationItem = selectedAsset && isFloorEditorAsset(selectedAsset)
+		&& !("locked" in selectedAsset && selectedAsset.locked)
+		? selectedAsset
+		: undefined;
+
+	const renderedItemPosition = (item: EditorFloorAsset) => {
+		if (itemDrag?.assetInstanceId === item.assetInstanceId) return itemDrag.end;
+		if (submittedItemTransform?.assetInstanceId === item.assetInstanceId && submittedItemTransform.kind === "move")
+			return submittedItemTransform;
+		return item;
+	};
+	const renderedItemYaw = (item: EditorFloorAsset) => {
+		if (itemRotation?.assetInstanceId === item.assetInstanceId) return itemRotation.yawRadians;
+		if (submittedItemTransform?.assetInstanceId === item.assetInstanceId && submittedItemTransform.kind === "rotation")
+			return submittedItemTransform.yawRadians;
+		return yawRadiansForEditorFloorAsset(item);
+	};
+	const rotationRadius = (item: EditorFloorAsset) => plainLabels
+		? Math.max(36 / viewport.zoom, (Math.hypot(item.widthMm, item.depthMm) * drawingScale) / 2 + 24 / viewport.zoom)
+		: Math.max(24, (Math.max(item.widthMm, item.depthMm) * drawingScale) / 2 + 18);
+	const selectedRotationStyle = (item: EditorFloorAsset) => {
+		const center = dimensionScreenPoint(renderedItemPosition(item));
+		const ringRadius = rotationRadius(item) * viewport.zoom;
+		const gap = 12;
+		const { width, height: panelHeight } = selectedRotationSize;
+		const topLimit = canvasInsets.top + gap;
+		const dockTop = rotationChromeTop - gap;
+		const inspectorTop = annotationObstacles[0]?.y;
+		const bottomLimit = inspectorTop !== undefined && inspectorTop - topLimit >= panelHeight
+			? Math.min(dockTop, inspectorTop)
+			: dockTop;
+		const maxHeight = Math.max(0, bottomLimit - topLimit);
+		const height = Math.min(panelHeight, maxHeight);
+		const below = center.y + ringRadius + gap;
+		const above = center.y - ringRadius - gap - height;
+		const top = below + height > bottomLimit && above >= topLimit ? above : below;
+		return {
+			left: `clamp(${gap}px, ${center.x - width / 2}px, calc(100% - ${width + gap}px))`,
+			top: Math.max(topLimit, Math.min(top, bottomLimit - height)),
+			maxHeight,
+		};
+	};
+	const selectedRotationDisabled =
+		readOnly || isConfirmingItemTransform || itemRotation !== undefined ||
+		itemDrag !== undefined || retainedHostTransform !== undefined;
+	const selectedRotationButton = (item: EditorFloorAsset, direction: 1 | -1) => (
+		<button
+			aria-label={`Повернуть выбранный предмет ${direction === 1 ? "влево" : "вправо"} на ${rotationStep}°`}
+			className={rotationStyles.step}
+			disabled={selectedRotationDisabled || hasSelectedAngleDraft}
+			onClick={() => void persistItemRotation({
+				assetInstanceId: item.assetInstanceId,
+				yawRadians: stepYaw(renderedItemYaw(item), direction),
+			})}
+			type="button"
+		>
+			{direction === 1 ? "↶" : "↷"}
+		</button>
+	);
 
 	return (
 		<>
@@ -3829,14 +3941,7 @@ export function PlanProjection({
 						: null}
 					{project.assetInstances.map((item) => {
 						if (!isFloorEditorAsset(item)) return null;
-						const position =
-							itemDrag?.assetInstanceId === item.assetInstanceId
-								? itemDrag.end
-								: submittedItemTransform?.assetInstanceId ===
-											item.assetInstanceId &&
-										submittedItemTransform.kind === "move"
-									? submittedItemTransform
-									: item;
+						const position = renderedItemPosition(item);
 						const start = pointFor(
 							position.xMm - item.widthMm / 2,
 							position.zMm - item.depthMm / 2,
@@ -3849,7 +3954,6 @@ export function PlanProjection({
 							5,
 							Math.min(12, (item.depthMm * drawingScale) / 2 - 2),
 						);
-						const yawRadians = yawRadiansForEditorFloorAsset(item);
 						const selected = selectedItemId === item.assetInstanceId;
 						const hasPlacementCollision = itemPlacementCollisionIds.items.has(
 							item.assetInstanceId,
@@ -3859,18 +3963,9 @@ export function PlanProjection({
 							rotationGizmoCenter.xMm,
 							rotationGizmoCenter.zMm,
 						);
-						const gizmoRadius = plainLabels
-							? Math.max(36 / viewport.zoom, (Math.hypot(item.widthMm, item.depthMm) * drawingScale) / 2 + 24 / viewport.zoom)
-							: Math.max(24, (Math.max(item.widthMm, item.depthMm) * drawingScale) / 2 + 18);
+						const gizmoRadius = rotationRadius(item);
 						const gizmoHitWidth = Math.min(32, gizmoRadius);
-						const renderedYawRadians =
-							itemRotation?.assetInstanceId === item.assetInstanceId
-								? itemRotation.yawRadians
-								: submittedItemTransform?.assetInstanceId ===
-											item.assetInstanceId &&
-										submittedItemTransform.kind === "rotation"
-									? (submittedItemTransform.yawRadians ?? yawRadians)
-									: yawRadians;
+						const renderedYawRadians = renderedItemYaw(item);
 						const renderedYawDegrees = -(renderedYawRadians * 180) / Math.PI;
 						const rotationBlocked = !!retainedHostTransform && (retainedHostTransform.kind !== "rotation" || retainedHostTransform.assetInstanceId !== item.assetInstanceId);
 						const moveBlocked = !!retainedHostTransform && (retainedHostTransform.kind !== "move" || retainedHostTransform.assetInstanceId !== item.assetInstanceId);
@@ -3902,7 +3997,7 @@ export function PlanProjection({
 											"aria-keyshortcuts": "Enter Space ArrowLeft ArrowRight ArrowUp ArrowDown",
 											tabIndex: 0,
 											onKeyDown: (event: React.KeyboardEvent<SVGRectElement>) => {
-												if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+												if (hasSelectedAngleDraft || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
 												if (event.key === "Enter" || event.key === " ") {
 													event.preventDefault();
 													onSelectItem(item.assetInstanceId);
@@ -4341,6 +4436,35 @@ export function PlanProjection({
 					/>
 				) : null}
 			</svg>
+			{rotationItem && onRotationStepModeChange ? (
+				<aside
+					aria-label="Поворот выбранного предмета"
+					className={styles.planRotationEditor}
+					data-testid="two-dimensional-rotation-editor"
+					ref={setSelectedRotationEditor}
+					style={selectedRotationStyle(rotationItem)}
+				>
+					<div className={rotationStyles.row} data-rotation-target="selected">
+						{selectedRotationButton(rotationItem, 1)}
+						<FloorRotationAngleField
+							ariaLabel="Угол поворота выбранного предмета, градусы"
+							className={rotationStyles.angle}
+							disabled={selectedRotationDisabled}
+							explicit
+							key={`${rotationItem.assetInstanceId}:${selectedAngleEpoch}`}
+							onApply={(yawRadians) => void persistItemRotation({ assetInstanceId: rotationItem.assetInstanceId, yawRadians })}
+							onDraftChange={setHasSelectedAngleDraft}
+							yawRadians={renderedItemYaw(rotationItem)}
+						/>
+						{selectedRotationButton(rotationItem, -1)}
+						<RotationModeToggle
+							checked={rotationStepMode}
+							disabled={selectedRotationDisabled}
+							onChange={onRotationStepModeChange}
+						/>
+					</div>
+				</aside>
+			) : null}
 			{wallDistances.length > 0 && !itemPlacementPreview ? (
 				<div className={styles.itemWallDistancePanel} style={{ top: canvasInsets.top + 8 }}>
 					<ItemWallDistanceValues distances={wallDistances} />
@@ -4404,7 +4528,7 @@ export function PlanProjection({
 								hasPlacementRotationContact
 							}
 							onClick={() =>
-								onItemPlacementYawChange(placementStep(itemDraft.yawRadians, 1))
+								onItemPlacementYawChange(stepYaw(itemDraft.yawRadians, 1))
 							}
 							type="button"
 						>
@@ -4432,7 +4556,7 @@ export function PlanProjection({
 								hasPlacementRotationContact
 							}
 							onClick={() =>
-								onItemPlacementYawChange(placementStep(itemDraft.yawRadians, -1))
+								onItemPlacementYawChange(stepYaw(itemDraft.yawRadians, -1))
 							}
 							type="button"
 						>
@@ -4489,6 +4613,7 @@ export function PlanProjection({
 			<fieldset
 				className={styles.planZoomControls}
 				aria-label="Масштаб плана"
+				data-plan-rotation-obstacle
 			>
 				<button
 					type="button"

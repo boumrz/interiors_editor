@@ -1915,6 +1915,22 @@ export function RoomScene3d({
 			{onRotationStepModeChange ? <RotationModeToggle checked={rotationStepMode} disabled={rotationDisabled} onChange={onRotationStepModeChange} /> : null}
 		</fieldset>
 	);
+	const withSelectedRotationEditor = (viewControls: ReactNode) => {
+		if (!onRotationStepModeChange) return viewControls;
+		const showRotationEditor = rotationItem && gizmoOverlayPosition &&
+			rotationItem.assetAnchor !== "wall" && canTransformSelectedItem &&
+			(!readOnly || isConfirmingItemTransform);
+		return (
+			<div className={sceneStyles.rotationFooterStack}>
+				{showRotationEditor ? (
+					<aside className={sceneStyles.rotationEditor} data-testid="three-dimensional-rotation-editor">
+						{rotationControls}
+					</aside>
+				) : null}
+				{viewControls}
+			</div>
+		);
+	};
 	return (
 		<section
 			aria-label="3D вид комнаты"
@@ -2036,10 +2052,6 @@ export function RoomScene3d({
 					</div>
 				) : null}
 			</div>
-			{onRotationStepModeChange && !itemPlacementDraft && rotationItem && gizmoOverlayPosition &&
-				rotationItem.assetAnchor !== "wall" && !readOnly && canTransformSelectedItem ? (
-				<div className={sceneStyles.rotationEditor}>{rotationControls}</div>
-			) : null}
 			{hasUserCameraView && rendererReady && !isItemPlacementActive ? (
 				<button
 					aria-label="Вернуть обзор 3D"
@@ -2202,7 +2214,7 @@ export function RoomScene3d({
 					</div>
 				</aside>
 			) : null}
-			{!itemPlacementDraft ? (
+			{!itemPlacementDraft ? withSelectedRotationEditor(
 				<section
 					aria-label="Управление видом 3D"
 					className={sceneStyles.viewControls}
@@ -2335,7 +2347,7 @@ export function RoomScene3d({
 							</button>
 						</fieldset>
 					</div>
-				</section>
+				</section>,
 			) : null}
 			<output hidden>
 				{itemCountCopy(scene.items.length)} в плане

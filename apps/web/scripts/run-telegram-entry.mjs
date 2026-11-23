@@ -97,6 +97,7 @@ preview.server.on("request", (request, response) => {
 							emptyOrigin,
 							baseApplicationPath,
 							nextApplicationPath,
+							exactFloorYaw: environment.INTERIORS_EXACT_FLOOR_YAW === "1",
 							served,
 						}),
 					);

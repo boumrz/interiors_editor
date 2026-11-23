@@ -517,6 +517,24 @@ describe("AppShell project directory", () => {
 });
 
 describe("AppShell Projects-first entry", () => {
+	it("keeps recovery-file import available in Web/PWA while the healthy Telegram hub shows no diagnostics or unsaved-draft restore", () => {
+		const controller = {
+			open: async () => undefined,
+			sessionHistory: () => ({ canRedo: false, canUndo: false }),
+			snapshot: () => ({ kind: "projects" as const, projects: [] }),
+			subscribe: () => () => undefined,
+			writerAccess: () => ({ kind: "not-ready" as const }),
+		} as unknown as ProjectController;
+		const web = renderToStaticMarkup(<AppShell controller={controller} />);
+		expect(web).toContain("Восстановить несохранённую правку");
+		const telegram = renderToStaticMarkup(<AppShell controller={controller} diagnosticDetails={<p>Данные для проверки</p>} hostNavigation={{ close: () => undefined, subscribeBack: () => () => undefined, setBackVisible: () => undefined }} />);
+		expect(telegram).toContain("Новый проект");
+		expect(telegram).toContain("Импортировать проект");
+		expect(telegram).not.toContain("Восстановить несохранённую правку");
+		expect(telegram).not.toContain("Выбрать файл несохранённой правки");
+		expect(telegram).not.toContain("Данные для проверки");
+	});
+
 	it("renders a calm empty Projects hub with explicit creation and import routes", () => {
 		const controller = {
 			open: async () => undefined,

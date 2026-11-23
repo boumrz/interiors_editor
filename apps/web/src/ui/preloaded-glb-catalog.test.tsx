@@ -13,12 +13,9 @@ describe("preloaded GLB catalog", () => {
 	it("replaces procedural defaults with the curated furniture resources", () => {
 		expect(preloadedGlbCatalogAssets.map((asset) => asset.id)).toEqual([
 			"antique-sofa",
-			"kursi-armchair",
-			"zen-dining-chair",
 			"dining-armchair",
 			"ruined-chair",
 			"single-bed",
-			"wooden-cabinet",
 			"scandinavian-closet",
 		]);
 		expect(
@@ -58,13 +55,13 @@ describe("preloaded GLB catalog", () => {
 				section: "all",
 				query: "винтаж",
 			}).map((asset) => asset.id),
-		).toEqual(["zen-dining-chair"]);
+		).toEqual([]);
 		expect(
 			filterPreloadedGlbCatalogAssets(preloadedGlbCatalogAssets, {
 				section: "all",
 				query: "хранение",
 			}).map((asset) => asset.id),
-		).toEqual(["wooden-cabinet", "scandinavian-closet"]);
+		).toEqual(["scandinavian-closet"]);
 		expect(
 			filterPreloadedGlbCatalogAssets(preloadedGlbCatalogAssets, {
 				section: "all",
@@ -80,7 +77,7 @@ describe("preloaded GLB catalog", () => {
 	});
 
 	it("projects an exact versioned publication into hash-addressed cards", () => {
-		const assets = catalogAssetsFromPublication({
+		const publication: Parameters<typeof catalogAssetsFromPublication>[0] = {
 			assets: [
 				{
 					anchorClass: "floor",
@@ -106,6 +103,14 @@ describe("preloaded GLB catalog", () => {
 			catalogVersion: "alpha-1",
 			envelopeHash: hash("c"),
 			publishedAt: "2026-08-26T20:00:00Z",
+		};
+		const assets = catalogAssetsFromPublication({
+			...publication,
+			assets: ["kursi-armchair", "wooden-cabinet", "zen-dining-chair"]
+				.flatMap((assetId) =>
+					publication.assets.map((asset) => ({ ...asset, assetId })),
+				)
+				.concat(publication.assets),
 		});
 
 		expect(assets).toEqual([

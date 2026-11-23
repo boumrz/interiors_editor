@@ -478,6 +478,26 @@ describe("projectRectangularRoomForWebGl", () => {
 			throw new Error("Expected a valid door fixture");
 		}
 
+		for (const swingSide of [undefined, "right", "left"] as const) {
+			const door = doorway.project.level.openings[0];
+			if (door?.kind !== "Door") throw new Error("Expected Door");
+			const { swingSide: _previousSide, ...legacyDoor } = door;
+			const project = {
+				...doorway.project,
+				level: { ...doorway.project.level, openings: [swingSide ? { ...legacyDoor, swingSide } : legacyDoor] },
+			};
+			const fixtures = projectRectangularRoomForWebGl(project, undefined, true)?.openingParts;
+			expect(fixtures?.filter(part => part.role === "frame")).toHaveLength(3);
+			const leaf = fixtures?.find(part => part.role === "leaf");
+			expect(leaf?.wallSegmentId).toBe("wall-1");
+			expect(leaf?.box.centerXM).toBeCloseTo(1.63, 1);
+			expect(leaf?.box.centerYM).toBeCloseTo(1.035, 1);
+			expect((leaf?.box.centerZM ?? 0) * (swingSide === "left" ? 1 : -1)).toBeGreaterThan(0.4);
+			expect(leaf?.box.depthM).toBeGreaterThan(0.8);
+			expect(leaf?.box.widthM).toBeLessThan(0.06);
+			expect(projectRectangularRoomForWebGl(project)?.openingParts).toBeUndefined();
+		}
+
 		const doorWallBoxes = projectRectangularRoomForWebGl(
 			doorway.project,
 		)?.walls.filter((wall) => wall.wall?.wallSegmentId === "wall-1");
@@ -552,6 +572,18 @@ describe("projectRectangularRoomForWebGl", () => {
 		);
 		if (windowOpening.kind !== "accepted") {
 			throw new Error("Expected a valid window fixture");
+		}
+
+		const fixtures = projectRectangularRoomForWebGl(windowOpening.project, undefined, true)?.openingParts;
+		expect(fixtures?.filter(part => part.role === "frame")).toHaveLength(5);
+		const glazing = fixtures?.filter(part => part.role === "glass");
+		expect(glazing).toHaveLength(2);
+		for (const pane of glazing ?? []) {
+			expect(pane.wallSegmentId).toBe("wall-1");
+			expect(pane.box.centerYM).toBe(1.5);
+			expect(pane.box.centerZM).toBe(0);
+			expect(pane.box.heightM).toBeLessThan(1.2);
+			expect(pane.box.widthM).toBeGreaterThan(0.5);
 		}
 
 		const windowWallBoxes = projectRectangularRoomForWebGl(
@@ -1034,6 +1066,62 @@ describe("projectRectangularRoomForWebGl", () => {
 
 		expect(projectRectangularRoomForWebGl(yawAwareProject)?.items).toEqual([
 			expect.objectContaining({ yawRadians: Math.PI / 2 }),
+		]);
+	});
+
+	it("projects 37.5 degrees exactly in the disposable 3D scene", () => {
+		const room = configureRectangularRoom(
+			createInitialProject({
+				createdAt: "2026-08-05T14:15:16.000Z",
+				levelId: "level-1",
+				name: "Гостиная",
+				projectId: "project-1",
+			}),
+			{ depthMm: "3000", heightMm: "2600", widthMm: "4000" },
+			ids(
+				"v-1",
+				"v-2",
+				"v-3",
+				"v-4",
+				"wall-1",
+				"wall-2",
+				"wall-3",
+				"wall-4",
+				"room-1",
+			),
+			"2026-08-05T14:16:16.000Z",
+		);
+		if (room.kind !== "accepted") {
+			throw new Error("Expected room fixture");
+		}
+		const item = createParametricFloorItem(
+			room.project,
+			{
+				color: "#2f80ed",
+				depthMm: 700,
+				heightMm: 750,
+				label: "Стол",
+				roomId: "room-1",
+				widthMm: 1200,
+				xMm: 2050,
+				zMm: 1550,
+			},
+			ids("item-1"),
+			"2026-08-05T14:17:16.000Z",
+		);
+		if (item.kind !== "accepted") {
+			throw new Error("Expected item fixture");
+		}
+		const yawAwareProject = {
+			...item.project,
+			assetInstances: item.project.assetInstances.map((asset) => ({
+				...asset,
+				yawMilliDeg: 37500,
+			})),
+		};
+
+		expect(projectRectangularRoomForWebGl(yawAwareProject)?.items).toEqual([
+			expect.objectContaining({ yawRadians: 37500 * Math.PI / 180000 }),
 		]);
 	});
 

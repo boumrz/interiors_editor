@@ -1,8 +1,10 @@
 import { type FormEvent, type KeyboardEvent, type RefObject, useId, useLayoutEffect, useRef } from "react";
 import safety from "./ProjectSafety.module.css";
 import styles from "./RenameProjectDialog.module.css";
+import { SheetHeader } from "./SheetHeader";
+import sheetStyles from "./SheetHeader.module.css";
 
-export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onChange, onSubmit, onRetry, onCancel, returnFocusRef }: {
+export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onChange, onSubmit, onRetry, onCancel, returnFocusRef, telegram }: {
 	readonly name: string;
 	readonly error?: string;
 	readonly busy: boolean;
@@ -13,6 +15,7 @@ export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onCh
 	readonly onRetry: () => void;
 	readonly onCancel: () => void;
 	readonly returnFocusRef: RefObject<HTMLElement | null>;
+	readonly telegram?: boolean;
 }) {
 	const dialog = useRef<HTMLDialogElement>(null);
 	const input = useRef<HTMLInputElement>(null);
@@ -46,14 +49,26 @@ export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onCh
 		if (!controls.length) { dialog.current?.focus(); return; }
 		controls[(current + (event.shiftKey ? -1 : 1) + controls.length) % controls.length]?.focus();
 	};
-	return <dialog ref={dialog} aria-labelledby={`${id}-heading`} aria-busy={busy} className={`${safety.card} ${safety.dialog} ${styles.dialog}`} data-testid="rename-project-sheet" tabIndex={-1}
+	const fields = <>
+		<label htmlFor={`${id}-name`}>Новое название проекта</label>
+		<input ref={input} id={`${id}-name`} value={name} autoComplete="off" disabled={blocked} aria-invalid={error ? "true" : undefined} aria-describedby={error ? "rename-project-error" : undefined} onChange={event => onChange(event.target.value)} />
+		{error ? <p ref={errorRef} className={safety.error} id="rename-project-error" role="alert" tabIndex={-1}>{error}</p> : null}
+	</>;
+	const shell = telegram
+		? `${sheetStyles.dialog} ${sheetStyles.telegramDialog} ${styles.telegram}`
+		: `${safety.card} ${safety.dialog}`;
+	return <dialog ref={dialog} aria-labelledby={`${id}-heading`} aria-busy={busy} className={`${shell} ${styles.dialog}`} data-testid="rename-project-sheet" tabIndex={-1}
 		onKeyDown={trapTab} onCancel={event => { event.preventDefault(); if (!busy) onCancel(); }}>
-		<h2 id={`${id}-heading`}>Переименовать проект</h2>
+		{telegram ? <SheetHeader
+			title="Переименовать проект"
+			titleId={`${id}-heading`}
+			closeLabel="Закрыть переименование"
+			closeDisabled={busy}
+			onClose={onCancel}
+		/> : <h2 id={`${id}-heading`}>Переименовать проект</h2>}
 		<form noValidate onSubmit={onSubmit}>
-			<label htmlFor={`${id}-name`}>Новое название проекта</label>
-			<input ref={input} id={`${id}-name`} value={name} autoComplete="off" disabled={blocked} aria-invalid={error ? "true" : undefined} aria-describedby={error ? "rename-project-error" : undefined} onChange={event => onChange(event.target.value)} />
-			{error ? <p ref={errorRef} className={safety.error} id="rename-project-error" role="alert" tabIndex={-1}>{error}</p> : null}
-			<div className={safety.actions}>
+			{telegram ? <div className={`${sheetStyles.body} ${styles.fields}`}>{fields}</div> : fields}
+			<div className={telegram ? `${styles.actions} ${safety.actions} ${sheetStyles.footer} ${safety.sheetActions}` : `${styles.actions} ${safety.actions}`}>
 				<button className={safety.primary} disabled={blocked} type="submit">{busy ? "Сохраняем…" : "Сохранить название"}</button>
 				{canRetry ? <button disabled={busy} onClick={onRetry} type="button">Повторить сохранение</button> : null}
 				<button disabled={busy} onClick={onCancel} type="button">Отмена</button>

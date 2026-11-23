@@ -40,6 +40,33 @@ class CatalogRoutesTest {
     private val resource = StoredCatalogResource(resourceHash, "model/gltf-binary", resourceBytes)
 
     @Test
+    fun `retired catalog bytes remain unavailable from immutable version resources`() = testApplication {
+        val hashes = listOf(
+            "b4a730f48ae1d8ec04c94ef99534002d381afa258144464b4df8892889f34eed",
+            "8509df74641cd762851eff7ed493c1c931efd986752fe13d83ce9508ec311ec4",
+            "9dd295594623edf797cee3d4da1818802d723b404df51687d6ca1796f51b4608",
+            "bded617fc7d3464f9102883d9da1d06ea76b0d76a230ae77feeeb78e9b8e83da",
+            "289c4d597eb5f38e7260afad2499d6e07a174261d613e8db28f260d40a0149e0",
+            "11d2e14bea78f4e5961f5e02c3d24b80a3c4b4899ed55ac77d92d10af36e4e47",
+        )
+        val databaseReads = AtomicInteger()
+        application { catalogRoutes(ExplodingCatalogRepository(databaseReads)) }
+        for (hash in hashes) {
+            val path = "/catalog-api/v1/resources/sha256/$hash"
+            val responses = listOf(
+                client.get(path) { header(HttpHeaders.Accept, "model/gltf-binary") },
+                client.head(path) { header(HttpHeaders.Accept, "image/png") },
+                client.get(path) {
+                    header(HttpHeaders.Accept, "model/gltf-binary")
+                    header(HttpHeaders.Range, "bytes=0-1")
+                },
+            )
+            for (response in responses) assertEquals(HttpStatusCode.Gone, response.status)
+        }
+        assertEquals(0, databaseReads.get())
+    }
+
+    @Test
     fun `serves current exact envelope bytes with strong etag and revalidation`() = testApplication {
         application { catalogRoutes(FakeCatalogRepository(publication, resource)) }
 

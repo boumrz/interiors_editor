@@ -21,6 +21,9 @@ if MODULE.exists():
 
 class DeploymentTests(unittest.TestCase):
     def setUp(self):
+        check = patch.object(frontend, "verify_collector_ready")
+        self.collector_readiness = check.start()
+        self.addCleanup(check.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name)
@@ -38,11 +41,11 @@ class DeploymentTests(unittest.TestCase):
 
     def seal_telegram(self):
         rows = []
-        for path in sorted(self.telegram.iterdir()):
-            if path.name == "release-set.json":
+        for path in sorted(self.telegram.rglob("*")):
+            if path.is_dir() or path.name == "release-set.json":
                 continue
             data = path.read_bytes()
-            rows.append({"path": "/" + path.name, "byteLength": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+            rows.append({"path": "/" + path.relative_to(self.telegram).as_posix(), "byteLength": len(data), "sha256": hashlib.sha256(data).hexdigest()})
         (self.telegram / "release-set.json").write_text(json.dumps({"version": 1, "deliveryTarget": "telegram", "appBuildId": "b" * 16, "entryPath": "/telegram.123.js", "assets": rows}))
 
     def package(self):
@@ -56,6 +59,48 @@ class DeploymentTests(unittest.TestCase):
         site.write_bytes(b"original config\n")
         return root, site
 
+    def test_telegram_entry_blocks_old_sdk_and_all_collection_by_default(self):
+        site = frontend.nginx_site(self.base, {"web": {"/index.html"}, "telegram": {"/index.html", "/telegram.123.js"}}).decode()
+        web, telegram = site.split("    server_name domiknote.ru;")
+        self.assertNotIn("/stats/", web)
+        self.assertNotIn("analytics.domiknote.ru", site)
+        self.assertEqual(telegram.count("frame-src 'none'"), 2)
+        self.assertNotIn("location = /stats/tma-return", telegram)
+        self.assertNotIn("location = /stats/tma-open {", telegram)
+        self.assertIn("location = /stats/tma-open-v2 {",telegram)
+        self.assertIn("location = /stats/tma-repeat-v2 {",telegram)
+        self.assertIn("collect.sock", telegram)
+
+    def test_activation_requires_compatible_private_collector_before_nginx_or_controls_can_change(self):
+        self.package()
+        root, site = self.server()
+        self.collector_readiness.side_effect = RuntimeError("aggregate v2 unavailable")
+        before = site.read_bytes()
+        with self.assertRaisesRegex(RuntimeError, "aggregate v2"):
+            frontend.activate_release(self.archive, root, site, command=lambda _: self.fail("nginx changed"),
+                                      health=lambda _: self.fail("public traffic changed"))
+        self.collector_readiness.assert_called_once_with()
+        self.assertEqual(site.read_bytes(), before)
+        self.assertEqual(os.readlink(root / "current"), "releases/old")
+        self.assertFalse((root/"last-deployment.json").exists())
+
+    def test_retired_catalog_files_and_hashes_are_denied_on_both_origins(self):
+        retired = {
+            'armchair-kursi-sofa.glb': 'b4a730f48ae1d8ec04c94ef99534002d381afa258144464b4df8892889f34eed',
+            'armchair-kursi-sofa.png': '8509df74641cd762851eff7ed493c1c931efd986752fe13d83ce9508ec311ec4',
+            'wooden-cabinet.glb': '9dd295594623edf797cee3d4da1818802d723b404df51687d6ca1796f51b4608',
+            'wooden-cabinet.png': 'bded617fc7d3464f9102883d9da1d06ea76b0d76a230ae77feeeb78e9b8e83da',
+            'zen-dining-chair.glb': '289c4d597eb5f38e7260afad2499d6e07a174261d613e8db28f260d40a0149e0',
+            'zen-dining-chair.png': '11d2e14bea78f4e5961f5e02c3d24b80a3c4b4899ed55ac77d92d10af36e4e47',
+        }
+        previous = {'/catalog/' + name for name in retired} | {'/catalog/single-bed.glb'}
+        site = frontend.nginx_site('/srv/frontend', {'web': previous, 'telegram': previous}).decode()
+        for path in sorted({'/catalog/' + name for name in retired} |
+                           {'/catalog-api/v1/resources/sha256/' + digest for digest in retired.values()}):
+            self.assertEqual(site.count('location = ' + path + ' {'), 2)
+            self.assertEqual(site.count('location = ' + path + ' { return 410; }'), 2)
+        self.assertEqual(site.count('location = /catalog/single-bed.glb {'), 2)
+
     def test_roundtrip_checks_exact_files_and_preserves_both_targets(self):
         inventory = self.package()
         destination = self.base / "extracted"
@@ -63,6 +108,52 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(inventory, actual)
         self.assertEqual(actual["release"], "a" * 16 + "--" + "b" * 16)
         self.assertEqual((destination / "web/sw.js").read_bytes(), b"synthetic worker")
+
+    def test_web_legal_documents_switch_revisions_at_stable_urls(self):
+        documents = ("privacy-policy.html", "license-agreement.html", "analytics-consent.html")
+        (self.web / "legal").mkdir()
+        root, site = self.server()
+        for revision in ("1", "2"):
+            for name in documents:
+                (self.web / "legal" / name).write_text(name + revision)
+            (self.web / "release-manifest.json").write_text(json.dumps({"appBuildId": revision * 16}))
+            self.package()
+            frontend.activate_release(self.archive, root, site, command=lambda _: None,
+                                      health=lambda _: None, ready=lambda _: None)
+            web, telegram = site.read_text().split("    server_name domiknote.ru;")
+            for name in documents:
+                location = "    location = /legal/" + name + " {"
+                block = web.split(location)[1].split("\n    }")[0]
+                self.assertIn("/current/web;", block)
+                self.assertIn('Cache-Control "no-store"', block)
+                self.assertEqual((root / "current/web/legal" / name).read_text(), name + revision)
+                self.assertNotIn(location, telegram)
+
+    def test_redeployed_archive_keeps_published_bytes_for_both_origins(self):
+        root, site = self.server()
+        for number, edition in enumerate(("2026-11-22", "2026-11-23"), start=1):
+            (self.web / "release-manifest.json").write_text(json.dumps({"appBuildId": str(number) * 16}))
+            for directory in (self.web, self.telegram):
+                (directory / "legal" / edition).mkdir(parents=True)
+                (directory / "legal" / edition / "privacy-policy.html").write_text(edition)
+                (directory / "legal/privacy-policy.html").write_text(edition)
+            self.seal_telegram()
+            self.package()
+            frontend.activate_release(self.archive, root, site, command=lambda _: None,
+                                      health=lambda _: None, ready=lambda _: None)
+            for target in ("web", "telegram"):
+                self.assertEqual((root / "current" / target / "legal/privacy-policy.html").read_text(), edition)
+                old = root / "retained" / target / "legal/2026-11-22/privacy-policy.html"
+                self.assertEqual(old.read_text(), "2026-11-22")
+        for directory in (self.web, self.telegram):
+            previous = directory / "legal/2026-11-22/privacy-policy.html"
+            previous.write_text("different bytes")
+            self.seal_telegram()
+            self.package()
+            with self.assertRaisesRegex(ValueError, "Immutable retained URL collision"):
+                frontend.activate_release(self.archive, root, site, command=lambda _: None,
+                                          health=lambda _: None, ready=lambda _: None)
+            previous.write_text("2026-11-22")
 
     def test_activation_refuses_source_commit_mismatch_before_mutation(self):
         self.package()

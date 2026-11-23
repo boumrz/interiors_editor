@@ -1,3 +1,4 @@
+import { installReturningWebProfile } from "./accepted-web-license";
 import {
 	chromium,
 	devices,
@@ -47,6 +48,7 @@ async function openPersistentPhone(testInfo: TestInfo, suffix: string) {
 			locale: "ru-RU",
 		},
 	);
+	await installReturningWebProfile(context, testInfo.project.use.baseURL);
 	const page = context.pages()[0] ?? (await context.newPage());
 	return { context, page };
 }

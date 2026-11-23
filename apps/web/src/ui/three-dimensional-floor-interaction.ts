@@ -58,10 +58,30 @@ export function canvasPointForFloor(
 	camera: ThreeDimensionalViewport,
 	size: CanvasSize,
 	point: ThreeDimensionalFloorPoint,
-): { readonly x: number; readonly y: number } | undefined {
+): CanvasPoint | undefined {
+	return canvasPointForWorld(scene, camera, size, { x: point.xM, y: 0, z: point.zM });
+}
+
+export function canvasPointForSceneItem(
+	scene: RectangularRoomWebGlScene,
+	camera: ThreeDimensionalViewport,
+	size: CanvasSize,
+	item: SceneBox,
+): CanvasPoint | undefined {
+	return canvasPointForWorld(scene, camera, size, {
+		x: item.centerXM, y: item.centerYM, z: item.centerZM,
+	});
+}
+
+function canvasPointForWorld(
+	scene: RectangularRoomWebGlScene,
+	camera: ThreeDimensionalViewport,
+	size: CanvasSize,
+	point: Vector3,
+): CanvasPoint | undefined {
 	if (size.width <= 0 || size.height <= 0) return undefined;
 	const basis = cameraBasis(scene, camera);
-	const relative = { x: point.xM - basis.eye.x, y: -basis.eye.y, z: point.zM - basis.eye.z };
+	const relative = { x: point.x - basis.eye.x, y: point.y - basis.eye.y, z: point.z - basis.eye.z };
 	const forwardDistance = dot(relative, basis.forward);
 	if (forwardDistance <= 1e-6) return undefined;
 	const tangent = Math.tan(Math.PI / 6);
@@ -151,6 +171,28 @@ export function floorItemAtScreenPoint(
 			Math.hypot(point.x - centre.x, point.y - centre.y) <=
 				projectedItemTouchRadius(item, scene, camera, size, centre)
 		);
+	});
+}
+
+/** A wall asset is picked at its visible height, not at its floor projection. */
+export function wallItemAtScreenPoint(
+	items: readonly SceneBox[],
+	scene: RectangularRoomWebGlScene,
+	camera: ThreeDimensionalViewport,
+	size: CanvasSize,
+	point: CanvasPoint,
+): SceneBox | undefined {
+	return [...items].reverse().find((item) => {
+		if (!item.assetInstanceId || item.assetAnchor !== "wall") return false;
+		const center = canvasPointForSceneItem(scene, camera, size, item);
+		if (!center) return false;
+		const edge = canvasPointForWorld(scene, camera, size, {
+			x: item.centerXM + item.widthM / 2,
+			y: item.centerYM + item.heightM / 2,
+			z: item.centerZM + item.depthM / 2,
+		});
+		const radius = edge ? Math.max(22, Math.hypot(edge.x - center.x, edge.y - center.y)) : 22;
+		return Math.hypot(point.x - center.x, point.y - center.y) <= radius;
 	});
 }
 

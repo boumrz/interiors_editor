@@ -141,6 +141,7 @@ export function LocalFileTransferPanel({
 				</button>
 				{prepared ? (
 					<button
+						className={styles.handoff}
 						type="button"
 						disabled={busy}
 						onClick={() => void session.handoff()}

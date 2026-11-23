@@ -2152,3 +2152,45 @@ describe("setParametricFloorItemLock", () => {
 		expect(placed.project.assetInstances[0]).not.toHaveProperty("locked");
 	});
 });
+
+describe("exact floor placement yaw", () => {
+	const input = {
+		roomId: "room-1", label: "Стул", xMm: 1800, zMm: 1500,
+		widthMm: 650, depthMm: 450, heightMm: 850, color: "#716796",
+	};
+
+	it("uses the same intermediate pose for placement, move, resize, recolor and lock", () => {
+		const project = roomProject();
+		const created = createParametricFloorItem(project, { ...input, yawMilliDeg: 37500 }, ids("chair"), project.updatedAt);
+		if (created.kind !== "accepted") throw new Error(created.reasonCode);
+		const rotatedItem = created.project.assetInstances[0];
+		if (!rotatedItem || !isFloorSchematicAssetInstance(rotatedItem)) throw new Error("Expected floor item");
+		expect(rotatedItem).toHaveProperty("yawMilliDeg", 37500);
+		expect(rotatedItem).not.toHaveProperty("yawStep");
+		expect(yawRadiansFor(rotatedItem)).toBeCloseTo(37.5 * Math.PI / 180, 12);
+
+		const moved = moveParametricFloorItem(created.project, { assetInstanceId: "chair", xMm: 1700, zMm: 1450 }, project.updatedAt);
+		if (moved.kind !== "accepted") throw new Error(moved.reasonCode);
+		const resized = resizeParametricFloorItem(moved.project, { assetInstanceId: "chair", widthMm: 700, depthMm: 500, heightMm: 850 }, project.updatedAt);
+		if (resized.kind !== "accepted") throw new Error(resized.reasonCode);
+		const locked = setParametricFloorItemLock(resized.project, { assetInstanceId: "chair", locked: true }, project.updatedAt);
+		if (locked.kind !== "accepted") throw new Error(locked.reasonCode);
+		expect(locked.project.assetInstances[0]).toMatchObject({ locked: true, xMm: 1700, widthMm: 700, yawMilliDeg: 37500 });
+		expect(locked.project.assetInstances[0]).not.toHaveProperty("yawStep");
+	});
+
+	it("guards millidegrees and uses the legacy representation at an exact 45° multiple", () => {
+		const project = roomProject();
+		for (const yawMilliDeg of [-1, 360000, 42.5, Number.POSITIVE_INFINITY]) {
+			expect(createParametricFloorItem(project, { ...input, yawMilliDeg }, idsThatMustNotAllocate(), project.updatedAt)).toEqual({ kind: "rejected", reasonCode: "INVALID_DIMENSION" });
+		}
+		expect(createParametricFloorItem(project, { ...input, yawMilliDeg: 37500, yawStep: 1 }, idsThatMustNotAllocate(), project.updatedAt)).toEqual({ kind: "rejected", reasonCode: "INVALID_DIMENSION" });
+		const created = createParametricFloorItem(project, { ...input, yawMilliDeg: 45000 }, ids("chair"), project.updatedAt);
+		if (created.kind !== "accepted") throw new Error(created.reasonCode);
+		expect(created.project.assetInstances[0]).toHaveProperty("yawStep", 1);
+		expect(created.project.assetInstances[0]).not.toHaveProperty("yawMilliDeg");
+		const rotated = setParametricFloorItemYaw(created.project, { assetInstanceId: "chair", yawRadians: 359.999 * Math.PI / 180, exact: true }, project.updatedAt);
+		if (rotated.kind !== "accepted") throw new Error(rotated.reasonCode);
+		expect(rotated.project.assetInstances[0]).toHaveProperty("yawMilliDeg", 359999);
+	});
+});

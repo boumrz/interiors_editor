@@ -40,6 +40,7 @@ export interface TelegramRuntimeDependencies {
 	readonly scope: VerifiedTelegramScope;
 	readonly context: {
 		readonly indexedDb: Pick<IDBFactory, "open">;
+		readonly databaseMode?: "compatible" | "exact";
 		readonly locks: Pick<LockManager, "request">;
 		readonly secureContext: boolean;
 		readonly crypto: Pick<Crypto, "getRandomValues"> &
@@ -68,6 +69,7 @@ export interface TelegramRuntime {
 	readonly session: TelegramRuntimeSession;
 	readonly controller: ProjectController;
 	readonly drawingDimensions: DrawingDimensionPreferenceStore;
+	readonly exactFloorYaw?: boolean;
 	readonly sourceRecovery: ProjectSourceRecoveryPort;
 	readonly releaseStartup: {
 		handshake(input: ReleaseStartupInput): Promise<ReleaseStartupOutcome>;
@@ -111,6 +113,7 @@ export function createTelegramRuntime(
 		throw new Error("Verified Telegram scope is required");
 	const context = { ...dependencies.context };
 	const ports = { ...dependencies.ports };
+	const decoder = ports.portable?.decoder;
 	if (
 		!context.secureContext ||
 		typeof context.indexedDb?.open !== "function" ||
@@ -129,7 +132,7 @@ export function createTelegramRuntime(
 		typeof ports.portable?.writer?.encode !== "function" ||
 		typeof ports.portable.feasibility?.assess !== "function" ||
 		typeof ports.portable.encoder?.encode !== "function" ||
-		typeof ports.portable.decoder?.decode !== "function" ||
+		typeof decoder?.decode !== "function" ||
 		typeof ports.portable.smoke?.verify !== "function"
 	)
 		throw new Error(
@@ -199,6 +202,19 @@ export function createTelegramRuntime(
 		...ports,
 		portable: {
 			...ports.portable,
+			decoder: {
+				async decode(archive, signal) {
+					const result = await decoder.decode(archive, signal);
+					if (result.kind !== "accepted" || result.projectMember?.format !== "runtime-v1-floor-yaw") return result;
+					try {
+						const permitted = await storage.run(async (access) => access.databaseVersion === 3);
+						if (signal?.aborted) return { kind: "rejected", reasonCode: "BACKUP_CANCELLED" };
+						return permitted ? result : { kind: "rejected", reasonCode: "PORTABLE_BACKUP_FUTURE_SCHEMA" };
+					} catch {
+						return signal?.aborted ? { kind: "rejected", reasonCode: "BACKUP_CANCELLED" } : { kind: "verification-unavailable" };
+					}
+				},
+			},
 			recoveryWriter: ports.portable.writer,
 			// Construct only after the scoped repository exists. Neither a caller's
 			// exporter nor a browser formatter can replace this actual resource port.
@@ -213,6 +229,7 @@ export function createTelegramRuntime(
 		resources: repository.resources,
 		library: repository.library,
 		pinStaging: repository.pinStaging,
+		probePinnedResourceByteLength: (hash) => repository.probePinnedResourceByteLength(hash),
 	});
 	controller = guardRegisteredProjectController(
 		shared.controller,
@@ -278,6 +295,7 @@ export function createTelegramRuntime(
 		scope,
 		session,
 		controller,
+		exactFloorYaw: context.databaseMode === "exact",
 		drawingDimensions: {
 			read() {
 				if (!active()) throw new Error("Telegram runtime is not admitted");

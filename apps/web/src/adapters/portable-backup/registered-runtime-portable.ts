@@ -18,7 +18,7 @@ import {
 	RuntimePortableBackupCodec,
 	type RuntimePortableProjectValidation,
 } from "./runtime-portable-backup-codec";
-import { encodeRuntimeV1Project } from "./runtime-v1-wire";
+import { encodeRegisteredRuntimeProject } from "./runtime-v1-wire";
 
 const MAXIMUM_NEW_CUSTOM_BYTES = 25 * 1024 * 1024;
 type Validation = RuntimePortableProjectValidation<PortableBackupIngressReason>;
@@ -107,7 +107,7 @@ export function createRegisteredRuntimePortablePorts(dependencies: {
 						kind: "rejected",
 						reasonCode: "PROJECT_BACKUP_ENVELOPE_EXCEEDED",
 					};
-				const encoded = encodeRuntimeV1Project(candidate.project);
+				const encoded = encodeRegisteredRuntimeProject(candidate.project);
 				if (
 					encoded.kind === "rejected" ||
 					validateProject(candidate.project).kind === "rejected"

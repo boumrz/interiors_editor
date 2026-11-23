@@ -1,0 +1,62 @@
+.preferences {
+	margin-block: .75rem;
+}
+
+.preferences .preferenceButton {
+	width: auto;
+	margin: 0;
+	padding-inline: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	text-decoration: underline;
+	text-underline-offset: .15em;
+}
+
+.savedProjects {
+	margin-block: .5rem;
+}
+
+.savedProjects > summary {
+	min-height: 44px;
+	padding-block: 12px;
+	box-sizing: border-box;
+	cursor: pointer;
+}
+
+.savedProjects[open] > summary {
+	font-weight: 600;
+}
+
+.settingsContent > p {
+	color: var(--editor-host-muted, var(--muted));
+	margin: 0;
+}
+
+.settingsContent nav { margin: 12px 0 0; }
+
+.settingsContent nav a {
+	border-block-start: 1px solid var(--editor-host-line, var(--line));
+	line-height: 1.35;
+	overflow-wrap: anywhere;
+	padding-block: 10px;
+}
+
+.settingsAction {
+	background: var(--editor-host-canvas, var(--canvas));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--editor-host-ink, var(--ink));
+	cursor: pointer;
+	font: inherit;
+	font-weight: 600;
+	min-height: 48px;
+	padding: 10px 12px;
+	width: 100%;
+}
+
+.settingsAction:focus-visible,
+.settingsContent a:focus-visible {
+	outline: 2px solid var(--editor-host-focus, #0b5d8e);
+	outline-offset: -2px;
+}

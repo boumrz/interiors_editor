@@ -44,6 +44,55 @@ const smokeAccepts = {
 };
 
 describe("ImportPortableBackupUseCase", () => {
+	it("admits an exact floor angle only from the precise registered project member", async () => {
+		const base = rectangularSourceProject();
+		const floor = {
+			assetInstanceId: "turned", anchorClass: "floor" as const, roomId: base.level.rooms[0].roomId,
+			label: "Turned", xMm: 1000, zMm: 1000, widthMm: 400, depthMm: 500, heightMm: 600,
+			color: "#ABCDEF",
+		};
+		const precise: Project = { ...base, assetInstances: [{ ...floor, yawMilliDeg: 37500 }] };
+		const ordinary: Project = { ...base, assetInstances: [{ ...floor, yawStep: 1 }] };
+		const scenarios = [
+			{ format: undefined, source: precise, allowed: false },
+			{ format: "runtime-v1-wire", source: precise, allowed: false },
+			{ format: "runtime-v1-legacy", source: precise, allowed: false },
+			{ format: "runtime-v1-floor-yaw", source: precise, allowed: true },
+			{ format: "runtime-v1-floor-yaw", source: ordinary, allowed: false },
+			{ format: "runtime-v1-wire", source: ordinary, allowed: true },
+			{ format: "runtime-v1-legacy", source: ordinary, allowed: true },
+			{ format: "unregistered", source: ordinary, allowed: false },
+		];
+		for (const { format, source, allowed } of scenarios) {
+			const store = new MemoryVersionedProjectStore();
+			const repository = new DurableProjectRepository(store, checksum);
+			const projectMember = { format: "runtime-v1-wire", project: source } as const;
+			Reflect.set(projectMember, "format", format);
+			let allocated = 0;
+			const importer = new ImportPortableBackupUseCase({
+				decoder: { decode: async () => ({
+					kind: "accepted",
+					projectBytes: utf8Bytes(canonicalProjectSerializer.serialize(source)),
+					...(format ? { projectMember } : {}),
+				}) },
+				checksum: { sha256: checksum }, clock: { now: () => "2026-11-22T12:00:00.000Z" },
+				ids: { next: () => ["precise-copy", "precise-revision"][allocated++] },
+				serializer: canonicalProjectSerializer, repository, smoke: smokeAccepts,
+			});
+			const result = await importer.execute(Uint8Array.of(80, 75), () => undefined);
+			if (!allowed) {
+				expect(result).toEqual({ kind: "rejected", reasonCode: "PORTABLE_BACKUP_INVALID" });
+				expect(allocated).toBe(0);
+				continue;
+			}
+			expect(result).toEqual({ kind: "durable", projectId: "precise-copy", revisionId: "precise-revision" });
+			const saved = await repository.loadProject("precise-copy");
+			expect(saved).toMatchObject({ kind: "durable", candidate: { project: {
+				projectId: "precise-copy", assetInstances: source.assetInstances,
+			} } });
+		}
+	});
+
 	it("preserves an unverified-format handoff as unavailable before IDs, smoke, pins or publication", async () => {
 		const effects: string[] = [];
 		const useCase = new ImportPortableBackupUseCase({

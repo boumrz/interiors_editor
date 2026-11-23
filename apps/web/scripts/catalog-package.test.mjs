@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -20,6 +20,8 @@ test("a clean production bundle contains every exact advertised fixture resource
 	assert.equal(build.status, 0, build.stdout + build.stderr);
 	const envelope = JSON.parse(await readFile(new URL("catalog-envelope-source.json", catalogRoot), "utf8"));
 	const fileMap = JSON.parse(await readFile(new URL("catalog-resource-files-v1.json", catalogRoot), "utf8"));
+	const retired = new Set(["armchair-kursi-sofa", "wooden-cabinet", "zen-dining-chair"].flatMap(name => [name + ".glb", name + ".png"]));
+	assert.deepEqual((await readdir(join(outputRoot, "catalog"))).filter(name => retired.has(name)), []);
 	const descriptors = envelope.assets.flatMap((asset) => [
 		asset.resource,
 		...(asset.thumbnail ? [asset.thumbnail] : []),

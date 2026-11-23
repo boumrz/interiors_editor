@@ -1,6 +1,7 @@
 import { createEditorInteractionGate, type EditorContactEpoch, type RegisterEditorTransientBoundary } from "./editor-host-boundary";
 import {
 	type PointerEvent as ReactPointerEvent,
+	type ReactNode,
 	useCallback,
 	useEffect,
 	useLayoutEffect,
@@ -9,15 +10,17 @@ import {
 	useState,
 } from "react";
 
-import type { RectangularRoomWebGlScene } from "../adapters/renderer/rectangular-room-projection";
+import type { FurnitureGreyboxKind, RectangularRoomWebGlScene } from "../adapters/renderer/rectangular-room-projection";
 import {
 	createDomWebGl2CanvasPort,
+	createWebGl2RoomSceneRendererWithResizeOnChange,
 	type WebGl2CutawayMode,
 	type WebGl2RendererState,
 	WebGl2RoomRendererController,
 	type WebGl2RuntimeModels,
 } from "../adapters/renderer/webgl2-room-renderer";
 import {
+	floorYawFieldsForRadians,
 	rotationStepForYawRadians,
 	yawRadiansFor,
 } from "../domain/parametric-item";
@@ -31,6 +34,10 @@ import {
 	type CustomGlbRuntimeModel,
 	loadCustomGlbRuntime,
 } from "./custom-glb-runtime-loader";
+import { SheetHeader } from "./SheetHeader";
+import { FloorRotationAngleField } from "./FloorRotationAngleField";
+import rotationStyles from "./FloorRotationControls.module.css";
+import { degreesForYawRadians } from "./rotation-angle";
 import { itemCountCopy } from "./item-count-copy";
 import sceneStyles from "./RoomScene3d.module.css";
 import {
@@ -40,6 +47,7 @@ import {
 	floorPointForCanvas,
 	projectedItemFootprintFor,
 	type ThreeDimensionalFloorPoint,
+	wallItemAtScreenPoint,
 } from "./three-dimensional-floor-interaction";
 import {
 	beginRotationDomeGesture,
@@ -60,6 +68,8 @@ import {
 import { disposeThreeObject3D } from "./three-resource-disposal";
 
 interface RoomScene3dProps {
+	readonly plainLabels?: boolean;
+	readonly resizeDrawingBufferOnChangeOnly?: boolean;
 	readonly registerTransientBoundary?: RegisterEditorTransientBoundary;
 	readonly scene: RectangularRoomWebGlScene;
 	/** Parent verification state prevents an absent in-flight IndexedDB read from masquerading as a failed resource. */
@@ -70,11 +80,18 @@ interface RoomScene3dProps {
 	readonly customGlbResources?: Readonly<Record<string, CustomGlbResource>>;
 	readonly selectedItemId?: string;
 	readonly readOnly?: boolean;
+	readonly itemPlacementControls?: ReactNode;
+	readonly selectedItemControls?: ReactNode;
+	readonly exactFloorYaw?: boolean;
+	readonly initialItemPlacementPoint?: ThreeDimensionalFloorPoint;
+	readonly onItemPlacementPointChange?: (point: ThreeDimensionalFloorPoint) => void;
+	readonly snapFloorItemPoint?: (point: ThreeDimensionalFloorPoint, assetInstanceId?: string) => ThreeDimensionalFloorPoint;
 	/** A locked selected item stays selectable while camera inspection remains available. */
 	readonly canTransformSelectedItem?: boolean;
 	readonly itemPlacementDraft?: {
 		readonly color: string;
 		readonly depthMm: number;
+		readonly furnitureKind?: FurnitureGreyboxKind;
 		readonly heightMm: number;
 		readonly label: string;
 		readonly widthMm: number;
@@ -86,8 +103,10 @@ interface RoomScene3dProps {
 		readonly zM: number;
 	}) => boolean;
 	readonly onCancelItemPlacement?: () => void;
+	readonly onCloseItemPlacement?: () => void;
+	readonly skipBlurCommit?: (target: HTMLInputElement) => boolean;
 	/** Opens the same curated catalog as the 2D dock, without leaving 3D. */
-	readonly onOpenItemCatalog?: () => void;
+	readonly onOpenItemCatalog?: (trigger: HTMLButtonElement) => void;
 	readonly onPlaceItem?: (input: {
 		readonly xM: number;
 		readonly zM: number;
@@ -219,6 +238,10 @@ export function rendererDiagnosticsCopy(state: WebGl2RendererState): string {
 	}
 }
 
+function clampToBounds(value: number, lower: number, upper: number): number {
+	return Math.max(lower, Math.min(upper, value));
+}
+
 function distance(first: Point, second: Point): number {
 	return Math.hypot(first.x - second.x, first.y - second.y);
 }
@@ -228,6 +251,8 @@ function centre(first: Point, second: Point): Point {
 }
 
 export function RoomScene3d({
+	plainLabels = false,
+	resizeDrawingBufferOnChangeOnly = false,
 	registerTransientBoundary,
 	scene,
 	customGlbResourceStates = {},
@@ -236,9 +261,17 @@ export function RoomScene3d({
 	readOnly = false,
 	canTransformSelectedItem = true,
 	itemPlacementDraft,
+	itemPlacementControls,
+	selectedItemControls,
+	exactFloorYaw = false,
+	initialItemPlacementPoint,
+	onItemPlacementPointChange,
+	snapFloorItemPoint,
 	onItemPlacementYawChange,
 	assessItemPlacement,
 	onCancelItemPlacement,
+	onCloseItemPlacement,
+	skipBlurCommit,
 	onOpenItemCatalog,
 	onPlaceItem,
 	onMoveItem,
@@ -277,7 +310,7 @@ export function RoomScene3d({
 		undefined,
 	);
 	const placementKey = itemPlacementDraft
-		? JSON.stringify([itemPlacementDraft.label, itemPlacementDraft.widthMm, itemPlacementDraft.depthMm, itemPlacementDraft.heightMm, itemPlacementDraft.color])
+		? JSON.stringify([itemPlacementDraft.label, itemPlacementDraft.widthMm, itemPlacementDraft.depthMm, itemPlacementDraft.heightMm])
 		: undefined;
 	const hasPlacementYawControl = onItemPlacementYawChange !== undefined;
 	const interactionContextRef = useRef({
@@ -430,9 +463,12 @@ export function RoomScene3d({
 		return () => onPwaUpdateSafetyChange?.(false);
 	}, [hasTransientItemTransform, onPwaUpdateSafetyChange]);
 	const sceneRef = useRef(scene);
-	const [itemPlacementPoint, setItemPlacementPoint] = useState<
-		ThreeDimensionalFloorPoint | undefined
-	>(undefined);
+	const [itemPlacementPoint, setItemPlacementPoint] = useState(initialItemPlacementPoint);
+	const [placementPointFromGesture, setPlacementPointFromGesture] = useState(false);
+	const rotationTrackHeight = plainLabels ? ROTATION_GIZMO_SIZE : ROTATION_DOME_HEIGHT;
+	const rotationTrackPath = plainLabels
+		? "M27 100 A73 73 0 1 1 173 100 A73 73 0 1 1 27 100"
+		: "M27 100 A73 73 0 0 1 173 100";
 	hostDraftState.current = itemPreview !== undefined || submittedItemPreview !== undefined || itemPlacementDraft !== undefined || itemPlacementPoint !== undefined;
 	useLayoutEffect(() => {
 		if (hostGateDisposed.current) {
@@ -623,12 +659,21 @@ export function RoomScene3d({
 
 	const threeDimensionalItemPlacementPreview = useMemo(() => {
 		if (!itemPlacementDraft || !itemPlacementPoint) return undefined;
+		const point = placementPointFromGesture
+			? snapFloorItemPoint?.(itemPlacementPoint) ?? itemPlacementPoint
+			: itemPlacementPoint;
 		return {
-			...itemPlacementPoint,
+			...point,
 			...itemPlacementDraft,
-			isValid: assessItemPlacement?.(itemPlacementPoint) ?? false,
+			isValid: assessItemPlacement?.(point) ?? false,
 		};
-	}, [assessItemPlacement, itemPlacementDraft, itemPlacementPoint]);
+	}, [assessItemPlacement, itemPlacementDraft, itemPlacementPoint, placementPointFromGesture, snapFloorItemPoint]);
+	const placementXM = threeDimensionalItemPlacementPreview?.xM;
+	const placementZM = threeDimensionalItemPlacementPreview?.zM;
+	useLayoutEffect(() => {
+		if (placementXM !== undefined && placementZM !== undefined)
+			onItemPlacementPointChange?.({ xM: placementXM, zM: placementZM });
+	}, [onItemPlacementPointChange, placementXM, placementZM]);
 	const itemPlacementState = !threeDimensionalItemPlacementPreview
 		? "choose-point"
 		: threeDimensionalItemPlacementPreview.isValid
@@ -667,7 +712,8 @@ export function RoomScene3d({
 							heightM: preview.heightMm / 1000,
 							material: {
 								colorHex: preview.isValid ? preview.color : "#b32d2d",
-								furnitureKind: "generic" as const,
+									furnitureKind: preview.furnitureKind ?? "generic" as const,
+									...(preview.furnitureKind === undefined ? {} : { refreshGreyboxAppearance: true as const }),
 							},
 							widthM: preview.widthMm / 1000,
 							yawRadians: preview.yawRadians ?? 0,
@@ -679,7 +725,9 @@ export function RoomScene3d({
 	const renderedSceneRef = useRef(renderedScene);
 	renderedSceneRef.current = renderedScene;
 	const rendererStructureKey = rendererStructureKeyFor(scene);
-	const rendererStartKey = rendererStructureKey;
+	const rendererStartKey = resizeDrawingBufferOnChangeOnly
+		? `resize-buffer-on-change:${rendererStructureKey}`
+		: rendererStructureKey;
 
 	const renderedCamera = camera;
 	const renderedCutawayMode: WebGl2CutawayMode = cutawayMode;
@@ -716,7 +764,9 @@ export function RoomScene3d({
 		}
 		const controller = new WebGl2RoomRendererController(
 			createDomWebGl2CanvasPort(canvas),
-			undefined,
+			resizeDrawingBufferOnChangeOnly
+				? createWebGl2RoomSceneRendererWithResizeOnChange
+				: undefined,
 			(nextState) => {
 				rendererReadyRef.current = nextState.kind === "ready";
 				setState(nextState);
@@ -734,7 +784,7 @@ export function RoomScene3d({
 				rendererReadyRef.current = false;
 			}
 		};
-	}, []);
+	}, [resizeDrawingBufferOnChangeOnly]);
 
 	useLayoutEffect(() => {
 		const panel = scenePanelRef.current;
@@ -1089,7 +1139,7 @@ export function RoomScene3d({
 			(bounds.width * ROTATION_GIZMO_CENTER) / ROTATION_GIZMO_SIZE,
 		y:
 			bounds.top +
-			(bounds.height * ROTATION_GIZMO_CENTER) / ROTATION_DOME_HEIGHT,
+			(bounds.height * ROTATION_GIZMO_CENTER) / rotationTrackHeight,
 	});
 
 	const updateRotationFromClientPoint = (pointerId: number, point: Point) => {
@@ -1170,9 +1220,7 @@ export function RoomScene3d({
 			const completedRotation = {
 				assetInstanceId: activeRotation.assetInstanceId,
 				kind: "rotation" as const,
-				yawRadians: yawRadiansFor({
-					yawStep: rotationStepForYawRadians(activeRotation.yawRadians),
-				}),
+				yawRadians: yawRadiansFor(floorYawFieldsForRadians(activeRotation.yawRadians, exactFloorYaw)),
 			};
 			setSubmittedItemPreview(completedRotation);
 			void persistItemTransform(completedRotation);
@@ -1211,6 +1259,7 @@ export function RoomScene3d({
 				: undefined;
 			if (!readOnly && itemPlacementDraft && floorPoint) {
 				onClearSelection?.();
+				setPlacementPointFromGesture(true);
 				setItemPlacementPoint(floorPoint);
 				gesture.current = { kind: "place-item", pointerId: event.pointerId };
 				return;
@@ -1227,7 +1276,10 @@ export function RoomScene3d({
 						point,
 					)
 				: undefined;
-			const item = itemAtPointer ?? screenItemAtPointer;
+			const wallItem = plainLabels && point
+				? wallItemAtScreenPoint(renderedScene.items, renderedScene, camera, interactionCanvasSize(), point)
+				: undefined;
+			const item = wallItem ?? itemAtPointer ?? screenItemAtPointer;
 			if (!item) onClearSelection?.();
 			if (item?.assetInstanceId) onSelectItem?.(item.assetInstanceId);
 			if (
@@ -1311,11 +1363,12 @@ export function RoomScene3d({
 				? floorPointForCanvas(scene, camera, interactionCanvasSize(), point)
 				: undefined;
 			if (floorPoint) {
+				const target = snapFloorItemPoint?.(floorPoint, activeGesture.assetInstanceId) ?? floorPoint;
 				setItemPreview({
 					assetInstanceId: activeGesture.assetInstanceId,
 					kind: "move",
-					xM: floorPoint.xM,
-					zM: floorPoint.zM,
+					xM: target.xM,
+					zM: target.zM,
 				});
 				gesture.current = {
 					...activeGesture,
@@ -1339,7 +1392,10 @@ export function RoomScene3d({
 			const floorPoint = point
 				? floorPointForCanvas(scene, camera, interactionCanvasSize(), point)
 				: undefined;
-			if (floorPoint) setItemPlacementPoint(floorPoint);
+			if (floorPoint) {
+			setPlacementPointFromGesture(true);
+			setItemPlacementPoint(floorPoint);
+		}
 			return;
 		}
 		if (
@@ -1375,11 +1431,12 @@ export function RoomScene3d({
 			activeGesture.pointerId === event.pointerId
 		) {
 			if (activeGesture.moved && !readOnly) {
+				const target = snapFloorItemPoint?.(activeGesture.floorPoint, activeGesture.assetInstanceId) ?? activeGesture.floorPoint;
 				const completedMove = {
 					assetInstanceId: activeGesture.assetInstanceId,
 					kind: "move" as const,
-					xM: Math.round(activeGesture.floorPoint.xM * 1000) / 1000,
-					zM: Math.round(activeGesture.floorPoint.zM * 1000) / 1000,
+					xM: Math.round(target.xM * 1000) / 1000,
+					zM: Math.round(target.zM * 1000) / 1000,
 				};
 				setSubmittedItemPreview(completedMove);
 				void persistItemTransform(completedMove);
@@ -1462,6 +1519,7 @@ export function RoomScene3d({
 			yawRadians: item.yawRadians ?? 0,
 			point: { x: event.clientX, y: event.clientY },
 			centre: rotationCentre(gizmoBounds),
+			exact: exactFloorYaw,
 		}), target, placementKey };
 		rotationBaseSceneRef.current = scene;
 		rotationRef.current = nextRotation;
@@ -1669,11 +1727,12 @@ export function RoomScene3d({
 		};
 	}, [cancelActiveRotation]);
 
-	const rotateSelectedByStep = (direction: -1 | 1) => {
+	const applyControlAngle = (yawRadians: number) => {
 		if (hostEnabledRef.current && !hostGateRef.current.canBegin()) return;
+		const canonicalAngle = yawRadiansFor(floorYawFieldsForRadians(yawRadians, exactFloorYaw));
 		if (itemPlacementDraft) {
 			if (readOnly || !rendererReady || rotationRef.current || !onItemPlacementYawChange) return;
-			onItemPlacementYawChange(yawRadiansFor({ yawStep: rotationStepForYawRadians((itemPlacementDraft.yawRadians ?? 0) + direction * Math.PI / 4) }));
+			onItemPlacementYawChange(canonicalAngle);
 			return;
 		}
 		const selected = (hostEnabledRef.current ? renderedScene : scene).items.find(
@@ -1687,17 +1746,14 @@ export function RoomScene3d({
 			!canTransformSelectedItem ||
 			!rendererReady ||
 			isConfirmingItemTransform ||
-			rotationRef.current
+			rotationRef.current ||
+			canonicalAngle === (selected.yawRadians ?? 0)
 		)
 			return;
 		const transform = {
 			assetInstanceId: selected.assetInstanceId,
 			kind: "rotation" as const,
-			yawRadians: yawRadiansFor({
-				yawStep: rotationStepForYawRadians(
-					(selected.yawRadians ?? 0) + (direction * Math.PI) / 4,
-				),
-			}),
+			yawRadians: canonicalAngle,
 		};
 		setSubmittedItemPreview(transform);
 		void persistItemTransform(transform);
@@ -1747,20 +1803,92 @@ export function RoomScene3d({
 	// The rotation control has one axis, so its centre is the item's centre.
 	// Only its annular stroke owns a pointer; the clear middle remains the
 	// item's direct-manipulation target even for very small assets.
-	const gizmoOverlayPosition = gizmoPosition
-		? {
+	const ringTop = itemPlacementDraft ? placementSurface.headerBottom : 0;
+	const ringBottom = itemPlacementDraft && placementSurface.menuTop > ringTop
+		? placementSurface.menuTop
+		: liveCanvasSize.height;
+	const ringSize = plainLabels
+		? Math.min(ROTATION_GIZMO_SIZE, ringBottom - ringTop - 12, liveCanvasSize.width - 12)
+		: ROTATION_GIZMO_SIZE;
+	const ringPadding = ringSize / 2 + 6;
+	const gizmoOverlayPosition = gizmoPosition && ringSize >= 84
+		? plainLabels
+			? {
+				x: clampToBounds(gizmoPosition.x, ringPadding, liveCanvasSize.width - ringPadding),
+				y: clampToBounds(gizmoPosition.y, ringTop + ringPadding, ringBottom - ringPadding),
+			}
+			: {
 				x: Math.max(104, Math.min(liveCanvasSize.width - 104, gizmoPosition.x)),
 				y: itemPlacementDraft
 					? Math.max(placementSurface.headerBottom + 104, Math.min(placementSurface.menuTop - 32, gizmoPosition.y))
 					: Math.max(104, Math.min(liveCanvasSize.height - 84, gizmoPosition.y)),
 			}
 		: undefined;
-	const placementAngle = <output data-testid="three-dimensional-placement-rotation-angle" aria-live="polite">{rotationStepForYawRadians(currentRotationYaw) * 45}°</output>;
+	// Leave a usable space for the ring while allowing the sheet to scroll.
+	const availablePlacementHeight = liveCanvasSize.height - placementSurface.headerBottom;
+	const reservedRotationHeight = plainLabels
+		? clampToBounds(availablePlacementHeight - 116, 110, ROTATION_GIZMO_SIZE + 20)
+		: ROTATION_DOME_HEIGHT + 20;
+	const placementMenuMaxHeight = Math.max(
+		96,
+		availablePlacementHeight - (threeDimensionalItemPlacementPreview ? reservedRotationHeight : 12),
+	);
+	const angleDisplay = exactFloorYaw
+		? degreesForYawRadians(currentRotationYaw)
+		: String(rotationStepForYawRadians(currentRotationYaw) * 45);
+	const placementAngle = (
+		<output
+			aria-live="polite"
+			className={plainLabels ? rotationStyles.value : undefined}
+			data-testid="three-dimensional-placement-rotation-angle"
+		>
+			{angleDisplay}°
+		</output>
+	);
+	const step = exactFloorYaw ? 1 : 45;
+	const rotationStepClass = plainLabels ? rotationStyles.step : undefined;
+	const rotationRowClass = plainLabels
+		? rotationStyles.row
+		: `${sceneStyles.rotationStepControls} ${itemPlacementDraft ? sceneStyles.placementRotationControls : ""}`;
+	const rotationDisabled = !rendererReady || readOnly || isConfirmingItemTransform || isRotationActive || rotationBlocked;
 	const rotationControls = (
-		<fieldset className={`${sceneStyles.rotationStepControls} ${itemPlacementDraft ? sceneStyles.placementRotationControls : ""}`} aria-label="Поворот предмета">
-			<button type="button" aria-label="Повернуть предмет на 45° против часовой стрелки" disabled={!rendererReady || readOnly || isConfirmingItemTransform || isRotationActive || rotationBlocked} onClick={() => rotateSelectedByStep(1)}>↶</button>
-			{isRotationActive ? <button type="button" className={sceneStyles.rotationCancel} onClick={cancelActiveRotation}>{itemPlacementDraft ? placementAngle : null}<span>Отменить поворот</span></button> : itemPlacementDraft ? placementAngle : <span className={sceneStyles.rotationCaption}>Поворот</span>}
-			<button type="button" aria-label="Повернуть предмет на 45° по часовой стрелке" disabled={!rendererReady || readOnly || isConfirmingItemTransform || isRotationActive || rotationBlocked} onClick={() => rotateSelectedByStep(-1)}>↷</button>
+		<fieldset
+			aria-label="Поворот предмета"
+			className={rotationRowClass}
+			data-rotation-target={plainLabels ? (itemPlacementDraft ? "placement" : "selected") : undefined}
+		>
+			<button
+				aria-label={`Повернуть предмет на ${step}° против часовой стрелки`}
+				className={rotationStepClass}
+				disabled={rotationDisabled}
+				onClick={() => applyControlAngle(currentRotationYaw + step * Math.PI / 180)}
+				type="button"
+			>
+				↶
+			</button>
+			{isRotationActive ? (
+				<button type="button" className={plainLabels ? rotationStyles.cancel : sceneStyles.rotationCancel} onClick={cancelActiveRotation}>
+					{itemPlacementDraft ? placementAngle : null}<span>Отменить поворот</span>
+				</button>
+			) : exactFloorYaw ? (
+				<FloorRotationAngleField
+					ariaLabel="Поворот предмета в 3D, градусы"
+					className={plainLabels ? rotationStyles.angle : undefined}
+					disabled={rotationDisabled}
+					onApply={applyControlAngle}
+					skipBlurCommit={skipBlurCommit}
+					yawRadians={currentRotationYaw}
+				/>
+			) : itemPlacementDraft ? placementAngle : <span className={plainLabels ? rotationStyles.value : sceneStyles.rotationCaption}>Поворот</span>}
+			<button
+				aria-label={`Повернуть предмет на ${step}° по часовой стрелке`}
+				className={rotationStepClass}
+				disabled={rotationDisabled}
+				onClick={() => applyControlAngle(currentRotationYaw - step * Math.PI / 180)}
+				type="button"
+			>
+				↷
+			</button>
 		</fieldset>
 	);
 	return (
@@ -1813,9 +1941,11 @@ export function RoomScene3d({
 				(itemPlacementDraft ? hasPlacementYawControl : canTransformSelectedItem) ? (
 					<div
 						className={sceneStyles.rotationOverlay}
+						data-full-ring={plainLabels || undefined}
 						style={{
 							left: gizmoOverlayPosition.x,
 							top: gizmoOverlayPosition.y,
+							...(plainLabels ? { width: ringSize, transform: `translate(-50%, ${-ringSize / 2}px)` } : {}),
 						}}
 					>
 						{!itemPlacementDraft ? <output
@@ -1823,42 +1953,43 @@ export function RoomScene3d({
 							data-testid="three-dimensional-rotation-angle"
 							aria-live="polite"
 						>
-							{rotationStepForYawRadians(currentRotationYaw) * 45}
-							°
+							{angleDisplay}°
 						</output> : null}
 						<svg
-							aria-label="Полусфера поворота предмета в 3D"
+							aria-label={plainLabels ? "Кольцо поворота предмета в 3D" : "Полусфера поворота предмета в 3D"}
 							className={sceneStyles.rotationGizmo}
 							data-rotation-active={isRotationActive ? "true" : "false"}
 							data-testid="three-dimensional-rotation-gizmo"
 							aria-disabled={rotationBlocked || undefined}
 							style={rotationBlocked ? { opacity: 0.45 } : undefined}
-							height={ROTATION_DOME_HEIGHT}
+							height={plainLabels ? ringSize : rotationTrackHeight}
 							ref={rotationGizmoRef}
-							viewBox={`0 0 ${ROTATION_GIZMO_SIZE} ${ROTATION_DOME_HEIGHT}`}
-							width={ROTATION_GIZMO_SIZE}
+							viewBox={`0 0 ${ROTATION_GIZMO_SIZE} ${rotationTrackHeight}`}
+							width={ringSize}
 						>
-							<path
+							{!plainLabels && <path
 								className={sceneStyles.rotationDome}
 								data-testid="three-dimensional-rotation-dome"
 								d="M27 100 A73 73 0 0 1 173 100 Z"
-							/>
+							/>}
 							<path
 								className={sceneStyles.rotationTrack}
 								data-testid="three-dimensional-rotation-track"
-								d="M27 100 A73 73 0 0 1 173 100"
+								d={rotationTrackPath}
+								vectorEffect={plainLabels ? "non-scaling-stroke" : undefined}
 							/>
-							<path
+							{!plainLabels && <path
 								className={sceneStyles.rotationMeridian}
 								d="M100 27 C68 48 68 79 100 100 C132 79 132 48 100 27 M43 55 Q100 78 157 55"
-							/>
+							/>}
 							<path
 								aria-label="Вращать предмет в 3D"
 								className={sceneStyles.rotationHitArea}
 								data-testid="three-dimensional-rotation-hit-area"
 								aria-disabled={rotationBlocked || undefined}
 								style={rotationBlocked ? { cursor: "not-allowed" } : undefined}
-								d="M27 100 A73 73 0 0 1 173 100"
+								d={rotationTrackPath}
+								vectorEffect={plainLabels ? "non-scaling-stroke" : undefined}
 								onPointerDown={startRotation}
 								onLostPointerCapture={(event) => { if (rotationRef.current?.pointerId === event.pointerId) cancelActiveRotation(); }}
 							/>
@@ -1918,14 +2049,24 @@ export function RoomScene3d({
 					aria-label="Размещение предмета"
 					className={sceneStyles.itemPlacementMenu}
 					data-placement-state={itemPlacementState}
+					data-full-ring={plainLabels || undefined}
 					data-testid="three-dimensional-item-placement-menu"
+					data-scene-color-dock={itemPlacementControls ? "placement" : undefined}
 					ref={placementMenuRef}
-					style={{ maxHeight: Math.max(96, liveCanvasSize.height - placementSurface.headerBottom - (threeDimensionalItemPlacementPreview ? ROTATION_DOME_HEIGHT + 20 : 12)) }}
+					style={{ maxHeight: placementMenuMaxHeight }}
 				>
 					<span
 						aria-hidden="true"
 						className={sceneStyles.itemPlacementHandle}
 					/>
+					{onCloseItemPlacement ? (
+						<SheetHeader
+							title={<span data-testid="three-dimensional-item-placement-identity">{itemPlacementDraft.label}</span>}
+							closeLabel="Закрыть размещение предмета"
+							protectEditorDraft
+							onClose={onCloseItemPlacement}
+						/>
+					) : (
 					<div className={sceneStyles.itemPlacementIdentity}>
 						<span aria-hidden="true" className={sceneStyles.itemPlacementGlyph}>
 							<svg aria-hidden="true" fill="none" viewBox="0 0 28 28">
@@ -1950,6 +2091,13 @@ export function RoomScene3d({
 							) : null}
 						</div>
 					</div>
+					)}
+					{onCloseItemPlacement && itemPlacementState === "choose-another-point" ? (
+						<span className={sceneStyles.itemPlacementStatus} role="status" data-testid="three-dimensional-item-placement-status">
+							Выберите другое место
+						</span>
+					) : null}
+					{itemPlacementControls}
 					{threeDimensionalItemPlacementPreview ? (
 						<output
 							aria-hidden="true"
@@ -1969,7 +2117,7 @@ export function RoomScene3d({
 					) : null}
 					{hasPlacementYawControl ? rotationControls : null}
 					<div className={sceneStyles.itemPlacementActions}>
-						<button
+						<button data-editor-action="cancel"
 							aria-label="Отменить размещение предмета"
 							className={sceneStyles.itemPlacementCancel}
 							onClick={() => {
@@ -1979,17 +2127,25 @@ export function RoomScene3d({
 							}}
 							type="button"
 						>
-							Отмена
+							{plainLabels ? "Отменить" : "Отмена"}
 						</button>
-						<button
+						<button data-editor-action="confirm"
 							aria-label="Подтвердить размещение предмета"
 							className={sceneStyles.itemPlacementConfirm}
 							disabled={
-								!rendererReady || !threeDimensionalItemPlacementPreview?.isValid
+								!rendererReady ||
+							readOnly ||
+							isRotationActive ||
+							isConfirmingItemTransform ||
+							!threeDimensionalItemPlacementPreview?.isValid
 							}
 							onClick={() => {
 								if (
 									!rendererReady ||
+									readOnly ||
+									isConfirmingItemTransform ||
+									rotationRef.current ||
+									pointers.current.size > 0 ||
 									!threeDimensionalItemPlacementPreview?.isValid
 								)
 									return;
@@ -2011,7 +2167,7 @@ export function RoomScene3d({
 							}}
 							type="button"
 						>
-							Поставить
+							{plainLabels ? "Подтвердить" : "Поставить"}
 						</button>
 					</div>
 				</aside>
@@ -2021,6 +2177,7 @@ export function RoomScene3d({
 					aria-label="Управление видом 3D"
 					className={sceneStyles.viewControls}
 					data-testid="three-dimensional-view-controls"
+					data-scene-color-dock={selectedItem && !readOnly && selectedItemControls ? "selected" : undefined}
 					ref={viewControlsRef}
 				>
 					<div
@@ -2032,7 +2189,7 @@ export function RoomScene3d({
 								aria-label="Предметы интерьера"
 								className={sceneStyles.threeDimensionalCatalogButton}
 								disabled={readOnly}
-								onClick={onOpenItemCatalog}
+								onClick={(event) => onOpenItemCatalog(event.currentTarget)}
 								type="button"
 							>
 								<svg aria-hidden="true" fill="none" viewBox="0 0 24 24">
@@ -2115,6 +2272,7 @@ export function RoomScene3d({
 								<span>Все стены</span>
 							</button>
 						</fieldset>
+						{selectedItem && !readOnly ? selectedItemControls : null}
 						<fieldset
 							aria-label="Масштаб 3D"
 							className={sceneStyles.scaleControls}

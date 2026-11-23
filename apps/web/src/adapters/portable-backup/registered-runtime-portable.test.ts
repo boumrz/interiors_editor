@@ -168,6 +168,44 @@ async function candidate(source: Project) {
 }
 
 describe("registered runtime portable ports", () => {
+	it("keeps a precise floor angle and exact GLB bytes through the new registered archive", async () => {
+		const bytes = glb();
+		const resourceHash = await checksum.sha256Bytes(bytes);
+		const resources = [{ resourceHash, bytes }];
+		const base = withResources(project(), resources);
+		const source: Project = {
+			...base,
+			assetInstances: [{
+				anchorClass: "floor", assetInstanceId: "turned", roomId: base.level.rooms[0].roomId,
+				label: "Turned", xMm: 1500, zMm: 1500, widthMm: 500, depthMm: 500,
+				heightMm: 800, color: "#ABCDEF", assetDefinitionId: "model-0", yawMilliDeg: 37500,
+			}],
+		};
+		const ports = createRegisteredRuntimePortablePorts({ binaryChecksum: checksum });
+		const encoded = await ports.writer.encode({ project: source, createdAt: instant, resources });
+		expect(encoded.kind).toBe("encoded");
+		if (encoded.kind !== "encoded") throw new Error("Precise floor archive rejected");
+		const entries = unzipSync(encoded.bytes);
+		const decoder = new TextDecoder();
+		const projectSchemaId = "interiors.project/runtime-v1-floor-yaw";
+		const manifest = JSON.parse(decoder.decode(entries["manifest.json"]));
+		expect(manifest).toMatchObject({ projectSchemaId, projectSchemaVersion: 1 });
+		expect(JSON.parse(decoder.decode(entries["project/project.json"]))).toMatchObject({ projectSchemaId });
+		expect(await ports.decoder.decode(encoded.bytes)).toMatchObject({
+			kind: "accepted", projectMember: { format: "runtime-v1-floor-yaw", project: source }, resources,
+		});
+		expect(await ports.smoke.verify(source, resources)).toBe(true);
+		expect(await ports.feasibility.assess(await candidate(source), {
+			binaryChecksum: checksum,
+			resources: { read: async (hash) => hash === resourceHash ? bytes : undefined },
+		})).toEqual({ kind: "accepted" });
+		manifest.projectSchemaId = "interiors.project/runtime-v1-wire";
+		entries["manifest.json"] = utf8(JSON.stringify(manifest));
+		expect(await ports.decoder.decode(zipSync(entries, { level: 0 }))).toEqual({
+			kind: "rejected", reasonCode: "BACKUP_SCHEMA_UNREADABLE",
+		});
+	});
+
 	it("roundtrips the exact wire object and bytes without the internal serializer", async () => {
 		const base = project();
 		const source: Project = {

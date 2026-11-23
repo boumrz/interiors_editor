@@ -75,6 +75,7 @@ function fixture(extra: Record<string, unknown> = {}) {
 		height: 800,
 		width: 390,
 		visualHeight: 750,
+		textEntryFocused: false,
 		visible: true,
 		focused: true,
 	};
@@ -121,6 +122,19 @@ function fixture(extra: Record<string, unknown> = {}) {
 }
 
 describe("Telegram host environment", () => {
+	it("keeps one shape and touch spacing through theme changes and restores the prior design on disposal", () => {
+		const f = fixture();
+		f.style.setProperty("--editor-host-radius", "18px");
+		const host = f.connect();
+		expect(f.style.getPropertyValue("--editor-host-radius")).toBe("12px");
+		expect(f.style.getPropertyValue("--editor-host-touch-gap")).toBe("8px");
+		f.sdk.colorScheme = "dark";
+		f.emit("themeChanged");
+		expect(f.style.getPropertyValue("--editor-host-radius")).toBe("12px");
+		host.dispose();
+		expect(f.style.getPropertyValue("--editor-host-radius")).toBe("18px");
+		expect(f.style.getPropertyValue("--editor-host-touch-gap")).toBe("");
+	});
 	it("captures mandatory SDK methods once without starting host work", () => {
 		const f = fixture();
 		expect(f.calls).toEqual([]);
@@ -153,6 +167,34 @@ describe("Telegram host environment", () => {
 		f.emit("viewportChanged", { isStateStable: true });
 		expect(h.layout().viewport.stableHeight).toBe(500);
 		h.dispose();
+	});
+	it("clips the editor surface while typing, including a committed SDK resize, and refits on rotation", () => {
+		const f = fixture();
+		const host = f.connect();
+		const inset = () => f.style.getPropertyValue("--editor-keyboard-inset");
+		expect(inset()).toBe("0px");
+		f.browser({ textEntryFocused: true, visualHeight: 430 });
+		expect(inset()).toBe("270px");
+		f.sdk.viewportStableHeight = 430;
+		f.emit("viewportChanged", { isStateStable: true });
+		expect(inset()).toBe("270px");
+		f.browser({ width: 760, height: 350, visualHeight: 350 });
+		expect(inset()).toBe("0px");
+		f.browser({ textEntryFocused: false, visualHeight: 300 });
+		expect(inset()).toBe("0px");
+		f.browser({ textEntryFocused: true, visualHeight: 240 });
+		expect(inset()).toBe("60px");
+		f.browser({ textEntryFocused: false });
+		expect(inset()).toBe("60px");
+		f.browser({ visualHeight: 260 });
+		expect(inset()).toBe("40px");
+		f.browser({ visualHeight: 340 });
+		expect(inset()).toBe("0px");
+		f.browser({ textEntryFocused: true, visualHeight: 280 });
+		f.browser({ textEntryFocused: false, visualHeight: 200 });
+		expect(inset()).toBe("0px");
+		host.dispose();
+		expect(inset()).toBe("");
 	});
 	it("rejects nonfinite/negative dimensions and keeps every CSS value finite", () => {
 		const f = fixture({
@@ -605,6 +647,7 @@ it("reads native browser layout inputs and registers every capture listener with
 		}),
 		document = Object.assign(new Surface(), {
 			documentElement: { style: f.style },
+			activeElement: null as { matches(selector: string): boolean } | null,
 			visibilityState: "visible",
 			hasFocus: (): boolean => true,
 		});
@@ -617,9 +660,14 @@ it("reads native browser layout inputs and registers every capture listener with
 		height: 700,
 		width: 360,
 		visualHeight: 420,
+		textEntryFocused: false,
 		visible: true,
 		focused: true,
 	});
+	document.activeElement = { matches: selector => selector.length > 0 };
+	expect(signals.readBrowser().textEntryFocused).toBe(true);
+	document.activeElement = { matches: () => false };
+	expect(signals.readBrowser().textEntryFocused).toBe(false);
 	let calls = 0;
 	const off = signals.subscribeBrowser(() => {
 		calls++;

@@ -168,6 +168,42 @@ async function sourceWithResource() {
 }
 
 describe("shared Project controller composition", () => {
+	it("durably closes a room with an exact short tail, restores it through history and reopens it for independent deletion", async () => {
+		const { runtime, dependencies } = fixture();
+		const { controller } = runtime;
+		await controller.open();
+		const created = await controller.create("Room with retained tail");
+		if (created.kind !== "durable") throw new Error("Project creation failed");
+		for (const [start, end] of [
+			[{ xMm: 0, zMm: 0 }, { xMm: 4001, zMm: 0 }],
+			[{ xMm: 4000, zMm: 3000 }, { xMm: 0, zMm: 3000 }],
+			[{ xMm: 0, zMm: 3000 }, { xMm: 0, zMm: 0 }],
+		] as const) {
+			expect(await controller.addGeneralWall({ start, end, thicknessMm: 100 })).toMatchObject({ kind: "durable" });
+		}
+		const before = controller.snapshot();
+		expect(await controller.addGeneralWall({ start: { xMm: 4000, zMm: 0 }, end: { xMm: 4000, zMm: 3000 }, thicknessMm: 100 })).toMatchObject({ kind: "durable" });
+		const closed = controller.snapshot();
+		if (closed.kind !== "saved" || closed.project.schemaVersion !== 1) throw new Error("Room was not saved");
+		expect(closed.project.level.rooms).toHaveLength(1);
+		expect(closed.project.level.wallSegments).toHaveLength(5);
+		expect(await controller.undo()).toMatchObject({ kind: "durable" });
+		expect(controller.snapshot()).toEqual(before);
+		expect(await controller.redo()).toMatchObject({ kind: "durable" });
+		expect(controller.snapshot()).toEqual(closed);
+		await controller.showProjects();
+		const reopened = createSharedProjectController(dependencies).controller;
+		await reopened.openProject(created.projectId);
+		expect(reopened.snapshot()).toEqual(closed);
+		const end = closed.project.level.vertices.find(vertex => vertex.xMm === 4001 && vertex.zMm === 0);
+		const tail = closed.project.level.wallSegments.find(wall => wall.startVertexId === end?.vertexId || wall.endVertexId === end?.vertexId);
+		if (!tail) throw new Error("Exact selectable tail missing");
+		expect(await reopened.deleteGeneralWall({ wallSegmentId: tail.wallSegmentId, previewRevisionId: closed.revisionId })).toMatchObject({ kind: "durable" });
+		const deleted = reopened.snapshot();
+		if (deleted.kind !== "saved" || deleted.project.schemaVersion !== 1) throw new Error("Tail deletion failed");
+		expect(deleted.project.level.rooms).toEqual(closed.project.level.rooms);
+		expect(deleted.project.level.wallSegments).toHaveLength(4);
+	});
 	it("uses an explicit exact-object backup exporter without invoking the legacy envelope encoder", async () => {
 		let exports = 0;
 		const { runtime } = fixture({

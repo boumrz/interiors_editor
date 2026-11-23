@@ -398,6 +398,7 @@ function isSchematicFloorItem(value: unknown): boolean {
 				"locked",
 				"yawRadians",
 				"yawStep",
+				"yawMilliDeg",
 			],
 		)
 	) {
@@ -426,7 +427,11 @@ function isSchematicFloorItem(value: unknown): boolean {
 		(item.yawRadians === undefined ||
 			(typeof item.yawRadians === "number" &&
 				Number.isFinite(item.yawRadians))) &&
-		(item.yawStep === undefined || isRotationStep(item.yawStep))
+		(item.yawStep === undefined || isRotationStep(item.yawStep)) &&
+		(item.yawMilliDeg === undefined || (
+			isSafeIntegerInRange(item.yawMilliDeg, 0, 359_999) &&
+			item.yawRadians === undefined && item.yawStep === undefined
+		))
 	);
 }
 

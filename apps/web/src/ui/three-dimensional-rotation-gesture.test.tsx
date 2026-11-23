@@ -53,6 +53,7 @@ describe("relative floor-item rotation dome", () => {
 		expect(moveRotationDomeGesture(gesture, at(85), centre).yawRadians).toBe(
 			Math.PI / 4,
 		);
+		expect(moveRotationDomeGesture(gesture, at(55), centre).yawRadians).toBe(Math.PI / 2);
 		expect(moveRotationDomeGesture(gesture, at(-50), centre).yawRadians).toBe(
 			Math.PI,
 		);
@@ -66,6 +67,21 @@ describe("relative floor-item rotation dome", () => {
 		expect(moveRotationDomeGesture(across, at(-145), centre).yawRadians).toBe(
 			(7 * Math.PI) / 4,
 		);
+	});
+
+	it("moves and settles between legacy steps, including when crossing zero", () => {
+		const start = beginRotationDomeGesture({
+			assetInstanceId: "chair",
+			pointerId: 7,
+			yawRadians: 0,
+			point: at(179),
+			centre,
+			exact: true,
+		});
+		const moved = moveRotationDomeGesture(start, at(-168.5), centre);
+		expect(moved.yawRadians).toBeCloseTo(347.5 * Math.PI / 180);
+		expect(rotationDomeGestureHasChanged(moved)).toBe(true);
+		expect(rotationDomeGestureHasChanged(moveRotationDomeGesture(moved, at(179), centre))).toBe(false);
 	});
 
 	it("ignores a tap, small jitter, a return to origin and an exact complete turn", () => {

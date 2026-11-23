@@ -1,4 +1,6 @@
 // @ts-nocheck
+import { installReturningWebProfile } from "./accepted-web-license";
+import { readFile, readdir } from "node:fs/promises";
 import {
 	chromium,
 	devices,
@@ -7,6 +9,42 @@ import {
 	type TestInfo,
 } from "@playwright/test";
 import { WRITER_LEASE_DURATION_MS } from "../../src/application/ports";
+
+test("public legal documents match their sources before editor use and remain readable offline", async ({
+	page, context, request,
+}) => {
+	const documents = [
+		"analytics-consent.html",
+		"license-agreement.html",
+		"privacy-policy.html",
+	];
+	const publicDirectory = new URL("../../dist/legal/", import.meta.url);
+	expect((await readdir(publicDirectory)).sort()).toEqual(["2026-11-22.2", ...documents]);
+	expect((await readdir(new URL("2026-11-22.2/", publicDirectory))).sort()).toEqual(documents);
+	const sources = new URL("../../../../docs/legal/", import.meta.url);
+	const paths = documents.flatMap((file) => [file, `2026-11-22.2/${file}`]);
+	for (const file of paths) {
+		const sourceName = file.split("/").at(-1);
+		const online = await request.get(`/legal/${file}`);
+		expect(online.status()).toBe(200);
+		expect(online.headers()["content-type"]).toContain("text/html");
+		expect(await online.body()).toEqual(await readFile(new URL(sourceName, sources)));
+	}
+
+	await page.goto("/");
+	await expect
+		.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller)))
+		.toBe(true);
+	await context.setOffline(true);
+	for (const file of paths) {
+		const sourceName = file.split("/").at(-1);
+		const response = await page.goto(`/legal/${file}`);
+		expect(response?.fromServiceWorker()).toBe(true);
+		expect(response?.status()).toBe(200);
+		expect(await response?.body()).toEqual(await readFile(new URL(sourceName, sources)));
+		await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+	}
+});
 
 async function openPersistentPhone(testInfo: TestInfo, suffix: string) {
 	const context = await chromium.launchPersistentContext(
@@ -18,6 +56,7 @@ async function openPersistentPhone(testInfo: TestInfo, suffix: string) {
 			locale: "ru-RU",
 		},
 	);
+	await installReturningWebProfile(context, testInfo.project.use.baseURL);
 	const page = context.pages()[0] ?? (await context.newPage());
 	return { context, page };
 }
@@ -949,4 +988,21 @@ test("PWA-E2E-05: storage-pressure cleanup removes only repeatable browse cache 
 		session.page.getByTestId("project-durability-status"),
 	).toContainText("Сохранено локально");
 	await session.context.close();
+});
+
+test.describe("ordinary legal edition", () => {
+	test.use({ storageState: { cookies: [], origins: [] } });
+	test("the ordinary release asks for the license before editing, even after an earlier preview", async ({ page }) => {
+		await page.addInitScript(() => localStorage.setItem("interiors:web:legal-preview:2026-11-22", "seen"));
+		await page.goto("/");
+		await expect(page.getByRole("button", { name: "Новый проект" })).toHaveCount(0);
+		const license = page.getByRole("link", { name: "Лицензионное соглашение", exact: true });
+		await expect(license).toBeVisible();
+		await expect(page.getByRole("button", { name: "Выгрузить сохранённые проекты" })).toBeVisible();
+		await page.getByRole("button", { name: "Принять лицензионное соглашение" }).click({ timeout: 5000 });
+		await expect(page.getByRole("button", { name: "Новый проект" })).toBeVisible();
+		await page.getByRole("button", { name: "Настройки", exact: true }).click();
+		await expect(page.getByRole("dialog").getByRole("link", { name: "Политика конфиденциальности" })).toBeVisible();
+		await expect(page.getByText(/тестовой сборке|Предварительный просмотр/i)).toHaveCount(0);
+	});
 });

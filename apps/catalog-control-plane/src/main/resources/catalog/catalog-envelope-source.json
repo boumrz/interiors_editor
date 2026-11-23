@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogVersion": "alpha-2026-08-30.1",
-  "publishedAt": "2026-08-30T20:00:00Z",
+  "catalogVersion": "alpha-2026-11-22.1",
+  "publishedAt": "2026-11-22T11:00:00Z",
   "assets": [
     {
       "assetId": "antique-sofa",
@@ -78,19 +78,6 @@
       "variantSlots": []
     },
     {
-      "assetId": "kursi-armchair",
-      "label": "Кресло Kursi",
-      "section": "furniture",
-      "category": "seating",
-      "anchorClass": "floor",
-      "frontDirection": "positive-z",
-      "dimensionsMm": { "width": 3179, "depth": 2920, "height": 2231 },
-      "footprintMm": { "kind": "rectangle", "width": 3179, "depth": 2920 },
-      "resource": { "sha256": "b4a730f48ae1d8ec04c94ef99534002d381afa258144464b4df8892889f34eed", "byteLength": 1152384, "mediaType": "model/gltf-binary" },
-      "thumbnail": { "sha256": "8509df74641cd762851eff7ed493c1c931efd986752fe13d83ce9508ec311ec4", "byteLength": 21429, "mediaType": "image/png" },
-      "variantSlots": []
-    },
-    {
       "assetId": "ruined-chair",
       "label": "Фактурное кресло",
       "section": "furniture",
@@ -127,32 +114,6 @@
       "footprintMm": { "kind": "rectangle", "width": 1769, "depth": 1075 },
       "resource": { "sha256": "a7bee7a29476970b9ecded133da4cdd4bd679d175d62395fe7994a4f424b1346", "byteLength": 3157360, "mediaType": "model/gltf-binary" },
       "thumbnail": { "sha256": "3f0510cb662ef1fbf8c7c792ca0f9cdb523982fade32d432fbef3d1860eab5a9", "byteLength": 7640, "mediaType": "image/png" },
-      "variantSlots": []
-    },
-    {
-      "assetId": "wooden-cabinet",
-      "label": "Деревянный комод",
-      "section": "furniture",
-      "category": "storage",
-      "anchorClass": "floor",
-      "frontDirection": "positive-z",
-      "dimensionsMm": { "width": 800, "depth": 422, "height": 868 },
-      "footprintMm": { "kind": "rectangle", "width": 800, "depth": 422 },
-      "resource": { "sha256": "9dd295594623edf797cee3d4da1818802d723b404df51687d6ca1796f51b4608", "byteLength": 2333896, "mediaType": "model/gltf-binary" },
-      "thumbnail": { "sha256": "bded617fc7d3464f9102883d9da1d06ea76b0d76a230ae77feeeb78e9b8e83da", "byteLength": 15230, "mediaType": "image/png" },
-      "variantSlots": []
-    },
-    {
-      "assetId": "zen-dining-chair",
-      "label": "Винтажный стул Zen",
-      "section": "furniture",
-      "category": "seating",
-      "anchorClass": "floor",
-      "frontDirection": "positive-z",
-      "dimensionsMm": { "width": 835, "depth": 857, "height": 977 },
-      "footprintMm": { "kind": "rectangle", "width": 835, "depth": 857 },
-      "resource": { "sha256": "289c4d597eb5f38e7260afad2499d6e07a174261d613e8db28f260d40a0149e0", "byteLength": 3543584, "mediaType": "model/gltf-binary" },
-      "thumbnail": { "sha256": "11d2e14bea78f4e5961f5e02c3d24b80a3c4b4899ed55ac77d92d10af36e4e47", "byteLength": 12568, "mediaType": "image/png" },
       "variantSlots": []
     }
   ]

@@ -23,7 +23,7 @@ import { WRITER_LEASE_DURATION_MS } from "../../application/ports";
 import { canonicalProjectSerializer } from "../../application/create-project";
 import { isStructurallyValidProjectV1 } from "../../domain/project-json-transfer";
 import type { CustomGlbAssetDefinition } from "../../domain/project";
-import { encodeRuntimeV1Project } from "../portable-backup/runtime-v1-wire";
+import { encodeRegisteredRuntimeProject } from "../portable-backup/runtime-v1-wire";
 import { validateRuntimeV1Project } from "../../application/runtime-v1-project-validation";
 import { validateCustomGlbAssetDefinition } from "../../domain/custom-glb-asset";
 import type {
@@ -1244,7 +1244,18 @@ export class ScopedProjectRepository
 		);
 	}
 
-	private async readResource(hash: string): Promise<Uint8Array | undefined> {
+	/** Background integrity checks distinguish a bad row from a failed read. */
+	public async probePinnedResourceByteLength(hash: string): Promise<number | undefined> {
+		const bytes = await this.readResource(hash, true);
+		if (!bytes) return undefined;
+		const digest = await this.dependencies.binaryChecksum.sha256Bytes(bytes);
+		return digest.toLowerCase() === hash.toLowerCase() ? bytes.byteLength : undefined;
+	}
+
+	private async readResource(
+		hash: string,
+		reportCorruptRowAsMissing = false,
+	): Promise<Uint8Array | undefined> {
 		return this.storage.run(async (access) => {
 			const value: unknown = await access.transact(
 				["resources"],
@@ -1255,14 +1266,21 @@ export class ScopedProjectRepository
 			if (
 				!this.isResourceRow(value, access.scope) ||
 				value.resourceHash !== hash
-			)
+			) {
+				if (reportCorruptRowAsMissing) return undefined;
 				throw new Error("Resource record is corrupt");
-			return new Uint8Array(await value.blob.arrayBuffer());
+			}
+			return this.readPinnedBytes(value.blob);
 		});
 	}
 
+	private async readPinnedBytes(blob: Blob): Promise<Uint8Array> {
+		const readPinnedBlob = this.protocol.readPinnedBlob;
+		return new Uint8Array(await (readPinnedBlob ? readPinnedBlob(blob) : blob.arrayBuffer()));
+	}
+
 	private async verifyResource(row: ResourceRow): Promise<void> {
-		const bytes = new Uint8Array(await row.blob.arrayBuffer());
+		const bytes = await this.readPinnedBytes(row.blob);
 		if (
 			bytes.byteLength !== row.byteLength ||
 			(
@@ -2076,7 +2094,7 @@ export class ScopedProjectRepository
 				candidate.project.schemaVersion === 1 &&
 				candidate.revision.schemaVersion === 1 &&
 				isStructurallyValidProjectV1(candidate.project) &&
-				encodeRuntimeV1Project(candidate.project).kind === "encoded" &&
+				encodeRegisteredRuntimeProject(candidate.project).kind === "encoded" &&
 				validateRuntimeV1Project(candidate.project).kind === "accepted" &&
 				candidate.revision.projectId === candidate.project.projectId &&
 				typeof candidate.revision.revisionId === "string" &&

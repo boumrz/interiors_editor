@@ -5,11 +5,20 @@ import {
 	createCurrentProductTccA1Executor,
 	currentProductLegacyTccA1Corpus,
 	currentProductTccA1Corpus,
+	historicalCurrentProductTccA1CorpusRevision1,
 	webCryptoTccA1HashPort,
 } from "./current-product-tcc-a1-corpus";
 import { runTccA1Corpus } from "./tcc-a1-corpus-runner";
 
 describe("current product TCC-A1 corpus", () => {
+	it("publishes retained short contacts as a new corpus revision and fixture identity", () => {
+		expect(currentProductTccA1Corpus.corpusRevision).toBe(2);
+		const contacts = currentProductTccA1Corpus.fixtures.filter((fixture) => fixture.intent.family === "contacts");
+		expect(contacts.map((fixture) => fixture.fixtureId)).not.toContain("TCC-A1-CONTACT-SHORT-PARTITION");
+		expect(contacts).toContainEqual(expect.objectContaining({ fixtureId: "TCC-A1-CONTACT-RETAINED-SHORT-PARTITION-R2", expected: expect.objectContaining({ kind: "accepted" }) }));
+		expect(historicalCurrentProductTccA1CorpusRevision1.corpusRevision).toBe(1);
+		expect(historicalCurrentProductTccA1CorpusRevision1.fixtures).toContainEqual(expect.objectContaining({ fixtureId: "TCC-A1-CONTACT-SHORT-PARTITION", rawInputSha256: "1f123172acd28cad53ddd6a6da6f16f8a174166125e97a32703c2fb3d7bed5fd", expected: expect.objectContaining({ kind: "rejected", reasonCode: "TOO_SHORT_WALL" }) }));
+	});
 	it("executes every required TCC-A1 family through an active domain boundary", async () => {
 		const result = await runTccA1Corpus(
 			currentProductTccA1Corpus,
@@ -119,7 +128,7 @@ describe("current product TCC-A1 corpus", () => {
 				"TCC-A1-CONTACT-FRACTIONAL",
 				"TCC-A1-CONTACT-DUPLICATE",
 				"TCC-A1-CONTACT-OVERLAP",
-				"TCC-A1-CONTACT-SHORT-PARTITION",
+				"TCC-A1-CONTACT-RETAINED-SHORT-PARTITION-R2",
 			]),
 		);
 	});

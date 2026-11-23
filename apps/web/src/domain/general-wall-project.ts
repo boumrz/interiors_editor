@@ -886,7 +886,7 @@ export function changeGeneralWallThickness(
 				: wall,
 		),
 	};
-	if (!wallSegmentsRemainUsable(graph)) {
+	if (!wallSegmentsRemainUsable(graph, graphOf(source))) {
 		return reject("TOO_SHORT_WALL");
 	}
 	const targetFaces = facesForGraph(graph);
@@ -1084,7 +1084,7 @@ export function splitGeneralWall(
 		"__split_vertex__",
 		"__split_tail__",
 	);
-	if (!wallSegmentsRemainUsable(previewGraph)) {
+	if (!wallSegmentsRemainUsable(previewGraph, graphOf(source))) {
 		return reject("TOO_SHORT_WALL");
 	}
 	const targetFaces = facesForGraph(previewGraph);
@@ -1460,7 +1460,7 @@ function materializeMovedWallProject(
 	if (!targetFaces.faces.every(hasUsableFloorArea)) {
 		return reject("ROOM_USABLE_AREA_COLLAPSE");
 	}
-	if (!wallSegmentsRemainUsable(graph)) {
+	if (!wallSegmentsRemainUsable(graph, graphOf(source))) {
 		return reject("TOO_SHORT_WALL");
 	}
 	const planned = planMovedFaces(sourceFaces, targetFaces.faces);
@@ -1545,7 +1545,7 @@ export function moveGeneralVertex(
 	if (!incidentWallSegmentsRemainAlphaConstrained(graph, input.vertexId)) {
 		return reject("VERTEX_NOT_MOVABLE");
 	}
-	if (!wallSegmentsRemainUsable(graph)) {
+	if (!wallSegmentsRemainUsable(graph, graphOf(source))) {
 		return reject("TOO_SHORT_WALL");
 	}
 	const targetFaces = facesForGraph(graph);
@@ -2447,17 +2447,31 @@ function incidentWallSegmentsRemainAlphaConstrained(
 	);
 }
 
-function wallSegmentsRemainUsable(graph: PlanGraph): boolean {
+function wallSegmentsRemainUsable(graph: PlanGraph, source: PlanGraph): boolean {
 	const verticesById = new Map(
 		graph.vertices.map((vertex) => [vertex.vertexId, vertex]),
 	);
+	const sourceVertices = new Map(source.vertices.map((vertex) => [vertex.vertexId, vertex]));
+	const sourceWalls = new Map(source.wallSegments.map((wall) => [wall.wallSegmentId, wall]));
 	return graph.wallSegments.every((wall) => {
 		const start = verticesById.get(wall.startVertexId);
 		const end = verticesById.get(wall.endVertexId);
+		if (!start || !end) return false;
+		const lengthSquared = (end.xMm - start.xMm) ** 2 + (end.zMm - start.zMm) ** 2;
+		if (lengthSquared > wall.thicknessMm ** 2) return true;
+		const previous = sourceWalls.get(wall.wallSegmentId);
+		if (!previous) return false;
+		const previousStart = sourceVertices.get(previous.startVertexId);
+		const previousEnd = sourceVertices.get(previous.endVertexId);
+		if (!previousStart || !previousEnd) return false;
+		const previousLengthSquared = (previousEnd.xMm - previousStart.xMm) ** 2 + (previousEnd.zMm - previousStart.zMm) ** 2;
+		// A retained contact fragment may stay or improve. Explicit edits cannot
+		// create a short wall or make an existing short fragment less usable.
 		return (
-			start !== undefined &&
-			end !== undefined &&
-			Math.hypot(end.xMm - start.xMm, end.zMm - start.zMm) > wall.thicknessMm
+			previousLengthSquared > 0 &&
+			previousLengthSquared <= previous.thicknessMm ** 2 &&
+			lengthSquared >= previousLengthSquared &&
+			wall.thicknessMm <= previous.thicknessMm
 		);
 	});
 }

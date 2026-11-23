@@ -8,6 +8,8 @@ import {
 } from "react";
 import type { DrawingDimensionVisibility } from "./drawing-dimension-visibility";
 import styles from "./DimensionFilter.module.css";
+import { SheetHeader } from "./SheetHeader";
+import sheetStyles from "./SheetHeader.module.css";
 
 const tabs = [
 	{
@@ -22,11 +24,13 @@ const tabs = [
 ] as const;
 
 export function DimensionFilter({
+	telegram = false,
 	visibility,
 	onChange,
 	onClose,
 	returnFocusRef,
 }: {
+	readonly telegram?: boolean;
 	readonly visibility: DrawingDimensionVisibility;
 	readonly onChange: (value: DrawingDimensionVisibility) => void;
 	readonly onClose: () => void;
@@ -95,8 +99,9 @@ export function DimensionFilter({
 	};
 	return (
 		<dialog
-			aria-label="Размеры"
-			className={styles.dialog}
+			aria-labelledby={`${id}-heading`}
+			className={telegram ? `${styles.dialog} ${sheetStyles.telegramDialog}` : styles.dialog}
+			data-telegram-sheet={telegram ? "dimensions" : undefined}
 			data-testid="dimension-filter"
 			onCancel={(event) => {
 				event.preventDefault();
@@ -116,19 +121,15 @@ export function DimensionFilter({
 			onKeyDown={trapTab}
 			ref={dialog}
 		>
-			<header className={styles.header}>
-				<h2 id={`${id}-heading`} ref={heading} tabIndex={-1}>
-					Размеры <span>мм</span>
-				</h2>
-				<button
-					aria-label="Закрыть настройки размеров"
-					className={styles.close}
-					onClick={onClose}
-					type="button"
-				>
-					×
-				</button>
-			</header>
+			<SheetHeader
+				title={<>Размеры <span aria-hidden="true" className={styles.unit}>мм</span></>}
+				titleId={`${id}-heading`}
+				titleRef={heading}
+				titleTabIndex={-1}
+				closeLabel="Закрыть настройки размеров"
+				className={styles.dialogHeader}
+				onClose={onClose}
+			/>
 			<div aria-label="Группы размеров" className={styles.tabs} role="tablist">
 				{tabs.map((tab, index) => (
 					<button

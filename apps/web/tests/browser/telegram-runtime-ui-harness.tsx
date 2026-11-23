@@ -19,6 +19,7 @@ import { exportRecoveryDraft } from "../../src/app/project-recovery";
 import { canonicalProjectSerializer } from "../../src/application/create-project";
 import { encodeLocalProjectJson } from "../../src/domain/project-json-transfer";
 import { createInitialProject } from "../../src/domain/initial-project";
+import type { AddWallSegmentInput } from "../../src/domain/add-wall-segment";
 import { createHostFileBridge } from "../../src/adapters/telegram/host-file-bridge";
 import type { VerifiedTelegramScope } from "../../src/adapters/telegram/signed-launch";
 import type { CatalogGatewayPort } from "../../src/application/ports";
@@ -112,6 +113,7 @@ const fileTransfer = createHostFileBridge({
 	},
 });
 let navigable = false;
+let localGreyboxCatalog = false;
 let browserProtected = false;
 const hostBackListeners = new Set<() => void>();
 let hostClosingConfirmation = false;
@@ -137,6 +139,7 @@ let failNextProjectWrite = false;
 let checksumHold: { readonly match: string; entered: boolean; release: () => void; readonly wait: Promise<void> } | undefined;
 async function dispose() {
  browserProtected = false;
+	localGreyboxCatalog = false;
 	scopeLockHold?.release(); if (scopeLockHold) await scopeLockHold.done; scopeLockHold = undefined;
 	IDBObjectStore.prototype.put = originalPut; failNextProjectWrite = false;
 	lifecycleSnapshot = { active: true, layoutVersion: lifecycleSnapshot.layoutVersion + 1 };
@@ -148,7 +151,7 @@ async function dispose() {
 	activeScope = undefined;
 	if (prior) await prior.dispose();
 }
-function fresh(value: Scope, advanceClock = true) {
+function fresh(value: Scope, advanceClock = true, databaseMode?: "compatible" | "exact") {
 	if (advanceClock) epoch += 4_000;
 	originalSet.call(localStorage, clockKey, String(epoch));
 	const portable = createRegisteredRuntimePortablePorts({
@@ -158,6 +161,7 @@ function fresh(value: Scope, advanceClock = true) {
 		approval,
 		scope: scope(value),
 		context: {
+			databaseMode,
 			indexedDb: indexedDB,
 			locks: navigator.locks,
 			secureContext: isSecureContext,
@@ -197,6 +201,8 @@ function render() {
 	const props = {
 		runtime: current,
 		catalogGateway,
+		localGreyboxCatalog,
+		exactFloorYaw: current.exactFloorYaw,
 		readReleaseStartupInput: current.readReleaseStartupInput,
 		drawingDimensionPreferences: current.drawingDimensions,
 		sourceRecovery: current.sourceRecovery,
@@ -289,8 +295,8 @@ const fixture = {
 	async mountConcurrentNavigable(value: Scope) {
 		await dispose(); navigable = true; runtime = fresh(value, false); activeScope = value; render();
 	},
-	async mountNavigable(value: Scope) {
-		await dispose(); navigable = true; runtime = fresh(value); activeScope = value; render();
+	async mountNavigable(value: Scope, useLocalGreyboxCatalog = false, databaseMode?: "compatible" | "exact") {
+		await dispose(); localGreyboxCatalog = useLocalGreyboxCatalog; navigable = true; runtime = fresh(value, true, databaseMode); activeScope = value; render();
 	},
 	hostBack() { for (const listener of [...hostBackListeners]) listener(); },
 	hostBackSubscribed: () => hostBackListeners.size > 0,
@@ -422,13 +428,26 @@ const fixture = {
 		if (!runtime) throw new Error("No active runtime");
 		return runtime.controller.snapshot();
 	},
+	async addExistingWallLight(wallSegmentId: string) {
+		if (!runtime) throw new Error("No active runtime");
+		const result = await runtime.controller.createParametricWallItem({
+			wallSegmentId, label: "Подсветка зеркала", offsetMm: 1000, elevationMm: 1500,
+			widthMm: 450, depthMm: 120, heightMm: 80, side: "left", color: "#416b91",
+		});
+		if (result.kind !== "durable") throw new Error(`Wall light fixture failed: ${result.kind}`);
+	},
+	async addWall(input: AddWallSegmentInput) {
+		if (!runtime) throw new Error("No active runtime");
+		const result = await runtime.controller.addGeneralWall(input);
+		if (result.kind !== "durable") throw new Error(`Wall was not saved: ${result.kind}`);
+	},
 	async scopedRaw(value: Scope) {
 		return originalGet.call(
 			localStorage,
 			`interiors-tma-context-v1:${scope(value)}:drawing-dimensions`,
 		);
 	},
-	async prepareUpperCustom(value: Scope) {
+	async prepareUpperCustom(value: Scope, resourceAddress: "uppercase" | "lowercase" = "uppercase") {
 		await dispose();
 		runtime = fresh(value);
 		activeScope = value;
@@ -449,8 +468,8 @@ const fixture = {
 		if (room.kind !== "durable") throw new Error("Actual room save failed");
 		const bytes = triangleGlb();
 		const lower = await browserBinaryChecksum.sha256Bytes(bytes);
-		const resourceHash = lower.toUpperCase();
-		if (resourceHash === lower)
+		const resourceHash = resourceAddress === "uppercase" ? lower.toUpperCase() : lower;
+		if (resourceAddress === "uppercase" && resourceHash === lower)
 			throw new Error("Expected actual hash-case distinction");
 		const asset = {
 			assetDefinitionId: "local-upper-triangle",
@@ -501,8 +520,9 @@ const fixture = {
  if (!runtime || activeScope !== value || root) throw new Error("No prepared actual runtime");
  navigable = false; browserProtected = true; render();
  },
-	mountPreparedNavigable(value: Scope) {
+	mountPreparedNavigable(value: Scope, useLocalGreyboxCatalog = false) {
 		if (!runtime || activeScope !== value || root) throw new Error("No prepared actual runtime");
+		localGreyboxCatalog = useLocalGreyboxCatalog;
 		navigable = true; render();
 	},
 	mountPrepared(value: Scope) {

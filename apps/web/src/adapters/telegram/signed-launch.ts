@@ -22,7 +22,11 @@ type LaunchRejection =
 	| "unsupported-crypto";
 
 export type TelegramLaunchResult =
-	| { readonly kind: "verified"; readonly scope: VerifiedTelegramScope }
+	| {
+			readonly kind: "verified";
+			readonly scope: VerifiedTelegramScope;
+			readonly authenticatedAt: number;
+	  }
 	| { readonly kind: "rejected"; readonly reason: LaunchRejection };
 
 type LaunchCrypto = Pick<SubtleCrypto, "digest" | "importKey" | "verify">;
@@ -113,6 +117,7 @@ export async function verifyTelegramLaunch(
 		if (hex.length !== 64) return reject("unsupported-crypto");
 		return {
 			kind: "verified",
+			authenticatedAt: Number(rawAuthDate),
 			scope: `tma-v1-${hex}` as VerifiedTelegramScope,
 		};
 	} catch {

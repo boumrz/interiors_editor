@@ -1,0 +1,21 @@
+[Unit]
+Description=Domik Telegram launch collector
+Requires=interiors-analytics.socket
+After=interiors-analytics.socket
+
+[Service]
+User=interiors-analytics
+Group=interiors-analytics
+StateDirectory=interiors-analytics
+StateDirectoryMode=0700
+EnvironmentFile=/etc/interiors-analytics/service.env
+UnsetEnvironment=INTERIORS_CID_KEY_HEX INTERIORS_MP_PRIMARY_TOKEN
+ExecStart=/usr/bin/python3 -B /usr/local/lib/interiors-analytics/collector.py serve
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitCORE=0

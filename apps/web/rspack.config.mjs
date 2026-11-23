@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { rspack } from '@rspack/core';
+import { LegalDocumentsPlugin, publicLegalPaths } from './scripts/legal-documents-build.mjs';
 
 class InteriorsServiceWorkerPlugin {
   apply(compiler) {
@@ -21,6 +22,7 @@ class InteriorsServiceWorkerPlugin {
           '/manifest.webmanifest',
           '/icon.svg',
 		  '/release-manifest.json',
+          ...publicLegalPaths.map((path) => `/${path}`),
           ...assetPaths
         ];
         const shellAssetNames = new Set(appShell
@@ -31,7 +33,7 @@ class InteriorsServiceWorkerPlugin {
           .sort(({ name: first }, { name: second }) => first.localeCompare(second))
           .reduce(
             (hash, { name, source }) => hash.update(name).update('\0').update(source.buffer()).update('\0'),
-            createHash('sha256')
+            createHash('sha256').update(serviceWorkerTemplate).update('\0')
           );
         const cacheId = cacheFingerprint.digest('hex').slice(0, 16);
 		const releaseManifest = {
@@ -147,12 +149,13 @@ export default (_environment, arguments_) => {
   },
   plugins: [
     new rspack.DefinePlugin({
-      __INTERIORS_TEST_SEAM__: JSON.stringify(!isProduction)
+      __INTERIORS_TEST_SEAM__: JSON.stringify(!isProduction),
     }),
     new rspack.HtmlRspackPlugin({
       template: './public/index.html',
       title: 'InteriorsEditor'
     }),
+    new LegalDocumentsPlugin(),
     new InteriorsServiceWorkerPlugin(),
     new rspack.CopyRspackPlugin({
       patterns: [

@@ -112,15 +112,11 @@ export function addWallSegment(
 		candidate,
 		contacts.values(),
 	);
-	if (!hasUsablePieces(candidatePoints, candidate.thicknessMm)) {
-		return reject("TOO_SHORT_WALL");
-	}
+	// The authored wall passed its minimum above. Exact contacts partition it
+	// and existing walls into non-zero pieces; short remnants stay user-owned.
 	const existingWalls: PlannedExistingWall[] = [];
 	for (const resolved of existing) {
 		const points = sortedPointsOnSegment(resolved, contacts.values());
-		if (!hasUsablePieces(points, resolved.wall.thicknessMm)) {
-			return reject("TOO_SHORT_WALL");
-		}
 		existingWalls.push({ points, resolved });
 	}
 	const existingCoordinates = new Set(
@@ -519,21 +515,6 @@ function sortedPointsOnSegment(
 	return [...pointsByCoordinate.values()].sort(
 		(first, second) =>
 			distanceFromStart(first, segment) - distanceFromStart(second, segment),
-	);
-}
-
-function hasUsablePieces(
-	points: readonly PlanPoint[],
-	thicknessMm: number,
-): boolean {
-	return (
-		points.length >= 2 &&
-		points.slice(1).every((point, index) => {
-			const previous = points[index];
-			return previous
-				? segmentLength(previous, point) > thicknessMm
-				: false;
-		})
 	);
 }
 

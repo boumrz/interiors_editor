@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { returningWebUser } from './tests/browser/accepted-web-license.ts';
 
 const baseURL = process.env.PLAYWRIGHT_PWA_BASE_URL ?? 'http://127.0.0.1:4175';
 const usesExternalServer = process.env.PLAYWRIGHT_PWA_BASE_URL !== undefined;
@@ -13,6 +14,7 @@ export default defineConfig({
   workers: 1,
   use: {
     baseURL,
+    storageState: returningWebUser(baseURL),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     locale: 'ru-RU',

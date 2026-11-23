@@ -1,7 +1,7 @@
 .dialog {
 	background:var(--surface, var(--editor-host-surface, #fff));
 	border:1px solid var(--editor-host-line, #d9e1e8);
-	border-radius:24px;
+	border-radius:var(--editor-host-radius, 24px);
 	box-shadow: 0 12px 40px #0b17202b;
 	box-sizing: border-box;
 	color:var(--editor-host-ink, #192436);
@@ -15,13 +15,12 @@
 }
 .dialog[open] { display: flex; flex-direction: column; }
 .dialog::backdrop { background:#0b172052; }
-.header { align-items: center; display: flex; flex: 0 0 auto; gap: 8px; justify-content: space-between; padding: 12px 12px 8px 20px; }
-.header h2 { font-size: 1.25rem; font-weight: 700; margin: 0; min-width: 0; outline:none; overflow-wrap: anywhere; }
-.header h2 span { color:var(--editor-host-muted, #52647b); font-size: .75em; font-weight: 400; margin-left: 6px; }
-.dialog button { background:var(--editor-host-surface, #fff); border:1px solid var(--editor-host-line, #d9e1e8); border-radius:12px; color:var(--editor-host-ink, #192436); cursor: pointer; font: inherit; min-height: 48px; min-width: 0; overflow-wrap: anywhere; padding: 10px 12px; }
-.dialog .close { border:0; flex-shrink: 0; font-size: 1.6rem; line-height: 1; min-width: 48px; }
-.tabs { background:var(--editor-host-canvas, #f4f6f8); border-radius:14px; display: grid; flex: 0 0 auto; gap: 4px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin: 0 16px 8px; padding: 4px; }
-.tabs button { background:transparent; border-color:transparent; border-radius:10px; color:var(--editor-host-muted, #52647b); font-size: .875rem; font-weight: 600; }
+.dialogHeader { flex: 0 0 auto; padding: 8px 12px 8px 16px; }
+.dialogHeader h2:focus { outline: none; }
+.unit { color:var(--editor-host-muted, #52647b); font-size: .75em; font-weight: 400; margin-inline-start: 6px; }
+.dialog button { background:var(--editor-host-surface, #fff); border:1px solid var(--editor-host-line, #d9e1e8); border-radius:var(--editor-host-radius, 12px); color:var(--editor-host-ink, #192436); cursor: pointer; font: inherit; min-height: 48px; min-width: 0; overflow-wrap: anywhere; padding: 10px 12px; }
+.tabs { background:var(--editor-host-canvas, #f4f6f8); border-radius:var(--editor-host-radius, 14px); display: grid; flex: 0 0 auto; gap:var(--editor-host-touch-gap, 4px); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin: 0 16px 8px; padding: 4px; }
+.tabs button { background:transparent; border-color:transparent; border-radius:var(--editor-host-radius, 10px); color:var(--editor-host-muted, #52647b); font-size: .875rem; font-weight: 600; }
 .tabs button[aria-selected="true"] { background:var(--editor-host-surface, #fff); border-color:var(--editor-host-primary, #1976b9); color:var(--editor-host-primary, #1976b9); }
 .body { min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px; }
 .quickActions { display: grid; flex: 0 0 auto; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 12px 16px; }
@@ -34,8 +33,17 @@
 .footer { border-top:1px solid var(--editor-host-line, #d9e1e8); flex: 0 0 auto; padding: 12px 16px; }
 .footer button { background:#1976b9; border-color:var(--editor-host-primary, #1976b9); color:#fff; font-weight: 600; width: 100%; }
 .dialog button:focus-visible, .options input:focus-visible { outline:3px solid var(--editor-host-focus, #0b5d8e); outline-offset: -3px; }
+main[data-editor-host="telegram"] .dialog {
+	font-family: var(--font-display);
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+main[data-editor-host="telegram"] .dialog .body { min-block-size: min(8rem, 25dvh); padding-inline: 16px; }
+main[data-editor-host="telegram"] .quickActions {
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
+}
 @media (max-height: 420px) {
-	.header { padding-block: 4px; }
+	.dialogHeader { padding-block: 4px; }
 	.tabs { margin-bottom: 4px; }
 	.quickActions, .footer { padding-block: 6px; }
 }

@@ -472,7 +472,6 @@ describe("read-only runtime V1 Project validation", () => {
 			validateRuntimeV1Project({ ...source, assetDefinitionRefs: refs }),
 		).toEqual({ kind: "rejected", reasonCode: "BACKUP_PROJECT_LIMIT" });
 		for (const end of [
-			{ xMm: 49, zMm: 0 },
 			{ xMm: 100000, zMm: 100000 },
 		]) {
 			const project = {
@@ -682,6 +681,14 @@ describe("runtime V1 policy and binding boundaries", () => {
 	it("accepts exact nonzero wall length bounds and translated coordinates, while preserving an earlier zero-length structural failure", () => {
 		const source = empty();
 		for (const [start, end] of [
+			[
+				{ xMm: 0, zMm: 0 },
+				{ xMm: 1, zMm: 0 },
+			],
+			[
+				{ xMm: 0, zMm: 0 },
+				{ xMm: 49, zMm: 0 },
+			],
 			[
 				{ xMm: 0, zMm: 0 },
 				{ xMm: 50, zMm: 0 },

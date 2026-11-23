@@ -101,5 +101,6 @@ export function rendererStructureKeyFor(
 			material: item.material,
 		})),
 		walls: scene.walls,
+		openingParts: scene.openingParts,
 	});
 }

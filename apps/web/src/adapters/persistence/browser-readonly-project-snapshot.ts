@@ -12,7 +12,7 @@ import type {
 } from "../../application/ports";
 import { validateRuntimeV1Project } from "../../application/runtime-v1-project-validation";
 import { isStructurallyValidProjectV1 } from "../../domain/project-json-transfer";
-import { encodeRuntimeV1Project } from "../portable-backup/runtime-v1-wire";
+import { encodeRegisteredRuntimeProject } from "../portable-backup/runtime-v1-wire";
 
 export interface BrowserReadonlyProjectSnapshot {
 	readonly storageNamespace: ProjectStorageNamespace;
@@ -126,7 +126,7 @@ export async function verifyBrowserReadonlySnapshot(
 				alphaBackupFeasibilityLimits.maxProjectBytes ||
 			browserBackupUtf8ByteLength(candidate.revision.serializedProject) >
 				alphaBackupFeasibilityLimits.maxProjectBytes ||
-			encodeRuntimeV1Project(candidate.project).kind !== "encoded" ||
+			encodeRegisteredRuntimeProject(candidate.project).kind !== "encoded" ||
 			validateRuntimeV1Project(candidate.project).kind !== "accepted"
 		)
 			return undefined;

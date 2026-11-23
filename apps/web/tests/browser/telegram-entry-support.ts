@@ -1,3 +1,6 @@
+import { verifyTelegramLaunch } from "../../src/adapters/telegram/signed-launch";
+import { licenseRevision } from "../../src/app/license-receipt";
+import { fixtureEditionTime, fixtureSignedTime } from "./telegram-entry-signed-fixture";
 import type { Page } from "@playwright/test";
 export interface TelegramEntryAudit {
 	opens: string[];
@@ -29,9 +32,22 @@ export async function installEntryAudit(
 	page: Page,
 	sdk: "missing" | "invalid" | "signed" | "signed-ready-fails",
 	signedExample = "",
+	legalFirstUse = false,
 ) {
+	const returning = !legalFirstUse && (sdk === "signed" || sdk === "signed-ready-fails");
+	let receiptKey: string | undefined;
+	if (returning) {
+		const launch = await verifyTelegramLaunch(
+			signedExample,
+			{ botId: "7342037359", environment: "production" },
+			{ nowEpochMs: fixtureSignedTime },
+		);
+		if (launch.kind !== "verified") throw Error("Expected the published signed test vector");
+		receiptKey = `interiors:${launch.scope}:license:${licenseRevision}`;
+	}
 	await page.addInitScript(
-		({ sdk, signedExample }) => {
+		({ sdk, signedExample, legalFirstUse, receiptKey, acceptedAt }) => {
+			if (receiptKey) localStorage.setItem(receiptKey, acceptedAt);
 			const audit: TelegramEntryAudit = {
 				opens: [],
 				deletes: 0,
@@ -108,6 +124,19 @@ export async function installEntryAudit(
 					calls: string[] = [];
 				const app = {
 					version: "8.0",
+					...(legalFirstUse ? {
+						SettingsButton: {
+							isVisible: false,
+							show() { this.isVisible = true; },
+							hide() { this.isVisible = false; },
+							onClick(callback: () => void) {
+								const listeners = handlers.get("settingsButtonClicked") ?? new Set();
+								listeners.add(callback);
+								handlers.set("settingsButtonClicked", listeners);
+							},
+							offClick(callback: () => void) { handlers.get("settingsButtonClicked")?.delete(callback); },
+						},
+					} : {}),
 					colorScheme: "light",
 					isActive: true,
 					viewportHeight: 700,
@@ -214,7 +243,7 @@ export async function installEntryAudit(
 				},
 			});
 		},
-		{ sdk, signedExample },
+		{ sdk, signedExample, legalFirstUse, receiptKey, acceptedAt: new Date(fixtureEditionTime).toISOString() },
 	);
 }
 export const audit = (page: Page) =>

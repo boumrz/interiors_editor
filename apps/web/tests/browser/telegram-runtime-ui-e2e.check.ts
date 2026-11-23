@@ -1,7 +1,9 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
+import { unzipSync } from "fflate";
 import type {} from "./telegram-runtime-ui-harness";
 import { projectRectangularRoomForWebGl } from "../../src/adapters/renderer/rectangular-room-projection";
-import { canvasPointForFloor } from "../../src/ui/three-dimensional-floor-interaction";
+import { canvasPointForFloor, canvasPointForSceneItem } from "../../src/ui/three-dimensional-floor-interaction";
+import { clickRectangularRoomPoint } from "./room-geometry-fixture";
 
 async function start(page: Page, scope: "a" | "b") {
 	await page.evaluate(async (scope) => {
@@ -209,6 +211,445 @@ test("TMA-UI-04: the actual 3D resource path renders the pinned raw-UPPER GLB wi
 	});
 });
 
+test("TMA-UI-RESOURCE-01: a transient scoped GLB read retries, while a checksum mismatch still enters recovery", async ({ page }) => {
+	const preserved = await browser(page);
+	const fixture = await page.evaluate(async () => {
+		const prepared = await window.__telegramRuntimeUi.prepareUpperCustom("a");
+		window.__telegramRuntimeUi.mountPreparedNavigable("a");
+		return prepared;
+	});
+	await open(page, "Uppercase local model");
+	const before = await rows(page, "a");
+	const key = "tmaTransientResourceReads";
+	await page.evaluate(({ byteLength, key }) => {
+		const read = Blob.prototype.arrayBuffer;
+		let count = 0;
+		Reflect.set(window, key, count);
+		Blob.prototype.arrayBuffer = function () {
+			if (this.size === byteLength) {
+				Reflect.set(window, key, ++count);
+				if (count === 1) {
+					return Promise.reject(new DOMException("Synthetic file read failure", "NotReadableError"));
+				}
+				Blob.prototype.arrayBuffer = read;
+			}
+			return read.call(this);
+		};
+		for (let index = 0; index < 4; index++) {
+			document.dispatchEvent(new Event("visibilitychange"));
+		}
+	}, { byteLength: fixture.byteLength, key });
+	await expect.poll(() => page.evaluate((key) => Reflect.get(window, key), key)).toBe(2);
+	await saved(page);
+	await expect(page.getByTestId("resource-recovery-projection-notice")).toHaveCount(0);
+	expect(await rows(page, "a")).toEqual(before);
+
+	await page.evaluate(async ({ byteLength, resourceHash }) => {
+		const database = await new Promise<IDBDatabase>((resolve, reject) => {
+			const request = indexedDB.open(`interiors-editor-projects:tma-v1-${"a".repeat(64)}`);
+			request.onerror = () => reject(request.error);
+			request.onsuccess = () => resolve(request.result);
+		});
+		try {
+			await new Promise<void>((resolve, reject) => {
+				const transaction = database.transaction("resources", "readwrite");
+				transaction.oncomplete = () => resolve();
+				transaction.onabort = () => reject(transaction.error);
+				const resources = transaction.objectStore("resources");
+				const request = resources.get(resourceHash);
+				request.onsuccess = () => {
+					if (!request.result) {
+						transaction.abort();
+						return;
+					}
+					resources.put({ ...request.result, blob: new Blob([new Uint8Array(byteLength)]) });
+				};
+			});
+		} finally {
+			database.close();
+		}
+		document.dispatchEvent(new Event("visibilitychange"));
+	}, { byteLength: fixture.byteLength, resourceHash: fixture.resourceHash });
+	await expect(page.getByRole("heading", { name: "Проект требует восстановления", exact: true })).toBeVisible();
+	expect(await rows(page, "a")).toEqual(before);
+	expect(await browser(page)).toEqual(preserved);
+});
+
+test("TMA-UI-RESOURCE-02: opening a project retries one unreadable pinned blob", async ({ page }) => {
+	const { byteLength } = await page.evaluate(async () => {
+		const fixture = await window.__telegramRuntimeUi.prepareUpperCustom("a");
+		window.__telegramRuntimeUi.mountPreparedNavigable("a");
+		return fixture;
+	});
+	const before = await rows(page, "a");
+	await page.evaluate((size) => {
+		const read = Blob.prototype.arrayBuffer;
+		Blob.prototype.arrayBuffer = function () {
+			if (this.size === size) {
+				Blob.prototype.arrayBuffer = read;
+				Reflect.set(window, "pinnedBlobReadInterrupted", true);
+				return Promise.reject(new DOMException("Transient fixture read", "NotReadableError"));
+			}
+			return read.call(this);
+		};
+	}, byteLength);
+	await open(page, "Uppercase local model");
+	expect(await page.evaluate(() => Reflect.get(window, "pinnedBlobReadInterrupted"))).toBe(true);
+	expect((await currentProject(page)).assetInstances).toHaveLength(1);
+	expect(await rows(page, "a")).toEqual(before);
+});
+
+test("TMA-EXACT-YAW: exact 2D placement restores in 3D and in the compatible runtime", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, "Точный поворот");
+	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
+	await expect(page.getByTestId("tma-placement-color")).toHaveCount(0);
+	await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
+	const placement = page.getByTestId("item-placement-action-dock");
+	const exactAngle = placement.locator('input[inputmode="decimal"]');
+	await exactAngle.fill("37,5");
+	await exactAngle.press("Enter");
+	await expect(exactAngle).toHaveValue(/37[.,]5/);
+	await page.getByRole("button", { name: "Повернуть размещаемый предмет влево на 1°", exact: true }).click();
+	await expect(exactAngle).toHaveValue(/38[.,]5/, { timeout: 1500 });
+	await page.getByRole("button", { name: "Повернуть размещаемый предмет вправо на 1°", exact: true }).click();
+	await expect(exactAngle).toHaveValue(/37[.,]5/);
+	const before = await rows(page, "a");
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	const scenePlacement = page.getByTestId("three-dimensional-item-placement-preview");
+	await expect(scenePlacement).toHaveAttribute("data-placement-valid", "true");
+	await expect(page.getByRole("textbox", { name: "Поворот предмета в 3D, градусы" })).toHaveValue(/37[.,]5/);
+	const track = page.getByTestId("three-dimensional-rotation-track");
+	await expect(track).toHaveAttribute("d", /A73 73.*A73 73/);
+	const ring = await page.getByTestId("three-dimensional-rotation-gizmo").boundingBox();
+	if (!ring) throw new Error("Expected the 3D rotation ring");
+	const confirm = page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true });
+	const center = { x: ring.x + ring.width / 2, y: ring.y + ring.height / 2 };
+	const radius = ring.width * 73 / 200;
+	await confirm.focus();
+	await page.mouse.move(center.x, center.y - radius);
+	await page.mouse.down();
+	await page.mouse.move(center.x + radius * 0.35, center.y - radius * 0.94, { steps: 4 });
+	await expect(confirm).toBeDisabled();
+	await page.keyboard.press("Enter");
+	expect(await rows(page, "a")).toEqual(before);
+	await page.mouse.up();
+	const sceneAngle = page.getByRole("textbox", { name: "Поворот предмета в 3D, градусы" });
+	await expect(sceneAngle).not.toHaveValue(/^(?:0|37[.,]5|45|90|135|180|225|270|315)$/);
+	await sceneAngle.fill("37,5");
+	await sceneAngle.press("Enter");
+	await expect(page.getByTestId("tma-placement-color")).toBeVisible();
+	const viewport = page.viewportSize();
+	if (!viewport) throw new Error("Expected mobile viewport");
+	await page.setViewportSize({ width: 740, height: 360 });
+	await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+	await expect.poll(async () => {
+		const [gizmo, header, sheet] = await Promise.all([
+			track.boundingBox(),
+			page.getByTestId("editor-top-bar").boundingBox(),
+			page.getByTestId("three-dimensional-item-placement-menu").boundingBox(),
+		]);
+		return Boolean(gizmo && header && sheet && gizmo.y >= header.y + header.height - 2 && gizmo.y + gizmo.height <= sheet.y + 2);
+	}).toBe(true);
+	await confirm.scrollIntoViewIfNeeded();
+	await expect(confirm).toBeEnabled();
+	await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
+	await page.setViewportSize(viewport);
+	expect(await rows(page, "a")).toEqual(before);
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	const durable = (await currentProject(page)).assetInstances[0];
+	expect(durable).toHaveProperty("yawMilliDeg", 37500);
+	expect(durable).not.toHaveProperty("yawStep");
+	await page.reload();
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "compatible"));
+	await open(page, "Точный поворот");
+	expect((await currentProject(page)).assetInstances[0]).toEqual(durable);
+	await page.getByTestId("schematic-item").click();
+	const left = page.getByRole("textbox", { name: "Слева, мм", exact: true });
+	if (!(await left.isVisible())) {
+		await page.getByRole("button", { name: "Развернуть панель предмета", exact: true }).click();
+	}
+	const next = Number(await left.inputValue()) + 20;
+	await left.fill(String(next));
+	await left.press("Enter");
+	await saved(page);
+	expect((await currentProject(page)).assetInstances[0]).toMatchObject({ yawMilliDeg: 37500 });
+	await expect(left).toHaveValue(String(next));
+});
+
+async function expectBalancedRotationRow(left: Locator, angle: Locator, right: Locator) {
+	await expect(angle).toBeVisible();
+	const [first, field, input, last] = await Promise.all([left.boundingBox(), angle.locator("..").boundingBox(), angle.boundingBox(), right.boundingBox()]);
+	if (!first || !field || !input || !last) throw new Error("Missing rotation row controls");
+	const leftGap = field.x - first.x - first.width;
+	const rightGap = last.x - field.x - field.width;
+	expect.soft(first.width).toBeCloseTo(48, 1);
+	expect.soft(last.width).toBeCloseTo(first.width, 1);
+	expect.soft(first.height).toBeCloseTo(48, 1);
+	expect.soft(last.height).toBeCloseTo(first.height, 1);
+	expect.soft(field.height).toBeCloseTo(first.height, 1);
+	expect.soft(field.y).toBeCloseTo(first.y, 1);
+	expect.soft(last.y).toBeCloseTo(first.y, 1);
+	expect.soft(leftGap).toBeCloseTo(8, 1);
+	expect.soft(rightGap).toBeCloseTo(leftGap, 1);
+	expect.soft(input.x + input.width / 2).toBeCloseTo(field.x + field.width / 2, 1);
+	expect.soft(await angle.evaluate((input) => getComputedStyle(input).textAlign)).toBe("center");
+}
+
+test("TMA-ROTATION-SPACING: rotation controls have symmetric touch targets and a centred angle in Plan and 3D", async ({ page }) => {
+	test.setTimeout(60_000);
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, "Геометрия поворота");
+	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
+	await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
+	const planLeft = page.getByRole("button", { name: "Повернуть размещаемый предмет влево на 1°", exact: true });
+	const planAngle = page.getByRole("textbox", { name: "Угол размещаемого предмета, градусы", exact: true });
+	const planRight = page.getByRole("button", { name: "Повернуть размещаемый предмет вправо на 1°", exact: true });
+	const sceneLeft = page.getByRole("button", { name: "Повернуть предмет на 1° против часовой стрелки", exact: true });
+	const sceneAngle = page.getByRole("textbox", { name: "Поворот предмета в 3D, градусы", exact: true });
+	const sceneRight = page.getByRole("button", { name: "Повернуть предмет на 1° по часовой стрелке", exact: true });
+	const layouts = [
+		{ width: 390, height: 844, colorScheme: "light", fontSize: "" },
+		{ width: 320, height: 780, colorScheme: "dark", fontSize: "200%" },
+		{ width: 1024, height: 800, colorScheme: "light", fontSize: "" },
+	] as const;
+	async function setRotationLayout({ width, height, colorScheme, fontSize }: typeof layouts[number]) {
+		await page.setViewportSize({ width, height });
+		await page.emulateMedia({ colorScheme });
+		await page.evaluate(({ colorScheme, fontSize }) => {
+			const styles = document.documentElement.style;
+			styles.fontSize = fontSize;
+			styles.colorScheme = colorScheme;
+			for (const [role, darkValue] of Object.entries({
+				"--canvas": "#17212b",
+				"--surface": "#1f2c36",
+				"--ink": "#f5f7fa",
+				"--line": "#3b4c59",
+			})) {
+				styles.setProperty(role, colorScheme === "dark" ? darkValue : "");
+			}
+		}, { colorScheme, fontSize });
+	}
+	for (const layout of layouts) {
+		await setRotationLayout(layout);
+		await expectBalancedRotationRow(planLeft, planAngle, planRight);
+		await page.getByRole("button", { name: "3D", exact: true }).click();
+		await expectBalancedRotationRow(sceneLeft, sceneAngle, sceneRight);
+		await page.getByRole("button", { name: "План 2D", exact: true }).click();
+	}
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	await page.getByTestId("schematic-item").click();
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	for (const layout of layouts) {
+		await setRotationLayout(layout);
+		await expectBalancedRotationRow(sceneLeft, sceneAngle, sceneRight);
+	}
+});
+
+test("TMA-EXACT-TRANSFER: Undo, Redo and a compatible runtime preserve exact yaw and pinned GLB bytes", async ({ page }) => {
+	test.setTimeout(60_000);
+	const preserved = await browser(page);
+	const fixture = await page.evaluate(async () => {
+		const model = await window.__telegramRuntimeUi.prepareUpperCustom("a");
+		await window.__telegramRuntimeUi.mountNavigable("a", true, "exact");
+		return model;
+	});
+	await open(page, "Uppercase local model");
+	const original = await currentProject(page);
+	await page.getByTestId("schematic-item").click();
+	const angle = page.getByRole("textbox", { name: "Угол поворота выбранного предмета, градусы", exact: true });
+	if (!(await angle.isVisible())) {
+		await page.getByRole("button", { name: "Развернуть панель предмета", exact: true }).click();
+	}
+	await angle.fill("37,5");
+	await angle.press("Enter");
+	await saved(page);
+	const rotated = await currentProject(page);
+	expect(rotated.assetInstances[0]).toHaveProperty("yawMilliDeg", 37500);
+	expect(rotated.assetDefinitionRefs).toEqual(original.assetDefinitionRefs);
+	await page.getByRole("button", { name: "Скрыть панель предмета", exact: true }).click();
+	const history = page.getByRole("group", { name: "История изменений" });
+	await history.getByRole("button", { name: /^Отменить действие/ }).click();
+	await expect.poll(async () => (await currentProject(page)).assetInstances).toEqual(original.assetInstances);
+	await saved(page);
+	await history.getByRole("button", { name: /^Повторить действие/ }).click();
+	await expect.poll(async () => (await currentProject(page)).assetInstances).toEqual(rotated.assetInstances);
+	await saved(page);
+
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "compatible"));
+	await open(page, "Uppercase local model");
+	const source = await currentProject(page);
+	const sourceRows = await rows(page, "a");
+	expect(source.assetInstances).toEqual(rotated.assetInstances);
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("button", { name: "Экспортировать проект", exact: true }).click();
+	await page.getByRole("button", { name: "Передать файл", exact: true }).click();
+	await expect(page.getByText(/Проверьте файл вне приложения/)).toBeVisible();
+	const file = await page.evaluate(() => window.__telegramRuntimeUi.sharedFile(0));
+	expect(file.name).toMatch(/\.interiors$/);
+	expect(file.mimeType).toBe("application/zip");
+	const entries = unzipSync(Uint8Array.from(file.bytes));
+	const manifest = new TextDecoder().decode(entries["manifest.json"]);
+	expect(JSON.parse(manifest)).toMatchObject({ projectSchemaId: "interiors.project/runtime-v1-floor-yaw", projectSchemaVersion: 1 });
+	expect(entries[`custom/${fixture.actualDigest}.glb`]).toEqual(Uint8Array.from(fixture.sourceBytes));
+
+	// This separate scope has no cached model. Upgrade storage before selecting the exact file in the compatible runtime.
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "exact"));
+	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "compatible"));
+	await expect(page.getByLabel("Импортировать проект", { exact: true })).toBeAttached();
+	expect((await rows(page, "b")).projects).toHaveLength(0);
+	await page.evaluate(() => window.__telegramRuntimeUi.reselectSharedFile(0));
+	await saved(page);
+	const imported = await currentProject(page);
+	expect(imported.projectId).not.toBe(source.projectId);
+	expect(imported.assetInstances).toEqual(source.assetInstances);
+	expect(imported.assetDefinitionRefs).toEqual(source.assetDefinitionRefs);
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await expect(page.getByTestId("three-dimensional-custom-glb-status")).toHaveText("rendered:1");
+	expect(await rows(page, "a")).toEqual(sourceRows);
+	expect(await browser(page)).toEqual(preserved);
+});
+
+test("TMA-UI-GUIDES-01: placement distances use the rotated footprint and remain a draft", async ({ page }) => {
+	await page.evaluate(async () => {
+		await window.__telegramRuntimeUi.prepareUpperCustom("a");
+		window.__telegramRuntimeUi.mountPreparedNavigable("a");
+	});
+	await open(page, "Uppercase local model");
+	const before = await rows(page, "a");
+	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await page.getByRole("button", { name: /Local upper triangle.*Кастомное/ }).click();
+	await page.getByRole("button", { name: "Разместить на плане", exact: true }).click();
+	await clickRectangularRoomPoint(page, { x: 0.32, y: 0.52 });
+		const sideField = (side: string) => page.getByRole("textbox", { name: `${side}, мм`, exact: true });
+	const left = sideField("Слева");
+	const right = sideField("Справа");
+	const top = sideField("Сверху");
+	const bottom = sideField("Снизу");
+	await expect(page.getByTestId("item-wall-distances")).toHaveCount(4);
+	for (const [field, value] of [[left, "900"], [right, "2400"], [top, "1250"], [bottom, "1150"]] as const) {
+		await expect(field).toHaveValue(value);
+	}
+	await left.fill("1001");
+	await left.press("Enter");
+	await expect(left).toHaveValue("1001");
+	await expect(right).toHaveValue("2299");
+	await expect(top).toHaveValue("1250");
+	await left.fill("900");
+	await left.press("Enter");
+	await page.getByRole("button", { name: "Повернуть размещаемый предмет вправо на 45°", exact: true }).click();
+	for (const [field, value] of [[left, "826"], [right, "2326"], [top, "1126"], [bottom, "1026"]] as const) {
+		await expect(field).toHaveValue(value);
+	}
+	await page.getByRole("button", { name: "Отменить размещение предмета", exact: true }).click();
+	await expect(left).toHaveCount(0);
+	await expect(page.getByTestId("item-wall-distances")).toHaveCount(0);
+	expect(await rows(page, "a")).toEqual(before);
+});
+
+for (const firstContact of ["ring", "floor"] as const) {
+	test(`TMA-UI-PLAN-PAN: a second finger takes over a placement ${firstContact} drag`, async ({ page }) => {
+		await page.evaluate(async () => {
+			await window.__telegramRuntimeUi.prepareUpperCustom("a");
+			window.__telegramRuntimeUi.mountPreparedNavigable("a");
+		});
+		await open(page, "Uppercase local model");
+		const before = await rows(page, "a");
+		await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+		await page.getByRole("button", { name: /Local upper triangle.*Кастомное/ }).click();
+		await page.getByRole("button", { name: "Разместить на плане", exact: true }).click();
+		await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
+		const preview = page.getByTestId("item-placement-preview").locator("polygon").first();
+		const originalPose = await preview.getAttribute("points");
+		const plan = page.getByTestId("plan-content");
+		const originalCamera = await plan.getAttribute("transform");
+		const ring = page.getByRole("slider", { name: "Повернуть размещаемый предмет" });
+		const ringBox = await ring.boundingBox();
+		const dockBox = await page.getByTestId("item-placement-action-dock").boundingBox();
+		if (!ringBox || !dockBox) throw new Error("Missing placement controls");
+		const x = ringBox.x + ringBox.width / 2;
+		const y = ringBox.y + ringBox.height / 2;
+		const first = firstContact === "ring"
+			? { id: 61, x, y: ringBox.y }
+			: { id: 61, x: x - 100, y: Math.min(y - 35, dockBox.y - 32) };
+		const moved = firstContact === "ring"
+			? { ...first, x: ringBox.x + ringBox.width, y }
+			: { ...first, y: first.y - 24 };
+		const second = { id: 62, x: x + 50, y: Math.min(y - 75, dockBox.y - 24) };
+		const cdp = await page.context().newCDPSession(page);
+		try {
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [first] });
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [moved] });
+			await expect(preview).not.toHaveAttribute("points", originalPose ?? "");
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [moved, second] });
+			const translated = [moved, second].map((point) => ({ ...point, x: point.x + 35, y: point.y - 24 }));
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: translated });
+			await expect.soft(plan).not.toHaveAttribute("transform", originalCamera ?? "", { timeout: 1500 });
+			const firstCameraMove = await plan.getAttribute("transform");
+			const [translatedFirst, translatedSecond] = translated;
+			const nextTranslation = [{ ...translatedFirst, x: translatedFirst.x + 22, y: translatedFirst.y - 12 }, translatedSecond];
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: nextTranslation });
+			await expect.soft(plan).not.toHaveAttribute("transform", firstCameraMove ?? "", { timeout: 1500 });
+			await expect.soft(preview).toHaveAttribute("points", originalPose ?? "", { timeout: 1500 });
+			const remaining = nextTranslation[firstContact === "ring" ? 0 : 1];
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [remaining] });
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ ...remaining, x: remaining.x + 12 }] });
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+			await expect.soft(preview).toHaveAttribute("points", originalPose ?? "", { timeout: 1500 });
+			await expect(page.getByTestId("item-placement-confirm")).toBeEnabled();
+			expect(await rows(page, "a")).toEqual(before);
+		} finally {
+			await cdp.detach();
+		}
+	});
+}
+
+test("TMA-UI-PLAN-RING: selected floor item exposes its rotation track and handle before dragging", async ({ page }) => {
+	await page.evaluate(async () => {
+		await window.__telegramRuntimeUi.prepareUpperCustom("a");
+		window.__telegramRuntimeUi.mountPreparedNavigable("a");
+	});
+	await open(page, "Uppercase local model");
+	const item = page.getByTestId("schematic-item");
+	await item.click();
+	const ring = page.getByLabel("Кольцо поворота предмета");
+	await expect(ring).toBeVisible();
+	await expect(ring).not.toHaveCSS("opacity", "0", { timeout: 1500 });
+	await expect(page.locator("[data-rotation-handle]")).not.toHaveCSS("opacity", "0");
+	await expect(page.getByTestId("two-dimensional-rotation-hit-area")).toHaveCSS("stroke-width", "44px");
+	const box = await ring.boundingBox();
+	if (!box) throw new Error("Missing selected rotation ring");
+	const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+	const first = { id: 31, x: centre.x, y: box.y };
+	const turned = { ...first, x: box.x + box.width, y: centre.y };
+	const second = { id: 32, x: centre.x - 70, y: centre.y - 75 };
+	const before = await rows(page, "a");
+	const itemGroup = item.locator("..");
+	const pose = await itemGroup.getAttribute("transform");
+	const plan = page.getByTestId("plan-content");
+	const camera = await plan.getAttribute("transform");
+	const cdp = await page.context().newCDPSession(page);
+	try {
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [first] });
+		await expect(itemGroup).toHaveAttribute("transform", pose ?? "");
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [turned] });
+		await expect(itemGroup).not.toHaveAttribute("transform", pose ?? "");
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [turned, second] });
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [turned, second].map((point) => ({ ...point, x: point.x + 35, y: point.y - 24 })) });
+		await expect(plan).not.toHaveAttribute("transform", camera ?? "");
+		await expect(itemGroup).toHaveAttribute("transform", pose ?? "");
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+		expect(await rows(page, "a")).toEqual(before);
+	} finally {
+		await cdp.detach();
+	}
+});
+
 test("TMA-UI-05: actual export prepares a local File before a fresh handoff gesture and reselects it through the registered importer", async ({
 	page,
 }, info) => {
@@ -339,7 +780,7 @@ test("TMA-UI-08: host Back preserves raw rename input, caret and the native dial
 });
 
 
-test("TMA-UI-09: in-app Back cannot blur-publish a valid raw angle and Continue retains the exact raw field", async ({ page }) => {
+test("TMA-UI-09: a modal close cannot blur-publish a valid raw angle and Back handles explicit discard", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.prepareUpperCustom("a"));
 	await page.evaluate(() => window.__telegramRuntimeUi.mountPreparedNavigable("a"));
 	await open(page, "Uppercase local model");
@@ -357,7 +798,9 @@ test("TMA-UI-09: in-app Back cannot blur-publish a valid raw angle and Continue 
 	await input.fill(" 45 ");
 	await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Предпросмотр — не сохранено");
 	const before = await rows(page, "a");
-	await page.getByRole("button", { name: "Назад", exact: true }).click();
+	const back = page.locator('[data-editor-host-back="back"][aria-label="Назад"]');
+	expect(await back.evaluate((element) => !!element.closest("[inert]"))).toBe(true);
+	await inspector.getByRole("button", { name: "Скрыть панель предмета", exact: true }).click();
 	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
 	await expect(guard).toBeVisible({ timeout: 4000 });
 	expect(await rows(page, "a")).toEqual(before);
@@ -540,6 +983,33 @@ test("TMA-UI-17: Back before the Saving status preserves the dispatched rename a
  await saved(page); await expect(page.getByRole("button",{name:"Переименовать проект Held real rename",exact:true})).toBeVisible();
  expect((await rows(page,"a")).revisions).toHaveLength(before.revisions.length+1);
  await expect(page.getByTestId("editor-workspace")).toBeVisible();
+});
+
+test("TMA-OPENING-SAVE-FOCUS: publishing a new opening retains keyboard focus inside its modal", async ({ page }) => {
+	await navigableRoom(page, "Сохранение проёма");
+	const before = await rows(page, "a");
+	await page.getByTestId("wall-segment").first().click();
+	await page.getByRole("button", { name: "Добавить проём", exact: true }).click();
+	const sheet = page.getByTestId("opening-creation-draft");
+	const submit = sheet.getByRole("button", { name: "Добавить", exact: true });
+	await submit.focus();
+	await page.evaluate(() => window.__telegramRuntimeUi.holdScopeLock("a"));
+	try {
+		await page.keyboard.press("Enter");
+		await expect(submit).toBeDisabled();
+		await expect(sheet).toBeFocused();
+		await page.keyboard.press("Tab");
+		await expect(sheet).toBeFocused();
+		await page.keyboard.press("Escape");
+		await expect(page.getByText("Дождитесь завершения текущего действия. Сохраняемая правка не отменена.", { exact: true })).toBeVisible();
+		await expect(sheet).toBeVisible();
+		await expect(page.getByRole("alertdialog")).toHaveCount(0);
+	} finally {
+		await page.evaluate(() => window.__telegramRuntimeUi.releaseScopeLock());
+	}
+	await expect(sheet).toHaveCount(0);
+	await saved(page);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
 });
 
 /** Uses the actual current Project, camera and layout; no synthetic scene/controller. */async function currentSceneFloorContact(page: Page, xMm: number, zMm: number) {
@@ -778,7 +1248,7 @@ test("TMA-UI-29: Back requires an explicit discard for an actual fence-loss reco
  const foreign=await context.newPage();
  try{
   await foreign.goto(page.url());await foreign.evaluate(async()=>{await window.__telegramRuntimeUi.initialize();await window.__telegramRuntimeUi.mountConcurrentNavigable("a");});await foreign.getByRole("button",{name:"Открыть Fence recovery base",exact:true}).click();
-  await foreign.getByRole("button",{name:"Взять редактирование на себя",exact:true}).click();await foreign.getByRole("button",{name:"Подтвердить перехват",exact:true}).click();await expect(foreign.getByTestId("writer-lease-notice")).toHaveCount(0);
+  await foreign.getByRole("button",{name:"Взять редактирование на себя",exact:true}).click();await foreign.getByRole("button",{name:"Подтвердить",exact:true}).click();await expect(foreign.getByTestId("writer-lease-notice")).toHaveCount(0);
   await page.evaluate(()=>window.__telegramRuntimeUi.releasePublicationChecksum());
   await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.writerRecoveryName())).toBe("Retained fence candidate");
   await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.hostClosingWarning())).toBe(true);
@@ -798,7 +1268,7 @@ test("TMA-UI-30: host Back waits while an explicit native writer takeover is que
  try{
   await foreign.goto(page.url());await foreign.evaluate(async()=>{await window.__telegramRuntimeUi.initialize();await window.__telegramRuntimeUi.mountConcurrentNavigable("a");});
   await foreign.getByRole("button",{name:"Открыть Queued writer takeover",exact:true}).click();await foreign.getByRole("button",{name:"Взять редактирование на себя",exact:true}).click();
-  await page.evaluate(()=>window.__telegramRuntimeUi.holdScopeLock("a"));await foreign.getByRole("button",{name:"Подтвердить перехват",exact:true}).click();await expect(foreign.getByRole("button",{name:"Перехватываем редактирование…",exact:true})).toBeDisabled();
+  await page.evaluate(()=>window.__telegramRuntimeUi.holdScopeLock("a"));await foreign.getByRole("button",{name:"Подтвердить",exact:true}).click();await expect(foreign.getByRole("button",{name:"Перехватываем редактирование…",exact:true})).toBeDisabled();
   await foreign.evaluate(()=>window.__telegramRuntimeUi.hostBack());await expect(foreign.getByText("Дождитесь завершения текущего действия. Сохраняемая правка не отменена.",{exact:true})).toBeVisible();
   await expect(foreign.getByTestId("project-hub")).toHaveCount(0);await expect(foreign.getByRole("alertdialog",{name:"Несохранённая правка",exact:true})).toHaveCount(0);expect(await foreign.evaluate(()=>window.__telegramRuntimeUi.hostClosingWarning())).toBe(true);
   await page.evaluate(()=>window.__telegramRuntimeUi.releaseScopeLock());await expect(foreign.getByTestId("writer-lease-notice")).toHaveCount(0);expect(await rows(foreign,"a")).toEqual(before);
@@ -819,6 +1289,113 @@ test("TMA-UI-31: exact repair bounds precede every File read or storage write an
 });
 
 
+test("TMA-UI-32: a one-mm retained wall remains touch-selectable and independently deletable without losing its room", async ({ page }) => {
+	// Keep the closing wall after the tiny tail in canonical SVG order: an
+	// overlapping DOM hit alone must not be enough to pass the selection check.
+	await page.evaluate(() => {
+		let sequence = 0;
+		Object.defineProperty(crypto, "randomUUID", { configurable: true, value: () => `00000000-0000-4000-8000-${(++sequence).toString(16).padStart(12, "0")}` });
+	});
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await page.getByRole("button", { name: "Новый проект", exact: true }).click();
+	await page.getByRole("textbox", { name: "Название проекта" }).fill("Короткий остаток");
+	await page.getByRole("button", { name: "Создать проект", exact: true }).click();
+	await saved(page);
+	for (const [start, end] of [
+		[{ xMm: 0, zMm: 0 }, { xMm: 4001, zMm: 0 }],
+		[{ xMm: 4000, zMm: 3000 }, { xMm: 0, zMm: 3000 }],
+		[{ xMm: 0, zMm: 3000 }, { xMm: 0, zMm: 0 }],
+		[{ xMm: 4000, zMm: 0 }, { xMm: 4000, zMm: 3000 }],
+	] as const) await page.evaluate(({ start, end }) => window.__telegramRuntimeUi.addWall({ start, end, thicknessMm: 100 }), { start, end });
+	await saved(page);
+	const exported = await currentProject(page);
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("button", { name: "Экспортировать проект", exact: true }).click();
+	await page.getByRole("button", { name: "Передать файл", exact: true }).click();
+	await expect(page.getByText(/Проверьте файл вне приложения/)).toBeVisible();
+	await page.getByRole("button", { name: "Закрыть", exact: true }).click();
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("button", { name: "Проекты", exact: true }).click();
+	await expect(page.getByTestId("project-hub")).toBeVisible();
+	await page.evaluate(() => window.__telegramRuntimeUi.reselectSharedFile(0));
+	await saved(page);
+	const source = await currentProject(page);
+	expect(source.projectId).not.toBe(exported.projectId);
+	expect(source.level).toEqual(exported.level);
+	const tailEnd = source.level.vertices.find(vertex => vertex.xMm === 4001 && vertex.zMm === 0);
+	const tail = source.level.wallSegments.find(wall => wall.startVertexId === tailEnd?.vertexId || wall.endVertexId === tailEnd?.vertexId);
+	if (!tail) throw new Error("Missing exact one-mm tail");
+	await page.getByRole("button", { name: "Приблизить", exact: true }).click();
+	const hit = page.locator(`[data-testid="wall-segment"][data-wall-id="${tail.wallSegmentId}"]`);
+	const box = await hit.boundingBox();
+	if (!box) throw new Error("Missing wall touch target");
+	expect(Math.round(box.width)).toBeGreaterThanOrEqual(44);
+	expect(Math.round(box.height)).toBeGreaterThanOrEqual(44);
+	for (const zoomOut of [false, true]) {
+		if (zoomOut) for (let step = 0; step < 3; step += 1) await page.getByRole("button", { name: "Отдалить", exact: true }).click();
+		for (const offsetX of [0, 20]) {
+			await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+			const point = await page.locator(`[data-testid="wall-line"][data-wall-id="${tail.wallSegmentId}"]`).evaluate(line => {
+				const element = line as SVGLineElement;
+				const matrix = element.getScreenCTM();
+				if (!matrix) throw new Error("Missing plan projection");
+				const point = new DOMPoint((element.x1.baseVal.value + element.x2.baseVal.value) / 2, (element.y1.baseVal.value + element.y2.baseVal.value) / 2).matrixTransform(matrix);
+				return { x: point.x, y: point.y };
+			});
+			if (offsetX !== 0) {
+				const rawHit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest("[data-wall-id]")?.getAttribute("data-wall-id"), { x: point.x + offsetX, y: point.y + 0.1 });
+				expect(rawHit).toBeTruthy();
+				expect(rawHit).not.toBe(tail.wallSegmentId);
+			}
+			await page.touchscreen.tap(point.x + offsetX, point.y + (offsetX === 0 ? 0 : 0.1));
+			await expect(hit.locator("..").getByTestId("wall-body")).toHaveAttribute("data-selected", "true");
+		}
+	}
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	const inspector = page.getByTestId("selected-wall-inspector");
+	await inspector.getByRole("button", { name: "Удалить стену", exact: true }).click();
+	await expect(inspector).toHaveCount(0);
+	await page.getByRole("alert", { name: "Последствия удаления стены", exact: true }).getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect.poll(async () => (await currentProject(page)).level.wallSegments.length).toBe(4);
+	await saved(page);
+	const deleted = await currentProject(page);
+	expect(deleted.level.wallSegments).toHaveLength(4);
+	expect(deleted.level.rooms).toEqual(source.level.rooms);
+	expect(deleted.level.vertices.some(vertex => vertex.vertexId === tailEnd?.vertexId)).toBe(false);
+});
+
+test("TMA-UI-33: cancelling the plain wall-move confirmation preserves the durable Project", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await createRoom(page, "Проверка переноса");
+	const source = await currentProject(page);
+	const horizontal = source.level.wallSegments.flatMap(wall => {
+		const start = source.level.vertices.find(vertex => vertex.vertexId === wall.startVertexId);
+		const end = source.level.vertices.find(vertex => vertex.vertexId === wall.endVertexId);
+		return start && end && start.zMm === end.zMm ? [{ xMm: (start.xMm + end.xMm) / 2, zMm: start.zMm }] : [];
+	});
+	if (horizontal.length !== 2) throw new Error("Expected rectangle boundaries");
+	await page.evaluate(({ start, end }) => window.__telegramRuntimeUi.addWall({ start, end, thicknessMm: 100 }), { start: horizontal[0], end: horizontal[1] });
+	await saved(page);
+	const before = await rows(page, "a");
+	const divider = page.locator('[data-testid="wall-segment"][data-wall-kind="interior"]');
+	await divider.click();
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	await page.getByRole("button", { name: "Переместить стену жестом", exact: true }).click();
+	const box = await divider.boundingBox();
+	if (!box) throw new Error("Missing movable wall");
+	const start = { x: box.x + box.width / 2, y: box.y + Math.min(36, box.height / 2) };
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(start.x - 30, start.y, { steps: 6 });
+	await page.mouse.up();
+	const draft = page.getByTestId("wall-move-draft");
+	await expect(draft).toBeVisible();
+	await expect(draft.getByRole("button", { name: "Подтвердить", exact: true })).toBeVisible();
+	await draft.getByRole("button", { name: "Отменить", exact: true }).click();
+	await expect(draft).toHaveCount(0);
+	expect(await rows(page, "a")).toEqual(before);
+});
+
 test("BROWSER-DIRECTORY-UI-01: qualified same-ID card actions retain their selected owner at the shared UI boundary", async ({ page }) => {
  await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract());
  const card = page.locator('[data-project-storage="browser-registered"]');
@@ -836,6 +1413,7 @@ test("BROWSER-DIRECTORY-UI-01: qualified same-ID card actions retain their selec
   ["registered-export", "same-id", { storageNamespace: "browser-registered" }],
   ["delete", "same-id", { storageNamespace: "browser-registered" }],
  ]);
+ await card.locator("summary").click();
  await card.getByRole("button", { name: /^Переименовать / }).click();
  await expect(page.getByRole("textbox", { name: "Новое название проекта", exact: true })).toHaveValue("Перенесённый план");
  const rename = (await page.evaluate(() => window.__telegramRuntimeUi.directoryContractCalls())).at(-1);
@@ -1206,4 +1784,126 @@ test("BROWSER-DIRECTORY-UI-19: a complete browser archive uses its legacy owner,
  const created = await page.evaluate(() => (Reflect.get(globalThis, "__readonlyDownloadUrls") as { created: { url: string; mime: string; size: number }[] }).created);
  expect(created).toHaveLength(1); expect(created[0]).toMatchObject({ mime: "application/zip", size: 3 });
  await expect.poll(() => page.evaluate(() => (Reflect.get(globalThis, "__readonlyDownloadUrls") as { revoked: string[] }).revoked)).toEqual([created[0].url]);
+});
+
+test("TMA-UI-SCENE-02: 3D updates at fixed viewport size preserve the drawing buffer", async ({
+	page,
+}) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await createRoom(page, "3D drawing buffer");
+	const durableRows = await rows(page, "a");
+	await page
+		.getByTestId("editor-view-switch")
+		.getByRole("button", { name: "3D", exact: true })
+		.click();
+	await expect(page.getByTestId("three-dimensional-renderer-diagnostics"))
+		.toContainText(/стандартное качество|облегчённое качество/);
+	const canvas = page.getByTestId("three-dimensional-canvas");
+	const size = (element: HTMLCanvasElement) => ({
+		backingWidth: element.width,
+		backingHeight: element.height,
+		logicalWidth: element.clientWidth,
+		logicalHeight: element.clientHeight,
+	});
+	await canvas.evaluate(async (element) => {
+		await new Promise<void>((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+		});
+		const writes: MutationRecord[] = [];
+		const observer = new MutationObserver((records) => writes.push(...records));
+		observer.observe(element, { attributes: true, attributeFilter: ["width", "height"] });
+		Reflect.set(element, "drawingBufferAudit", { observer, writes });
+	});
+	const before = await canvas.evaluate(size);
+	await page.getByRole("button", { name: "Показать все стены", exact: true }).click();
+	await expect(page.getByTestId("three-dimensional-cutaway"))
+		.toHaveText("Все стены показаны");
+	const writes = await canvas.evaluate(async (element) => {
+		await new Promise<void>((resolve) => {
+			requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+		});
+		const audit = Reflect.get(element, "drawingBufferAudit") as {
+			observer: MutationObserver;
+			writes: MutationRecord[];
+		};
+		audit.observer.disconnect();
+		return audit.writes.map((record) => record.attributeName);
+	});
+	expect(await canvas.evaluate(size)).toEqual(before);
+	expect(writes).toEqual([]);
+	const pixelRatio = before.backingWidth / before.logicalWidth;
+	await page.setViewportSize({ width: 430, height: 844 });
+	await expect.poll(async () => {
+		const after = await canvas.evaluate(size);
+		return after.logicalWidth !== before.logicalWidth &&
+			Math.abs(after.backingWidth - Math.floor(after.logicalWidth * pixelRatio)) <= 1 &&
+			Math.abs(after.backingHeight - Math.floor(after.logicalHeight * pixelRatio)) <= 1;
+	}).toBe(true);
+	expect(await rows(page, "a")).toEqual(durableRows);
+});
+
+test("TMA-ITEM-PALETTE: a legacy wall light has concise dimension labels and reflowing color choices", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true));
+	await createRoom(page, "Подсветка");
+	const wall = (await currentProject(page)).level.wallSegments[0];
+	if (!wall) throw new Error("Missing wall");
+	await page.evaluate(id => window.__telegramRuntimeUi.addExistingWallLight(id), wall.wallSegmentId);
+	await saved(page);
+	await page.locator(`[data-testid="wall-segment"][data-wall-id="${wall.wallSegmentId}"]`).click({ force: true });
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	const inspector = page.getByTestId("selected-wall-inspector");
+	await expect(inspector.getByText("Смещение вдоль стены, мм", { exact: true })).toBeVisible();
+	await expect(inspector.getByText("Высота центра, мм", { exact: true })).toBeVisible();
+	const lock = inspector.getByRole("button", { name: "Заблокировать настенный предмет", exact: true });
+	const remove = inspector.getByRole("button", { name: "Удалить настенный предмет", exact: true });
+	for (const [control, foreground] of [[lock, "var(--ink)"], [remove, "var(--editor-host-danger, var(--danger))"]] as const) {
+		const [actual, reference] = await control.evaluate((el, ink) => {
+			const probe = document.createElement("span");
+			probe.style.color = ink;
+			probe.style.backgroundColor = "var(--surface)";
+			el.append(probe);
+			const styled = getComputedStyle(el), themed = getComputedStyle(probe);
+			const result = [[styled.color, styled.backgroundColor], [themed.color, themed.backgroundColor]];
+			probe.remove();
+			return result;
+		}, foreground);
+		expect(actual).toEqual(reference);
+	}
+	await lock.click();
+	const unlock = inspector.getByRole("button", { name: "Разблокировать настенный предмет", exact: true });
+	await expect(unlock).toHaveAttribute("aria-pressed", "true");
+	await expect(remove).toBeDisabled();
+	await unlock.click();
+	await expect(remove).toBeEnabled();
+	await expect(inspector.getByTestId("tma-wall-item-color")).toHaveCount(0);
+	await inspector.getByRole("button", { name: "Закрыть свойства стены", exact: true }).click();
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	const scene = projectRectangularRoomForWebGl(await currentProject(page));
+	const item = scene?.items.find((choice) => choice.assetAnchor === "wall");
+	if (!scene || !item) throw new Error("Missing visible wall item");
+	const canvas = page.getByTestId("three-dimensional-canvas");
+	const bounds = await canvas.boundingBox();
+	if (!bounds) throw new Error("Missing scene canvas");
+	const [azimuthRadians, elevationRadians, distance, panXM, panZM] =
+		(await page.getByTestId("three-dimensional-camera").textContent() ?? "").split(":").map(Number);
+	if (azimuthRadians === undefined || elevationRadians === undefined || distance === undefined || panXM === undefined || panZM === undefined)
+		throw new Error("Expected the live camera");
+	const point = canvasPointForSceneItem(scene, { azimuthRadians, elevationRadians, distance, panXM, panZM }, bounds, item);
+	if (!point) throw new Error("Missing wall item projection");
+	await page.mouse.click(bounds.x + point.x, bounds.y + point.y);
+	const control = page.getByTestId("tma-selected-item-color").getByRole("button", { name: /^Цвет/ });
+	await expect(control).toBeVisible();
+	const canvasBeforePalette = await canvas.boundingBox();
+	await control.click();
+	const palette = page.getByRole("dialog", { name: "Цвет предмета" });
+	await expect(palette.getByRole("button", { pressed: true })).toHaveAccessibleName("Глубокий синий");
+	expect(await palette.evaluate((dialog) => dialog.matches(":modal"))).toBe(true);
+	const paletteBottomInset = () => palette.evaluate((dialog) => window.innerHeight - dialog.getBoundingClientRect().bottom);
+	await expect.poll(paletteBottomInset).toBeGreaterThanOrEqual(0);
+	await expect.poll(paletteBottomInset).toBeLessThanOrEqual(24);
+	expect(await canvas.boundingBox()).toEqual(canvasBeforePalette);
+	await palette.getByRole("button", { name: /Орех/ }).click();
+	await page.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	await expect(control).toHaveAccessibleName(/Орех/i);
 });

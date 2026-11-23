@@ -11,6 +11,7 @@ export type OpeningCreationKind = "Door" | "Window";
 export interface OpeningCreationDraft {
 	readonly heightMm: string;
 	readonly kind: OpeningCreationKind;
+	readonly swingSide?: "left" | "right";
 	readonly offsetMm: string;
 	readonly sillMm: string;
 	readonly wallSegmentId: string;
@@ -31,6 +32,7 @@ export type OpeningCreationDraftValidation =
 			readonly input: {
 				readonly heightMm: number;
 				readonly kind: OpeningCreationKind;
+				readonly swingSide?: "left" | "right";
 				readonly offsetMm: number;
 				readonly sillMm: number;
 				readonly wallSegmentId: string;
@@ -139,6 +141,7 @@ export function validateOpeningCreationDraft(
 	const dimensions = {
 		heightMm,
 		kind: draft.kind,
+		...(draft.kind === "Door" && draft.swingSide ? { swingSide: draft.swingSide } : {}),
 		sillMm,
 		wallSegmentId: draft.wallSegmentId,
 		widthMm,

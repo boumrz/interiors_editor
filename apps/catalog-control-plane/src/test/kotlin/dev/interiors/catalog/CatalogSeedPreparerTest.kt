@@ -40,9 +40,9 @@ class CatalogSeedPreparerTest {
                 assetRoot = root,
             )
 
-            assertEquals(12, prepared.envelope.assets.size)
-            assertEquals(20, prepared.resources.size)
-            assertEquals("alpha-2026-08-30.1", prepared.envelope.catalogVersion)
+            assertEquals(9, prepared.envelope.assets.size)
+            assertEquals(14, prepared.resources.size)
+            assertEquals("alpha-2026-11-22.1", prepared.envelope.catalogVersion)
             assertEquals(
                 setOf("furniture", "plumbing", "appliances-electronics", "lighting", "accessories"),
                 prepared.envelope.assets.map(CatalogAsset::section).toSet(),

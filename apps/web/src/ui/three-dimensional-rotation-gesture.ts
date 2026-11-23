@@ -1,7 +1,8 @@
 import {
-	rotationStepForYawRadians,
+	floorYawFieldsForRadians,
 	yawRadiansFor,
 } from "../domain/parametric-item";
+import { normalizeYawRadians } from "./rotation-angle";
 
 interface Point {
 	readonly x: number;
@@ -10,6 +11,7 @@ interface Point {
 
 export interface RotationDomeGesture {
 	readonly assetInstanceId: string;
+	readonly exact: boolean;
 	readonly pointerId: number;
 	readonly initialYawRadians: number;
 	readonly initialPointerAngle: number;
@@ -19,6 +21,7 @@ export interface RotationDomeGesture {
 /** A grab records a reference direction; it never assigns that direction to the item. */
 export function beginRotationDomeGesture(input: {
 	readonly assetInstanceId: string;
+	readonly exact?: boolean;
 	readonly pointerId: number;
 	readonly yawRadians: number;
 	readonly point: Point;
@@ -27,6 +30,7 @@ export function beginRotationDomeGesture(input: {
 	const yawRadians = input.yawRadians;
 	return {
 		assetInstanceId: input.assetInstanceId,
+		exact: input.exact ?? false,
 		pointerId: input.pointerId,
 		initialYawRadians: yawRadians,
 		initialPointerAngle: angleFor(input.point, input.centre),
@@ -34,7 +38,7 @@ export function beginRotationDomeGesture(input: {
 	};
 }
 
-/** The relative delta is periodic because only the final canonical yaw step is published. */
+/** Only the final canonical pose is published. */
 export function moveRotationDomeGesture(
 	gesture: RotationDomeGesture,
 	point: Point,
@@ -43,14 +47,12 @@ export function moveRotationDomeGesture(
 	// Crossing the clear centre has no stable angular direction.
 	if (Math.hypot(point.x - centre.x, point.y - centre.y) < 24) return gesture;
 	const angle = angleFor(point, centre);
-	const angularDelta = angle - gesture.initialPointerAngle;
+	const yawRadians = gesture.initialYawRadians - (angle - gesture.initialPointerAngle);
 	return {
 		...gesture,
-		yawRadians: yawRadiansFor({
-			yawStep: rotationStepForYawRadians(
-				gesture.initialYawRadians - angularDelta,
-			),
-		}),
+		yawRadians: gesture.exact
+			? normalizeYawRadians(yawRadians)
+			: yawRadiansFor(floorYawFieldsForRadians(yawRadians, false)),
 	};
 }
 
@@ -58,8 +60,8 @@ export function rotationDomeGestureHasChanged(
 	gesture: RotationDomeGesture,
 ): boolean {
 	return (
-		rotationStepForYawRadians(gesture.yawRadians) !==
-		rotationStepForYawRadians(gesture.initialYawRadians)
+		yawRadiansFor(floorYawFieldsForRadians(gesture.yawRadians, gesture.exact)) !==
+		yawRadiansFor(floorYawFieldsForRadians(gesture.initialYawRadians, gesture.exact))
 	);
 }
 

@@ -132,8 +132,8 @@ class JdbcCatalogRepositoryIntegrationTest {
         val stored = repository.requireReadyCurrentPublication()
         assertEquals(prepared.envelope, CatalogEnvelopeDecoder.decode(stored.envelopeBytes))
         admin().use { connection ->
-            assertEquals(20, connection.scalarInt("SELECT count(*) FROM catalog_data.catalog_resource"))
-            assertEquals(12, connection.scalarInt("SELECT count(*) FROM catalog_data.catalog_asset"))
+            assertEquals(14, connection.scalarInt("SELECT count(*) FROM catalog_data.catalog_resource"))
+            assertEquals(9, connection.scalarInt("SELECT count(*) FROM catalog_data.catalog_asset"))
             assertExactCatalogDataSchema(connection)
             assertNormalizedProjection(connection, prepared.envelope)
         }

@@ -7,8 +7,10 @@ import {
 	useRef,
 } from "react";
 import styles from "./ProjectSafety.module.css";
+import { SheetHeader } from "./SheetHeader";
+import sheetStyles from "./SheetHeader.module.css";
 
-/** A destructive choice blocks the editor until it is cancelled or settled. */
+/** Keep the modal open while its action is pending. */
 export function ProjectConfirmationDialog({
 	label,
 	title,
@@ -24,6 +26,7 @@ export function ProjectConfirmationDialog({
 	fallbackFocusRef,
 	testId,
 	confirmTone = "danger",
+	plainLabels = false,
 }: {
 	readonly label: string;
 	readonly title: string;
@@ -39,10 +42,10 @@ export function ProjectConfirmationDialog({
 	readonly fallbackFocusRef: RefObject<HTMLElement | null>;
 	readonly testId?: string;
 	readonly confirmTone?: "danger" | "primary";
+	readonly plainLabels?: boolean;
 }) {
 	const dialogRef = useRef<HTMLDialogElement>(null);
 	const cancelRef = useRef<HTMLButtonElement>(null);
-	const confirmRef = useRef<HTMLButtonElement>(null);
 	const descriptionId = useId();
 	useLayoutEffect(() => {
 		const dialog = dialogRef.current;
@@ -90,23 +93,32 @@ export function ProjectConfirmationDialog({
 			dialogRef.current?.focus({ preventScroll: true });
 			return;
 		}
-		const active = document.activeElement;
-		const next =
-			active === cancelRef.current
-				? confirmRef.current
-				: active === confirmRef.current || !event.shiftKey
-					? cancelRef.current
-					: confirmRef.current;
+		const controls = Array.from(
+			event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
+		);
+		const current = controls.findIndex((control) => control === document.activeElement);
+		const next = current < 0
+			? event.shiftKey ? controls.at(-1) : controls[0]
+			: controls[(current + (event.shiftKey ? -1 : 1) + controls.length) % controls.length];
 		next?.focus();
 	};
+	const content = (
+		<>
+			{children ? <div className={styles.message} id={descriptionId}>{children}</div> : null}
+			{error ? <p className={styles.error} role="alert">{error}</p> : null}
+		</>
+	);
 	return (
 		<dialog
 			aria-busy={busy}
-			aria-describedby={descriptionId}
+			aria-describedby={children ? descriptionId : undefined}
 			aria-label={label}
-			className={`${styles.card} ${styles.dialog}`}
+			className={plainLabels
+				? `${sheetStyles.dialog} ${sheetStyles.telegramDialog} ${styles.telegramConfirmation}`
+				: `${styles.card} ${styles.dialog}`}
 			data-testid={testId}
 			data-confirm-tone={confirmTone}
+			data-telegram-confirmation={plainLabels || undefined}
 			onCancel={(event) => {
 				event.preventDefault();
 				if (!busy) onCancel();
@@ -115,35 +127,34 @@ export function ProjectConfirmationDialog({
 			ref={dialogRef}
 			tabIndex={-1}
 		>
-			<h2>{title}</h2>
-			<div className={styles.message} id={descriptionId}>
-				{children}
-			</div>
-			{error ? (
-				<p className={styles.error} role="alert">
-					{error}
-				</p>
-			) : null}
-			<div className={styles.actions}>
+			{plainLabels ? (
+				<SheetHeader
+					title={title}
+					closeLabel="Закрыть подтверждение"
+					closeDisabled={busy}
+					onClose={onCancel}
+				/>
+			) : <h2>{title}</h2>}
+			{plainLabels ? <div className={sheetStyles.body}>{content}</div> : content}
+			<div className={plainLabels ? `${sheetStyles.footer} ${styles.actions} ${styles.sheetActions}` : styles.actions}>
 				<button
 					className={
-						confirmTone === "primary" ? styles.secondary : styles.primary
+						plainLabels || confirmTone === "primary" ? styles.secondary : styles.primary
 					}
 					disabled={busy}
 					onClick={onCancel}
 					ref={cancelRef}
 					type="button"
 				>
-					{cancelLabel}
+					{plainLabels ? "Отменить" : cancelLabel}
 				</button>
 				<button
-					className={confirmTone === "primary" ? styles.primary : styles.danger}
+					className={plainLabels || confirmTone === "primary" ? styles.primary : styles.danger}
 					disabled={busy}
 					onClick={onConfirm}
-					ref={confirmRef}
 					type="button"
 				>
-					{busy ? busyLabel : confirmLabel}
+					{busy ? busyLabel : plainLabels ? "Подтвердить" : confirmLabel}
 				</button>
 			</div>
 		</dialog>

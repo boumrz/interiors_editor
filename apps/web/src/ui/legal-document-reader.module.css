@@ -1,0 +1,28 @@
+.reader {
+	box-sizing: border-box;
+	width: min(100%, 48rem);
+	max-height: 92dvh;
+	overflow: auto;
+	padding: 0 clamp(1rem, 4vw, 2rem) 1rem;
+	border: 1px solid #9da59f;
+	border-radius: .75rem;
+	background: Canvas;
+	color: CanvasText;
+	font: 1rem/1.6 system-ui, sans-serif;
+	overscroll-behavior: contain;
+}
+.reader::backdrop { background: rgb(0 0 0 / 45%); }
+.reader h1, .reader h2 { line-height: 1.25; margin: 1.25em 0 .5em; }
+.reader h1 { font-size: 1.65rem; }
+.reader h2 { font-size: 1.25rem; }
+.reader a { color: LinkText; overflow-wrap: anywhere; }
+.reader p, .reader li { margin-block: .6em; }
+.reader ul { padding-inline-start: 1.35em; }
+.reader footer { margin-top: 1.5rem; }
+.actions {
+	position: sticky; top: 0; z-index: 1;
+	display: flex; gap: .75rem; flex-wrap: wrap; align-items: center;
+	padding-block: .6rem; border-bottom: 1px solid #9da59f;
+	background: Canvas;
+}
+.actions button { font: inherit; min-height: 2.75rem; padding-inline: 1rem; }

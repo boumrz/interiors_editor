@@ -18,7 +18,7 @@
     "test:e2e": "pnpm run check:runtime && playwright test --config playwright.config.mjs && playwright test --config playwright.pwa.config.mjs",
     "test:mutation": "pnpm run check:runtime && stryker run stryker.config.mjs",
     "check:architecture": "node --test ../../scripts/check-boundaries.test.mjs && node ../../scripts/check-boundaries.mjs",
-    "test:delivery": "node --test scripts/pwa-preview-server.test.mjs scripts/catalog-package.test.mjs scripts/stryker-recovery-scopes.test.mjs scripts/telegram-sdk-delivery.test.mjs scripts/telegram-sdk-delivery-build.test.mjs",
+    "test:delivery": "node --test scripts/pwa-preview-server.test.mjs scripts/catalog-package.test.mjs scripts/stryker-recovery-scopes.test.mjs scripts/telegram-sdk-delivery.test.mjs scripts/telegram-sdk-delivery-build.test.mjs scripts/legal-document-delivery.test.mjs scripts/telegram-preview-server.test.mjs",
     "test:mutation:hardening": "pnpm run check:runtime && stryker run stryker.preview-server.config.mjs && stryker run stryker.preloaded-glb-resource.config.mjs && stryker run stryker.project-mutation-publication.config.mjs && stryker run stryker.catalog-wall-domain.config.mjs && stryker run stryker.recovery-codec.config.mjs && stryker run stryker.recovery-controller.config.mjs && stryker run stryker.recovery-resources.config.mjs && stryker run stryker.recovery-publication.config.mjs"
   },
   "dependencies": {

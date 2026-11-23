@@ -1,3 +1,4 @@
+import { installReturningWebProfile } from "./accepted-web-license";
 import {
 	chromium,
 	devices,
@@ -114,6 +115,7 @@ async function openPersistentPhone(
 			serviceWorkers: options.serviceWorkers ?? "block",
 		},
 	);
+	await installReturningWebProfile(context, testInfo.project.use.baseURL);
 	const page = context.pages()[0] ?? (await context.newPage());
 	if (options.installCatalogFake !== false)
 		await installCatalogGatewayFake(page);
@@ -188,7 +190,7 @@ async function startNewProject(page: Page, name: string) {
 }
 
 async function openProjectFromHub(page: Page, name: string) {
-	await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
+	await expect(page.getByRole("heading", { name: "Проекты", exact: true })).toBeVisible();
 	await page
 		.getByRole("button", { name: `Открыть ${name}`, exact: true })
 		.click();
@@ -197,7 +199,7 @@ async function openProjectFromHub(page: Page, name: string) {
 
 async function choosePreloadedCatalogAsset(
 	page: Page,
-	label = "Деревянный комод",
+	label = "Фактурное кресло",
 	autoConfirmPlacement = true,
 ) {
 	await chooseEditorOption(page, "Предметы интерьера");
@@ -247,7 +249,7 @@ async function chooseBuiltInGreybox(
 ) {
 	return choosePreloadedCatalogAsset(
 		page,
-		label === "Стол" ? "Деревянный комод" : label,
+		label === "Стол" ? "Фактурное кресло" : label,
 		autoConfirmPlacement,
 	);
 }
@@ -1300,9 +1302,9 @@ test("REFERENCE-DIAGONAL-E2E-02: a tall diagonal apartment keeps its compact 3D 
 	const rooms = await roomFaceInteriorPoints(session.page);
 	expect(rooms).toHaveLength(3);
 	const itemPlacements = [
-		{ label: "Винтажный стул Zen", room: rooms[0] },
+		{ label: "Демонстрационная ваза", room: rooms[0] },
 		{ label: "Обеденное кресло", room: rooms[1] },
-		{ label: "Деревянный комод", room: rooms[2] },
+		{ label: "Фактурное кресло", room: rooms[2] },
 	] as const;
 	if (itemPlacements.some(({ room }) => !room)) {
 		throw new Error("Expected three interior points for the diagonal rooms");
@@ -1525,7 +1527,7 @@ test("EDITOR-E2E-00A: the development shell exposes its release manifest before 
 
 	await session.page.goto("/");
 	await expect(
-		session.page.getByRole("heading", { name: "Проекты" }),
+		session.page.getByRole("heading", { name: "Проекты", exact: true }),
 	).toBeVisible();
 	await expect(
 		session.page.getByRole("button", { name: "Новый проект" }),
@@ -3821,11 +3823,11 @@ test("EDITOR-E2E-02VA: a complete item footprint can be durably placed inside th
 	const maxX = Math.max(...vertices.map((vertex) => vertex.xMm));
 	const minZ = Math.min(...vertices.map((vertex) => vertex.zMm));
 	const maxZ = Math.max(...vertices.map((vertex) => vertex.zMm));
-	// "Деревянный комод" is 800 × 422 mm. Keep an additional 50 mm
+	// "Фактурное кресло" is 751 × 709 mm. Keep an additional 50 mm
 	// clearance after snap-to-100-mm so every rotated-footprint check remains
 	// safely inside the 50-mm inset triangle.
-	const itemWidthMm = 800;
-	const itemDepthMm = 422;
+	const itemWidthMm = 751;
+	const itemDepthMm = 709;
 	const targetX = Math.floor((maxX - 50 - itemWidthMm / 2 - 50) / 100) * 100;
 	const targetZ = Math.ceil((minZ + 50 + itemDepthMm / 2 + 50) / 100) * 100;
 	if (
@@ -3836,7 +3838,7 @@ test("EDITOR-E2E-02VA: a complete item footprint can be durably placed inside th
 	) {
 		throw new Error("Triangle is too small for the selected item footprint");
 	}
-	await chooseBuiltInGreybox(session.page, "Деревянный комод", false);
+	await chooseBuiltInGreybox(session.page, "Фактурное кресло", false);
 	const planPoint = await planPointMm(session.page, {
 		xMm: targetX,
 		zMm: targetZ,
@@ -6282,7 +6284,7 @@ test("EDITOR-E2E-04B: a floor-item ghost uses one explicit Поставить do
 	await chooseBuiltInGreybox(session.page, "Стол", false);
 	// The armed placement dock exposes identity and cancellation before the first point.
 	await expect(session.page.getByTestId("item-placement-identity")).toHaveText(
-		"Деревянный комод",
+		"Фактурное кресло",
 	);
 	await expect(session.page.getByTestId("item-placement-cancel")).toBeVisible();
 	await expect(
@@ -9353,13 +9355,14 @@ test("EDITOR-E2E-04B: a selected item rotates on declared steps and saves direct
 	await session.page.goto("/");
 	await startNewProject(session.page, "Поворот мебели");
 	await session.page.getByRole("button", { name: "Создать контур" }).click();
-	await chooseBuiltInGreybox(session.page, "Стол");
+	await chooseFloorPlaceholder(session.page, "Поворотный макет");
 	const plan = session.page.getByTestId("plan-canvas");
 	const planBox = await plan.boundingBox();
 	if (!planBox) {
 		throw new Error("Plan canvas did not render");
 	}
 	await clickPlanPointMm(session.page, 2000, 1500);
+	await session.page.getByRole("button", { name: "Подтвердить размещение предмета" }).click();
 	await expect(session.page.getByTestId("item-count")).toHaveText("1 предмет");
 	await expect(
 		session.page.getByTestId("item-placement-durable-status"),
@@ -9759,7 +9762,7 @@ test("PLAN-E2E-04AC: New Opening traps focus, blocks the background, and restore
 	await addOpening.click();
 
 	const draft = session.page.getByRole("dialog", { name: "Новый проём" });
-	const door = draft.getByRole("button", { name: "Дверь", exact: true });
+	const close = draft.getByRole("button", { name: "Закрыть создание проёма", exact: true });
 	const add = draft.getByRole("button", { name: "Добавить", exact: true });
 	await expect(draft.getByLabel("Ширина, мм")).toBeFocused();
 	await expect.poll(modalBackgroundsAreInert).toBe(true);
@@ -9767,8 +9770,8 @@ test("PLAN-E2E-04AC: New Opening traps focus, blocks the background, and restore
 	await expect.poll(modalBackgroundsAreInert).toBe(true);
 	await add.focus();
 	await session.page.keyboard.press("Tab");
-	await expect(door).toBeFocused();
-	await door.focus();
+	await expect(close).toBeFocused();
+	await close.focus();
 	await session.page.keyboard.press("Shift+Tab");
 	await expect(add).toBeFocused();
 
@@ -10228,7 +10231,7 @@ test("PLAN-E2E-05A: a wall draw through a placed item is rejected without changi
 
 	const collisionAlert = session.page.getByRole("alert");
 	await expect(collisionAlert).toContainText(
-		"Стена не может пересекать предмет «Деревянный комод».",
+		"Стена не может пересекать предмет «Фактурное кресло».",
 	);
 	await expect(collisionAlert).toContainText(
 		"Откройте предмет, чтобы переместить его, или проведите стену иначе.",
@@ -10242,7 +10245,7 @@ test("PLAN-E2E-05A: a wall draw through a placed item is rejected without changi
 	await openCorrection.click();
 	await expect(
 		session.page.getByLabel("Свойства выбранного предмета"),
-	).toContainText("Деревянный комод");
+	).toContainText("Фактурное кресло");
 	const moveLeft = session.page.getByRole("button", {
 		name: "Сместить предмет на 100 мм влево",
 	});
@@ -10433,7 +10436,7 @@ test("PLAN-E2E-05B: moving a detached wall through a placed item offers an acces
 		"editor-moved-wall-item-collision",
 	);
 	await session.page.goto("/");
-	await startNewProject(session.page, "Перенос стены и комод");
+	await startNewProject(session.page, "Перенос стены и кресло");
 	await session.page.getByRole("button", { name: "Создать контур" }).click();
 	await chooseBuiltInGreybox(session.page, "Стол");
 	const plan = session.page.getByTestId("plan-canvas");
@@ -10485,7 +10488,7 @@ test("PLAN-E2E-05B: moving a detached wall through a placed item offers an acces
 
 	const collisionAlert = session.page.getByRole("alert");
 	await expect(collisionAlert).toContainText(
-		"Стена не может пересекать предмет «Деревянный комод».",
+		"Стена не может пересекать предмет «Фактурное кресло».",
 	);
 	await expect(
 		collisionAlert.getByRole("button", {
@@ -10505,7 +10508,7 @@ test("PLAN-E2E-05C: moving a detached wall vertex into a placed item offers an a
 		"editor-moved-wall-vertex-item-collision",
 	);
 	await session.page.goto("/");
-	await startNewProject(session.page, "Вершина стены и комод");
+	await startNewProject(session.page, "Вершина стены и кресло");
 	await session.page.getByRole("button", { name: "Создать контур" }).click();
 	await chooseBuiltInGreybox(session.page, "Стол");
 	const plan = session.page.getByTestId("plan-canvas");
@@ -10560,7 +10563,7 @@ test("PLAN-E2E-05C: moving a detached wall vertex into a placed item offers an a
 
 	const collisionAlert = session.page.getByRole("alert");
 	await expect(collisionAlert).toContainText(
-		"Стена не может пересекать предмет «Деревянный комод».",
+		"Стена не может пересекать предмет «Фактурное кресло».",
 	);
 	await expect(
 		collisionAlert.getByRole("button", {
@@ -10804,7 +10807,7 @@ test("ITEM-E2E-03A: duplicating a selected GLB starts a non-durable placement an
 		.getByRole("button", { name: "Дублировать предмет", exact: true })
 		.click();
 	await expect(session.page.getByTestId("item-placement-identity")).toHaveText(
-		"Деревянный комод",
+		"Фактурное кресло",
 	);
 	await expect(session.page.getByTestId("item-draft-hint")).toHaveCount(0);
 	expect(await durableRevisionCount(session.page)).toBe(
@@ -11028,12 +11031,9 @@ test("CATALOG-E2E-01: a phone catalog returns a chosen preloaded model to direct
 	await expect(catalog).toBeVisible();
 	for (const label of [
 		"Антикварный кожаный диван",
-		"Кресло Kursi",
-		"Винтажный стул Zen",
 		"Обеденное кресло",
 		"Фактурное кресло",
 		"Кровать",
-		"Деревянный комод",
 		"Шкаф в скандинавском стиле",
 	]) {
 		await expect(
@@ -11202,17 +11202,17 @@ test("CATALOG-E2E-01A: a phone catalog filters only declared preloaded resources
 	);
 	await search.fill("хранение");
 	await expect(catalog.getByTestId("catalog-result-count")).toHaveText(
-		"2 предмета",
+		"1 предмет",
 	);
 	await expect(
 		catalog.getByRole("button", { name: /^Деревянный комод —/ }),
-	).toHaveCount(1);
+	).toHaveCount(0);
 	await expect(
 		catalog.getByRole("button", { name: /^Шкаф в скандинавском стиле —/ }),
 	).toHaveCount(1);
 	await search.fill("напольный");
 	await expect(catalog.getByTestId("catalog-result-count")).toHaveText(
-		"8 предметов",
+		"5 предметов",
 	);
 	const firstFurnitureCard = catalog
 		.getByTestId("preloaded-catalog-card")
@@ -11236,7 +11236,7 @@ test("CATALOG-E2E-01A: a phone catalog filters only declared preloaded resources
 		.getByRole("button", { name: "Мебель", exact: true })
 		.click();
 	await expect(catalog.getByTestId("catalog-result-count")).toHaveText(
-		"8 предметов",
+		"5 предметов",
 	);
 	await catalog
 		.getByRole("button", { name: /^Антикварный кожаный диван —/ })
@@ -11289,7 +11289,7 @@ test("CATALOG-E2E-01E: local furniture and its search stay available while the c
 		.getByRole("button", { name: "Мебель", exact: true })
 		.click();
 	await expect(catalog.getByTestId("catalog-result-count")).toHaveText(
-		"8 предметов",
+		"5 предметов",
 	);
 	const bed = catalog.getByRole("button", { name: /^Кровать —/ });
 	await expect(bed).toContainText("Готово к загрузке");
@@ -11298,7 +11298,7 @@ test("CATALOG-E2E-01E: local furniture and its search stay available while the c
 	});
 	await search.fill("хранение");
 	await expect(catalog.getByTestId("catalog-result-count")).toHaveText(
-		"2 предмета",
+		"1 предмет",
 	);
 	expect(await durableRevisionCount(session.page)).toBe(revisionsBeforeCatalog);
 	await search.fill("");
@@ -12190,7 +12190,7 @@ test("EDITOR-E2E-16A: returning to projects clears the header action-menu state"
 		.getByRole("button", { name: "Проекты", exact: true })
 		.click();
 	await expect(
-		session.page.getByRole("heading", { name: "Проекты" }),
+		session.page.getByRole("heading", { name: "Проекты", exact: true }),
 	).toBeVisible();
 
 	await startNewProject(session.page, "Второй план");
@@ -13326,9 +13326,9 @@ test("REFERENCE-APARTMENT-E2E-01: a furnished four-room apartment survives Plan,
 
 	const rooms = await orderedRoomFaceCentres(session.page);
 	const itemPlacements = [
-		{ label: "Винтажный стул Zen", roomIndex: 0 },
+		{ label: "Демонстрационная ваза", roomIndex: 0 },
 		{ label: "Обеденное кресло", roomIndex: 1 },
-		{ label: "Деревянный комод", roomIndex: 2 },
+		{ label: "Фактурное кресло", roomIndex: 2 },
 	] as const;
 	expect(rooms).toHaveLength(4);
 	for (const { label, roomIndex } of itemPlacements) {
@@ -13340,7 +13340,7 @@ test("REFERENCE-APARTMENT-E2E-01: a furnished four-room apartment survives Plan,
 		await expect(
 			session.page.getByTestId("item-placement-preview"),
 		).toHaveAttribute("data-placement-valid", "true");
-		if (label === "Деревянный комод") {
+		if (label === "Фактурное кресло") {
 			await session.page.screenshot({
 				path: testInfo.outputPath("reference-apartment-placement.png"),
 				scale: "css",

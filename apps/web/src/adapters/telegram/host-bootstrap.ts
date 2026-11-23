@@ -1,7 +1,6 @@
 import {
 	type TelegramLaunchConfiguration,
 	type TelegramLaunchResult,
-	type VerifiedTelegramScope,
 	verifyTelegramLaunch,
 } from "./signed-launch";
 
@@ -22,7 +21,8 @@ export function createTelegramSdkScriptSource(context: {
 			const script = context.document.createElement("script");
 			// Exact official SDK bytes are pinned by the Telegram-only release producer.
 			// https://core.telegram.org/bots/webapps#initializing-mini-apps
-			script.src = "/telegram-sdk/telegram-web-app.124bdff7ba3fe86c8ba5143467afec21e020405e74abdb92cfdda6c0ee3b5908.js";
+			script.src =
+				"/telegram-sdk/telegram-web-app.124bdff7ba3fe86c8ba5143467afec21e020405e74abdb92cfdda6c0ee3b5908.js";
 			script.async = true;
 			script.onload = () => onLoad();
 			script.onerror = () => onError();
@@ -52,7 +52,7 @@ type LaunchCrypto = NonNullable<
 >;
 
 export type TelegramHostBootstrapResult =
-	| { readonly kind: "verified"; readonly scope: VerifiedTelegramScope }
+	| Extract<TelegramLaunchResult, { kind: "verified" }>
 	| {
 			readonly kind: "unavailable";
 			readonly reason: "invalid-launch";
@@ -178,7 +178,7 @@ export function createTelegramHostBootstrap(dependencies: {
 								return;
 							}
 							verifiedSdk = sdk;
-							finish({ kind: "verified", scope: launch.scope });
+							finish(launch);
 						})
 						.catch(() =>
 							finish({

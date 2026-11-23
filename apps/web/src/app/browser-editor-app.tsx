@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { HttpCatalogGateway } from "../adapters/catalog/http-catalog-gateway";
+import { BrowserReadonlyProjects } from "../ui/browser-readonly-projects";
 import { FflatePortableBackupEncoder } from "../adapters/portable-backup/fflate-portable-backup-encoder";
 import { PortableBackupReadRenderSmokeCheck } from "../adapters/portable-backup/portable-backup-read-render-smoke";
 import { createRegisteredRuntimePortablePorts } from "../adapters/portable-backup/registered-runtime-portable";
@@ -30,35 +32,37 @@ import type {
 // The shared editor never chooses a browser writer or storage context on import.
 const legacy = createProductionRuntime();
 const indexedDb = existingBrowserStorage();
-let readonlyProjects: BrowserReadonlyProjectsRuntime | undefined;
-try {
-	const portable = createRegisteredRuntimePortablePorts({
-		binaryChecksum: browserBinaryChecksum,
-	});
-	readonlyProjects = createBrowserReadonlyProjects({
-		technical: {
-			indexedDb: indexedDb ?? {
-				open: () => {
-					throw new Error("Browser storage is unavailable");
+function makeReadonlyProjects(): BrowserReadonlyProjectsRuntime | undefined {
+	try {
+		const portable = createRegisteredRuntimePortablePorts({
+			binaryChecksum: browserBinaryChecksum,
+		});
+		return createBrowserReadonlyProjects({
+			technical: {
+				indexedDb: indexedDb ?? {
+					open: () => {
+						throw new Error("Browser storage is unavailable");
+					},
 				},
+				secureContext: window.isSecureContext === true,
 			},
-			secureContext: window.isSecureContext === true,
-		},
-		readReleaseStartupInput,
-		checksum: browserChecksum,
-		binaryChecksum: browserBinaryChecksum,
-		portable: {
-			legacyEncoder: new FflatePortableBackupEncoder(),
-			legacySmoke: new PortableBackupReadRenderSmokeCheck({
-				checksum: browserBinaryChecksum,
-			}),
-			registeredWriter: portable.writer,
-			registeredSmoke: portable.smoke,
-		},
-	});
-} catch {
-	// Read admission is independent of each writer and never changes legacy startup.
+			readReleaseStartupInput,
+			checksum: browserChecksum,
+			binaryChecksum: browserBinaryChecksum,
+			portable: {
+				legacyEncoder: new FflatePortableBackupEncoder(),
+				legacySmoke: new PortableBackupReadRenderSmokeCheck({
+					checksum: browserBinaryChecksum,
+				}),
+				registeredWriter: portable.writer,
+				registeredSmoke: portable.smoke,
+			},
+		});
+	} catch {
+		// Read admission is independent of each writer and never changes legacy startup.
+	}
 }
+const readonlyProjects = makeReadonlyProjects();
 let registered: BrowserRegisteredRuntime | undefined;
 try {
 	if (indexedDb) {
@@ -182,7 +186,8 @@ export function BrowserEditorApp({
 	pwaBrowseCache,
 	pwaInstall,
 	pwaUpdate,
-}: Pick<EditorAppProps, "pwaBrowseCache" | "pwaInstall" | "pwaUpdate">) {
+	onOpenSettings,
+}: Pick<EditorAppProps, "pwaBrowseCache" | "pwaInstall" | "pwaUpdate" | "onOpenSettings">) {
 	const props: EditorAppProps = {
 		registeredTransferImport: true,
 		registeredTransferExport: true,
@@ -192,6 +197,32 @@ export function BrowserEditorApp({
 		pwaBrowseCache,
 		pwaInstall,
 		pwaUpdate,
+		onOpenSettings,
 	};
 	return <BrowserRuntimeEditor {...props} runtime={runtime} />;
+}
+
+export function BrowserProjectBackups() {
+	const [source, setSource] = useState<BrowserReadonlyProjectsRuntime | null>();
+	useEffect(() => {
+		let active = true;
+		const reader = makeReadonlyProjects();
+		async function open() {
+			try {
+				const input = await readReleaseStartupInput();
+				if (!active) return;
+				await reader?.admit(input);
+				if (active) setSource(reader ?? null);
+			} catch {
+				if (active) setSource(null);
+			}
+		}
+		void open();
+		return () => {
+			active = false;
+			void reader?.dispose();
+		};
+	}, []);
+	if (source) return <BrowserReadonlyProjects port={source} sourceRevision={0} />;
+	return <p role="status">{source === null ? "Не удалось открыть локальное хранилище." : "Проверяем локальные проекты…"}</p>;
 }

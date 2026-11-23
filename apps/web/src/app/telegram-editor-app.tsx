@@ -26,6 +26,9 @@ import type {
 	CatalogPublicationResult,
 } from "../application/ports";
 import type { LocalFileTransferPort } from "../ui/local-file-transfer";
+import { TelegramLegalDocuments, TelegramLegalEntry, TelegramSettings } from "../ui/telegram-legal-access";
+import { bundledLegalDocument, currentLicenseReadable } from "./legal-release";
+import { licenseReceipts } from "./license-receipt";
 import { TelegramDiagnosticDetails } from "../ui/telegram-diagnostic-details";
 import {
 	type TelegramReadonlyProblem,
@@ -35,6 +38,7 @@ import {
 	type ApprovedReadableTelegramRelease,
 	approveReadableTelegramRelease,
 } from "./telegram-readable-release";
+import { createUsageMetrics, deviceStatisticsStore, type UsageMetrics } from "./telegram-usage-metrics";
 import {
 	createTelegramReadonlyRuntime,
 	type TelegramReadonlyRuntime,
@@ -66,14 +70,27 @@ import {
 	type TelegramRuntime,
 } from "./telegram-runtime";
 
+
+
+declare const __INTERIORS_EXACT_FLOOR_YAW__: boolean;
+declare const __INTERIORS_RETURN_STUDY__: {
+	readonly digest: string;
+	readonly active: boolean;
+};
+
+type AnalyticsForRuntime = (
+	scope: VerifiedTelegramScope,
+	runtime?: TelegramRuntime | TelegramReadonlyRuntime,
+) => UsageMetrics | undefined;
 type AdmittedRuntime = TelegramRuntime | TelegramReadonlyRuntime;
 
 type Links = { readonly telegramURL?: string; readonly webURL?: string };
 export type TelegramDeploymentConfiguration = TelegramLaunchConfiguration & {
+	readonly usageMetrics?: never;
 	readonly telegramURL: string;
 	readonly webURL: string;
 };
-export function parseTelegramDeploymentConfiguration(value: unknown):
+export function parseTelegramDeploymentConfiguration(value: unknown, _editorOrigin?: string):
 	| {
 			readonly kind: "configured";
 			readonly configuration: TelegramDeploymentConfiguration;
@@ -94,7 +111,7 @@ export function parseTelegramDeploymentConfiguration(value: unknown):
 		if (
 			Object.keys(record).some(
 				(key) =>
-					!["botId", "environment", "telegramURL", "webURL"].includes(key),
+					!["botId", "environment", "telegramURL", "webURL", "analytics", "usageMetrics"].includes(key),
 			) ||
 			typeof botId !== "string" ||
 			!/^[1-9][0-9]*$/.test(botId) ||
@@ -124,12 +141,25 @@ function httpsLink(value: unknown): string | undefined {
 	}
 }
 
+interface TelegramLicenseAccess {
+	readonly readable: () => boolean;
+	readonly receipts: ReturnType<typeof licenseReceipts>;
+}
+
 type WorkerState = {
 	readonly hasControllingWorker: boolean;
 	readonly workerManifest: unknown;
 };
 export type TelegramEntryState =
 	| { readonly kind: "checking" }
+	| {
+			readonly kind: "legal";
+			readonly scope: VerifiedTelegramScope;
+			readonly error?: "storage" | "text";
+			readonly proceed: () => Promise<void>;
+			readonly readOnly: () => Promise<void>;
+			readonly hostEnvironment?: TelegramHostEnvironment;
+	  }
 	| {
 			readonly kind: "unavailable";
 			readonly reason:
@@ -141,6 +171,7 @@ export type TelegramEntryState =
 	  }
 	| {
 			readonly kind: "editor";
+			readonly authenticatedAt: number;
 			readonly runtime: TelegramRuntime;
 			readonly mountKey: string;
 			readonly hostEnvironment?: TelegramHostEnvironment;
@@ -179,6 +210,8 @@ export interface TelegramEntrySession {
 /** No host loading, storage access or runtime construction occurs until start(). */
 export function createTelegramEntrySession(dependencies: {
 	readonly configuration: unknown;
+	readonly legal: TelegramLicenseAccess;
+	readonly editorOrigin?: string;
 	readonly rawCapsule: string | undefined;
 	readonly loadedEntryPath: string | undefined;
 	readonly secureContext: boolean;
@@ -202,7 +235,7 @@ export function createTelegramEntrySession(dependencies: {
 	readonly onExit: () => void;
 }): TelegramEntrySession {
 	const configuration = parseTelegramDeploymentConfiguration(
-		dependencies.configuration,
+		dependencies.configuration, dependencies.editorOrigin,
 	);
 	const capsule = parseTelegramReleaseCapsule(dependencies.rawCapsule);
 	const diagnostics = createTelegramDiagnostics({
@@ -219,6 +252,7 @@ export function createTelegramEntrySession(dependencies: {
 	let generation = 0n,
 		disposed = false;
 	let host: TelegramHostBootstrap | undefined,
+		revealedHost: TelegramHostBootstrap | undefined,
 		runtime: AdmittedRuntime | undefined,
 		environment: TelegramHostEnvironment | undefined,
 		readyRuntime: AdmittedRuntime | undefined;
@@ -247,6 +281,14 @@ export function createTelegramEntrySession(dependencies: {
 		diagnostics.update({ phase, reason, capabilities });
 		return isCurrent(expected);
 	};
+	const revealHost = () => {
+		const current = host;
+		if (!current) return false;
+		if (revealedHost === current) return true;
+		if (!current.ready() || host !== current) return false;
+		revealedHost = current;
+		return true;
+	};
 	const stopRuntime = () => {
 		const priorDrain = draining,
 			previous = runtime;
@@ -267,6 +309,7 @@ export function createTelegramEntrySession(dependencies: {
 			environment = undefined;
 			host?.dispose();
 			host = undefined;
+			revealedHost = undefined;
 			const previousDrain = previous?.dispose();
 			void Promise.all([priorDrain, previousDrain]).then(() => finish(), fail);
 		} catch (error) {
@@ -308,6 +351,13 @@ export function createTelegramEntrySession(dependencies: {
 			resolveWork = resolve;
 			rejectWork = reject;
 		});
+		// start()/each user action completes when the next screen is available.
+		// The full admission stays tracked until it ends or the host is retired.
+		let presentStep: (() => void) | undefined;
+		const nextStep = () => Promise.race([
+			work, new Promise<void>((resolve) => { presentStep = resolve; }),
+		]);
+		const firstStep = nextStep();
 		pending.add(work);
 		void work.then(
 			() => pending.delete(work),
@@ -474,6 +524,49 @@ export function createTelegramEntrySession(dependencies: {
 					await admitReadonly(readable.approval);
 					return;
 				}
+				const legal = dependencies.legal;
+				let action: "proceed" | "readonly" | "cancel" | undefined;
+				while (isCurrent(expected)) {
+					if (action === "readonly") {
+						if (readable?.kind === "approved") await admitReadonly(readable.approval);
+						else update({ kind: "unavailable", reason: "release" });
+						return;
+					}
+					let access: "allowed" | "required" | "storage" | "text";
+					if (!legal.readable()) access = "text";
+					else if (action === "proceed")
+						access = legal.receipts.accept(launch.scope) ? "allowed" : "storage";
+					else access = legal.receipts.has(launch.scope) ? "allowed" : "required";
+					if (access === "allowed") break;
+					action = await new Promise<"proceed" | "readonly" | "cancel">((resolve) => {
+						const signal = operation.signal;
+						const cancel = () => resolve("cancel");
+						const present = presentStep;
+						const choose = (value: "proceed" | "readonly") => {
+							if (!isCurrent(expected) || state !== offer) return Promise.resolve();
+							const sameHost = captured?.matchesCurrent(() => dependencies.source.read());
+							if (!isCurrent(expected) || state !== offer) return Promise.resolve();
+							if (!sameHost) return start();
+							const next = nextStep();
+							signal.removeEventListener("abort", cancel);
+							update({ kind: "checking" });
+							resolve(value);
+							return next;
+						};
+						const offer: TelegramEntryState = {
+							kind: "legal", scope: launch.scope,
+							error: access === "required" ? undefined : access,
+							proceed: () => choose("proceed"),
+							readOnly: () => choose("readonly"),
+							...(environment ? { hostEnvironment: environment } : {}),
+						};
+						signal.addEventListener("abort", cancel, { once: true });
+						update(offer);
+						present?.();
+					});
+					if (action === "cancel") return;
+				}
+				if (!isCurrent(expected)) return;
 				let created: TelegramRuntime;
 				let startup: ReleaseStartupOutcome;
 				try {
@@ -510,6 +603,7 @@ export function createTelegramEntrySession(dependencies: {
 				if (!diagnose(expected, "editor", "ready", capabilities)) return;
 				update({
 					kind: "editor",
+					authenticatedAt: launch.authenticatedAt,
 					runtime: created,
 					mountKey: expected.toString(),
 					...(environment ? { hostEnvironment: environment } : {}),
@@ -523,7 +617,7 @@ export function createTelegramEntrySession(dependencies: {
 				}
 			}
 		})().then(resolveWork, rejectWork);
-		return work;
+		return firstStep;
 	};
 	const dispose = (): Promise<void> => {
 		if (disposal) return disposal;
@@ -599,6 +693,16 @@ export function createTelegramEntrySession(dependencies: {
 		},
 		start,
 		shellReady(rendered) {
+			if (!disposed && state === rendered && state.kind === "legal") {
+				if (revealHost()) return true;
+				if (state !== rendered || disposed) return false;
+				const expected = ++generation;
+				const drain = stopRuntime();
+				if (diagnose(expected, "sdk", "sdk-ready-failed"))
+					update({ kind: "unavailable", reason: "launch" });
+				void drain.catch(() => undefined);
+				return false;
+			}
 			if (disposed || state !== rendered || state.kind !== "unavailable")
 				return false;
 			return host?.shellReady() ?? false;
@@ -620,7 +724,8 @@ export function createTelegramEntrySession(dependencies: {
 			)
 				return false;
 			readyRuntime = current;
-			if (host?.ready()) return true;
+			if (revealHost()) return true;
+			if (runtime !== current || disposed) return false;
 			const expected = ++generation;
 			const drain = stopRuntime();
 			diagnose(expected, "sdk", "sdk-ready-failed");
@@ -645,10 +750,12 @@ export function TelegramEditorApp({
 	session,
 	catalogGateway,
 	fileTransfer,
+	analyticsFor,
 }: {
 	readonly session: TelegramEntrySession;
 	readonly catalogGateway: CatalogGatewayPort;
 	readonly fileTransfer?: LocalFileTransferPort;
+	readonly analyticsFor?: AnalyticsForRuntime;
 }) {
 	const state = useSyncExternalStore(
 		session.subscribe,
@@ -662,8 +769,10 @@ export function TelegramEditorApp({
 		};
 	}, [session]);
 	useEffect(() => {
-		if (state.kind === "unavailable") session.shellReady(state);
+		if (state.kind === "unavailable" || state.kind === "legal") session.shellReady(state);
 	}, [session, state]);
+	if (state.kind === "legal")
+		return <TelegramLegalEntry state={state} analytics={analyticsFor?.(state.scope)} onExit={() => void session.exit()} />;
 	if (state.kind === "editor")
 		return (
 			<AdmittedEditor
@@ -673,6 +782,7 @@ export function TelegramEditorApp({
 				session={session}
 				catalogGateway={catalogGateway}
 				fileTransfer={fileTransfer}
+				analyticsFor={analyticsFor}
 			/>
 		);
 	if (state.kind === "readonly")
@@ -683,6 +793,7 @@ export function TelegramEditorApp({
 				session={session}
 				hostEnvironment={state.hostEnvironment}
 				fileTransfer={fileTransfer}
+			analytics={analyticsFor?.(state.runtime.scope, state.runtime)}
 			/>
 		);
 	const checking = state.kind === "checking";
@@ -702,6 +813,7 @@ export function TelegramEditorApp({
 							? "Telegram не ответил вовремя. Повторите запуск или откройте веб-редактор."
 							: "Безопасный запуск не подтверждён. Повторите запуск из Telegram или откройте веб-редактор."}
 			</p>
+			<TelegramLegalDocuments />
 			{!checking ? (
 				<>
 					<button type="button" onClick={() => void session.start()}>
@@ -731,8 +843,10 @@ function AdmittedReadonlyProjects({
 	session,
 	hostEnvironment,
 	fileTransfer,
+	analytics,
 }: {
 	readonly runtime: TelegramReadonlyRuntime;
+	readonly analytics?:UsageMetrics;
 	readonly session: TelegramEntrySession;
 	readonly hostEnvironment?: TelegramHostEnvironment;
 	readonly fileTransfer?: LocalFileTransferPort;
@@ -741,13 +855,16 @@ function AdmittedReadonlyProjects({
 		session.ready(runtime);
 	}, [runtime, session]);
 	return (
+		<TelegramSettings host={hostEnvironment} analytics={analytics}>
+		{(openSettings, navigation) => <>
+		<button type="button" onClick={(event) => openSettings(event.currentTarget)}>Настройки</button>
 		<TelegramReadonlyProjects
 			runtime={runtime}
 			fileTransfer={fileTransfer}
 			diagnostics={
 				<TelegramDiagnosticDetails diagnostics={session.diagnostics} />
 			}
-			hostNavigation={hostEnvironment?.navigation}
+			hostNavigation={navigation}
 			onRetry={() => {
 				if (session.ownsRuntime(runtime)) void session.start();
 			}}
@@ -758,6 +875,8 @@ function AdmittedReadonlyProjects({
 				session.observeReadonlyProblem?.(runtime, problem)
 			}
 		/>
+		</>}
+		</TelegramSettings>
 	);
 }
 function AdmittedEditor({
@@ -766,16 +885,23 @@ function AdmittedEditor({
 	session,
 	catalogGateway,
 	fileTransfer,
+	analyticsFor,
 }: {
 	readonly runtime: TelegramRuntime;
 	readonly hostEnvironment?: TelegramHostEnvironment;
 	readonly session: TelegramEntrySession;
 	readonly catalogGateway: CatalogGatewayPort;
 	readonly fileTransfer?: LocalFileTransferPort;
+	readonly analyticsFor?: AnalyticsForRuntime;
 }) {
 	useEffect(() => {
 		session.ready(runtime);
 	}, [runtime, session]);
+	const analytics = useMemo(
+		() => analyticsFor?.(runtime.scope, runtime),
+		[analyticsFor, runtime],
+	);
+	useEffect(() => { void analytics?.start(); }, [analytics]);
 	const observedGateway = useMemo<CatalogGatewayPort>(
 		() => ({
 			currentPublication: async (...args) => {
@@ -788,8 +914,13 @@ function AdmittedEditor({
 		[catalogGateway, runtime, session],
 	);
 	return (
+<TelegramSettings host={hostEnvironment} analytics={analytics}>
+		{(openSettings, navigation) => <>
 		<EditorApp
-			hostNavigation={hostEnvironment?.navigation}
+			localGreyboxCatalog
+			exactFloorYaw={runtime.exactFloorYaw}
+			onOpenSettings={openSettings}
+			hostNavigation={navigation}
 			hostLifecycle={hostEnvironment?.lifecycle}
 			runtime={runtime}
 			catalogGateway={observedGateway}
@@ -801,6 +932,8 @@ function AdmittedEditor({
 			fileTransfer={fileTransfer}
 			readReleaseStartupInput={runtime.readReleaseStartupInput}
 		/>
+		</>}
+		</TelegramSettings>
 	);
 }
 
@@ -901,6 +1034,7 @@ function requestExit() {
 /** Explicit Telegram entry only: imports never construct a browser singleton. */
 export function mountTelegramBrowserEditor(
 	element: HTMLElement,
+	readLaunchTime: () => number = () => Date.now(),
 ): () => Promise<void> {
 	const loaded = document.querySelector<HTMLScriptElement>(
 		"script[data-telegram-entry]",
@@ -913,7 +1047,12 @@ export function mountTelegramBrowserEditor(
 	);
 	const source = createTelegramSdkScriptSource({ document, readWebApp });
 	const session = createTelegramEntrySession({
+		legal: {
+			readable: currentLicenseReadable,
+			receipts: licenseReceipts(() => window.localStorage),
+		},
 		configuration,
+		editorOrigin: window.location.origin,
 		rawCapsule,
 		loadedEntryPath: loaded?.src ? new URL(loaded.src).pathname : undefined,
 		secureContext: isSecureContext,
@@ -927,7 +1066,7 @@ export function mountTelegramBrowserEditor(
 				readCurrentSdk: readWebApp,
 				onContextChanged,
 			}),
-		nowEpochMs: () => Date.now(),
+		nowEpochMs: readLaunchTime,
 		onExit: requestExit,
 		createReadonlyRuntime(approval, scope) {
 			const portable = createRegisteredRuntimePortablePorts({
@@ -944,6 +1083,7 @@ export function mountTelegramBrowserEditor(
 					indexedDb: indexedDB,
 					locks: navigator.locks,
 					secureContext: isSecureContext,
+					acceptExactFloorYawStorage: true,
 				},
 				checksum: browserChecksum,
 				binaryChecksum: browserBinaryChecksum,
@@ -968,6 +1108,9 @@ export function mountTelegramBrowserEditor(
 				approval,
 				scope,
 				context: {
+					databaseMode: typeof __INTERIORS_EXACT_FLOOR_YAW__ !== "undefined" && __INTERIORS_EXACT_FLOOR_YAW__
+						? "exact"
+						: "compatible",
 					indexedDb: indexedDB,
 					locks: navigator.locks,
 					secureContext: isSecureContext,
@@ -994,12 +1137,99 @@ export function mountTelegramBrowserEditor(
 	const fileTransfer = createBrowserHostFileBridge({
 		maximumBytes: 280 * 1024 * 1024,
 	});
+	const models = new WeakMap<object, UsageMetrics>();
+	const stores = new Map<
+		VerifiedTelegramScope,
+		ReturnType<typeof deviceStatisticsStore>
+	>();
+	const analyticsFor: AnalyticsForRuntime = (scope, runtime) => {
+		const entry = session.snapshot();
+		if (
+			entry.kind === "legal"
+				? entry.scope !== scope || runtime !== undefined
+				: (entry.kind !== "editor" && entry.kind !== "readonly") ||
+					entry.runtime !== runtime
+		)
+			return;
+		const previous = models.get(entry);
+		if (previous) return previous;
+		const store =
+			stores.get(scope) ??
+			deviceStatisticsStore(
+				scope,
+				() => window.localStorage,
+				() => window.sessionStorage,
+			);
+		stores.set(scope, store);
+		const life = new AbortController();
+		const stop = session.subscribe(() => {
+			if (session.snapshot() !== entry) {
+				life.abort();
+				stop();
+			}
+		});
+		const study =
+			typeof __INTERIORS_RETURN_STUDY__ === "undefined"
+				? undefined
+				: __INTERIORS_RETURN_STUDY__;
+		const model = createUsageMetrics({
+			store,
+			launch: entry.kind === "editor" ? entry.authenticatedAt : undefined,
+			signal: life.signal,
+			clock: Date.now,
+			studyActive: () => study?.active === true,
+			formDigest: study?.digest ?? "",
+			async readable() {
+				const form = bundledLegalDocument("analytics-consent");
+				if (!form || !study) return false;
+				const bytes = await window.crypto.subtle.digest(
+					"SHA-256",
+					new TextEncoder().encode(form),
+				);
+				return (
+					Array.from(new Uint8Array(bytes), (n) =>
+						n.toString(16).padStart(2, "0"),
+					).join("") === study.digest
+				);
+			},
+			async lock(work) {
+				await window.navigator.locks.request(
+					store.key,
+					{ signal: life.signal },
+					work,
+				);
+			},
+			send(path) {
+				if (
+					life.signal.aborted ||
+					entry.kind !== "editor" ||
+					session.snapshot() !== entry
+				)
+					return;
+				void window
+					.fetch(path, {
+						method: "POST",
+						credentials: "omit",
+						mode: "same-origin",
+						cache: "no-store",
+						redirect: "error",
+						referrerPolicy: "no-referrer",
+						headers: { "X-Interiors-Stats": "1" },
+						signal: life.signal,
+					})
+					.catch(() => {});
+			},
+		});
+		models.set(entry, model);
+		return model;
+	};
 	const root = createRoot(element);
 	root.render(
 		<TelegramEditorApp
 			session={session}
 			catalogGateway={catalogGateway}
 			fileTransfer={fileTransfer}
+			analyticsFor={analyticsFor}
 		/>,
 	);
 	return () => {

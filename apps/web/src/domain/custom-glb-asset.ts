@@ -82,6 +82,7 @@ export function createCustomGlbFloorItem(
 			widthMm: input.asset.widthMm,
 			xMm: input.xMm,
 			yawStep: input.yawStep,
+			yawMilliDeg: input.yawMilliDeg,
 			zMm: input.zMm,
 		},
 		ids,

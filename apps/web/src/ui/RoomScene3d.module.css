@@ -1,5 +1,6 @@
 .sceneViewport {
 	inset: 0;
+	margin-bottom: calc(0px - var(--editor-keyboard-inset, 0px));
 	position: absolute;
 }
 
@@ -106,7 +107,7 @@
 	align-items: center;
 	background:color-mix(in srgb, var(--surface) 94%, transparent);
 	border:1px solid color-mix(in srgb, var(--line) 88%, transparent);
-	border-radius:999px;
+	border-radius:var(--editor-host-radius, 999px);
 	bottom: 138px;
 	box-shadow: 0 6px 16px color-mix(in srgb, var(--ink) 12%, transparent);
 	color:var(--ink);
@@ -229,7 +230,7 @@
 	align-items: center;
 	background:var(--surface);
 	border:1px solid var(--line);
-	border-radius:16px;
+	border-radius:var(--editor-host-radius, 16px);
 	display: grid;
 	grid-template-columns: 48px minmax(0, 1fr) 48px;
 	margin: 4px 4px 0;
@@ -240,7 +241,7 @@
 .rotationStepControls button, .rotationCancel {
 	background:transparent;
 	border:0;
-	border-radius:14px;
+	border-radius:var(--editor-host-radius, 14px);
 	color:var(--editor-host-primary, var(--blue));
 	cursor: pointer;
 	font: 700 22px/1 var(--font-display);
@@ -249,7 +250,7 @@
 	padding: 6px;
 }
 .rotationStepControls button:disabled { color:var(--muted); cursor: default; }
-.rotationAngle { background:var(--surface); border-radius:8px; color:var(--ink); font: 700 14px/1.2 var(--font-mono); left: 50%; padding: 2px 6px; pointer-events: none; position: absolute; top: 3px; transform: translateX(-50%); }
+.rotationAngle { background:var(--surface); border-radius:var(--editor-host-radius, 8px); color:var(--ink); font: 700 14px/1.2 var(--font-mono); left: 50%; padding: 2px 6px; pointer-events: none; position: absolute; top: 3px; transform: translateX(-50%); }
 .rotationCaption { color:var(--muted); font: 700 12px/1.2 var(--font-display); text-align: center; }
 .rotationStepControls .rotationCancel { font-size: 13px; line-height: 1.2; min-width: 0; pointer-events: auto; width: 100%; }
 .rotationStepControls button:focus-visible, .rotationCancel:focus-visible { outline:3px solid var(--editor-host-primary, var(--blue)); outline-offset: -3px; }
@@ -290,7 +291,7 @@
   background:var(--editor-host-surface, #fff);
   border:1px solid var(--editor-host-line, #dbe2e8);
 	bottom: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
-  border-radius:28px;
+  border-radius:var(--editor-host-radius, 28px);
   box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent);
   display: grid;
   gap: 10px;
@@ -310,12 +311,12 @@
 @media (max-height: 600px) {
 	/* Keep a touchable scene between the measured header and the scrollable
 	   controls, including before a placement point has been chosen. */
-	.itemPlacementMenu {
+	.itemPlacementMenu:not([data-full-ring]) {
 		max-height: max(96px, calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 116px) - 148px)) !important;
 	}
 
 	/* History occupies the upper left of the scene on compact phones. */
-	.rotationOverlay {
+	.rotationOverlay:not([data-full-ring]) {
 		left: max(212px, 50%) !important;
 	}
 }
@@ -340,7 +341,7 @@
   align-items: center;
   background:var(--editor-host-primary-soft, #e7f3fb);
   border:1px solid #cae4f4;
-  border-radius:13px;
+  border-radius:var(--editor-host-radius, 13px);
   color:var(--editor-host-primary, var(--placement-primary));
   display: flex;
   height: 42px;
@@ -398,7 +399,7 @@
 
 .itemPlacementActions button {
   align-items: center;
-  border-radius:14px;
+  border-radius:var(--editor-host-radius, 14px);
   cursor: pointer;
   display: flex;
   font: 800 0.92rem/1.2 system-ui, sans-serif;
@@ -434,6 +435,18 @@
   filter: brightness(0.96);
 }
 
+main[data-editor-host="telegram"] .itemPlacementCopy strong {
+  font: 650 .95rem/1.3 var(--font-display);
+  overflow: visible;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+main[data-editor-host="telegram"] .itemPlacementStatus {
+  font: 500 .8rem/1.35 var(--font-display);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 559px) {
 	/* Keep camera controls close to the thumb zone, in a single calm control
 	   deck above the persistent editor dock. The 3D room remains unobstructed
@@ -443,7 +456,7 @@
 		background:color-mix(in srgb, var(--surface) 94%, transparent);
 		backdrop-filter: blur(18px);
 		border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
-		border-radius:18px;
+		border-radius:var(--editor-host-radius, 18px);
 		bottom: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
 		box-shadow: 0 10px 24px color-mix(in srgb, var(--ink) 13%, transparent);
 		gap: 6px;
@@ -463,7 +476,7 @@
 
 	.threeDimensionalCatalogButton {
 		border:0;
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		flex: 1;
 		flex-direction: column;
 		font-size: 0.7rem;
@@ -478,7 +491,7 @@
 
 	.cutawayButton {
 		border:0;
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		flex: 1;
 		font-size: 0.7rem;
 		flex-direction: column;
@@ -517,7 +530,7 @@
 		background:var(--editor-host-surface, #fff);
 		backdrop-filter: none;
 		border-color:var(--editor-host-line, #d9e1e8);
-		border-radius:28px;
+		border-radius:var(--editor-host-radius, 28px);
 		box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent);
 		filter: none;
 	}
@@ -533,4 +546,95 @@
 		color:var(--editor-host-primary, #1976b9);
 	}
 
+}
+
+.colorAction { min-width: 0; }
+.colorTrigger {
+	align-items: center;
+	background: transparent;
+	border: 0;
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--ink);
+	cursor: pointer;
+	display: flex;
+	flex-direction: column;
+	font: 700 .74rem/1.15 var(--font-display);
+	gap: 4px;
+	height: 100%;
+	justify-content: center;
+	min-height: 44px;
+	min-width: 44px;
+	padding: 5px;
+	width: 100%;
+}
+.colorTrigger[aria-expanded="true"] { background: var(--editor-host-primary-soft, #e7f3fb); }
+.colorTrigger:disabled { color: var(--muted); cursor: default; }
+.colorTrigger:focus-visible, .colorDialog button:focus-visible {
+	outline: 2px solid var(--editor-host-primary, var(--blue));
+	outline-offset: -2px;
+}
+.itemPlacementMenu[data-scene-color-dock="placement"] {
+	grid-template-columns: minmax(0, 1fr) minmax(44px, max-content);
+}
+.itemPlacementMenu[data-scene-color-dock="placement"] > :not(.colorAction):not(.itemPlacementIdentity) { grid-column: 1 / -1; }
+.itemPlacementMenu[data-scene-color-dock="placement"] .colorTrigger { padding-inline: 12px; }
+.viewControls[data-scene-color-dock="selected"] .cameraDeck { align-items: stretch; display: grid; flex: 1; gap: 8px; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; }
+.viewControls[data-scene-color-dock="selected"] .cutawayControls { display: grid; gap: 8px; grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.viewControls[data-scene-color-dock="selected"] :is(.cutawayButton, .threeDimensionalCatalogButton, .colorTrigger) {
+	align-items: center; display: flex; flex-direction: column; font: 700 .74rem/1.15 var(--font-display);
+	gap: 3px; justify-content: center; min-height: 48px; min-width: 0; overflow-wrap: anywhere; padding: 4px 2px; text-align: center;
+}
+@media (max-width: 559px), (max-height: 550px) {
+	.viewControls[data-scene-color-dock="selected"] {
+		background: var(--editor-host-surface, #fff); border: 1px solid var(--editor-host-line, #d9e1e8);
+		border-radius: var(--editor-host-radius, 12px); bottom: max(8px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
+		left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left)));
+		padding: 4px; right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right))); top: auto;
+	}
+	.viewControls[data-scene-color-dock="selected"] .scaleControls { display: none; }
+	.viewControls[data-scene-color-dock="selected"] :is(.cutawayButton,.threeDimensionalCatalogButton) { background: transparent; border: 0; border-radius: var(--editor-host-radius, 12px); }
+	.viewControls[data-scene-color-dock="selected"] .cutawayButton[aria-pressed="true"] { background: var(--editor-host-primary-soft, #e7f3fb); }
+}
+.colorSheet { container-type: inline-size; }
+.colorOptions {
+	display: grid;
+	gap: 6px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 4rem), 1fr));
+}
+@container (min-width: 18.5rem) {
+	.colorOptions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.colorOptions button {
+	align-items: center; background: var(--editor-host-canvas,var(--canvas)); border: 1px solid var(--editor-host-line,var(--line));
+	border-radius: var(--editor-host-radius,12px); color: var(--ink); cursor: pointer; display: flex;
+	flex-direction: column; font: 600 .72rem/1.2 var(--font-display); gap: 3px; justify-content: center;
+	letter-spacing: -.015em; min-height: 48px; min-width: 0; overflow-wrap: anywhere; padding: 4px 0; text-align: center;
+}
+.colorOptions button > span:first-child { align-items: center; color: white; display: inline-flex; flex-shrink: 0; justify-content: center; }
+.colorOptions button[aria-pressed="true"] { background: var(--editor-host-primary-soft,#e7f3fb); border-color: var(--editor-host-primary,var(--blue)); }
+.colorNote { color: var(--muted); font: 500 .77rem/1.3 var(--font-display); margin: 10px 0 0; }
+
+.viewControls[data-scene-color-dock="selected"] { container-type: inline-size; }
+@container (width < 15rem) {
+	.viewControls[data-scene-color-dock="selected"] .cameraDeck {
+		grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.viewControls[data-scene-color-dock="selected"] .cutawayControls { display: contents; }
+}
+
+@media (min-width: 560px) and (min-height: 551px) {
+	/* Leave the editor's history buttons accessible to the left of the camera controls. */
+	.viewControls[data-scene-color-dock="selected"] {
+		background: var(--editor-host-surface, var(--surface));
+		border: 1px solid var(--editor-host-line, var(--line));
+		border-radius: var(--editor-host-radius, 12px);
+		left: calc(max(12px, var(--editor-safe-area-left, env(safe-area-inset-left))) + 108px);
+		padding: 4px;
+		right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right)));
+	}
+	.viewControls[data-scene-color-dock="selected"] .cameraDeck {
+		grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+	}
+	.viewControls[data-scene-color-dock="selected"] .scaleControls { display: flex; flex-direction: row; }
+	.viewControls[data-scene-color-dock="selected"] .scaleButton + .scaleButton { border: 0; }
 }

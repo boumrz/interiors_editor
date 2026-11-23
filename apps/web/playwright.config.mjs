@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { returningWebUser } from './tests/browser/accepted-web-license.ts';
 
 // Keep the ordinary browser suite isolated from a developer's default 4173
 // server. Otherwise `reuseExistingServer` can silently run this app's tests
@@ -22,6 +23,7 @@ export default defineConfig({
   workers: 1,
   use: {
     baseURL,
+    storageState: returningWebUser(baseURL),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     locale: 'ru-RU',

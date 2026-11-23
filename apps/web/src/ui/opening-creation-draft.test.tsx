@@ -86,6 +86,18 @@ describe("opening creation draft", () => {
 		});
 	});
 
+	it("validates the chosen door swing and drops it when creating a window", () => {
+		const project = roomProject();
+		const draft = openingCreationDraftFor(project, "wall-1");
+		if (!draft) throw new Error("Expected opening draft");
+		const left = { ...draft, swingSide: "left" as const };
+		const door = validateOpeningCreationDraft(project, left);
+		expect(door.kind === "valid" && door.input).toMatchObject({ swingSide: "left" });
+		const window = validateOpeningCreationDraft(project, { ...left, kind: "Window" });
+		expect(window.kind).toBe("valid");
+		if (window.kind === "valid") expect(window.input).not.toHaveProperty("swingSide");
+	});
+
 	it("validates the Window branch with its own exact millimetre values", () => {
 		const project = roomProject();
 		const draft = openingCreationDraftFor(project, "wall-1", "Window");

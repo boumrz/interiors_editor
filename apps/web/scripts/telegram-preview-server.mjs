@@ -135,6 +135,9 @@ const controls = new Set([
 	"/index.html",
 	"/release-manifest.json",
 	"/release-set.json",
+	"/legal/privacy-policy.html",
+	"/legal/license-agreement.html",
+	"/legal/analytics-consent.html",
 ]);
 const contentType = (path) =>
 	path.endsWith(".html")
@@ -168,9 +171,11 @@ export async function createTelegramPreviewServer({
 			prior = retained.get(release.appBuildId);
 		if (
 			prior &&
-			[...controls].some(
-				(path) => !releases.get(prior).get(path).equals(files.get(path)),
-			)
+			[...controls].some((path) => {
+				const previous = releases.get(prior).get(path);
+				const current = files.get(path);
+				return current ? !previous?.equals(current) : previous !== undefined;
+			})
 		)
 			reject();
 		for (const [path, bytes] of files)

@@ -23,6 +23,7 @@ import {
 	type Object3D,
 } from "three";
 
+import { GLASS_OPACITY, OPENING_FINISH } from "./opening-template";
 import type {
 	RectangularRoomWebGlScene,
 	SceneBox,
@@ -45,6 +46,7 @@ import {
 } from "./webgl2-room-renderer-shared";
 
 interface ItemNode {
+	readonly greyboxAppearanceKey: string | undefined;
 	readonly assetDefinitionId: string | undefined;
 	readonly group: Group;
 	readonly runtime: boolean;
@@ -78,6 +80,7 @@ export function createThreeWebGl2RoomSceneRenderer(
 	scene: RectangularRoomWebGlScene,
 	qualityTier: WebGl2RendererQualityTier,
 	runtimeModels: WebGl2RuntimeModels,
+	resizeDrawingBufferOnChangeOnly = false,
 ): WebGl2SceneRenderer {
 	const canvas = context.canvas as HTMLCanvasElement;
 	const renderer = new WebGLRenderer({
@@ -92,6 +95,7 @@ export function createThreeWebGl2RoomSceneRenderer(
 	renderer.toneMappingExposure = 1.05;
 	renderer.shadowMap.enabled = qualityTier === "standard";
 	renderer.shadowMap.type = PCFSoftShadowMap;
+	let drawingBufferSize: { width: number; height: number; pixelRatio: number } | undefined;
 	const threeScene = new Scene();
 	threeScene.background = new Color(THREE_DIMENSIONAL_ROOM_PALETTE.background);
 	threeScene.add(
@@ -141,17 +145,27 @@ export function createThreeWebGl2RoomSceneRenderer(
 	for (const floor of scene.floorPolygons ?? []) {
 		roomGroup.add(polygonFloorMesh(floor));
 	}
-	for (const wall of scene.walls) {
+	const addWallPart = (part: Mesh, wallSegmentId?: string) => {
 		const wallGroup = new Group();
-		wallGroup.add(createThreeWallMesh(wall));
+		wallGroup.add(part);
 		roomGroup.add(wallGroup);
-		const wallSegmentId = wall.wall?.wallSegmentId;
 		if (wallSegmentId) {
 			wallGroups.set(wallSegmentId, [
 				...(wallGroups.get(wallSegmentId) ?? []),
 				wallGroup,
 			]);
 		}
+	};
+	for (const wall of scene.walls) addWallPart(createThreeWallMesh(wall), wall.wall?.wallSegmentId);
+	for (const { box, role, wallSegmentId } of scene.openingParts ?? []) {
+		const mesh = boxMesh(box, OPENING_FINISH[role], "wall");
+		if (role === "glass") {
+			mesh.material.transparent = true;
+			mesh.material.opacity = GLASS_OPACITY;
+			mesh.material.depthWrite = false;
+			mesh.material.roughness = 0.25;
+		}
+		addWallPart(mesh, wallSegmentId);
 	}
 	syncItems(scene.items, itemGroup, itemNodes, activeRuntimeModels);
 
@@ -174,8 +188,18 @@ export function createThreeWebGl2RoomSceneRenderer(
 			);
 			const width = Math.max(1, canvas.clientWidth);
 			const height = Math.max(1, canvas.clientHeight);
-			renderer.setPixelRatio(pixelRatio);
-			renderer.setSize(width, height, false);
+			if (!resizeDrawingBufferOnChangeOnly) {
+				renderer.setPixelRatio(pixelRatio);
+				renderer.setSize(width, height, false);
+			} else if (
+				drawingBufferSize?.width !== width ||
+				drawingBufferSize.height !== height ||
+				drawingBufferSize.pixelRatio !== pixelRatio
+			) {
+				// Three's setPixelRatio also calls setSize, which resets the canvas buffer.
+				renderer.setDrawingBufferSize(width, height, pixelRatio);
+				drawingBufferSize = { width, height, pixelRatio };
+			}
 			camera.aspect = width / height;
 			configureKeyShadow(directional, activeScene);
 			const viewpoint = cameraEyeAndTargetFor(activeScene, viewport);
@@ -226,12 +250,17 @@ function syncItems(
 		const runtime = item.assetDefinitionId
 			? runtimeModels[item.assetDefinitionId]
 			: undefined;
+		const material = item.material;
+		const greyboxAppearanceKey = !runtime && material?.refreshGreyboxAppearance
+			? [material.furnitureKind, material.colorHex, item.widthM, item.depthM, item.heightM].join(":")
+			: undefined;
 		const current = itemNodes.get(id);
 		if (
 			!current ||
 			current.assetDefinitionId !== item.assetDefinitionId ||
 			current.runtime !== (runtime !== undefined) ||
-			current.runtimeModel !== runtime
+			current.runtimeModel !== runtime ||
+			current.greyboxAppearanceKey !== greyboxAppearanceKey
 		) {
 			if (current) disposeItemNode(current);
 			const group = runtime
@@ -239,6 +268,7 @@ function syncItems(
 				: createThreeGreyboxItemGroup(item);
 			itemGroup.add(group);
 			itemNodes.set(id, {
+				greyboxAppearanceKey,
 				assetDefinitionId: item.assetDefinitionId,
 				group,
 				runtime: runtime !== undefined,
@@ -376,7 +406,7 @@ function boxMesh(
 	box: SceneBox,
 	color: string,
 	shadowRole: ThreeDimensionalShadowRole = "item",
-): Mesh {
+) {
 	const geometry = box.wallFootprintM
 		? new ExtrudeGeometry(
 				new Shape(

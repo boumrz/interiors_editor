@@ -21,6 +21,9 @@ import type {
 import type { SessionHistoryRootSnapshot } from "../../src/application/session-retention-project-repository";
 import { createTelegramContextState } from "../../src/adapters/telegram/context-state";
 import { validateRuntimeV1Project } from "../../src/application/runtime-v1-project-validation";
+import { approveReadableTelegramRelease } from "../../src/app/telegram-readable-release";
+import { createRegisteredRuntimePortablePorts } from "../../src/adapters/portable-backup/registered-runtime-portable";
+import { createTelegramReadonlyProjectSource } from "../../src/adapters/persistence/telegram-readonly-project-source";
 
 // Explicit test-only entry. No product build imports this module or these fake scopes.
 const scopes = {
@@ -28,6 +31,7 @@ const scopes = {
 	b: `tma-v1-${"b".repeat(64)}` as VerifiedTelegramScope,
 };
 const stores = new Map<string, TelegramScopeStore>();
+const blockingConnections = new Map<keyof typeof scopes, IDBDatabase>();
 const repositories = new Map<string, TelegramProjectRepository>();
 const compositionOwners = new Map<string, { ownerId: string }>();
 const sessionRoots = new Map<string, SessionHistoryRootSnapshot>();
@@ -186,6 +190,57 @@ async function database(scope: keyof typeof scopes): Promise<IDBDatabase> {
 }
 
 const harness = {
+	async storageVersion(name: string) {
+		const store = stores.get(name);
+		if (!store) throw new Error("Unknown test store");
+		return store.run(async access => access.databaseVersion);
+	},
+	async holdNativeConnection(scope: keyof typeof scopes) {
+		if (blockingConnections.has(scope)) throw new Error("Connection already held");
+		blockingConnections.set(scope, await database(scope));
+	},
+	releaseNativeConnection(scope: keyof typeof scopes) {
+		blockingConnections.get(scope)?.close();
+		blockingConnections.delete(scope);
+	},
+	async readDirectory(scope: keyof typeof scopes, acceptExactFloorYawStorage: boolean) {
+		const permit = approveReadableTelegramRelease({
+			capsule: {
+				deliveryTarget: "telegram",
+				entryPath: "/telegram.12345678.js",
+				manifest: {
+					appBuildId: "0123456789abcdef",
+					assetSchemas: { readable: [1], writable: [1] },
+					catalogSchemas: { readable: [1], writable: [1] },
+					projectSchemas: { readable: [1], writable: [1] },
+					minimumCapabilities: ["indexeddb"],
+					version: 1,
+					workerProtocolVersion: 1,
+				},
+			},
+			loadedEntryPath: "/telegram.12345678.js",
+			capabilities: { indexeddb: true, webgl2: false },
+			secureContext: isSecureContext,
+			hasControllingWorker: false,
+			workerManifest: undefined,
+		});
+		if (permit.kind !== "approved") throw new Error("Missing readable test permit");
+		const source = createTelegramReadonlyProjectSource({
+			scope: scopes[scope],
+			release: permit.approval,
+			checksum: browserChecksum,
+			binaryChecksum: browserBinaryChecksum,
+			portable: createRegisteredRuntimePortablePorts({ binaryChecksum: browserBinaryChecksum }),
+			technical: { indexedDb: indexedDB, locks: navigator.locks, secureContext: isSecureContext, acceptExactFloorYawStorage },
+		});
+		try {
+			return { kind: "read" as const, directory: await source.listProjects() };
+		} catch {
+			return { kind: "denied" as const, revoked: source.signal.aborted };
+		} finally {
+			await source.dispose();
+		}
+	},
 	async genericMarker(
 		name: string,
 		mode: "readonly" | "readwrite",
@@ -476,8 +531,10 @@ const harness = {
 			| "insecure"
 			| "lock-fails"
 			| "blocked-open"
+			| "delete-before-rollback-open"
 			| "close-on-open"
 			| "close-after-lock" = "supported",
+		databaseMode?: "compatible" | "exact",
 	) {
 		if (stores.has(name)) throw new Error("Duplicate test store");
 		let blockNextOpen = capability === "blocked-open";
@@ -489,6 +546,11 @@ const harness = {
 					open: (name, version) => {
 						openCalls += 1;
 						const request = indexedDB.open(name, version);
+						if (capability === "delete-before-rollback-open" && version === 2) {
+							request.addEventListener("error", () => {
+								if (request.error?.name === "VersionError") indexedDB.deleteDatabase(name);
+							}, { once: true });
+						}
 						opensSettled.push(
 							new Promise<void>((resolve) => {
 								request.addEventListener(
@@ -551,6 +613,7 @@ const harness = {
 									}
 								: navigator.locks,
 				secureContext: capability !== "insecure" && isSecureContext,
+				...(databaseMode ? { databaseMode } : {}),
 			}),
 		);
 	},
@@ -661,11 +724,11 @@ const harness = {
 	async settleOpens() {
 		await Promise.all(opensSettled);
 	},
-	async upgrade(scope: keyof typeof scopes) {
+	async upgrade(scope: keyof typeof scopes, version = 3) {
 		await new Promise<void>((resolve, reject) => {
 			const request = indexedDB.open(
 				`interiors-editor-projects:${scopes[scope]}`,
-				3,
+				version,
 			);
 			request.onerror = () => reject(request.error);
 			request.onsuccess = () => {

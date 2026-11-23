@@ -85,6 +85,16 @@ fun Application.catalogRoutes(repository: CatalogReadRepository) {
     }
 }
 
+// Old publications remain immutable in PostgreSQL. Withdrawal applies to HTTP delivery.
+private val withdrawnResourceHashes = setOf(
+    "b4a730f48ae1d8ec04c94ef99534002d381afa258144464b4df8892889f34eed", // armchair-kursi-sofa.glb
+    "8509df74641cd762851eff7ed493c1c931efd986752fe13d83ce9508ec311ec4", // armchair-kursi-sofa.png
+    "9dd295594623edf797cee3d4da1818802d723b404df51687d6ca1796f51b4608", // wooden-cabinet.glb
+    "bded617fc7d3464f9102883d9da1d06ea76b0d76a230ae77feeeb78e9b8e83da", // wooden-cabinet.png
+    "289c4d597eb5f38e7260afad2499d6e07a174261d613e8db28f260d40a0149e0", // zen-dining-chair.glb
+    "11d2e14bea78f4e5961f5e02c3d24b80a3c4b4899ed55ac77d92d10af36e4e47", // zen-dining-chair.png
+)
+
 private suspend fun serveResource(call: ApplicationCall, repository: CatalogReadRepository, headOnly: Boolean) {
     if (prohibitedRequest(call)) return
     val hash = call.parameters["hash"].orEmpty()
@@ -92,6 +102,7 @@ private suspend fun serveResource(call: ApplicationCall, repository: CatalogRead
         empty(call, HttpStatusCode.BadRequest)
         return
     }
+    if (hash in withdrawnResourceHashes) return empty(call, HttpStatusCode.Gone)
     val resource = repository.resourceMetadata(hash)
     if (resource == null) {
         empty(call, HttpStatusCode.NotFound)

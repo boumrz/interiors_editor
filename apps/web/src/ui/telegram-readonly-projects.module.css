@@ -14,12 +14,12 @@
 .header p { max-width: 40rem; margin-block: 0; line-height: 1.5; }
 .eyebrow { color: var(--muted, #667085); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
 .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
-.shell button { min-height: 2.75rem; border: 1px solid var(--line, #b8b7b2); border-radius: 0.55rem; padding: 0.7rem 0.85rem; background: var(--surface, #ffffff); color: var(--ink, #172033); font: inherit; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; cursor: pointer; }
+.shell button { min-height: 2.75rem; border: 1px solid var(--line, #b8b7b2); border-radius:var(--editor-host-radius, 0.55rem); padding: 0.7rem 0.85rem; background: var(--surface, #ffffff); color: var(--ink, #172033); font: inherit; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; cursor: pointer; }
 .shell button:focus-visible { outline: 3px solid var(--blue, #2563eb); outline-offset: 3px; }
 .shell button:disabled { cursor: default; opacity: 0.55; }
 .notice { margin: 0; border-left: 3px solid var(--blue, #2563eb); padding: 1rem; background: var(--surface, #ffffff); line-height: 1.5; }
 .projects { display: grid; gap: 0.8rem; margin: 0; padding: 0; list-style: none; }
-.card { display: grid; gap: 1rem; min-width: 0; padding: 1.1rem; border: 1px solid var(--line-soft, #deddd7); border-radius: 0.75rem; background: var(--surface, #ffffff); }
+.card { display: grid; gap: 1rem; min-width: 0; padding: 1.1rem; border: 1px solid var(--line-soft, #deddd7); border-radius:var(--editor-host-radius, 0.75rem); background: var(--surface, #ffffff); }
 .card h2 { margin: 0.3rem 0 0; font-size: 1.15rem; line-height: 1.35; }
 .cardLabel { margin: 0; color: var(--muted, #667085); font-size: 0.8rem; line-height: 1.4; }
 .shell .prepare { border-color: var(--editor-host-primary-fill, var(--blue, #2563eb)); background: var(--editor-host-primary-fill, var(--blue, #2563eb)); color: var(--editor-host-on-primary, #ffffff); }

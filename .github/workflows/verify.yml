@@ -44,14 +44,19 @@ jobs:
         run: npm install --global pnpm@11.20.0
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
-      - name: Install the browser used by the existing phone suites
-        run: pnpm --filter @interiors/web exec playwright install --with-deps chrome
+      - name: Install browsers for phone and Telegram analytics checks
+        run: pnpm --filter @interiors/web exec playwright install --with-deps chrome webkit
       - run: pnpm run lint
       - run: pnpm run check:architecture
       - run: pnpm run typecheck
       - run: pnpm run test
       - run: pnpm run build
       - run: pnpm run test:delivery
+      - name: Verify daily totals and device consent in Chrome and WebKit
+        working-directory: apps/web
+        run: |
+          node --test scripts/build-telegram-analytics.test.mjs
+          pnpm exec node scripts/run-telegram-analytics.mjs
       - run: pnpm run test:e2e
       - name: Build the configured Telegram production target
         if: inputs.package_release == true
@@ -61,6 +66,7 @@ jobs:
           INTERIORS_TELEGRAM_ENVIRONMENT: production
           INTERIORS_TELEGRAM_LINK: https://t.me/InteriorsEditorBot?startapp
           INTERIORS_WEB_URL: https://www.domiknote.ru/
+          INTERIORS_EXACT_FLOOR_YAW: '1'
         run: pnpm exec rspack build --mode production --config rspack.telegram.config.mjs
       - name: Seal both tested frontend outputs into one release
         if: inputs.package_release == true

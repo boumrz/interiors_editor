@@ -1,5 +1,7 @@
 import type { Object3D } from "three";
 
+import { greyboxShapeTemplates, type AdditionalGreyboxKind } from "./greybox-shape-templates";
+
 import type {
 	RectangularRoomWebGlScene,
 	SceneBox,
@@ -230,6 +232,15 @@ export function furnitureGreyboxPartsFor(
 	if (!detailed || !furnitureKind || furnitureKind === "generic") {
 		return [part("body", item)];
 	}
+	if (isAdditionalGreyboxKind(furnitureKind)) {
+		return greyboxShapeTemplates[furnitureKind].map(([x, y, z, width, height, depth, tone]) => part("body", {
+			...sceneBoxAtLocalOffset(item, (x + width / 2 - 0.5) * item.widthM, (z + depth / 2 - 0.5) * item.depthM),
+			centerYM: bottomOf(item) + (y + height / 2) * item.heightM,
+			widthM: width * item.widthM,
+			heightM: height * item.heightM,
+			depthM: depth * item.depthM,
+		}, tone));
+	}
 	if (furnitureKind === "table") {
 		return tablePartsFor(item);
 	}
@@ -242,7 +253,48 @@ export function furnitureGreyboxPartsFor(
 	if (furnitureKind === "storage") {
 		return storagePartsFor(item);
 	}
+	if (furnitureKind === "bath") {
+		const floorHeight = item.heightM * 0.29;
+		const rimHeight = item.heightM - floorHeight;
+		const rimWidth = item.widthM * 0.12;
+		const rimDepth = item.depthM * 0.15;
+		const rimCenterY = bottomOf(item) + floorHeight + rimHeight / 2;
+		return [
+			part("body", { ...item, heightM: floorHeight, centerYM: bottomOf(item) + floorHeight / 2 }, "shadow"),
+			...[-1, 1].map((side) => part("body", {
+				...sceneBoxAtLocalOffset(item, side * (item.widthM - rimWidth) / 2, 0),
+				widthM: rimWidth,
+				heightM: rimHeight,
+				centerYM: rimCenterY,
+			}, "highlight")),
+			...[-1, 1].map((side) => part("body", {
+				...sceneBoxAtLocalOffset(item, 0, side * (item.depthM - rimDepth) / 2),
+				widthM: item.widthM - 2 * rimWidth,
+				depthM: rimDepth,
+				heightM: rimHeight,
+				centerYM: rimCenterY,
+			}, "highlight")),
+		];
+	}
+	if (furnitureKind === "washer" || furnitureKind === "mirror" || furnitureKind === "sconce") {
+		const frontDepth = item.depthM * 0.14;
+		const front = sceneBoxAtLocalOffset(item, 0, (item.depthM - frontDepth) / 2);
+		const body = sceneBoxAtLocalOffset(item, 0, -frontDepth / 2);
+		return [
+			part("body", { ...body, depthM: item.depthM - frontDepth }),
+			part("body", {
+				...front,
+				widthM: item.widthM * (furnitureKind === "washer" ? 0.57 : 0.82),
+				heightM: item.heightM * (furnitureKind === "washer" ? 0.49 : 0.82),
+				depthM: frontDepth,
+			}, furnitureKind === "washer" ? "shadow" : "highlight"),
+		];
+	}
 	return sofaPartsFor(item);
+}
+
+function isAdditionalGreyboxKind(kind: string): kind is AdditionalGreyboxKind {
+	return Object.hasOwn(greyboxShapeTemplates, kind);
 }
 
 function tablePartsFor(item: SceneBox): readonly FurnitureGreyboxPart[] {

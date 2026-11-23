@@ -1,3 +1,4 @@
+import { installReturningWebProfile } from "./accepted-web-license";
 import {
 	chromium,
 	devices,
@@ -214,6 +215,7 @@ async function openPersistentPhone(testInfo: TestInfo, suffix: string) {
 			serviceWorkers: "block",
 		},
 	);
+	await installReturningWebProfile(context, testInfo.project.use.baseURL);
 	const page = context.pages()[0] ?? (await context.newPage());
 	await installCatalogGatewayFake(page);
 	return { context, page };
@@ -302,6 +304,7 @@ async function openPersistentShortPhone(testInfo: TestInfo, suffix: string) {
 			viewport: { height: 568, width: 320 },
 		},
 	);
+	await installReturningWebProfile(context, testInfo.project.use.baseURL);
 	const page = context.pages()[0] ?? (await context.newPage());
 	await installCatalogGatewayFake(page);
 	return { context, page };
@@ -2114,11 +2117,11 @@ test("PROJECT-E2E-04: the offline catalogue uses tappable categories and visual 
 	).toBeVisible();
 	await catalogue.getByRole("button", { name: "Мебель", exact: true }).click();
 	await expect(catalogue.getByTestId("catalog-result-count")).toHaveText(
-		"8 предметов",
+		"5 предметов",
 	);
 	await expect(
 		catalogue.getByRole("img", { name: /Превью предмета/ }),
-	).toHaveCount(8);
+	).toHaveCount(5);
 	const previewBounds = await catalogue
 		.getByRole("img", { name: /Превью предмета/ })
 		.first()

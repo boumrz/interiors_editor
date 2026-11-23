@@ -224,6 +224,7 @@ class AcquisitionFaultStore extends TelegramScopeStore {
 		return super.run((access) =>
 			operation({
 				scope: access.scope,
+				databaseVersion: access.databaseVersion,
 				signal: access.signal,
 				reserveId: (kind) => access.reserveId(kind),
 				transact: async (names, mode, work) => {

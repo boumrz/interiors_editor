@@ -1,3 +1,4 @@
+import { DoorSwingPicker } from "./door-swing-picker";
 import type { ReleaseRecoveryRecord } from "../app/release-startup";
 import { LegacyStartupRecoveryNotice } from "./legacy-startup-recovery";
 import type { EditorNavigationProtection } from "./editor-host-boundary";
@@ -52,7 +53,7 @@ import {
 	alphaParametricItemColors,
 	assessParametricFloorItemPlacement,
 	findRoomForFloorItem,
-	rotationStepForYawRadians,
+	floorYawFieldsForRadians,
 	yawRadiansFor,
 } from "../domain/parametric-item";
 import {
@@ -115,6 +116,12 @@ import {
 } from "./editor-plan-presentation";
 import { type EditorViewport, initialEditorViewport } from "./editor-viewport";
 import inspectorStyles from "./InspectorPanels.module.css";
+import { ItemWallDistanceFields } from "./ItemWallDistances";
+import { itemWallDistancePositionFor, itemWallDistancesFor } from "./item-wall-distances";
+import { EditorModalSheet } from "./EditorModalSheet";
+import { SheetHeader } from "./SheetHeader";
+import sheetStyles from "./SheetHeader.module.css";
+import { createFloorItemWallSnap } from "./floor-item-wall-snap";
 import { itemCountCopy } from "./item-count-copy";
 import { openingCreationDialogKeyAction } from "./opening-creation-dialog";
 import {
@@ -145,9 +152,11 @@ import { projectDeletionTargetText } from "./project-deletion-copy";
 import { RenameProjectDialog } from "./RenameProjectDialog";
 import { ResourceRepairControls } from "./ResourceRepairControls";
 import { RoomScene3d } from "./RoomScene3d";
+import { TelegramGreyboxCatalog, telegramGreyboxKindForLabel, type TelegramGreyboxPreset } from "./telegram-greybox-catalog";
+import { TelegramItemColor } from "./telegram-item-color";
 import { roomTypeLabels } from "./room-type-labels";
 import { moveDoorOpeningInProject } from "../domain/door-opening-project";
-import { degreesForYawRadians, yawRadiansFromDegrees } from "./rotation-angle";
+import { degreesForYawRadians, preciseYawRadiansFromDegrees, yawRadiansFromDegrees } from "./rotation-angle";
 import { SaveFailureNotice } from "./SaveFailureNotice";
 import {
 	isWallMoveGestureSupported,
@@ -201,6 +210,10 @@ interface AppShellProps {
 	readonly fileTransfer?: LocalFileTransferPort;
 	readonly sourceRecovery?: ProjectSourceRecoveryPort;
 	readonly catalogGateway?: CatalogGatewayPort;
+	readonly localGreyboxCatalog?: boolean;
+	readonly exactFloorYaw?: boolean;
+	readonly projectsSupplement?: ReactNode;
+	readonly onOpenSettings?: (restoreFocus?: HTMLElement) => void;
 	readonly controller: ProjectController;
 	readonly drawingDimensionPreferences?: DrawingDimensionPreferencesPort;
 	readonly pwaBrowseCache?: PwaBrowseCache;
@@ -215,6 +228,7 @@ interface DimensionFields {
 }
 
 interface OpeningDraftFields {
+	readonly swingSide?: "left" | "right";
 	readonly baseRevisionId: string;
 	readonly isMove?: boolean;
 	readonly heightMm: string;
@@ -403,6 +417,13 @@ const initialItemFields: ItemFields = {
 };
 const DEFAULT_DRAW_WALL_THICKNESS_MM = 100;
 const PRELOADED_GLB_DEFINITION_PREFIX = "preloaded-glb:";
+
+function ItemInspectorActions({ telegram, children }: {
+	readonly telegram: boolean;
+	readonly children: ReactNode;
+}) {
+	return telegram ? <div className={styles.inspectorItemActions}>{children}</div> : children;
+}
 
 function CatalogCategoryGlyph({
 	category,
@@ -1383,6 +1404,7 @@ function PwaInstallGuide({
 }
 
 function WriterLeaseNotice({
+	plainLabels = false,
 	error,
 	hasRecoveryCopy,
 	isConfirming,
@@ -1394,6 +1416,7 @@ function WriterLeaseNotice({
 	onToggleRecoveryCopy,
 	onRecoveryExport,
 }: {
+	readonly plainLabels?: boolean;
 	readonly error?: string;
 	readonly hasRecoveryCopy: boolean;
 	readonly isConfirming: boolean;
@@ -1440,13 +1463,13 @@ function WriterLeaseNotice({
 						Подтвердите действие или отмените его — сохранённая версия не
 						изменится.
 					</p>
-					<button disabled={isTakingOver} onClick={onConfirm} type="button">
+					<button data-editor-action="confirm" disabled={isTakingOver} onClick={onConfirm} type="button">
 						{isTakingOver
 							? "Перехватываем редактирование…"
-							: "Подтвердить перехват"}
+							: plainLabels ? "Подтвердить" : "Подтвердить перехват"}
 					</button>
-					<button disabled={isTakingOver} onClick={onCancel} type="button">
-						Отмена
+					<button data-editor-action="cancel" disabled={isTakingOver} onClick={onCancel} type="button">
+						{plainLabels ? "Отменить" : "Отмена"}
 					</button>
 				</>
 			) : (
@@ -1476,6 +1499,10 @@ export function AppShell({
 	fileTransfer,
 	sourceRecovery,
 	catalogGateway,
+	localGreyboxCatalog = false,
+	exactFloorYaw = false,
+	projectsSupplement,
+	onOpenSettings,
 	controller,
 	drawingDimensionPreferences,
 	pwaBrowseCache,
@@ -1489,6 +1516,30 @@ export function AppShell({
  // Existing browser storage retains its editing behavior while recovery protections remain active.
  const fullTransientNavigationProtection = hostNavigation !== undefined || (navigationProtection !== undefined && editorStorageNamespace === "browser-registered");
 	const [state, setState] = useState<ProjectScreenState>(controller.snapshot());
+	const projectDirectoryRef = useRef<HTMLUListElement>(null);
+	useEffect(() => {
+		if (state.kind !== "projects") return;
+		const openMenus = () => projectDirectoryRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]") ?? [];
+		const closeOutsideMenus = (event: MouseEvent) => {
+			for (const menu of openMenus()) {
+				if (event.target instanceof Node && !menu.contains(event.target)) menu.open = false;
+			}
+		};
+		const dismissMenu = (event: globalThis.KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			for (const menu of openMenus()) {
+				menu.open = false;
+				menu.querySelector("summary")?.focus();
+				event.preventDefault();
+			}
+		};
+		document.addEventListener("click", closeOutsideMenus);
+		document.addEventListener("keydown", dismissMenu);
+		return () => {
+			document.removeEventListener("click", closeOutsideMenus);
+			document.removeEventListener("keydown", dismissMenu);
+		};
+	}, [state.kind]);
 	const transientBoundaries = useRef(new Set<EditorTransientBoundary>());
 	const lifecycleRef = useRef(hostLifecycle); lifecycleRef.current = hostLifecycle;
 	const leaveFocusActive = useRef(false);
@@ -1689,12 +1740,13 @@ export function AppShell({
 	};
 	const [activeTool, setActiveTool] = useState<EditorTool>("select");
 	const [itemPlacementYawRadians, setItemPlacementYawRadians] = useState(0);
+	const retainedPlacementPoint = useRef<{ readonly xMm: number; readonly zMm: number } | undefined>(undefined);
 	const changeItemPlacementYaw = useCallback((value: number) => {
 		if (Number.isFinite(value))
 			setItemPlacementYawRadians(
-				yawRadiansFor({ yawStep: rotationStepForYawRadians(value) }),
+				yawRadiansFor(floorYawFieldsForRadians(value, exactFloorYaw)),
 			);
-	}, []);
+	}, [exactFloorYaw]);
 	const pendingCreationRef = useRef<
 		| { projectId: string; revisionId: string; baseRevisionId: string }
 		| undefined
@@ -1885,7 +1937,7 @@ export function AppShell({
 	}, [isOpeningDialogOpen]);
 
 	useLayoutEffect(() => {
-		if (!isOpeningDialogOpen) return;
+		if (!isOpeningDialogOpen || hostNavigation) return;
 		const canvas = editorCanvasRef.current;
 		const dialog = openingCreationDialogRef.current;
 		if (!canvas || !dialog) return;
@@ -1908,9 +1960,11 @@ export function AppShell({
 				if (!wasInert) child.removeAttribute("inert");
 			}
 		};
-	}, [isOpeningDialogOpen]);
+	}, [hostNavigation, isOpeningDialogOpen]);
 
 	const [isBuiltInCatalogOpen, setIsBuiltInCatalogOpen] = useState(false);
+	const [isModelLibrarySelected, setIsModelLibrarySelected] = useState(false);
+	const CatalogAuthoring = localGreyboxCatalog ? "div" : "details";
 	const [isPlaceholderComposerOpen, setIsPlaceholderComposerOpen] =
 		useState(false);
 	const [placeholderFields, setPlaceholderFields] =
@@ -1949,7 +2003,7 @@ export function AppShell({
 		useState<CatalogPublicationUiState>({ kind: "idle" });
 	const [preloadedGlbCatalogAssets, setPreloadedGlbCatalogAssets] = useState<
 		readonly PreloadedGlbCatalogAsset[]
-	>(localPreloadedGlbCatalogAssets);
+	>(localGreyboxCatalog ? [] : localPreloadedGlbCatalogAssets);
 	const [catalogThumbnailUrls, setCatalogThumbnailUrls] = useState<
 		Readonly<Record<string, string>>
 	>({});
@@ -2057,6 +2111,7 @@ export function AppShell({
 	);
 	const projectsHeadingRef = useRef<HTMLHeadingElement>(null);
 	const editorHeaderMenuRef = useRef<HTMLButtonElement>(null);
+	const sceneColorTriggerRef = useRef<HTMLButtonElement>(null);
 	const editorActionMenuRef = useRef<HTMLDialogElement>(null);
 	const editorActionDockRef = useRef<HTMLDivElement>(null);
 	const selectionPropertiesTriggerRef = useRef<HTMLButtonElement>(null);
@@ -2187,7 +2242,7 @@ export function AppShell({
 		};
 	}, [controller]);
 	useEffect(() => {
-		if (!catalogGateway || preloadedGlbCatalogAssets.length === 0) {
+		if (localGreyboxCatalog || !catalogGateway || preloadedGlbCatalogAssets.length === 0) {
 			setCatalogThumbnailUrls({});
 			return;
 		}
@@ -2225,7 +2280,7 @@ export function AppShell({
 			abortController.abort();
 			for (const url of objectUrls) URL.revokeObjectURL(url);
 		};
-	}, [catalogGateway, preloadedGlbCatalogAssets]);
+	}, [catalogGateway, localGreyboxCatalog, preloadedGlbCatalogAssets]);
 	useEffect(() => {
 		let cancelled = false;
 		void controller
@@ -2607,13 +2662,13 @@ export function AppShell({
 	}, [project, vertexDeletionCandidate]);
 	const filteredPreloadedCatalogAssets = useMemo(
 		() =>
-			catalogCategory === "custom"
+			localGreyboxCatalog || catalogCategory === "custom"
 				? []
 				: filterPreloadedGlbCatalogAssets(preloadedGlbCatalogAssets, {
 						query: catalogQuery,
 						section: catalogCategory,
 					}),
-		[catalogCategory, catalogQuery, preloadedGlbCatalogAssets],
+		[catalogCategory, catalogQuery, localGreyboxCatalog, preloadedGlbCatalogAssets],
 	);
 	const customCatalogAssets = useMemo(
 		() =>
@@ -2640,9 +2695,9 @@ export function AppShell({
 		(asset) =>
 			asset.definition.assetDefinitionId === selectedCustomCatalogAssetId,
 	);
-	const selectedPreloadedCatalogAsset = preloadedGlbCatalogAssets.find(
-		(asset) => asset.id === selectedPreloadedCatalogAssetId,
-	);
+	const selectedPreloadedCatalogAsset = localGreyboxCatalog
+		? undefined
+		: preloadedGlbCatalogAssets.find((asset) => asset.id === selectedPreloadedCatalogAssetId);
 	const selectedPreloadedCatalogResourceState = selectedPreloadedCatalogAsset
 		? preloadedGlbResources[selectedPreloadedCatalogAsset.id]
 		: undefined;
@@ -2691,18 +2746,22 @@ export function AppShell({
 		const depthMm = positiveInteger(source.depthMm);
 		const heightMm = positiveInteger(source.heightMm);
 		const label = source.label.trim();
+		const furnitureKind = localGreyboxCatalog && !customGlbPlacementDraft && !reusedItemDefinitionId
+			? telegramGreyboxKindForLabel(label)
+			: undefined;
 		return widthMm && depthMm && heightMm && label.length > 0
 			? {
 					color: source.color,
+					...(furnitureKind === undefined ? {} : { furnitureKind }),
 					yawRadians: itemPlacementYawRadians,
-					yawStep: rotationStepForYawRadians(itemPlacementYawRadians),
+					...floorYawFieldsForRadians(itemPlacementYawRadians, exactFloorYaw),
 					depthMm,
 					heightMm,
 					label,
 					widthMm,
 				}
 			: undefined;
-	}, [customGlbPlacementDraft, itemFields, itemPlacementYawRadians]);
+	}, [customGlbPlacementDraft, exactFloorYaw, itemFields, itemPlacementYawRadians, localGreyboxCatalog, reusedItemDefinitionId]);
 	const metrics = useMemo(
 		() =>
 			project?.schemaVersion === 1
@@ -2732,8 +2791,8 @@ export function AppShell({
 		({ room }) => room.roomId === selectedRoomPropertyId,
 	);
 	const threeDimensionalScene = useMemo(
-		() => (project ? projectRectangularRoomForWebGl(project) : undefined),
-		[project],
+		() => project ? projectRectangularRoomForWebGl(project, localGreyboxCatalog ? telegramGreyboxKindForLabel : undefined, hostNavigation !== undefined) : undefined,
+		[project, localGreyboxCatalog, hostNavigation],
 	);
 	const threeDimensionalOrigin = useMemo(() => {
 		if (!project || project.level.vertices.length === 0) return undefined;
@@ -2742,6 +2801,10 @@ export function AppShell({
 			zMm: Math.min(...project.level.vertices.map((vertex) => vertex.zMm)),
 		};
 	}, [project]);
+	const floorItemWallSnap = useMemo(
+		() => hostNavigation && project?.schemaVersion === 1 ? createFloorItemWallSnap(project) : undefined,
+		[hostNavigation, project],
+	);
 	const planCharacteristics = useMemo(() => {
 		if (!project || project.level.vertices.length === 0) {
 			return undefined;
@@ -2770,6 +2833,9 @@ export function AppShell({
 		activeTool === "item" && itemPlacementDraft !== undefined;
 	// Both views expose placement identity and cancellation from the first choice.
 	const isItemPlacementSurfaceActive = isItemPlacementActive;
+	useLayoutEffect(() => {
+		if (!isItemPlacementActive) retainedPlacementPoint.current = undefined;
+	}, [isItemPlacementActive]);
 	const isEditorDockVisible =
 		!isItemPlacementSurfaceActive && openingCreationDraft === undefined;
 	useLayoutEffect(() => {
@@ -3011,14 +3077,13 @@ export function AppShell({
 	}, [project]);
 
 	useEffect(() => {
-		if (
-			!isBuiltInCatalogOpen ||
-			!window.matchMedia("(min-width: 600px)").matches
-		) {
-			return;
+		if (!isBuiltInCatalogOpen) return;
+		if (localGreyboxCatalog) {
+			catalogDialogRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus({ preventScroll: true });
+		} else if (window.matchMedia("(min-width: 600px)").matches) {
+			catalogSearchInputRef.current?.focus();
 		}
-		catalogSearchInputRef.current?.focus();
-	}, [isBuiltInCatalogOpen]);
+	}, [isBuiltInCatalogOpen, localGreyboxCatalog]);
 
 	useEffect(() => {
 		if (
@@ -3785,7 +3850,7 @@ export function AppShell({
 		)
 			return false;
 		setDimensionError(undefined);
-		const result = await controller.rotateParametricFloorItem(input);
+		const result = await controller.rotateParametricFloorItem({ ...input, exact: exactFloorYaw });
 		if (result.kind === "rejected") {
 			setDimensionError(errorCopy(result.reasonCode));
 			return false;
@@ -3809,12 +3874,18 @@ export function AppShell({
 		) {
 			return;
 		}
-		const yawRadians = yawRadiansFromDegrees(selectedItemAngleRaw);
+		const exact = exactFloorYaw || "yawMilliDeg" in selectedItem;
+		const yawRadians = exact ? preciseYawRadiansFromDegrees(selectedItemAngleRaw) : yawRadiansFromDegrees(selectedItemAngleRaw);
 		if (yawRadians === undefined) {
-			setDimensionError("Укажите конечный угол поворота в градусах.");
+			setDimensionError(exact ? "Укажите угол в градусах с точностью до трёх знаков после запятой." : "Укажите конечный угол поворота в градусах.");
 			return;
 		}
+		const canonicalAngle = yawRadiansFor(floorYawFieldsForRadians(yawRadians, exact));
 		setDimensionError(undefined);
+		if (exact && canonicalAngle === yawRadiansForEditorFloorAsset(selectedItem)) {
+			setSelectedItemAngleRaw(degreesForYawRadians(canonicalAngle));
+			return;
+		}
 		const accepted = await rotateItem({
 			assetInstanceId: selectedItem.assetInstanceId,
 			yawRadians,
@@ -3822,9 +3893,7 @@ export function AppShell({
 		if (accepted) {
 			setSelectedItemAngleRaw(
 				degreesForYawRadians(
-					yawRadiansFor({
-						yawStep: rotationStepForYawRadians(yawRadians),
-					}),
+					canonicalAngle,
 				),
 			);
 		}
@@ -3900,6 +3969,7 @@ export function AppShell({
 	};
 
 	const loadCatalogPublication = useCallback(async () => {
+		if (localGreyboxCatalog) return;
 		catalogPublicationAbortRef.current?.abort();
 		setSelectedPreloadedCatalogAssetId(undefined);
 		// Local declared furniture is available before, during and after a
@@ -3939,16 +4009,13 @@ export function AppShell({
 		if (catalogPublicationAbortRef.current === abortController) {
 			catalogPublicationAbortRef.current = undefined;
 		}
-	}, [catalogGateway]);
+	}, [catalogGateway, localGreyboxCatalog]);
 
-	const openBuiltInCatalog = () => {
+	const openBuiltInCatalog = (trigger: HTMLElement | null) => {
 		if (isEditorReadOnly) {
 			return;
 		}
-		restoreFocusRef.current =
-			document.activeElement instanceof HTMLElement
-				? document.activeElement
-				: undefined;
+		restoreFocusRef.current = trigger ?? undefined;
 		setActiveTool("select");
 		setSelectedItemId(undefined);
 		// A wall model chosen from the catalog keeps the wall the user selected.
@@ -3960,7 +4027,32 @@ export function AppShell({
 		setPlaceholderComposerError(undefined);
 		setPlaceholderFields(itemFields);
 		setIsBuiltInCatalogOpen(true);
-		void loadCatalogPublication();
+		setIsModelLibrarySelected(false);
+		if (localGreyboxCatalog) setCatalogQuery("");
+		else void loadCatalogPublication();
+	};
+
+	const beginLocalGreyboxPlacement = (preset: TelegramGreyboxPreset): boolean => {
+		if (preset.anchorClass !== "floor" || project?.schemaVersion !== 1 || isEditorReadOnly || isMutationBlocked) return false;
+		setWallItemDraft(undefined);
+		setWallItemDraftFields(undefined);
+		setCatalogWallModelDraft(undefined);
+		setSelectedWallId(undefined);
+		setSelectedOpeningId(undefined);
+		setItemFields({
+			color: preset.color,
+			depthMm: String(preset.depthMm),
+			heightMm: String(preset.heightMm),
+			label: preset.label,
+			widthMm: String(preset.widthMm),
+		});
+		setItemPlacementYawRadians(0);
+		setActiveTool("item");
+		setDimensionError(undefined);
+		setCustomGlbPlacementDraft(undefined);
+		setReusedItemDefinitionId(undefined);
+		closeOverlay();
+		return true;
 	};
 
 	const beginPlaceholderPlacement = () => {
@@ -4094,10 +4186,22 @@ export function AppShell({
 		setSelectedCustomCatalogAssetId(asset.definition.assetDefinitionId);
 	};
 
+	const openOwnModelLibrary = () => {
+		setIsModelLibrarySelected(true);
+		setCatalogCategory("custom");
+	};
+
+	const returnToLocalGreyboxCatalog = () => {
+		discardCustomGlbImport();
+		setSelectedCustomCatalogAssetId(undefined);
+		setIsModelLibrarySelected(false);
+	};
+
 	const startPreloadedCatalogPlacement = (
 		asset: PreloadedGlbCatalogAsset,
 		resource: CustomGlbResource,
 	) => {
+		if (localGreyboxCatalog) return;
 		const existingDefinition = customGlbResourceManifest.find(
 			(definition) => definition.resourceHash === resource.resourceHash,
 		);
@@ -4266,6 +4370,7 @@ export function AppShell({
 
 	const importCustomGlbFile = async (file: File | undefined) => {
 		if (!file) return;
+		if (localGreyboxCatalog) setSelectedCustomCatalogAssetId(undefined);
 		const importRequestId = ++customGlbImportRequestRef.current;
 		++customGlbPlacementRequestRef.current;
 		customGlbDimensionsEditedByUserRef.current = false;
@@ -4465,13 +4570,16 @@ export function AppShell({
 					});
 					setItemPlacementYawRadians(0);
 					setActiveTool("item");
+					if (localGreyboxCatalog) discardCustomGlbImport();
 					closeOverlay();
 					return;
 				}
 				setDimensionError(
 					result.kind === "rejected"
 						? errorCopy(result.reasonCode)
-						: "Не удалось добавить модель в «Кастомное». Повторите импорт.",
+						: localGreyboxCatalog
+							? "Не удалось добавить свою модель. Повторите импорт."
+							: "Не удалось добавить модель в «Кастомное». Повторите импорт.",
 				);
 			});
 	};
@@ -4555,15 +4663,34 @@ export function AppShell({
 		++customGlbImportRequestRef.current;
 		++customGlbPlacementRequestRef.current;
 		setIsBuiltInCatalogOpen(false);
+		setIsModelLibrarySelected(false);
 		const restoreTarget = restoreFocusRef.current;
 		restoreFocusRef.current = undefined;
-		queueMicrotask(() => restoreTarget?.focus());
+		queueMicrotask(() => {
+			const target = restoreTarget?.isConnected && restoreTarget.getClientRects().length
+				? restoreTarget
+				: editorHeaderMenuRef.current;
+			target?.focus({ preventScroll: true });
+		});
 	};
 
 	const trapOverlayFocus = (event: KeyboardEvent<HTMLElement>) => {
 		if (event.key === "Escape") {
 			event.preventDefault();
 			if (isNavigationProtected) requestEditorBack(false, closeOverlay); else closeOverlay();
+			return;
+		}
+		if (!localGreyboxCatalog || event.key !== "Tab") return;
+		const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+			"button, input, select, textarea, summary, a[href], [tabindex]",
+		)).filter(element => element.tabIndex >= 0 && !element.matches(":disabled") && element.getClientRects().length > 0);
+		const first = controls[0], last = controls.at(-1);
+		if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+			event.preventDefault();
+			last?.focus();
+		} else if (!event.shiftKey && document.activeElement === last) {
+			event.preventDefault();
+			first?.focus();
 		}
 	};
 
@@ -4599,6 +4726,7 @@ export function AppShell({
 		const roomId = findRoomForFloorItem(project, {
 			depthMm: draft.depthMm,
 			yawStep: draft.yawStep,
+						yawMilliDeg: draft.yawMilliDeg,
 			widthMm: draft.widthMm,
 			xMm: point.xMm,
 			zMm: point.zMm,
@@ -4625,6 +4753,7 @@ export function AppShell({
 						color: draft.color,
 						depthMm: draft.depthMm,
 						yawStep: draft.yawStep,
+						yawMilliDeg: draft.yawMilliDeg,
 						heightMm: draft.heightMm,
 						label: draft.label,
 						roomId,
@@ -4648,6 +4777,7 @@ export function AppShell({
 							color: draft.color,
 							glbBytes: customGlbPlacementDraft.bytes,
 							yawStep: draft.yawStep,
+						yawMilliDeg: draft.yawMilliDeg,
 							roomId,
 							xMm: point.xMm,
 							zMm: point.zMm,
@@ -4661,6 +4791,7 @@ export function AppShell({
 					color: draft.color,
 					depthMm: draft.depthMm,
 					yawStep: draft.yawStep,
+						yawMilliDeg: draft.yawMilliDeg,
 					heightMm: draft.heightMm,
 					label: draft.label,
 					roomId,
@@ -4868,6 +4999,7 @@ export function AppShell({
 		>,
 	) => {
 		if (
+			localGreyboxCatalog ||
 			project?.schemaVersion !== 1 ||
 			item.assetDefinitionId === undefined ||
 			isEditorReadOnly ||
@@ -4912,7 +5044,7 @@ export function AppShell({
 	};
 
 	const confirmWallItemPlacement = async () => {
-		if (!wallItemDraft || isEditorReadOnly || isMutationBlocked) return;
+		if (localGreyboxCatalog || !wallItemDraft || isEditorReadOnly || isMutationBlocked) return;
 		const draft = wallItemDraftFromFields(wallItemDraft, wallItemDraftFields);
 		if (!draft) {
 			setDimensionError(
@@ -5457,6 +5589,7 @@ export function AppShell({
 	};
 
 	const addDoorToWall = async (input: {
+		readonly swingSide?: "left" | "right";
 		readonly heightMm: number;
 		readonly offsetMm: number;
 		readonly sillMm: number;
@@ -5621,6 +5754,7 @@ export function AppShell({
 	};
 
 	const updateSelectedDoorOpening = async (input: {
+		readonly swingSide?: "left" | "right";
 		readonly heightMm?: number;
 		readonly offsetMm?: number;
 		readonly openingId: string;
@@ -5684,6 +5818,7 @@ export function AppShell({
 		setDimensionError(undefined);
 		setOpeningDraft({
 			baseRevisionId: state.revisionId,
+			...(opening.kind === "Door" && opening.swingSide ? { swingSide: opening.swingSide } : {}),
 			heightMm: String(opening.heightMm),
 			kind: opening.kind,
 			offsetMm: String(opening.offsetMm),
@@ -5724,6 +5859,7 @@ export function AppShell({
 			return;
 		}
 		await updateSelectedDoorOpening({
+			...(openingDraft.swingSide ? { swingSide: openingDraft.swingSide } : {}),
 			heightMm,
 			offsetMm,
 			openingId: openingDraft.openingId,
@@ -6074,12 +6210,24 @@ export function AppShell({
 	};
 	prepareHostBack.current = suspendForBack;
 	const hasPendingEditorCommand = () => controller.hasPendingPublication() || controller.snapshot().kind === "loading" || controller.snapshot().kind === "saving" || !!projectTransferAbortRef.current || isRepairingCustomGlb || isRemovingUnresolvedCustomGlb || isDeletingProject || isTakingOverWriterLease || [...transientBoundaries.current].some((boundary) => boundary.inspect().hasPendingCommand);
+	const hasTelegramEditorSheet = hostNavigation !== undefined;
+	const canOpenTelegramEditorSheet = hasTelegramEditorSheet && !isExternalSaveFailure;
+	const selectionBehindSheet = isEditorActionMenuOpen || isOpeningDialogOpen
+		|| isDimensionFilterOpen || isPlanInspectorOpen || isRoomDirectoryOpen || isBuiltInCatalogOpen;
 	const requestEditorBack = (explicitProjects = false, onCleanPanelClose?: () => void) => {
 		if (!isNavigationProtected) { void returnToProjects(); return; }
 		if (leaveFocus) { continueEditorDraft(); return; }
 		suspendForBack();
 		const nativePanel = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")].at(-1);
-		const panel = !explicitProjects && (!!onCleanPanelClose || (fullTransientNavigationProtection && (!!nativePanel || isRenameProjectOpen || isEditorActionMenuOpen || isPlanInspectorOpen || isRoomDirectoryOpen || isBuiltInCatalogOpen || isSelectionInspectorExpanded || localFileState.kind !== "idle")));
+		if (!explicitProjects && nativePanel?.hasAttribute("data-scene-color-palette")) {
+			nativePanel.close();
+			resumeTransientViews();
+			return;
+		}
+		const footerToggle = state.kind === "projects"
+			? projectsHeadingRef.current?.closest("section")?.querySelector<HTMLButtonElement>('[data-projects-footer-toggle][aria-expanded="true"]')
+			: undefined;
+		const panel = !explicitProjects && (!!onCleanPanelClose || !!footerToggle || (fullTransientNavigationProtection && (!!nativePanel || isRenameProjectOpen || isEditorActionMenuOpen || (hasTelegramEditorSheet && isOpeningDialogOpen) || isPlanInspectorOpen || isRoomDirectoryOpen || isBuiltInCatalogOpen || isSelectionInspectorExpanded || localFileState.kind !== "idle")));
 		const recoveryExit = !panel ? controller.writerRecoveryCopy?.() : undefined;
 		const decision = editorBackDecision({
 			pending: hasPendingEditorCommand(),
@@ -6095,16 +6243,34 @@ export function AppShell({
 		setHostBackNotice(undefined);
 		if (decision === "close-panel") {
 			if (onCleanPanelClose) onCleanPanelClose();
+			else if (nativePanel && nativePanel === editorActionMenuRef.current) setIsEditorActionMenuOpen(false);
+			else if (hasTelegramEditorSheet && nativePanel?.dataset.telegramSheet === "dimensions") setIsDimensionFilterOpen(false);
 			else if (nativePanel) nativePanel.dispatchEvent(new Event("cancel", { cancelable: true }));
 			else if (isRenameProjectOpen) cancelRenameProject();
 			else if (localFileState.kind !== "idle") localFileSession?.close();
 			else if (isEditorActionMenuOpen) setIsEditorActionMenuOpen(false);
+			else if (hasTelegramEditorSheet && isOpeningDialogOpen && openingCreationDraft) closeOpeningCreationDraft();
+			else if (hasTelegramEditorSheet && isOpeningDialogOpen && openingDraft) cancelOpeningDraft();
 			else if (isRoomDirectoryOpen) closeRoomDirectory();
+			else if (isBuiltInCatalogOpen) closeOverlay();
 			else if (isPlanInspectorOpen) closePlanInspector();
 			else if (isSelectionInspectorExpanded) setIsSelectionInspectorExpanded(false);
-			else closeOverlay();
+			else if (footerToggle) {
+				footerToggle.click();
+				footerToggle.focus();
+			} else closeOverlay();
 		} else if (decision === "projects") { void returnToProjects(); }
 		else { try { hostNavigation?.close(); } catch { setHostBackNotice("Не удалось закрыть приложение. Попробуйте ещё раз."); } }
+	};
+	const closeEditorActionMenu = () => {
+		const close = () => setIsEditorActionMenuOpen(false);
+		if (hasTelegramEditorSheet) requestEditorBack(false, close);
+		else close();
+	};
+	const closeDimensionFilter = () => {
+		const close = () => setIsDimensionFilterOpen(false);
+		if (hasTelegramEditorSheet) requestEditorBack(false, close);
+		else close();
 	};
 	hostBackHandler.current = () => requestEditorBack();
 	const hostBackGuard = leaveFocus ? <EditorLeaveGuard focus={leaveFocus} fallback={editorHeaderMenuRef.current} onContinue={continueEditorDraft} onDiscard={() => {
@@ -6135,7 +6301,7 @@ export function AppShell({
 
 	if (state.kind === "projects") {
 		return (
-			<main data-editor-host={hostNavigation ? "telegram" : undefined} className={styles.startShell}>
+			<main data-editor-host={hostNavigation ? "telegram" : undefined} className={projectsSupplement && !state.recoveryNeeded ? `${styles.startShell} ${styles.projectsWithFooter}` : styles.startShell}>
 				{localFilePanel}
 				{sourceRecoveryPanel}
  {readonlySourceRecoveryPanel}
@@ -6153,6 +6319,7 @@ export function AppShell({
 							Проекты
 						</h1>
 						<p>Планы на этом устройстве</p>
+						{onOpenSettings && <button className={styles.documentsSettings} type="button" onClick={(event) => onOpenSettings(event.currentTarget)}>Настройки</button>}
 					</header>
 					<div
 						className={styles.projectHubActions}
@@ -6190,7 +6357,7 @@ export function AppShell({
 							<button className={styles.secondaryAction} type="button" disabled={projectTransferImport.kind !== "idle"} onClick={() => registeredTransferInputRef.current?.click()}>Импорт файла для переноса</button>
 						</> : null}
 					</div>
-					<input
+					{!hostNavigation ? <><input
 						hidden
 						ref={recoveryDraftInputRef}
 						type="file"
@@ -6208,7 +6375,7 @@ export function AppShell({
 						type="button"
 					>
 						Восстановить несохранённую правку
-					</button>
+					</button></> : null}
 					{projectTransferImport.kind !== "idle" ? (
 						<div
 							className={styles.projectTransferStatus}
@@ -6267,6 +6434,7 @@ export function AppShell({
 						<ul
 							className={state.storageSources ? `${styles.projectDirectory} ${styles.scopedProjectDirectory}` : styles.projectDirectory}
 							data-testid="project-directory"
+							ref={projectDirectoryRef}
 						>
 							{projectDirectoryCards(state.projects, state.storageSources !== undefined).map(({ summary, key, storageLabel, copyLabel, spokenName, ownerConfirmed }) => (
 								<li
@@ -6331,7 +6499,12 @@ export function AppShell({
 											/>
 										</svg>
 									</button>
-									<details className={styles.projectDirectoryActions}>
+									<details className={styles.projectDirectoryActions} onToggle={(event) => {
+										if (!event.currentTarget.open) return;
+										for (const menu of projectDirectoryRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]") ?? []) {
+											if (menu !== event.currentTarget) menu.open = false;
+										}
+									}}>
 										<summary aria-label={`Действия для ${spokenName}`}>
 											<span aria-hidden="true">•••</span>
 										</summary>
@@ -6363,9 +6536,11 @@ export function AppShell({
 							))}
 						</ul>
 					)}
+					{!state.recoveryNeeded ? projectsSupplement : null}
 				</section>
 				{directoryDeletionTarget ? (
 					<ProjectConfirmationDialog
+						plainLabels={hostNavigation !== undefined}
 						label="Удалить проект"
 						title="Удалить проект навсегда?"
 						cancelLabel="Оставить проект"
@@ -6392,7 +6567,7 @@ export function AppShell({
 					pwaUpdate={pwaUpdate}
 				/>
  {readonlyDetails}
- {diagnosticDetails}
+ {hostNavigation ? null : diagnosticDetails}
 			</main>
 		);
 	}
@@ -6400,6 +6575,7 @@ export function AppShell({
 	if (!project) {
 		return (
 			<main
+				data-editor-host={hostNavigation ? "telegram" : undefined}
 				className={
 					state.kind === "recovery-needed"
 						? safetyStyles.page
@@ -6547,7 +6723,7 @@ export function AppShell({
 											<p>
 												Будет создана новая версия без всех недоступных моделей.
 											</p>
-											<button
+											<button data-editor-action="confirm"
 												className={safetyStyles.danger}
 												disabled={
 													isRepairingCustomGlb || isRemovingUnresolvedCustomGlb
@@ -6559,9 +6735,9 @@ export function AppShell({
 											>
 												{isRemovingUnresolvedCustomGlb
 													? "Удаляем недоступные модели…"
-													: "Подтвердить удаление всех недоступных моделей"}
+													: hostNavigation ? "Подтвердить" : "Подтвердить удаление всех недоступных моделей"}
 											</button>
-											<button
+											<button data-editor-action="cancel"
 												className={styles.textAction}
 												disabled={
 													isRepairingCustomGlb || isRemovingUnresolvedCustomGlb
@@ -6571,7 +6747,7 @@ export function AppShell({
 												}
 												type="button"
 											>
-												Отмена
+												{hostNavigation ? "Отменить" : "Отмена"}
 											</button>
 										</div>
 									) : (
@@ -6595,6 +6771,7 @@ export function AppShell({
 							) : null}
 							{isWriterLeaseReadOnly ? (
 								<WriterLeaseNotice
+						plainLabels={hostNavigation !== undefined}
 									onRecoveryExport={() => void downloadRecoveryDraft()}
 									error={writerTakeoverError}
 									hasRecoveryCopy={writerRecoveryCopy !== undefined}
@@ -6632,11 +6809,41 @@ export function AppShell({
 					pwaUpdate={pwaUpdate}
 				/>
  {readonlyDetails}
- {diagnosticDetails}
+ {hostNavigation && state.kind !== "recovery-needed" ? null : diagnosticDetails}
 			</main>
 		);
 	}
 
+	const itemPlacementColor = localGreyboxCatalog && viewMode === "three-dimensional" && isItemPlacementActive &&
+		!customGlbPlacementDraft && reusedItemDefinitionId === undefined ? (
+			<TelegramItemColor
+				color={itemFields.color}
+				context="placement"
+				sceneTriggerRef={viewMode === "three-dimensional" ? sceneColorTriggerRef : undefined}
+				disabled={isEditorReadOnly || isMutationBlocked}
+				onSelect={({ color }) => setItemFields((current) => ({ ...current, color }))}
+			/>
+		) : undefined;
+	const sceneAsset = project.schemaVersion === 1 && viewMode === "three-dimensional"
+		? project.assetInstances.find((item) => item.assetInstanceId === selectedItemId)
+		: undefined;
+	const selectedItemColor = localGreyboxCatalog && sceneAsset && sceneAsset.assetDefinitionId === undefined ? (
+		<TelegramItemColor
+			key={sceneAsset.assetInstanceId}
+			color={sceneAsset.color}
+			context="selected-item"
+			sceneTriggerRef={sceneColorTriggerRef}
+			disabled={isEditorReadOnly || isMutationBlocked || sceneAsset.locked === true}
+			onSelect={({ variantId }) => {
+				setDimensionError(undefined);
+				setItemColorVariantDraft({
+					anchorClass: sceneAsset.anchorClass,
+					assetInstanceId: sceneAsset.assetInstanceId,
+					variantId,
+				});
+			}}
+		/>
+	) : undefined;
 	const isStarterContourVisible =
 		project.schemaVersion === 1 &&
 		!metrics &&
@@ -6867,6 +7074,11 @@ export function AppShell({
 
 				{viewMode === "three-dimensional" && threeDimensionalScene ? (
 					<RoomScene3d
+						plainLabels={hostNavigation !== undefined}
+						resizeDrawingBufferOnChangeOnly={hostNavigation !== undefined}
+						onCloseItemPlacement={localGreyboxCatalog ? () => requestEditorBack(false, cancelItemPlacement) : undefined}
+						skipBlurCommit={consumeSkippedNumericBlurCommit}
+						exactFloorYaw={exactFloorYaw || (selectedItem !== undefined && "yawMilliDeg" in selectedItem)}
 						registerTransientBoundary={fullTransientNavigationProtection ? registerTransientBoundary : undefined}
 						assessItemPlacement={(point) => {
 							if (
@@ -6882,9 +7094,11 @@ export function AppShell({
 							const zMm = Math.round(
 								point.zM * 1000 + threeDimensionalOrigin.zMm,
 							);
+							const { yawRadians: _displayYaw, ...placement } = itemPlacementDraft;
 							const roomId = findRoomForFloorItem(project, {
-								depthMm: itemPlacementDraft.depthMm,
+								depthMm: placement.depthMm,
 								yawStep: itemPlacementDraft.yawStep,
+								yawMilliDeg: itemPlacementDraft.yawMilliDeg,
 								widthMm: itemPlacementDraft.widthMm,
 								xMm,
 								zMm,
@@ -6892,7 +7106,7 @@ export function AppShell({
 							return (
 								!!roomId &&
 								assessParametricFloorItemPlacement(project, {
-									...itemPlacementDraft,
+									...placement,
 									roomId,
 									xMm,
 									zMm,
@@ -6905,6 +7119,42 @@ export function AppShell({
 						itemPlacementDraft={
 							activeTool === "item" ? itemPlacementDraft : undefined
 						}
+						itemPlacementControls={itemPlacementColor}
+						selectedItemControls={selectedItemColor}
+						initialItemPlacementPoint={localGreyboxCatalog && threeDimensionalOrigin && retainedPlacementPoint.current ? {
+							xM: (retainedPlacementPoint.current.xMm - threeDimensionalOrigin.xMm) / 1000,
+							zM: (retainedPlacementPoint.current.zMm - threeDimensionalOrigin.zMm) / 1000,
+						} : undefined}
+						onItemPlacementPointChange={localGreyboxCatalog && threeDimensionalOrigin ? ({ xM, zM }) => {
+							retainedPlacementPoint.current = {
+								xMm: Math.round(xM * 1000 + threeDimensionalOrigin.xMm),
+								zMm: Math.round(zM * 1000 + threeDimensionalOrigin.zMm),
+							};
+						} : undefined}
+						snapFloorItemPoint={floorItemWallSnap ? (point, assetInstanceId) => {
+							if (!threeDimensionalOrigin || project.schemaVersion !== 1) return point;
+							const selected = assetInstanceId === undefined ? undefined :
+								project.assetInstances.find((item) => item.assetInstanceId === assetInstanceId);
+							const footprint = assetInstanceId === undefined ? itemPlacementDraft :
+								selected?.anchorClass === "floor" ? selected : undefined;
+							if (!footprint) return point;
+							const snapped = floorItemWallSnap({
+								assetInstanceId,
+								footprint: assetInstanceId === undefined ? {
+									depthMm: footprint.depthMm,
+									widthMm: footprint.widthMm,
+									...floorYawFieldsForRadians(itemPlacementYawRadians, exactFloorYaw),
+								} : footprint,
+								target: {
+									xMm: point.xM * 1000 + threeDimensionalOrigin.xMm,
+									zMm: point.zM * 1000 + threeDimensionalOrigin.zMm,
+								},
+							});
+							return {
+								xM: (snapped.xMm - threeDimensionalOrigin.xMm) / 1000,
+								zM: (snapped.zMm - threeDimensionalOrigin.zMm) / 1000,
+							};
+						} : undefined}
 						onItemPlacementYawChange={changeItemPlacementYaw}
 						onCancelItemPlacement={() => {
 							cancelItemPlacement();
@@ -6936,6 +7186,15 @@ export function AppShell({
 					/>
 				) : (
 					<PlanProjection
+						plainLabels={hostNavigation !== undefined}
+						showItemWallDistances={hostNavigation !== undefined}
+						onCloseItemPlacement={localGreyboxCatalog ? () => requestEditorBack(false, cancelItemPlacement) : undefined}
+						skipBlurCommit={consumeSkippedNumericBlurCommit}
+						exactFloorYaw={exactFloorYaw}
+						initialItemPlacementPoint={localGreyboxCatalog ? retainedPlacementPoint.current : undefined}
+						onItemPlacementPointChange={localGreyboxCatalog ? (point: { xMm: number; zMm: number } | undefined) => {
+							retainedPlacementPoint.current = point;
+						} : undefined}
 						registerTransientBoundary={fullTransientNavigationProtection ? registerTransientBoundary : undefined}
 						dimensionVisibility={dimensionVisibility}
 						openingMoveErrorCopy={errorCopy}
@@ -6946,15 +7205,20 @@ export function AppShell({
 						isWallVertexMoveMode={isWallVertexMoveMode}
 						movableWallVertexIds={movableSelectedWallVertexIds}
 						openingCreationPreview={openingCreationPreview}
+						keyboardItemMovement={hostNavigation !== undefined}
+						showOpeningTemplates={hostNavigation !== undefined}
+						selectedOpeningId={selectedOpeningId}
 						openingMovePreview={
-							openingDraft?.isMove
+							openingDraft && (openingDraft.isMove || openingDraft.swingSide)
 								? {
 										openingId: openingDraft.openingId,
+										swingSide: openingDraft.swingSide,
 										offsetMm: Number(openingDraft.offsetMm),
 									}
 								: undefined
 						}
 						itemDraft={fullTransientNavigationProtection && !isItemPlacementActive ? undefined : itemPlacementDraft}
+						floorItemWallSnap={floorItemWallSnap}
 						readOnly={
 							isEditorReadOnly ||
 							isWorking ||
@@ -7129,6 +7393,7 @@ export function AppShell({
 
 				{isRenameProjectOpen ? (
 					<RenameProjectDialog
+						telegram={hostNavigation !== undefined}
 						name={renameProjectName}
 						error={renameProjectError}
 						busy={isWorking}
@@ -7335,7 +7600,7 @@ export function AppShell({
 										state.kind === "persist-failed" ||
 										state.kind === "recovery-needed"
 									}
-									onClick={openBuiltInCatalog}
+									onClick={(event) => openBuiltInCatalog(event.currentTarget)}
 									type="button"
 								>
 									<svg
@@ -7365,13 +7630,14 @@ export function AppShell({
 						</nav>
 						<dialog
 							aria-label="Остальные действия редактора"
-							className={styles.editorActionMenu}
+							data-telegram-sheet={hasTelegramEditorSheet ? "menu" : undefined}
+							className={hasTelegramEditorSheet ? `${styles.editorActionMenu} ${sheetStyles.dialog} ${sheetStyles.telegramDialog}` : styles.editorActionMenu}
 							hidden={!isEditorActionMenuOpen}
 							id="editor-secondary-actions"
 							ref={editorActionMenuRef}
 							onCancel={(event) => {
 								event.preventDefault();
-								setIsEditorActionMenuOpen(false);
+								closeEditorActionMenu();
 							}}
 							onClick={(event) => {
 								if (event.target !== event.currentTarget) return;
@@ -7382,7 +7648,7 @@ export function AppShell({
 									event.clientY < bounds.top ||
 									event.clientY > bounds.bottom
 								) {
-									setIsEditorActionMenuOpen(false);
+									closeEditorActionMenu();
 								}
 							}}
 							onKeyDown={(event) => {
@@ -7408,16 +7674,16 @@ export function AppShell({
 								className={styles.editorActionMenuHandle}
 								data-testid="editor-action-menu-handle"
 							/>
-							<div className={styles.editorActionMenuHeader}>
-								<span>Ещё</span>
-								<button
-									aria-label="Закрыть остальные действия"
-									onClick={() => setIsEditorActionMenuOpen(false)}
-									type="button"
-								>
-									Закрыть
-								</button>
-							</div>
+							<SheetHeader
+								title="Ещё"
+								closeLabel="Закрыть остальные действия"
+								protectEditorDraft={hasTelegramEditorSheet}
+								onClose={closeEditorActionMenu}
+							/>
+							{onOpenSettings && <button type="button" onClick={() => {
+								setIsEditorActionMenuOpen(false);
+								requestAnimationFrame(() => onOpenSettings(editorHeaderMenuRef.current ?? undefined));
+							}}>Настройки</button>}
 							{isWallOpeningDockContext ? (
 								<button
 									aria-label="Предметы интерьера"
@@ -7429,7 +7695,7 @@ export function AppShell({
 									}
 									onClick={() => {
 										setIsEditorActionMenuOpen(false);
-										openBuiltInCatalog();
+										openBuiltInCatalog(editorHeaderMenuRef.current);
 									}}
 									type="button"
 								>
@@ -7632,7 +7898,11 @@ export function AppShell({
 				) : null}
 
 				{viewMode === "plan" && openingCreationDraft ? (
-					<aside
+					<EditorModalSheet
+						telegramModal={canOpenTelegramEditorSheet}
+						busy={isWorking}
+						onRequestClose={() => requestEditorBack(false, closeOpeningCreationDraft)}
+						restoreFocus={() => editorHeaderMenuRef.current}
 						aria-labelledby="opening-creation-title"
 						aria-modal={isExternalSaveFailure ? undefined : true}
 						className={styles.openingCreationSheet}
@@ -7655,11 +7925,13 @@ export function AppShell({
 								aria-hidden="true"
 								className={styles.openingCreationSheetHandle}
 							/>
-							<strong id="opening-creation-title">
-								{openingCreationDraft.kind === "Window"
-									? "Новое окно"
-									: "Новый проём"}
-							</strong>
+							<SheetHeader
+								titleId="opening-creation-title"
+								title={openingCreationDraft.kind === "Window" ? "Новое окно" : "Новый проём"}
+								closeLabel="Закрыть создание проёма"
+								closeDisabled={isWorking}
+								onClose={() => isNavigationProtected ? requestEditorBack(false, closeOpeningCreationDraft) : closeOpeningCreationDraft()}
+							/>
 							{openingCreationHost ? (
 								<p className={styles.openingCreationHost}>
 									Стена {openingCreationHost.ordinal} ·{" "}
@@ -7734,18 +8006,25 @@ export function AppShell({
 									/>
 								</label>
 							</div>
+							{hostNavigation && openingCreationDraft.kind === "Door" && (
+								<DoorSwingPicker value={openingCreationDraft.swingSide} disabled={isWorking || isEditorReadOnly}
+									onChange={swingSide => {
+										setDimensionError(undefined);
+										setOpeningCreationDraft({ ...openingCreationDraft, swingSide });
+									}} />
+							)}
 							{openingCreationDraftError ? (
 								<p id="opening-creation-error" role="alert">
 									{openingCreationDraftError}
 								</p>
 							) : null}
 							<div className={styles.openingCreationActions}>
-								<button
+								<button data-editor-action="cancel"
 									disabled={isWorking}
 									onClick={closeOpeningCreationDraft}
 									type="button"
 								>
-									Отмена
+									{hostNavigation ? "Отменить" : "Отмена"}
 								</button>
 								<button
 									disabled={
@@ -7759,11 +8038,12 @@ export function AppShell({
 								</button>
 							</div>
 						</form>
-					</aside>
+					</EditorModalSheet>
 				) : null}
 
 				{viewMode === "plan" && openingDraft?.isMove ? (
 					<ProjectConfirmationDialog
+						plainLabels={hostNavigation !== undefined}
 						label={
 							openingDraft.kind === "Window"
 								? "Подтвердить перемещение окна"
@@ -7787,14 +8067,17 @@ export function AppShell({
 						testId="opening-move-confirmation"
 					>
 						<p>
-							{openingDraft.kind === "Window" ? "Окно" : "Проём"} будет
-							установлено в выбранном месте.
+							{openingDraft.kind === "Window" ? "Окно переместится в выбранное место." : "Дверь переместится в выбранное место."}
 						</p>
 					</ProjectConfirmationDialog>
 				) : null}
 
 				{viewMode === "plan" && openingDraft && !openingDraft.isMove ? (
-					<aside
+					<EditorModalSheet
+						telegramModal={canOpenTelegramEditorSheet}
+						busy={isWorking}
+						onRequestClose={() => requestEditorBack(false, cancelOpeningDraft)}
+						restoreFocus={() => editorHeaderMenuRef.current}
 						aria-label={
 							openingDraft.kind === "Door"
 								? "Параметры дверного проёма"
@@ -7817,11 +8100,12 @@ export function AppShell({
 								void confirmOpeningDraft();
 							}}
 						>
-							<strong>
-								{openingDraft.kind === "Door"
-									? "Изменить проём"
-									: "Изменить окно"}
-							</strong>
+							<SheetHeader
+								title={openingDraft.kind === "Door" ? "Изменить проём" : "Изменить окно"}
+								closeLabel="Закрыть параметры проёма"
+								closeDisabled={isWorking}
+								onClose={() => isNavigationProtected ? requestEditorBack(false, cancelOpeningDraft) : cancelOpeningDraft()}
+							/>
 
 							<div className={styles.openingCreationFields}>
 								<label>
@@ -7874,6 +8158,13 @@ export function AppShell({
 									/>
 								</label>
 							</div>
+							{hostNavigation && openingDraft.kind === "Door" && (
+								<DoorSwingPicker value={openingDraft.swingSide} disabled={isWorking || isEditorReadOnly}
+									onChange={swingSide => {
+										setDimensionError(undefined);
+										setOpeningDraft({ ...openingDraft, swingSide });
+									}} />
+							)}
 							{dimensionError ? (
 								<p id="opening-draft-error" role="alert">
 									{dimensionError}
@@ -7887,16 +8178,16 @@ export function AppShell({
 											? "Сохранить проём"
 											: "Сохранить окно"}
 								</button>
-								<button
+								<button data-editor-action="cancel"
 									disabled={isWorking}
 									onClick={cancelOpeningDraft}
 									type="button"
 								>
-									Отмена
+									{hostNavigation ? "Отменить" : "Отмена"}
 								</button>
 							</div>
 						</form>
-					</aside>
+					</EditorModalSheet>
 				) : null}
 
 				{viewMode === "plan" && vertexDeletionCandidate ? (
@@ -7936,7 +8227,7 @@ export function AppShell({
 							</span>
 							{dimensionError ? <p role="alert">{dimensionError}</p> : null}
 							<div>
-								<button
+								<button data-editor-action="confirm"
 									disabled={
 										isDeletingVertex ||
 										isEditorReadOnly ||
@@ -7946,9 +8237,9 @@ export function AppShell({
 									onClick={() => void confirmVertexDeletion()}
 									type="button"
 								>
-									Подтвердить удаление
+									{hostNavigation ? "Подтвердить" : "Подтвердить удаление"}
 								</button>
-								<button
+								<button data-editor-action="cancel"
 									disabled={isDeletingVertex}
 									onClick={() => {
 										setDimensionError(undefined);
@@ -7956,7 +8247,7 @@ export function AppShell({
 									}}
 									type="button"
 								>
-									Отменить удаление
+									{hostNavigation ? "Отменить" : "Отменить удаление"}
 								</button>
 							</div>
 						</div>
@@ -8031,7 +8322,7 @@ export function AppShell({
 							</span>
 							{dimensionError ? <p role="alert">{dimensionError}</p> : null}
 							<div>
-								<button
+								<button data-editor-action="confirm"
 									disabled={
 										isResolvingWallAddHostConflict ||
 										isWorking ||
@@ -8040,7 +8331,7 @@ export function AppShell({
 									onClick={() => void resolveWallAddHostConflict()}
 									type="button"
 								>
-									{`Добавить стену${
+									{hostNavigation ? "Подтвердить" : `Добавить стену${
 										wallAddHostConflict.openingIds.length === 0
 											? ""
 											: wallAddHostConflict.openingIds.length === 1
@@ -8054,12 +8345,12 @@ export function AppShell({
 												: ` и удалить ${wallAddHostConflict.itemIds.length} настенных предмета`
 									}`}
 								</button>
-								<button
+								<button data-editor-action="cancel"
 									disabled={isResolvingWallAddHostConflict || isWorking}
 									onClick={cancelWallAddHostConflict}
 									type="button"
 								>
-									Отмена
+									{hostNavigation ? "Отменить" : "Отмена"}
 								</button>
 							</div>
 						</div>
@@ -8186,7 +8477,7 @@ export function AppShell({
 							</span>
 							{dimensionError ? <p role="alert">{dimensionError}</p> : null}
 							<div>
-								<button
+								<button data-editor-action="confirm"
 									disabled={
 										isWorking ||
 										isEditorReadOnly ||
@@ -8200,7 +8491,7 @@ export function AppShell({
 									onClick={() => void confirmWallDeletionConflict()}
 									type="button"
 								>
-									{`Удалить стену${
+									{hostNavigation ? "Подтвердить" : `Удалить стену${
 										wallDeletionConflict.openingIds.length === 0
 											? ""
 											: wallDeletionConflict.openingIds.length === 1
@@ -8220,12 +8511,12 @@ export function AppShell({
 												: ` и изменить ${wallDeletionConflict.roomIds.length} помещения`
 									}`}
 								</button>
-								<button
+								<button data-editor-action="cancel"
 									disabled={isWorking}
 									onClick={cancelWallDeletionConflict}
 									type="button"
 								>
-									Отмена
+									{hostNavigation ? "Отменить" : "Отмена"}
 								</button>
 							</div>
 						</div>
@@ -8273,11 +8564,15 @@ export function AppShell({
 				selectedItem &&
 				selectedItemFields &&
 				viewMode === "plan" ? (
-					<aside
+					<EditorModalSheet
+						telegramModal={canOpenTelegramEditorSheet && isSelectionInspectorExpanded && !selectionBehindSheet && selectedOpening === undefined}
+						onRequestClose={() => requestEditorBack(false, () => setIsSelectionInspectorExpanded(false))}
+						restoreFocus={() => document.querySelector<HTMLButtonElement>("#selected-item-inspector button[aria-expanded=false]") ?? selectionPropertiesTriggerRef.current}
 						aria-label="Свойства выбранного предмета"
 						className={`${styles.selectionPanel} ${styles.selectionInspectorPanel}`}
 						data-item-locked={selectedItemLocked}
 						data-inspector-expanded={isSelectionInspectorExpanded}
+						data-inspector-compact={localGreyboxCatalog || undefined}
 						data-testid="selected-item-inspector"
 						id="selected-item-inspector"
 						hidden={
@@ -8286,6 +8581,14 @@ export function AppShell({
 							selectedOpening !== undefined
 						}
 					>
+						{localGreyboxCatalog && isSelectionInspectorExpanded ? (
+							<SheetHeader
+								title={selectedItem.label}
+								closeLabel="Скрыть панель предмета"
+								protectEditorDraft={fullTransientNavigationProtection}
+								onClose={() => requestEditorBack(false, () => setIsSelectionInspectorExpanded(false))}
+							/>
+						) : (
 						<div className={styles.panelHeading}>
 							<span
 								aria-hidden="true"
@@ -8329,7 +8632,24 @@ export function AppShell({
 									: "Параметры ↓"}
 							</button>
 						</div>
+						)}
 
+
+						{localGreyboxCatalog && project.schemaVersion === 1 && isSelectionInspectorExpanded ? (
+							<ItemWallDistanceFields
+								key={selectedItem.assetInstanceId}
+								skipBlurCommit={consumeSkippedNumericBlurCommit}
+								disabled={isEditorReadOnly || isMutationBlocked || selectedItemLocked}
+								distances={itemWallDistancesFor(derivedRooms.filter(({ roomId }) => roomId === selectedItem.roomId), selectedItem)}
+								onApply={(side, valueMm) => {
+									if (isEditorReadOnly || isMutationBlocked || selectedItemLocked) return false;
+									const point = itemWallDistancePositionFor(derivedRooms.filter(({ roomId }) => roomId === selectedItem.roomId), selectedItem, side, valueMm);
+									if (!point || point.roomId !== selectedItem.roomId) return false;
+									if (point.xMm === selectedItem.xMm && point.zMm === selectedItem.zMm) return true;
+									return moveItem({ assetInstanceId: selectedItem.assetInstanceId, ...point });
+								}}
+							/>
+						) : null}
 						{selectedItemPlacementWarnings.length > 0 ? (
 							<p data-testid="selected-item-placement-warning" role="status">
 								Предупреждение для этого предмета:{" "}
@@ -8503,7 +8823,7 @@ export function AppShell({
 							</label>
 						</div>
 
-						{selectedItemHasNoDeclaredColorVariant ? null : (
+						{localGreyboxCatalog || selectedItemHasNoDeclaredColorVariant ? null : (
 							<fieldset className={styles.quickPalette}>
 								<legend>Цвет предмета</legend>
 								<div>
@@ -8540,119 +8860,126 @@ export function AppShell({
 								</div>
 							</fieldset>
 						)}
-						<dl className={styles.inlineMetrics}>
-							<div>
-								<dt>ПОЗИЦИЯ X</dt>
-								<dd>{formatLengthMm(selectedItem.xMm)}</dd>
-							</div>
-							<div>
-								<dt>ПОЗИЦИЯ Z</dt>
-								<dd>{formatLengthMm(selectedItem.zMm)}</dd>
-							</div>
-						</dl>
-						<fieldset className={styles.itemNudgeControls}>
-							<legend>Переместить предмет на 100 мм</legend>
-							<div>
-								<button
-									disabled={
-										isEditorReadOnly ||
-										selectedItemLocked ||
-										isWorking ||
-										state.kind === "persist-failed" ||
-										state.kind === "recovery-needed"
-									}
-									onClick={() => void nudgeSelectedItem({ xMm: -100, zMm: 0 })}
-									type="button"
-								>
-									Сместить предмет на 100 мм влево
-								</button>
-								<button
-									disabled={
-										isEditorReadOnly ||
-										selectedItemLocked ||
-										isWorking ||
-										state.kind === "persist-failed" ||
-										state.kind === "recovery-needed"
-									}
-									onClick={() => void nudgeSelectedItem({ xMm: 100, zMm: 0 })}
-									type="button"
-								>
-									Сместить предмет на 100 мм вправо
-								</button>
-							</div>
-							<div>
-								<button
-									disabled={
-										isEditorReadOnly ||
-										selectedItemLocked ||
-										isWorking ||
-										state.kind === "persist-failed" ||
-										state.kind === "recovery-needed"
-									}
-									onClick={() => void nudgeSelectedItem({ xMm: 0, zMm: -100 })}
-									type="button"
-								>
-									Сместить предмет на 100 мм вверх
-								</button>
-								<button
-									disabled={
-										isEditorReadOnly ||
-										selectedItemLocked ||
-										isWorking ||
-										state.kind === "persist-failed" ||
-										state.kind === "recovery-needed"
-									}
-									onClick={() => void nudgeSelectedItem({ xMm: 0, zMm: 100 })}
-									type="button"
-								>
-									Сместить предмет на 100 мм вниз
-								</button>
-							</div>
-						</fieldset>
+						{!hostNavigation ? (
+							<>
+								<dl className={styles.inlineMetrics}>
+									<div>
+										<dt>ПОЗИЦИЯ X</dt>
+										<dd>{formatLengthMm(selectedItem.xMm)}</dd>
+									</div>
+									<div>
+										<dt>ПОЗИЦИЯ Z</dt>
+										<dd>{formatLengthMm(selectedItem.zMm)}</dd>
+									</div>
+								</dl>
+								<fieldset className={styles.itemNudgeControls}>
+									<legend>Переместить предмет на 100 мм</legend>
+									<div>
+										<button
+											disabled={
+												isEditorReadOnly ||
+												selectedItemLocked ||
+												isWorking ||
+												state.kind === "persist-failed" ||
+												state.kind === "recovery-needed"
+											}
+											onClick={() => void nudgeSelectedItem({ xMm: -100, zMm: 0 })}
+											type="button"
+										>
+											Сместить предмет на 100 мм влево
+										</button>
+										<button
+											disabled={
+												isEditorReadOnly ||
+												selectedItemLocked ||
+												isWorking ||
+												state.kind === "persist-failed" ||
+												state.kind === "recovery-needed"
+											}
+											onClick={() => void nudgeSelectedItem({ xMm: 100, zMm: 0 })}
+											type="button"
+										>
+											Сместить предмет на 100 мм вправо
+										</button>
+									</div>
+									<div>
+										<button
+											disabled={
+												isEditorReadOnly ||
+												selectedItemLocked ||
+												isWorking ||
+												state.kind === "persist-failed" ||
+												state.kind === "recovery-needed"
+											}
+											onClick={() => void nudgeSelectedItem({ xMm: 0, zMm: -100 })}
+											type="button"
+										>
+											Сместить предмет на 100 мм вверх
+										</button>
+										<button
+											disabled={
+												isEditorReadOnly ||
+												selectedItemLocked ||
+												isWorking ||
+												state.kind === "persist-failed" ||
+												state.kind === "recovery-needed"
+											}
+											onClick={() => void nudgeSelectedItem({ xMm: 0, zMm: 100 })}
+											type="button"
+										>
+											Сместить предмет на 100 мм вниз
+										</button>
+									</div>
+								</fieldset>
+							</>
+						) : null}
+						<ItemInspectorActions telegram={hostNavigation !== undefined}>
+							<button
+								aria-label={selectedItemLocked ? "Разблокировать предмет" : "Заблокировать предмет"}
+								aria-pressed={selectedItemLocked === true}
+								disabled={isEditorReadOnly || isMutationBlocked}
+								onClick={() =>
+									void setFloorItemLock(
+										selectedItem.assetInstanceId,
+										!selectedItemLocked,
+									)
+								}
+								type="button"
+							>
+								{selectedItemLocked
+									? (hostNavigation ? "Разблокировать" : "Разблокировать предмет")
+									: (hostNavigation ? "Заблокировать" : "Заблокировать предмет")}
+							</button>
 
-						<button
-							aria-pressed={selectedItemLocked === true}
-							disabled={isEditorReadOnly || isMutationBlocked}
-							onClick={() =>
-								void setFloorItemLock(
-									selectedItem.assetInstanceId,
-									!selectedItemLocked,
-								)
-							}
-							type="button"
-						>
-							{selectedItemLocked
-								? "Разблокировать предмет"
-								: "Заблокировать предмет"}
-						</button>
-
-						<button
-							disabled={
-								isEditorReadOnly ||
-								isWorking ||
-								state.kind === "persist-failed" ||
-								state.kind === "recovery-needed"
-							}
-							onClick={duplicateSelectedItem}
-							type="button"
-						>
-							Дублировать предмет
-						</button>
-						<button
-							className={styles.deleteAction}
-							disabled={
-								isEditorReadOnly ||
-								selectedItemLocked ||
-								isWorking ||
-								state.kind === "persist-failed" ||
-								state.kind === "recovery-needed"
-							}
-							onClick={() => void deleteSelectedItem()}
-							type="button"
-						>
-							Удалить предмет
-						</button>
-					</aside>
+							<button
+								disabled={
+									isEditorReadOnly ||
+									isWorking ||
+									state.kind === "persist-failed" ||
+									state.kind === "recovery-needed"
+								}
+								aria-label="Дублировать предмет"
+								onClick={duplicateSelectedItem}
+								type="button"
+							>
+								{hostNavigation ? "Дублировать" : "Дублировать предмет"}
+							</button>
+							<button
+								className={styles.deleteAction}
+								disabled={
+									isEditorReadOnly ||
+									selectedItemLocked ||
+									isWorking ||
+									state.kind === "persist-failed" ||
+									state.kind === "recovery-needed"
+								}
+								onClick={() => void deleteSelectedItem()}
+								type="button"
+							>
+								Удалить предмет
+							</button>
+						</ItemInspectorActions>
+					</EditorModalSheet>
 				) : activeTool === "select" &&
 					selectedWall &&
 					(isSelectionInspectorExpanded ||
@@ -8661,8 +8988,13 @@ export function AppShell({
 					!isWallSplitMode &&
 					!isWallVertexMoveMode &&
 					!vertexDeletionCandidate &&
+					!wallDeletionConflict &&
+					!wallAddHostConflict &&
 					viewMode === "plan" ? (
-					<aside
+					<EditorModalSheet
+						telegramModal={canOpenTelegramEditorSheet && !selectedWallItemDraft && !selectionBehindSheet && selectedOpening === undefined}
+						onRequestClose={() => requestEditorBack(false, () => setIsSelectionInspectorExpanded(false))}
+						restoreFocus={() => selectionPropertiesTriggerRef.current}
 						aria-label="Свойства выбранной стены"
 						className={`${styles.selectionPanel} ${styles.selectionInspectorPanel}`}
 						data-inspector-expanded={true}
@@ -8673,6 +9005,23 @@ export function AppShell({
 							selectedOpening !== undefined
 						}
 					>
+						{localGreyboxCatalog ? (
+						<SheetHeader
+							title="Свойства стены"
+							closeLabel="Закрыть свойства стены"
+							protectEditorDraft={fullTransientNavigationProtection}
+							onClose={() => {
+								const close = () => {
+									setIsSelectionInspectorExpanded(false);
+									setWallItemDraft(undefined);
+									setWallItemDraftFields(undefined);
+									selectionPropertiesTriggerRef.current?.focus();
+								};
+								if (isNavigationProtected) requestEditorBack(false, close);
+								else close();
+							}}
+						/>
+						) : (
 						<div className={styles.panelHeading}>
 							<span
 								aria-hidden="true"
@@ -8703,6 +9052,7 @@ export function AppShell({
 								Закрыть
 							</button>
 						</div>
+						)}
 
 						{selectedWallItemDraft ? (
 							<div className={styles.openingRow} role="status">
@@ -8782,7 +9132,7 @@ export function AppShell({
 										Справа
 									</button>
 								</fieldset>
-								<button
+								<button data-editor-action="confirm"
 									disabled={
 										isEditorReadOnly ||
 										isMutationBlocked ||
@@ -8791,7 +9141,7 @@ export function AppShell({
 									onClick={() => void confirmWallItemPlacement()}
 									type="button"
 								>
-									Подтвердить размещение
+									{hostNavigation ? "Подтвердить" : "Подтвердить размещение"}
 								</button>
 								<button
 									disabled={isWorking}
@@ -8833,8 +9183,9 @@ export function AppShell({
 										</p>
 									) : null}
 									<label>
-										<span>Смещение настенного предмета «{item.label}», мм</span>
+										<span>{localGreyboxCatalog ? "Смещение вдоль стены, мм" : `Смещение настенного предмета «${item.label}», мм`}</span>
 										<input
+											aria-label={`Смещение настенного предмета «${item.label}», мм`}
 											autoComplete="off"
 											disabled={
 												isEditorReadOnly || isMutationBlocked || item.locked
@@ -8872,9 +9223,10 @@ export function AppShell({
 									</label>
 									<label>
 										<span>
-											Высота центра настенного предмета «{item.label}», мм
+											{localGreyboxCatalog ? "Высота центра, мм" : `Высота центра настенного предмета «${item.label}», мм`}
 										</span>
 										<input
+											aria-label={`Высота центра настенного предмета «${item.label}», мм`}
 											autoComplete="off"
 											disabled={
 												isEditorReadOnly || isMutationBlocked || item.locked
@@ -8914,7 +9266,7 @@ export function AppShell({
 									customGlbResourceManifest.some(
 										(definition) =>
 											definition.assetDefinitionId === item.assetDefinitionId,
-									) ? null : (
+									) || localGreyboxCatalog ? null : (
 										<fieldset className={styles.quickPalette}>
 											<legend>Цвет настенного предмета «{item.label}»</legend>
 											<div>
@@ -8949,42 +9301,47 @@ export function AppShell({
 											</div>
 										</fieldset>
 									)}
-									{item.assetDefinitionId !== undefined ? (
+									<ItemInspectorActions telegram={hostNavigation !== undefined}>
+										{!localGreyboxCatalog && item.assetDefinitionId !== undefined ? (
+											<button
+												disabled={
+													isEditorReadOnly ||
+													isMutationBlocked ||
+													selectedWallItemDraft !== undefined ||
+													state.kind === "recovery-needed"
+												}
+												onClick={() => duplicateWallItem(item)}
+												type="button"
+											>
+												Дублировать настенный предмет
+											</button>
+										) : null}
 										<button
-											disabled={
-												isEditorReadOnly ||
-												isMutationBlocked ||
-												selectedWallItemDraft !== undefined ||
-												state.kind === "recovery-needed"
+											aria-label={item.locked ? "Разблокировать настенный предмет" : "Заблокировать настенный предмет"}
+											aria-pressed={item.locked === true}
+											disabled={isEditorReadOnly || isMutationBlocked}
+											onClick={() =>
+												void setWallItemLock(item.assetInstanceId, !item.locked)
 											}
-											onClick={() => duplicateWallItem(item)}
 											type="button"
 										>
-											Дублировать настенный предмет
+											{item.locked
+												? (hostNavigation ? "Разблокировать" : "Разблокировать настенный предмет")
+												: (hostNavigation ? "Заблокировать" : "Заблокировать настенный предмет")}
 										</button>
-									) : null}
-									<button
-										aria-pressed={item.locked === true}
-										disabled={isEditorReadOnly || isMutationBlocked}
-										onClick={() =>
-											void setWallItemLock(item.assetInstanceId, !item.locked)
-										}
-										type="button"
-									>
-										{item.locked
-											? "Разблокировать настенный предмет"
-											: "Заблокировать настенный предмет"}
-									</button>
 
-									<button
-										disabled={
-											isEditorReadOnly || isMutationBlocked || item.locked
-										}
-										onClick={() => void deleteWallItem(item.assetInstanceId)}
-										type="button"
-									>
-										Удалить настенный предмет
-									</button>
+										<button
+											disabled={
+												isEditorReadOnly || isMutationBlocked || item.locked
+											}
+											aria-label="Удалить настенный предмет"
+											className={hostNavigation ? styles.deleteAction : undefined}
+											onClick={() => void deleteWallItem(item.assetInstanceId)}
+											type="button"
+										>
+											{hostNavigation ? "Удалить предмет" : "Удалить настенный предмет"}
+										</button>
+									</ItemInspectorActions>
 								</div>
 							);
 						})}
@@ -9121,9 +9478,12 @@ export function AppShell({
 						>
 							Удалить стену
 						</button>
-					</aside>
+					</EditorModalSheet>
 				) : activeTool === "select" && metrics && viewMode === "plan" ? (
-					<aside
+					<EditorModalSheet
+						telegramModal={canOpenTelegramEditorSheet && isPlanInspectorOpen}
+						onRequestClose={() => requestEditorBack(false, closePlanInspector)}
+						restoreFocus={() => editorHeaderMenuRef.current}
 						aria-label="Точные размеры плана"
 						className={inspectorStyles.planPanel}
 						ref={planInspectorRef}
@@ -9142,18 +9502,12 @@ export function AppShell({
 							className={inspectorStyles.handle}
 							data-testid="plan-dimensions-sheet-handle"
 						/>
-						<div className={inspectorStyles.heading}>
-							<h2>Размеры плана</h2>
-							<button
-								aria-label="Скрыть размеры плана"
-								className={inspectorStyles.close}
-								data-editor-host-back={fullTransientNavigationProtection ? "panel" : undefined}
-								onClick={() => isNavigationProtected ? requestEditorBack(false, closePlanInspector) : closePlanInspector()}
-								type="button"
-							>
-								×
-							</button>
-						</div>
+						<SheetHeader
+							title="Размеры плана"
+							closeLabel="Скрыть размеры плана"
+							protectEditorDraft={fullTransientNavigationProtection}
+							onClose={() => isNavigationProtected ? requestEditorBack(false, closePlanInspector) : closePlanInspector()}
+						/>
 						<form
 							className={inspectorStyles.form}
 							onSubmit={applyPlanDimensions}
@@ -9280,7 +9634,7 @@ export function AppShell({
 						<output data-testid="plan-depth" hidden>
 							{formatLengthMm(metrics.depthMm)}
 						</output>
-					</aside>
+					</EditorModalSheet>
 				) : null}
 
 				{activeTool === "select" &&
@@ -9484,9 +9838,10 @@ export function AppShell({
 				) : null}
 				{isDimensionFilterOpen && viewMode === "plan" ? (
 					<DimensionFilter
+						telegram={hasTelegramEditorSheet}
 						visibility={dimensionVisibility}
 						onChange={changeDimensionVisibility}
-						onClose={() => setIsDimensionFilterOpen(false)}
+						onClose={closeDimensionFilter}
 						returnFocusRef={dimensionFilterTriggerRef}
 					/>
 				) : null}
@@ -9507,6 +9862,7 @@ export function AppShell({
 				/>
 				{isWriterLeaseReadOnly ? (
 					<WriterLeaseNotice
+						plainLabels={hostNavigation !== undefined}
 						onRecoveryExport={() => void downloadRecoveryDraft()}
 						error={writerTakeoverError}
 						hasRecoveryCopy={writerRecoveryCopy !== undefined}
@@ -9527,10 +9883,13 @@ export function AppShell({
 			</section>
 
 			{isRoomDirectoryOpen ? (
-				<aside
+				<EditorModalSheet
+					telegramModal={canOpenTelegramEditorSheet}
+					onRequestClose={() => requestEditorBack(false, closeRoomDirectory)}
+					restoreFocus={() => roomDockActionRef.current ?? editorHeaderMenuRef.current}
 					aria-label="Помещения"
 					aria-modal={isExternalSaveFailure ? undefined : true}
-					className={inspectorStyles.roomBackdrop}
+					className={canOpenTelegramEditorSheet ? undefined : inspectorStyles.roomBackdrop}
 					onKeyDown={isExternalSaveFailure ? undefined : trapRoomDirectoryFocus}
 					ref={roomDirectoryDialogRef}
 					role="dialog"
@@ -9545,19 +9904,13 @@ export function AppShell({
 							className={inspectorStyles.handle}
 							data-testid="room-directory-sheet-handle"
 						/>
-						<div className={inspectorStyles.heading}>
-							<h2>Помещения</h2>
-							<button
-								aria-label="Закрыть помещения"
-								className={inspectorStyles.close}
-								disabled={isWorking}
-								data-editor-host-back={fullTransientNavigationProtection ? "panel" : undefined}
-								onClick={() => isNavigationProtected ? requestEditorBack(false, closeRoomDirectory) : closeRoomDirectory()}
-								type="button"
-							>
-								×
-							</button>
-						</div>
+						<SheetHeader
+							title="Помещения"
+							closeLabel="Закрыть помещения"
+							closeDisabled={isWorking}
+							protectEditorDraft={fullTransientNavigationProtection}
+							onClose={() => isNavigationProtected ? requestEditorBack(false, closeRoomDirectory) : closeRoomDirectory()}
+						/>
 
 						<div className={inspectorStyles.content}>
 							<nav
@@ -9724,14 +10077,14 @@ export function AppShell({
 												},
 											)}
 											<div className={inspectorStyles.conflictActions}>
-												<button
+												<button data-editor-action="cancel"
 													disabled={isWorking}
 													onClick={cancelRoomHeightOpeningConflict}
 													type="button"
 												>
-													Отмена
+													{hostNavigation ? "Отменить" : "Отмена"}
 												</button>
-												<button
+												<button data-editor-action="confirm"
 													disabled={
 														isWorking ||
 														!roomHeightOpeningConflict.openingIds.every(
@@ -9746,8 +10099,7 @@ export function AppShell({
 													}
 													type="button"
 												>
-													Сохранить помещение и изменить{" "}
-													{roomHeightOpeningConflict.openingIds.length} проём
+													{hostNavigation ? "Подтвердить" : `Сохранить помещение и изменить ${roomHeightOpeningConflict.openingIds.length} проём`}
 												</button>
 											</div>
 										</section>
@@ -9779,38 +10131,71 @@ export function AppShell({
 							) : null}
 						</div>
 					</section>
-				</aside>
+				</EditorModalSheet>
 			) : null}
 
 			{isBuiltInCatalogOpen ? (
-				<aside
+				<EditorModalSheet
+					telegramModal={canOpenTelegramEditorSheet}
+					onRequestClose={() => requestEditorBack(false, closeOverlay)}
+					restoreFocus={() => editorHeaderMenuRef.current}
 					aria-label="Предметы интерьера"
-					className={styles.catalogDialog}
+					aria-modal={localGreyboxCatalog && !isExternalSaveFailure ? true : undefined}
+					className={`${styles.catalogDialog}${localGreyboxCatalog ? ` ${styles.tmaGreyboxDialog}` : ""}`}
 					data-focused-preloaded-selection={
 						selectedPreloadedCatalogAsset ? "true" : undefined
 					}
 					data-preloaded-resource-state={focusedPreloadedCatalogResourceState}
-					onKeyDown={trapOverlayFocus}
+					onKeyDown={isExternalSaveFailure ? undefined : trapOverlayFocus}
 					ref={catalogDialogRef}
 					role="dialog"
 					tabIndex={-1}
 				>
-					<div className={styles.dialogHeading}>
-						<div>
-							<span>БИБЛИОТЕКА ИНТЕРЬЕРА</span>
-							<strong data-testid="catalog-title">Каталог</strong>
-						</div>
-						<button
-							aria-label="Закрыть предметы интерьера"
-							data-editor-host-back={fullTransientNavigationProtection ? "panel" : undefined}
-							onClick={() => isNavigationProtected ? requestEditorBack(false, closeOverlay) : closeOverlay()}
-							type="button"
-						>
-							×
-						</button>
-					</div>
+					<SheetHeader
+						title={<span data-testid="catalog-title">Каталог</span>}
+						closeLabel="Закрыть предметы интерьера"
+						protectEditorDraft={fullTransientNavigationProtection}
+						onClose={() => isNavigationProtected ? requestEditorBack(false, closeOverlay) : closeOverlay()}
+					/>
+					<input
+						accept=".glb,model/gltf-binary,application/octet-stream"
+						aria-label="Выбрать GLB-модель для размещения"
+						className={styles.visuallyHidden}
+						data-testid="custom-glb-import-input"
+						disabled={customGlbImport.kind === "checking"}
+						onChange={(event) => void importCustomGlbFile(event.currentTarget.files?.[0])}
+						ref={customGlbImportInputRef}
+						tabIndex={localGreyboxCatalog ? -1 : undefined}
+						type="file"
+					/>
 
-					<div className={styles.catalogContent}>
+					{localGreyboxCatalog ? (
+						<TelegramGreyboxCatalog
+							onSelect={beginLocalGreyboxPlacement}
+							ownModels={isModelLibrarySelected}
+							query={catalogQuery}
+							onQueryChange={setCatalogQuery}
+							onSectionChange={(own) => own ? openOwnModelLibrary() : returnToLocalGreyboxCatalog()}
+							importBusy={customGlbImport.kind === "checking"}
+							composerOpen={isPlaceholderComposerOpen}
+							onToggleComposer={() => {
+								setPlaceholderComposerError(undefined);
+								setIsPlaceholderComposerOpen((open) => !open);
+							}}
+							onImportModel={() => {
+								openOwnModelLibrary();
+								customGlbImportInputRef.current?.click();
+							}}
+						/>
+					) : null}
+					{!localGreyboxCatalog || isModelLibrarySelected ? <>
+					<div className={styles.catalogContent}
+						{...(localGreyboxCatalog ? {
+							role: "tabpanel",
+							id: "catalog-panel-models",
+							"aria-labelledby": "catalog-tab-models",
+						} : {})}
+					>
 						{isCatalogPublicationOutage ? (
 							<div
 								className={styles.catalogInlineError}
@@ -9852,11 +10237,9 @@ export function AppShell({
 								</span>
 							</div>
 						) : null}
-						<details
-							className={styles.catalogAuthoring}
-							data-testid="catalog-authoring"
-						>
-							<summary>
+						{!localGreyboxCatalog || customGlbImport.kind !== "idle" || isPlaceholderComposerOpen ? (
+						<CatalogAuthoring className={styles.catalogAuthoring} data-testid="catalog-authoring">
+							{!localGreyboxCatalog ? <summary>
 								<span
 									aria-hidden="true"
 									className={styles.catalogAuthoringIcon}
@@ -9872,13 +10255,13 @@ export function AppShell({
 								>
 									⌄
 								</span>
-							</summary>
+							</summary> : null}
 							<div className={styles.catalogAuthoringContent}>
-								<section
+								{!localGreyboxCatalog || isPlaceholderComposerOpen ? <section
 									aria-label="Создать макетный предмет"
 									className={styles.catalogImport}
 								>
-									<div>
+									{!localGreyboxCatalog ? <><div>
 										<strong>Свой макетный предмет</strong>
 									</div>
 									<button
@@ -9891,7 +10274,7 @@ export function AppShell({
 										{isPlaceholderComposerOpen
 											? "Скрыть параметры"
 											: "Создать макетный предмет"}
-									</button>
+									</button></> : null}
 									{isPlaceholderComposerOpen ? (
 										<form
 											aria-label="Создать макетный предмет"
@@ -9994,7 +10377,7 @@ export function AppShell({
 											</button>
 										</form>
 									) : null}
-								</section>
+								</section> : null}
 								<section
 									aria-label="Локальное преобразование FBX"
 									hidden={isEmbeddedHost}
@@ -10049,25 +10432,13 @@ export function AppShell({
 										</div>
 									) : null}
 								</section>
-								<section
+								{!localGreyboxCatalog || customGlbImport.kind !== "idle" ? <section
 									aria-label="Импорт своей GLB-модели"
 									className={styles.catalogImport}
 								>
-									<div>
+									{!localGreyboxCatalog ? <div>
 										<strong>Уже есть GLB?</strong>
-									</div>
-									<input
-										accept=".glb,model/gltf-binary,application/octet-stream"
-										aria-label="Выбрать GLB-модель для размещения"
-										className={styles.visuallyHidden}
-										data-testid="custom-glb-import-input"
-										disabled={customGlbImport.kind === "checking"}
-										onChange={(event) =>
-											void importCustomGlbFile(event.currentTarget.files?.[0])
-										}
-										ref={customGlbImportInputRef}
-										type="file"
-									/>
+									</div> : null}
 									{customGlbImport.kind === "idle" ? (
 										<button
 											onClick={() => customGlbImportInputRef.current?.click()}
@@ -10181,10 +10552,10 @@ export function AppShell({
 											</div>
 										</div>
 									) : null}
-								</section>
+								</section> : null}
 							</div>
-						</details>
-						<div className={styles.catalogFilters}>
+						</CatalogAuthoring>) : null}
+						{!localGreyboxCatalog ? <div className={styles.catalogFilters}>
 							<label>
 								<span>Поиск по названию, категории, креплению или размеру</span>
 								<input
@@ -10198,8 +10569,8 @@ export function AppShell({
 							<output aria-live="polite" data-testid="catalog-result-count">
 								{itemCountCopy(catalogResultCount)}
 							</output>
-						</div>
-						<nav
+						</div> : null}
+						{!localGreyboxCatalog ? <nav
 							aria-label="Категории каталога"
 							className={styles.catalogCategoryTabs}
 						>
@@ -10253,7 +10624,7 @@ export function AppShell({
 									</span>
 								</button>
 							))}
-						</nav>
+						</nav> : null}
 						<div className={styles.catalogGrid}>
 							{customLibraryError ? (
 								<p className={styles.catalogNote} role="alert">
@@ -10266,7 +10637,7 @@ export function AppShell({
 									key={asset.definition.assetDefinitionId}
 								>
 									<button
-										aria-label={`${asset.definition.displayName} — ${asset.definition.widthMm} × ${asset.definition.depthMm} × ${asset.definition.heightMm} мм, Кастомное${asset.resourceState === "unavailable" ? ", модель недоступна локально" : ""}`}
+										aria-label={`${asset.definition.displayName} — ${asset.definition.widthMm} × ${asset.definition.depthMm} × ${asset.definition.heightMm} мм, ${localGreyboxCatalog ? "Мои модели" : "Кастомное"}${asset.resourceState === "unavailable" ? ", модель недоступна локально" : ""}`}
 										aria-pressed={
 											selectedCustomCatalogAsset?.definition
 												.assetDefinitionId ===
@@ -10319,7 +10690,7 @@ export function AppShell({
 													className={styles.catalogCardCategory}
 													data-testid="catalog-card-category"
 												>
-													Кастомное
+															{localGreyboxCatalog ? "Мои модели" : "Кастомное"}
 												</span>
 												<span
 													className={styles.catalogCardReadiness}
@@ -10609,7 +10980,9 @@ export function AppShell({
 							{customGlbImport.kind === "ready" &&
 							!selectedPreloadedCatalogAsset &&
 							!selectedCustomCatalogAsset
-								? "Добавить в «Кастомное» и разместить"
+								? localGreyboxCatalog
+									? "Добавить в «Мои модели» и разместить"
+									: "Добавить в «Кастомное» и разместить"
 								: selectedPreloadedCatalogAsset &&
 										isPreloadedCatalogResourcePreparing
 									? "Отмена"
@@ -10624,17 +10997,19 @@ export function AppShell({
 												: "Разместить на плане"}
 						</button>
 						{selectedPreloadedCatalogResourceState?.kind === "unavailable" ? (
-							<button onClick={cancelPreloadedCatalogSelection} type="button">
-								Отмена
+							<button data-editor-action="cancel" onClick={cancelPreloadedCatalogSelection} type="button">
+								{hostNavigation ? "Отменить" : "Отмена"}
 							</button>
 						) : null}
 					</div>
-				</aside>
+					</> : <div hidden id="catalog-panel-models" role="tabpanel" aria-labelledby="catalog-tab-models" />}
+				</EditorModalSheet>
 			) : null}
 			{isProjectDeletionConfirmationOpen &&
 			state.kind === "saved" &&
 			!isWriterLeaseReadOnly ? (
 				<ProjectConfirmationDialog
+						plainLabels={hostNavigation !== undefined}
 					label="Удалить проект"
 					title="Удалить проект навсегда?"
 					cancelLabel="Оставить проект"
@@ -10660,6 +11035,7 @@ export function AppShell({
 			isHistoryResourceRecovery &&
 			!isWriterLeaseReadOnly ? (
 				<ProjectConfirmationDialog
+						plainLabels={hostNavigation !== undefined}
 					label="Очистить историю изменений"
 					title="Очистить историю изменений?"
 					cancelLabel="Оставить историю"
@@ -10690,6 +11066,7 @@ export function AppShell({
 			) : null}
 			{state.kind === "recovery-needed" && isRecoveryRemovalConfirmationOpen ? (
 				<ProjectConfirmationDialog
+						plainLabels={hostNavigation !== undefined}
 					label="Удалить недоступные модели"
 					title="Удалить все недоступные модели?"
 					cancelLabel="Отмена"
@@ -10710,8 +11087,10 @@ export function AppShell({
 			) : null}
 			{itemColorVariantDraft && pendingItemColorVariant ? (
 				<ProjectConfirmationDialog
+						plainLabels={hostNavigation !== undefined}
 					label="Подтвердить вариант цвета"
-					title={`Применить вариант «${pendingItemColorVariant.label}»?`}
+					confirmTone="primary"
+					title={`Применить ${localGreyboxCatalog ? "цвет" : "вариант"} «${pendingItemColorVariant.label}»?`}
 					cancelLabel="Отменить вариант"
 					confirmLabel={
 						isPersistenceFailure ? "Повторить сохранение" : "Применить вариант"
@@ -10721,17 +11100,18 @@ export function AppShell({
 					error={dimensionError}
 					onCancel={() => setItemColorVariantDraft(undefined)}
 					onConfirm={() => void confirmItemColorVariant()}
-					returnFocusRef={editorHeaderMenuRef}
+					returnFocusRef={viewMode === "three-dimensional" ? sceneColorTriggerRef : editorHeaderMenuRef}
 					fallbackFocusRef={editorHeaderMenuRef}
 				>
-					<p>
+					{localGreyboxCatalog ? null : <p>
 						Изменится только объявленный слот «Корпус». Габариты, положение и
 						привязка предмета останутся прежними.
-					</p>
+					</p>}
 				</ProjectConfirmationDialog>
 			) : null}
 			{isRestartConfirmationOpen ? (
 				<ProjectConfirmationDialog
+						plainLabels={hostNavigation !== undefined}
 					label="Начать проект заново"
 					title="Начать проект заново?"
 					cancelLabel="Оставить чертёж"

@@ -107,6 +107,8 @@ export type FloorSchematicAssetInstance = {
 	readonly yawRadians?: number;
 	/** The sole durable orientation authority for a floor asset. */
 	readonly yawStep?: RotationStep;
+	/** Exact floor angle in thousandths of a degree, exclusive of legacy yaw. */
+	readonly yawMilliDeg?: number;
 };
 
 /** A non-floor item keeps only a semantic Wall host and local millimetres. */

@@ -4,6 +4,15 @@ import { containsLoneSurrogate, decodeRuntimeV1Utf16, encodeRuntimeV1Utf16, RUNT
   RuntimeV1Fault, scanRuntimeV1Json, unreadable, type RuntimeV1Metrics, type RuntimeV1Node, type RuntimeV1Rejection } from './runtime-v1-raw-scanner';
 
 export const RUNTIME_V1_SCHEMA_ID = 'interiors.project/runtime-v1-wire' as const;
+export const RUNTIME_V1_FLOOR_YAW_SCHEMA_ID = 'interiors.project/runtime-v1-floor-yaw' as const;
+export type RegisteredRuntimeV1SchemaId = typeof RUNTIME_V1_SCHEMA_ID | typeof RUNTIME_V1_FLOOR_YAW_SCHEMA_ID;
+export type RegisteredRuntimeV1EncodeResult =
+  | (Extract<RuntimeV1EncodeResult, { readonly kind: 'encoded' }> & { readonly projectSchemaId: RegisteredRuntimeV1SchemaId })
+  | RuntimeV1Rejection;
+
+export function isRegisteredRuntimeV1SchemaId(id: string): id is RegisteredRuntimeV1SchemaId {
+  return id === RUNTIME_V1_SCHEMA_ID || id === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID;
+}
 export type RuntimeV1VariantValue = ItemColorVariantId | readonly [RuntimeV1VariantValue];
 type ExactItem<T> = T extends SchematicAssetInstance ? Omit<T, 'colorVariantId'> & { readonly colorVariantId?: RuntimeV1VariantValue } : never;
 /** Wider than Project deliberately: the registered historical guard accepted singleton variant arrays. */
@@ -58,7 +67,7 @@ const clock: Read = node => {
 const trueOnly: Read = node => node.kind === 'literal' && node.value === true ? true : unreadable();
 
 class Decoder {
-  constructor(private readonly mode: 'wire' | 'legacy') {}
+  constructor(private readonly mode: 'wire' | 'legacy', private readonly schemaId: RegisteredRuntimeV1SchemaId) {}
   private string: Read = node => {
     let value: string;
     if (node.kind === 'string') {
@@ -116,6 +125,9 @@ class Decoder {
   }
   decode(node: RuntimeV1Node): RuntimeV1Project {
     const string = this.string;
+    const allowsPreciseYaw = this.schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID;
+    const floorOrientation: Record<string, Read> = { elevationMm: number(0, 0), yawRadians: finite, yawStep: number(0, 7) };
+    if (allowsPreciseYaw) floorOrientation.yawMilliDeg = number(0, 359999);
     const vertex: Read = n => this.record(n, { vertexId: string, xMm: number(-100000, 100000), zMm: number(-100000, 100000) });
     const wall: Read = n => this.record(n, { wallSegmentId: string, startVertexId: string, endVertexId: string, thicknessMm: number(20, 1000) });
     const room: Read = n => this.record(n, { roomId: string, faceFingerprint: string, heightMm: number(500, 10000) },
@@ -133,9 +145,13 @@ class Decoder {
       const optional = { assetDefinitionId: string, colorVariantId: this.variant, locked: trueOnly };
       const result = anchor?.kind === 'string' && anchor.value === 'floor'
         ? this.record(n, { ...common, anchorClass: oneOf('floor'), roomId: string, xMm: number(-100000, 100000), zMm: number(-100000, 100000), heightMm: number(1, 100000) },
-          { ...optional, elevationMm: number(0, 0), yawRadians: finite, yawStep: number(0, 7) })
+          { ...optional, ...floorOrientation })
         : this.record(n, { ...common, anchorClass: oneOf('wall'), wallSegmentId: string, side: oneOf('left', 'right'),
           offsetMm: number(0, 100000), elevationMm: number(0, 10000), heightMm: number(1, 10000) }, optional);
+      if (
+        Object.hasOwn(result, 'yawMilliDeg') &&
+        (result.yawMilliDeg === undefined || Object.hasOwn(result, 'yawStep') || Object.hasOwn(result, 'yawRadians'))
+      ) return unreadable();
       if (result.colorVariantId !== undefined) {
         let terminal = result.colorVariantId;
         while (Array.isArray(terminal)) terminal = terminal[0];
@@ -155,11 +171,12 @@ class Decoder {
       rooms: this.array(room, 50), openings: this.array(opening, 200) });
     const rules: Record<string, Read> = { schemaVersion: n => n.kind === 'number' && n.raw === '1' ? 1 : unreadable(), projectId: string,
       name: this.name, createdAt: clock, updatedAt: clock, lifecycle: oneOf('active'), level, assetInstances: this.array(item, 250), assetDefinitionRefs: this.array(definition, 250) };
-    if (this.mode === 'wire') rules.projectSchemaId = oneOf(RUNTIME_V1_SCHEMA_ID);
+    if (this.mode === 'wire') rules.projectSchemaId = oneOf(this.schemaId);
     const value = this.record(node, rules);
     delete value.projectSchemaId;
     // Closed validated wire shape, deliberately not a claim of domain Project validity.
     const project = value as RuntimeV1Project;
+    if (allowsPreciseYaw && !project.assetInstances.some(item => Object.hasOwn(item, 'yawMilliDeg'))) return unreadable();
     references(project);
     return project;
   }
@@ -186,11 +203,11 @@ function references(project: RuntimeV1Project): void {
     if (item.assetDefinitionId !== undefined && !definitions.has(item.assetDefinitionId)) unreadable();
   }
 }
-function decode(bytes: Uint8Array, mode: 'wire' | 'legacy'): RuntimeV1DecodeResult {
+function decode(bytes: Uint8Array, mode: 'wire' | 'legacy', schemaId: RegisteredRuntimeV1SchemaId = RUNTIME_V1_SCHEMA_ID): RuntimeV1DecodeResult {
   const scanned = scanRuntimeV1Json(bytes, mode);
   if (scanned.kind === 'rejected') return scanned;
   try {
-    const project = new Decoder(mode).decode(scanned.root);
+    const project = new Decoder(mode, schemaId).decode(scanned.root);
     if (mode === 'legacy') {
       const historical = utf8.encode(historicalCanonical(project));
       if (historical.length !== bytes.length || historical.some((byte, i) => byte !== bytes[i]) || !legacyWitness(project)) return unreadable();
@@ -200,6 +217,9 @@ function decode(bytes: Uint8Array, mode: 'wire' | 'legacy'): RuntimeV1DecodeResu
 }
 export const decodeRuntimeV1Project = (bytes: Uint8Array): RuntimeV1DecodeResult => decode(bytes, 'wire');
 export const decodeRuntimeV1LegacyProject = (bytes: Uint8Array): RuntimeV1DecodeResult => decode(bytes, 'legacy');
+export function decodeRegisteredRuntimeV1Project(bytes: Uint8Array, schemaId: RegisteredRuntimeV1SchemaId): RuntimeV1DecodeResult {
+  return decode(bytes, 'wire', schemaId);
+}
 function legacyWitness(project: RuntimeV1Project): boolean {
   return project.assetInstances.length > 0 || project.assetDefinitionRefs.length > 0
     || project.level.rooms.some(room => room.type !== undefined || !Object.hasOwn(room, 'name') || !/^[a-f0-9]{64}$/.test(room.faceFingerprint));
@@ -213,6 +233,32 @@ function historicalCanonical(project: RuntimeV1Project): string {
 }
 /** Pure snapshot encoding: no clocks, IDs, storage, checksum or resource access. */
 export function encodeRuntimeV1Project(project: unknown): RuntimeV1EncodeResult {
+  return encodeMember(project, RUNTIME_V1_SCHEMA_ID);
+}
+
+/** Choose the precise-angle member only for snapshots that actually carry that field. */
+export function encodeRegisteredRuntimeProject(project: unknown): RegisteredRuntimeV1EncodeResult {
+  try {
+    const projectSchemaId = hasExactYawField(project) ? RUNTIME_V1_FLOOR_YAW_SCHEMA_ID : RUNTIME_V1_SCHEMA_ID;
+    const encoded = encodeMember(project, projectSchemaId);
+    return encoded.kind === 'encoded' ? { ...encoded, projectSchemaId } : encoded;
+  } catch {
+    return { kind: 'rejected', reasonCode: 'BACKUP_SCHEMA_UNREADABLE' };
+  }
+}
+
+function hasExactYawField(project: unknown): boolean {
+  if (typeof project !== 'object' || project === null) return false;
+  const items: unknown = Object.getOwnPropertyDescriptor(project, 'assetInstances')?.value;
+  if (!Array.isArray(items) || items.length > RUNTIME_V1_LIMITS.elementsPerArray) return false;
+  for (let index = 0; index < items.length; index++) {
+    const item: unknown = Object.getOwnPropertyDescriptor(items, index)?.value;
+    if (typeof item === 'object' && item !== null && Object.hasOwn(item, 'yawMilliDeg')) return true;
+  }
+  return false;
+}
+
+function encodeMember(project: unknown, schemaId: RegisteredRuntimeV1SchemaId): RuntimeV1EncodeResult {
   try {
     const active = new Set<object>();
     let bytes = 0;
@@ -240,7 +286,9 @@ export function encodeRuntimeV1Project(project: unknown): RuntimeV1EncodeResult 
       const keys = Reflect.ownKeys(value);
       if (Array.isArray(value) ? value.length > RUNTIME_V1_LIMITS.elementsPerArray : keys.length > RUNTIME_V1_LIMITS.membersPerObject) throw new RuntimeV1Fault('BACKUP_PROJECT_LIMIT');
       for (const key of keys) {
-        if (typeof key !== 'string' || (!Array.isArray(value) && (key.length > 32 || !sourceKeys.has(key)))) return unreadable();
+        if (typeof key !== 'string') return unreadable();
+        const preciseYawKey = key === 'yawMilliDeg' && schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID;
+        if (!Array.isArray(value) && (key.length > 32 || !sourceKeys.has(key) && !preciseYawKey)) return unreadable();
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (!descriptor || !Object.hasOwn(descriptor, 'value') || (!descriptor.enumerable && !(Array.isArray(value) && key === 'length'))) return unreadable();
       }
@@ -255,7 +303,7 @@ export function encodeRuntimeV1Project(project: unknown): RuntimeV1EncodeResult 
         const order = context === 'root' ? rootKeys : context === 'level' ? levelKeys : Object.keys(value);
         if (order.length !== keys.length || order.some(key => !Object.hasOwn(record, key))) return unreadable();
         const entries: string[] = [];
-        if (context === 'root') entries.push(add(`${JSON.stringify('projectSchemaId')}:${JSON.stringify(RUNTIME_V1_SCHEMA_ID)}`));
+        if (context === 'root') entries.push(add(`${JSON.stringify('projectSchemaId')}:${JSON.stringify(schemaId)}`));
         for (const key of order) entries.push(add(`${JSON.stringify(key)}:`) + write(record[key], depth + 1, context === 'root' && key === 'level' ? 'level' : 'nested'));
         result = add('{') + entries.join(',') + add('}');
         add(','.repeat(Math.max(0, entries.length - 1)));
@@ -265,7 +313,7 @@ export function encodeRuntimeV1Project(project: unknown): RuntimeV1EncodeResult 
     };
     const text = write(project, 1, 'root');
     const encoded = utf8.encode(text);
-    const checked = decodeRuntimeV1Project(encoded);
+    const checked = decodeRegisteredRuntimeV1Project(encoded, schemaId);
     if (checked.kind === 'rejected') return checked;
     return { kind: 'encoded', bytes: encoded, metrics: checked.metrics };
   } catch (error) {

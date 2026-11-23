@@ -1,7 +1,7 @@
 .panel {
 	padding: 1rem;
 	border: 1px solid var(--line, #b8b7b2);
-	border-radius: 0.75rem;
+	border-radius:var(--editor-host-radius, 0.75rem);
 	background: var(--surface, #ffffff);
 	color: var(--ink, #172033);
 	overflow-wrap: anywhere;

@@ -1,3 +1,4 @@
+import { isFloorYawMilliDegrees, yawRadiansFor } from "../../domain/parametric-item";
 import {
 	wallBodiesForProjection,
 	clipWallBodyToInterval,
@@ -18,6 +19,8 @@ import type {
 } from "../../domain/project";
 import type { ProjectV2 } from "../../domain/project-v2";
 import { wallOpeningIntervalMm } from "../../domain/wall-opening";
+import { type OpeningPart, openingTemplateFor } from "./opening-template";
+import type { AdditionalGreyboxKind } from "./greybox-shape-templates";
 
 const MM_PER_SCENE_METRE = 1000;
 const FLOOR_THICKNESS_MM = 40;
@@ -33,7 +36,14 @@ export type FurnitureGreyboxKind =
 	| "chair"
 	| "bed"
 	| "storage"
-	| "sofa";
+	| "sofa"
+	| "bath"
+	| "washer"
+	| "sconce"
+	| "mirror"
+	| AdditionalGreyboxKind;
+
+export type GreyboxKindForLabel = (label: string) => FurnitureGreyboxKind | undefined;
 
 export interface SceneBox {
 	/** Joined physical wall prism, in scene coordinates; absent for ordinary boxes. */
@@ -69,6 +79,7 @@ export interface SceneBox {
 	readonly material?: {
 		readonly colorHex: string;
 		readonly furnitureKind: FurnitureGreyboxKind;
+		readonly refreshGreyboxAppearance?: true;
 	};
 }
 
@@ -125,6 +136,7 @@ export interface RectangularRoomWebGlScene {
 	/** Present only when a Room's usable floor cannot be represented as boxes. */
 	readonly floorPolygons?: readonly SceneFloorPolygon[];
 	readonly walls: readonly SceneBox[];
+	readonly openingParts?: readonly OpeningPart[];
 	readonly items: readonly SceneBox[];
 	/** Optional resource metadata; never an engine object or a render instruction. */
 	readonly customGlbModels?: readonly CustomGlbSceneModel[];
@@ -137,6 +149,8 @@ export interface RectangularRoomWebGlScene {
  */
 export function projectRectangularRoomForWebGl(
 	project: Project | ProjectV2,
+	localGreyboxKind?: GreyboxKindForLabel,
+	showOpeningTemplates = false,
 ): RectangularRoomWebGlScene | undefined {
 	const resolved =
 		project.schemaVersion === 2
@@ -242,6 +256,7 @@ export function projectRectangularRoomForWebGl(
 			body,
 		]),
 	);
+	const openingParts: OpeningPart[] = [];
 	const wallBoxes = project.level.wallSegments.map((wall) => {
 		const start = vertexById.get(wall.startVertexId);
 		const end = vertexById.get(wall.endVertexId);
@@ -250,6 +265,7 @@ export function projectRectangularRoomForWebGl(
 			return [];
 		}
 		return wallBoxesForProjection({
+			openingParts: showOpeningTemplates ? openingParts : undefined,
 			body: wallBodies.get(wall.wallSegmentId),
 			end,
 			minimumXmm,
@@ -284,6 +300,7 @@ export function projectRectangularRoomForWebGl(
 				end,
 				minimumXmm,
 				minimumZmm,
+				localGreyboxKind,
 			);
 			return box ? [box] : [];
 		}
@@ -299,10 +316,7 @@ export function projectRectangularRoomForWebGl(
 				centerZM: metres(item.zMm - minimumZmm),
 				depthM: metres(item.depthMm),
 				heightM: metres(item.heightMm),
-				material: {
-					colorHex: item.color,
-					furnitureKind: furnitureKindFor(item.label),
-				},
+				material: projectedFurnitureMaterial(item, localGreyboxKind),
 				assetAnchor: "floor" as const,
 				assetInstanceId: item.assetInstanceId,
 				widthM: metres(item.widthMm),
@@ -319,6 +333,7 @@ export function projectRectangularRoomForWebGl(
 		},
 		dimensions: { depthMm: usableDepthMm, heightMm, widthMm: usableWidthMm },
 		floors: [...floors, ...doorThresholdFloors],
+		...(openingParts.length ? { openingParts } : {}),
 		...(floorPolygons.length === 0 ? {} : { floorPolygons }),
 		items,
 		walls,
@@ -336,6 +351,7 @@ function wallItemBoxForProjection(
 	end: Vertex,
 	minimumXmm: number,
 	minimumZmm: number,
+	localGreyboxKind?: GreyboxKindForLabel,
 ): SceneBox | undefined {
 	const footprint = wallItemPlanFootprintForProjection(item, wall, start, end);
 	if (!footprint) return undefined;
@@ -350,10 +366,7 @@ function wallItemBoxForProjection(
 		centerZM: metres(footprint.centerZMm - minimumZmm),
 		depthM: metres(item.depthMm),
 		heightM: metres(item.heightMm),
-		material: {
-			colorHex: item.color,
-			furnitureKind: furnitureKindFor(item.label),
-		},
+		material: projectedFurnitureMaterial(item, localGreyboxKind),
 		widthM: metres(item.widthMm),
 		yawRadians: footprint.yawRadians,
 	};
@@ -414,6 +427,7 @@ export function wallItemPlanFootprintForProjection(
  * when the source wall was drawn in reverse.
  */
 function wallBoxesForProjection(input: {
+	readonly openingParts: OpeningPart[] | undefined;
 	readonly body: WallBodyProjection | undefined;
 	readonly end: Vertex;
 	readonly minimumXmm: number;
@@ -526,6 +540,7 @@ function wallBoxesForProjection(input: {
 	const boxes: SceneBox[] = [];
 	let cursorMm = 0;
 	for (const { interval, opening } of sortedOpenings) {
+		input.openingParts?.push(...openingTemplateFor(opening, start, end, wall.thicknessMm, minimumXmm, minimumZmm));
 		const before = solidBox(cursorMm, interval.startMm, 0, projection.heightMm);
 		if (before) {
 			boxes.push(before);
@@ -647,6 +662,8 @@ function metres(valueMm: number): number {
 }
 
 function yawRadiansForAsset(asset: object): number | undefined {
+	const yawMilliDeg = (asset as { readonly yawMilliDeg?: unknown }).yawMilliDeg;
+	if (isFloorYawMilliDegrees(yawMilliDeg)) return yawRadiansFor({ yawMilliDeg }) || undefined;
 	const yawStep = (asset as { readonly yawStep?: unknown }).yawStep;
 	if (
 		typeof yawStep === "number" &&
@@ -669,6 +686,18 @@ function yawRadiansForAsset(asset: object): number | undefined {
 	const legacyStep = ((Math.round(yawRadians / (Math.PI / 4)) % 8) + 8) % 8;
 	const legacyYawRadians = (legacyStep * Math.PI) / 4;
 	return legacyYawRadians === 0 ? undefined : legacyYawRadians;
+}
+
+function projectedFurnitureMaterial(
+	item: { readonly color: string; readonly label: string; readonly assetDefinitionId?: string },
+	localGreyboxKind?: GreyboxKindForLabel,
+): NonNullable<SceneBox["material"]> {
+	const localKind = item.assetDefinitionId === undefined ? localGreyboxKind?.(item.label) : undefined;
+	return {
+		colorHex: item.color,
+		furnitureKind: localKind ?? furnitureKindFor(item.label),
+		...(localKind === undefined ? {} : { refreshGreyboxAppearance: true as const }),
+	};
 }
 
 function furnitureKindFor(label: string): FurnitureGreyboxKind {

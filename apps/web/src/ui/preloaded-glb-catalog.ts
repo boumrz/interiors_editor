@@ -77,30 +77,6 @@ export const preloadedGlbCatalogAssets: readonly PreloadedGlbCatalogAsset[] = [
 	{
 		anchorClass: "floor",
 		category: "seating",
-		depthMm: 2920,
-		heightMm: 2231,
-		id: "kursi-armchair",
-		label: "Кресло Kursi",
-		resourceUrl: "/catalog/armchair-kursi-sofa.glb",
-		section: "furniture",
-		thumbnailUrl: "/catalog/armchair-kursi-sofa.png",
-		widthMm: 3179,
-	},
-	{
-		anchorClass: "floor",
-		category: "seating",
-		depthMm: 857,
-		heightMm: 977,
-		id: "zen-dining-chair",
-		label: "Винтажный стул Zen",
-		resourceUrl: "/catalog/zen-dining-chair.glb",
-		section: "furniture",
-		thumbnailUrl: "/catalog/zen-dining-chair.png",
-		widthMm: 835,
-	},
-	{
-		anchorClass: "floor",
-		category: "seating",
 		depthMm: 814,
 		heightMm: 828,
 		id: "dining-armchair",
@@ -133,18 +109,6 @@ export const preloadedGlbCatalogAssets: readonly PreloadedGlbCatalogAsset[] = [
 		section: "furniture",
 		thumbnailUrl: "/catalog/single-bed.png",
 		widthMm: 1769,
-	},
-	{
-		anchorClass: "floor",
-		category: "storage",
-		depthMm: 422,
-		heightMm: 868,
-		id: "wooden-cabinet",
-		label: "Деревянный комод",
-		resourceUrl: "/catalog/wooden-cabinet.glb",
-		section: "furniture",
-		thumbnailUrl: "/catalog/wooden-cabinet.png",
-		widthMm: 800,
 	},
 	{
 		anchorClass: "floor",
@@ -217,33 +181,41 @@ export function filterPreloadedGlbCatalogAssets(
 	});
 }
 
-/** Builds disposable UI cards from the current control-plane publication. */
+const withdrawnAssetIds = new Set([
+	"kursi-armchair",
+	"wooden-cabinet",
+	"zen-dining-chair",
+]);
+
+/** An older cached publication may still advertise a withdrawn model. */
 export function catalogAssetsFromPublication(
 	publication: VersionedCatalogPublication,
 ): readonly PreloadedGlbCatalogAsset[] {
-	return publication.assets.map((asset) => ({
-		anchorClass: asset.anchorClass,
-		catalogAssetId: asset.assetId,
-		catalogEnvelopeHash: publication.envelopeHash,
-		catalogVersion: publication.catalogVersion,
-		category: asset.category,
-		depthMm: asset.dimensionsMm.depth,
-		heightMm: asset.dimensionsMm.height,
-		id: asset.assetId,
-		label: asset.label,
-		resource: asset.resource,
-		resourceUrl: catalogResourceUrl(asset.resource.sha256),
-		section: asset.section,
-		...(asset.thumbnail ? { thumbnail: asset.thumbnail } : {}),
-		thumbnailUrl: asset.thumbnail
-			? catalogResourceUrl(asset.thumbnail.sha256)
-			: "",
-		variantCount: asset.variantSlots.reduce(
-			(count, slot) => count + slot.variants.length,
-			0,
-		),
-		widthMm: asset.dimensionsMm.width,
-	}));
+	return publication.assets
+		.filter((asset) => !withdrawnAssetIds.has(asset.assetId))
+		.map((asset) => ({
+			anchorClass: asset.anchorClass,
+			catalogAssetId: asset.assetId,
+			catalogEnvelopeHash: publication.envelopeHash,
+			catalogVersion: publication.catalogVersion,
+			category: asset.category,
+			depthMm: asset.dimensionsMm.depth,
+			heightMm: asset.dimensionsMm.height,
+			id: asset.assetId,
+			label: asset.label,
+			resource: asset.resource,
+			resourceUrl: catalogResourceUrl(asset.resource.sha256),
+			section: asset.section,
+			...(asset.thumbnail ? { thumbnail: asset.thumbnail } : {}),
+			thumbnailUrl: asset.thumbnail
+				? catalogResourceUrl(asset.thumbnail.sha256)
+				: "",
+			variantCount: asset.variantSlots.reduce(
+				(count, slot) => count + slot.variants.length,
+				0,
+			),
+			widthMm: asset.dimensionsMm.width,
+		}));
 }
 
 function catalogResourceUrl(hash: string): string {

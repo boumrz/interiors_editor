@@ -18,6 +18,7 @@ import { wallOpeningIntervalMm } from "./wall-opening";
 export interface ParametricFloorItemInput {
 	readonly assetDefinitionId?: string;
 	readonly yawStep?: RotationStep;
+	readonly yawMilliDeg?: number;
 	readonly roomId: string;
 	readonly label: string;
 	readonly xMm: number;
@@ -48,7 +49,7 @@ type UsableRoomHost = HostBounds | HostPolygon;
 export interface FloorItemFootprint {
 	/**
 	 * Internal-only geometry helper for a transient wall body. Durable item
-	 * footprints never enable this escape hatch and are always step-derived.
+	 * footprints never enable this flag.
 	 */
 	readonly continuousYaw?: true;
 	readonly xMm: number;
@@ -57,6 +58,7 @@ export interface FloorItemFootprint {
 	readonly depthMm: number;
 	/** Undefined is the backwards-compatible durable spelling of yaw step 0. */
 	readonly yawStep?: RotationStep;
+	readonly yawMilliDeg?: number;
 	readonly yawRadians?: number;
 }
 
@@ -106,6 +108,7 @@ export interface SetParametricFloorItemYawInput {
 	readonly assetInstanceId: string;
 	/** A continuous right-handed angle in the half-open interval [0, 2π). */
 	readonly yawRadians: number;
+	readonly exact?: boolean;
 }
 
 export interface DeleteParametricFloorItemInput {
@@ -274,7 +277,7 @@ export function createParametricFloorItem(
 		roomId: input.roomId,
 		widthMm: input.widthMm,
 		xMm: input.xMm,
-		yawStep: input.yawStep ?? 0,
+		...canonicalFloorYawFields(input),
 		zMm: input.zMm,
 	};
 	return {
@@ -319,6 +322,7 @@ export function moveParametricFloorItem(
 			xMm: input.xMm,
 			yawRadians: item.yawRadians,
 			yawStep: item.yawStep,
+			yawMilliDeg: item.yawMilliDeg,
 			zMm: input.zMm,
 		})
 	) {
@@ -329,8 +333,7 @@ export function moveParametricFloorItem(
 		depthMm: item.depthMm,
 		widthMm: item.widthMm,
 		xMm: input.xMm,
-		yawRadians: item.yawRadians,
-		yawStep: item.yawStep,
+		...canonicalFloorYawFields(item),
 		zMm: input.zMm,
 	});
 	if (!roomId) {
@@ -339,7 +342,7 @@ export function moveParametricFloorItem(
 	const moved = {
 		...withoutLegacyYawRadians(item),
 		xMm: input.xMm,
-		yawStep: rotationStepForFootprint(item) ?? 0,
+		...canonicalFloorYawFields(item),
 		zMm: input.zMm,
 	};
 	if (hasFloorItemWallCollision(project, moved)) {
@@ -367,9 +370,7 @@ export function moveParametricFloorItem(
 }
 
 /**
- * Commits a snapped yaw step after proving the rotated footprint still has one
- * room host and does not cross a wall. A gesture supplies its transient angle,
- * but a Durable Revision retains only the declared 45-degree orientation.
+ * Commits the supplied pose after checking its rotated footprint and room host.
  */
 export function setParametricFloorItemYaw(
 	project: Project,
@@ -390,7 +391,7 @@ export function setParametricFloorItemYaw(
 	if (item.locked) return { kind: "rejected", reasonCode: "ITEM_LOCKED" };
 	const rotated = {
 		...withoutLegacyYawRadians(item),
-		yawStep: rotationStepForYawRadians(input.yawRadians),
+		...floorYawFieldsForRadians(input.yawRadians, input.exact || item.yawMilliDeg !== undefined),
 	};
 	const roomId = findRoomForFloorItem(project, rotated);
 	if (!roomId) {
@@ -450,7 +451,7 @@ export function resizeParametricFloorItem(
 		depthMm: input.depthMm,
 		heightMm: input.heightMm,
 		widthMm: input.widthMm,
-		yawStep: rotationStepForFootprint(item) ?? 0,
+		...canonicalFloorYawFields(item),
 	};
 	const roomId = findRoomForFloorItem(project, resized);
 	if (!roomId) {
@@ -519,7 +520,7 @@ export function recolorParametricFloorItem(
 							...withoutLegacyYawRadians(candidate),
 							color: variant.color,
 							colorVariantId: variant.variantId,
-							yawStep: rotationStepForFootprint(candidate) ?? 0,
+							...canonicalFloorYawFields(candidate),
 						}
 					: candidate,
 			),
@@ -550,10 +551,11 @@ export function rotateParametricFloorItem(
 		return { kind: "rejected", reasonCode: "INVALID_DIMENSION" };
 	}
 	if (item.locked) return { kind: "rejected", reasonCode: "ITEM_LOCKED" };
-	const yawStep = normalizedRotationStep(
-		(rotationStepForFootprint(item) ?? 0) + input.deltaSteps,
+	const yaw = floorYawFieldsForRadians(
+		yawRadiansFor(item) + input.deltaSteps * Math.PI / 4,
+		item.yawMilliDeg !== undefined,
 	);
-	const rotated = { ...withoutLegacyYawRadians(item), yawStep };
+	const rotated = { ...withoutLegacyYawRadians(item), ...yaw };
 	const roomId = findRoomForFloorItem(project, rotated);
 	if (!roomId) {
 		return { kind: "rejected", reasonCode: "OUTSIDE_ROOM_HOST" };
@@ -631,7 +633,7 @@ export function setParametricFloorItemLock(
 	}
 	const canonicalTarget = {
 		...withoutLegacyYawRadians(target),
-		yawStep: rotationStepForFootprint(target) ?? 0,
+		...canonicalFloorYawFields(target),
 	};
 	const updated = input.locked
 		? { ...canonicalTarget, locked: true as const }
@@ -671,7 +673,7 @@ function hasValidInput(
 		input.widthMm <= 0 ||
 		input.depthMm <= 0 ||
 		input.heightMm <= 0 ||
-		!isValidOptionalRotationStep(input.yawStep) ||
+		!hasValidFloorYaw(input) ||
 		!project.level.rooms.some((room) => room.roomId === input.roomId) ||
 		(input.assetDefinitionId !== undefined &&
 			!project.assetDefinitionRefs.some(
@@ -723,9 +725,7 @@ function isValidFootprint(footprint: FloorItemFootprint): boolean {
 		) &&
 		footprint.widthMm > 0 &&
 		footprint.depthMm > 0 &&
-		isValidOptionalRotationStep(footprint.yawStep) &&
-		(footprint.yawRadians === undefined ||
-			isValidYawRadians(footprint.yawRadians))
+		hasValidFloorYaw(footprint)
 	);
 }
 
@@ -1097,10 +1097,11 @@ interface PlanPoint {
 export function yawRadiansFor(
 	footprint: Pick<
 		FloorItemFootprint,
-		"continuousYaw" | "yawRadians" | "yawStep"
+		"continuousYaw" | "yawRadians" | "yawStep" | "yawMilliDeg"
 	>,
 ): number {
 	if (footprint.continuousYaw) return footprint.yawRadians ?? 0;
+	if (footprint.yawMilliDeg !== undefined) return footprint.yawMilliDeg * Math.PI / 180_000;
 	return ((rotationStepForFootprint(footprint) ?? 0) * Math.PI) / 4;
 }
 
@@ -1195,10 +1196,44 @@ function rotationStepForFootprint(
 		: rotationStepForYawRadians(footprint.yawRadians);
 }
 
+export function isFloorYawMilliDegrees(value: unknown): value is number {
+	return typeof value === "number" && Number.isInteger(value) && value >= 0 && value < 360_000;
+}
+
+function hasValidFloorYaw(footprint: Pick<FloorItemFootprint, "yawStep" | "yawRadians" | "yawMilliDeg">): boolean {
+	return footprint.yawMilliDeg !== undefined
+		? isFloorYawMilliDegrees(footprint.yawMilliDeg) && footprint.yawStep === undefined && footprint.yawRadians === undefined
+		: isValidOptionalRotationStep(footprint.yawStep) && (footprint.yawRadians === undefined || isValidYawRadians(footprint.yawRadians));
+}
+
+type FloorYawFields =
+	| { readonly yawStep: RotationStep; readonly yawMilliDeg?: never }
+	| { readonly yawMilliDeg: number; readonly yawStep?: never };
+
+export function floorYawFieldsForRadians(yawRadians: number, exact: boolean): FloorYawFields {
+	if (!exact) return { yawStep: rotationStepForYawRadians(yawRadians) };
+	const milliDegrees = Math.round(yawRadians * 180_000 / Math.PI);
+	return floorYawFieldsForMilliDegrees(((milliDegrees % 360_000) + 360_000) % 360_000);
+}
+
+function floorYawFieldsForMilliDegrees(milliDegrees: number): FloorYawFields {
+	return milliDegrees % 45_000 === 0
+		? { yawStep: normalizedRotationStep(milliDegrees / 45_000) }
+		: { yawMilliDeg: milliDegrees };
+}
+
+function canonicalFloorYawFields(
+	pose: Pick<FloorItemFootprint, "yawRadians" | "yawStep" | "yawMilliDeg">,
+): FloorYawFields {
+	return pose.yawMilliDeg === undefined
+		? { yawStep: rotationStepForFootprint(pose) ?? 0 }
+		: floorYawFieldsForMilliDegrees(pose.yawMilliDeg);
+}
+
 function withoutLegacyYawRadians(
 	item: FloorSchematicAssetInstance,
-): Omit<FloorSchematicAssetInstance, "yawRadians"> {
-	const { yawRadians: _legacyYawRadians, ...canonicalItem } = item;
+): Omit<FloorSchematicAssetInstance, "yawRadians" | "yawStep" | "yawMilliDeg"> {
+	const { yawRadians: _legacyYawRadians, yawStep: _yawStep, yawMilliDeg: _yawMilliDeg, ...canonicalItem } = item;
 	return canonicalItem;
 }
 

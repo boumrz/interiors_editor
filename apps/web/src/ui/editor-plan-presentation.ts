@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { RegisterEditorTransientBoundary } from "./editor-host-boundary";
 import type { DrawingDimensionVisibility } from "./drawing-dimension-visibility";
 import type { AddWallSegmentInput } from "../domain/add-wall-segment";
@@ -17,6 +18,7 @@ import type { ParametricWallItemPlacementWarning } from "../domain/parametric-wa
 import type { Project, Vertex } from "../domain/project";
 import type { ProjectV2 } from "../domain/project-v2";
 import type { EditorViewport } from "./editor-viewport";
+import type { FloorItemWallSnap } from "./floor-item-wall-snap";
 import type { WallDraftDirection, WallDraftPoint } from "./wall-draft";
 
 /** Pure Plan presentation policies and shared editor contracts; no controller or AppShell dependency. */
@@ -48,6 +50,7 @@ export function isFloorEditorAsset(
 
 export function yawRadiansForEditorFloorAsset(item: EditorFloorAsset): number {
 	return yawRadiansFor({
+		yawMilliDeg: "yawMilliDeg" in item ? item.yawMilliDeg : undefined,
 		yawRadians:
 			"yawRadians" in item && typeof item.yawRadians === "number"
 				? item.yawRadians
@@ -173,13 +176,44 @@ export function wallHitPath(
 	}
 	const offsetX = (-(end.y - start.y) * targetWidth) / (length * 2);
 	const offsetY = ((end.x - start.x) * targetWidth) / (length * 2);
+	const extension = Math.max(0, (targetWidth - length) / 2);
+	const extendX = ((end.x - start.x) * extension) / length;
+	const extendY = ((end.y - start.y) * extension) / length;
 	return [
-		`M ${start.x + offsetX} ${start.y + offsetY}`,
-		`L ${end.x + offsetX} ${end.y + offsetY}`,
-		`L ${end.x - offsetX} ${end.y - offsetY}`,
-		`L ${start.x - offsetX} ${start.y - offsetY}`,
+		`M ${start.x - extendX + offsetX} ${start.y - extendY + offsetY}`,
+		`L ${end.x + extendX + offsetX} ${end.y + extendY + offsetY}`,
+		`L ${end.x + extendX - offsetX} ${end.y + extendY - offsetY}`,
+		`L ${start.x - extendX - offsetX} ${start.y - extendY - offsetY}`,
 		"Z",
 	].join(" ");
+}
+
+/** Overlapping touch regions select the closest real segment, preserving the hit on exact ties. */
+export function nearestWallAtPoint(
+	point: { readonly x: number; readonly y: number },
+	walls: readonly {
+		readonly wallSegmentId: string;
+		readonly start: { readonly x: number; readonly y: number };
+		readonly end: { readonly x: number; readonly y: number };
+		readonly targetWidth: number;
+	}[],
+	preferredWallId?: string,
+): string | undefined {
+	if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return undefined;
+	return walls.reduce<{ readonly id: string; readonly distanceSquared: number } | undefined>((nearest, wall) => {
+		const dx = wall.end.x - wall.start.x;
+		const dy = wall.end.y - wall.start.y;
+		const length = Math.hypot(dx, dy);
+		if (!Number.isFinite(length) || length <= 0 || !Number.isFinite(wall.targetWidth) || wall.targetWidth <= 0) return nearest;
+		const along = ((point.x - wall.start.x) * dx + (point.y - wall.start.y) * dy) / length;
+		const perpendicular = ((point.y - wall.start.y) * dx - (point.x - wall.start.x) * dy) / length;
+		const extension = Math.max(0, (wall.targetWidth - length) / 2);
+		if (along < -extension || along > length + extension || Math.abs(perpendicular) > wall.targetWidth / 2) return nearest;
+		const distanceSquared = (along - Math.max(0, Math.min(length, along))) ** 2 + perpendicular ** 2;
+		return !nearest || distanceSquared < nearest.distanceSquared || (distanceSquared === nearest.distanceSquared && wall.wallSegmentId === preferredWallId)
+			? { id: wall.wallSegmentId, distanceSquared }
+			: nearest;
+	}, undefined)?.id;
 }
 
 export function visualGridStepMm(): number {
@@ -187,6 +221,16 @@ export function visualGridStepMm(): number {
 }
 
 export interface PlanProjectionProps {
+	readonly plainLabels?: boolean;
+	readonly exactFloorYaw?: boolean;
+	readonly initialItemPlacementPoint?: ItemPlacementPoint;
+	readonly onItemPlacementPointChange?: (point: ItemPlacementPoint | undefined) => void;
+	readonly skipBlurCommit?: (target: HTMLInputElement) => boolean;
+	readonly keyboardItemMovement?: boolean;
+	readonly showOpeningTemplates?: boolean;
+	readonly showItemWallDistances?: boolean;
+	readonly floorItemWallSnap?: FloorItemWallSnap;
+	readonly itemPlacementControls?: ReactNode;
 	readonly registerTransientBoundary?: RegisterEditorTransientBoundary;
 	readonly dimensionVisibility: DrawingDimensionVisibility;
 	readonly openingMoveErrorCopy: (reasonCode: string) => string;
@@ -197,11 +241,14 @@ export interface PlanProjectionProps {
 	readonly isWallVertexMoveMode: boolean;
 	readonly movableWallVertexIds: readonly string[];
 	readonly openingMovePreview?: {
+		readonly swingSide?: "left" | "right";
 		readonly openingId: string;
 		readonly offsetMm: number;
 	};
 	readonly openingCreationPreview:
 		| {
+				readonly kind?: "Door" | "Window";
+				readonly swingSide?: "left" | "right";
 				readonly offsetMm: number;
 				readonly wallSegmentId: string;
 				readonly widthMm: number;
@@ -220,6 +267,7 @@ export interface PlanProjectionProps {
 		| undefined;
 	readonly readOnly: boolean;
 	readonly onCancelItemPlacement: () => void;
+	readonly onCloseItemPlacement?: () => void;
 	readonly onDrawWall: (input: AddWallSegmentInput) => Promise<boolean>;
 	readonly onDrawingVisibilityChange: (isVisible: boolean) => void;
 	readonly onSelectOpening?: (openingId: string) => void;
@@ -263,6 +311,7 @@ export interface PlanProjectionProps {
 	readonly onWallVertexMoveModeChange: (isActive: boolean) => void;
 	readonly project: EditorProject;
 	readonly selectedItemId: string | undefined;
+	readonly selectedOpeningId?: string;
 	readonly selectedWallId: string | undefined;
 	readonly wallThicknessMm: number | undefined;
 	readonly viewport: EditorViewport;
@@ -362,8 +411,12 @@ export interface DoorOpeningDrag {
 	readonly offsetMm: number;
 }
 
+export type ItemPlacementPoint = { readonly xMm: number; readonly zMm: number };
+
 export interface ItemPlacementDrag {
 	readonly pointerId: number;
+	readonly before: ItemPlacementPoint | undefined;
+	readonly beforeExact: boolean;
 }
 
 export const initialPlanCanvasSize = {

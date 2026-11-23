@@ -14,8 +14,11 @@ const scopedStores = {
 	library: "resourceHash",
 } as const;
 
+type TelegramScopeDatabaseVersion = 2 | 3;
+
 export interface TelegramScopeAccess {
 	readonly scope: string;
+	readonly databaseVersion: TelegramScopeDatabaseVersion;
 	readonly signal: AbortSignal;
 	reserveId(kind: "attempt" | "lease"): Promise<string>;
 	transact<T>(
@@ -42,6 +45,7 @@ export class TelegramScopeStore {
 	private readonly locks: Pick<LockManager, "request"> | undefined;
 	private readonly secureContext: boolean;
 	private readonly databaseName: string;
+	private readonly databaseMode: "legacy" | "compatible" | "exact";
 	private database: Promise<IDBDatabase> | undefined;
 	private disposed = false;
 
@@ -51,12 +55,14 @@ export class TelegramScopeStore {
 			readonly indexedDb: Pick<IDBFactory, "open">;
 			readonly locks?: Pick<LockManager, "request">;
 			readonly secureContext: boolean;
+			readonly databaseMode?: "compatible" | "exact";
 		},
 	) {
 		this.indexedDb = dependencies.indexedDb;
 		this.locks = dependencies.locks;
 		this.secureContext = dependencies.secureContext;
 		this.databaseName = `interiors-editor-projects:${session.scope}`;
+		this.databaseMode = dependencies.databaseMode ?? "legacy";
 	}
 
 	public reserveId(kind: "attempt" | "lease"): Promise<string> {
@@ -88,6 +94,7 @@ export class TelegramScopeStore {
 				assertActive();
 				const result = await operation({
 					scope: this.session.scope,
+					databaseVersion: database.version === 3 ? 3 : 2,
 					signal: this.session.signal,
 					reserveId: (kind) => {
 						assertActive();
@@ -199,9 +206,41 @@ export class TelegramScopeStore {
 		if (this.disposed)
 			return Promise.reject(new Error("Telegram session is closed"));
 		if (this.database) return this.database;
-		let opening: Promise<IDBDatabase>;
-		opening = new Promise<IDBDatabase>((resolve, reject) => {
-			const request = this.indexedDb.open(this.databaseName, 2);
+		const preferredVersion = this.databaseMode === "exact" ? 3 : 2;
+		const opening = this.openVersion(preferredVersion, true)
+			.catch((error: unknown) => {
+				if (
+					this.databaseMode !== "compatible" ||
+					this.session.signal.aborted ||
+					!(error instanceof DOMException) ||
+					error.name !== "VersionError"
+				) {
+					throw error;
+				}
+				// Rollback can reopen a database already upgraded by an exact writer.
+				return this.openVersion(3, false);
+			})
+			.then((database) => {
+				database.onversionchange = () => {
+					void this.session.revoke();
+					database.close();
+					if (this.database === opening) this.database = undefined;
+				};
+				return database;
+			});
+		this.database = opening;
+		void opening.catch(() => {
+			if (this.database === opening) this.database = undefined;
+		});
+		return opening;
+	}
+
+	private openVersion(
+		version: TelegramScopeDatabaseVersion,
+		allowUpgrade: boolean,
+	): Promise<IDBDatabase> {
+		return new Promise<IDBDatabase>((resolve, reject) => {
+			const request = this.indexedDb.open(this.databaseName, version);
 			let failed = false;
 			let upgradeStarted = false;
 			const removeCancellation = () =>
@@ -220,11 +259,24 @@ export class TelegramScopeStore {
 				once: true,
 			});
 			request.onupgradeneeded = (event) => {
-				if (failed || this.disposed || event.oldVersion > 1) {
+				if (failed || this.disposed || !allowUpgrade || event.oldVersion > 2) {
 					request.transaction?.abort();
 					return;
 				}
 				upgradeStarted = true;
+				if (event.oldVersion === 2) {
+					const transaction = request.transaction;
+					if (!transaction || !hasScopeSchema(request.result, transaction)) {
+						transaction?.abort();
+						return;
+					}
+					const records = transaction.objectStore(metadataStore).getAll();
+					records.onsuccess = () => {
+						if (!validMetadata(records.result, this.session.scope))
+							transaction.abort();
+					};
+					return;
+				}
 				if (event.oldVersion === 1) {
 					const transaction = request.transaction;
 					if (
@@ -278,24 +330,14 @@ export class TelegramScopeStore {
 					database.close();
 					return;
 				}
-				if (!hasScopeSchema(database)) {
+				if (database.version !== version || !hasScopeSchema(database)) {
 					database.close();
 					fail(new Error("Telegram storage schema is unsupported"));
 					return;
 				}
-				database.onversionchange = () => {
-					void this.session.revoke();
-					database.close();
-					if (this.database === opening) this.database = undefined;
-				};
 				resolve(database);
 			};
 		});
-		this.database = opening;
-		void opening.catch(() => {
-			if (this.database === opening) this.database = undefined;
-		});
-		return opening;
 	}
 }
 
@@ -341,16 +383,14 @@ function createProjectStores(database: IDBDatabase): void {
 	}
 }
 
-function hasScopeSchema(database: IDBDatabase): boolean {
+function hasScopeSchema(database: IDBDatabase, upgrade?: IDBTransaction): boolean {
 	if (
 		Array.from(database.objectStoreNames).sort().join() !==
 		Object.keys(scopedStores).sort().join()
 	)
 		return false;
-	const transaction = database.transaction(
-		Object.keys(scopedStores),
-		"readonly",
-	);
+	const transaction =
+		upgrade ?? database.transaction(Object.keys(scopedStores), "readonly");
 	return Object.entries(scopedStores).every(([name, keyPath]) => {
 		const store = transaction.objectStore(name);
 		return (

@@ -3,7 +3,7 @@ import { canonicalProjectSerializer } from "../../application/create-project";
 import { alphaBackupFeasibilityLimits } from "../../application/backup-feasibility-policy";
 import { validateRuntimeV1Project } from "../../application/runtime-v1-project-validation";
 import { isStructurallyValidProjectV1 } from "../../domain/project-json-transfer";
-import { encodeRuntimeV1Project } from "../portable-backup/runtime-v1-wire";
+import { encodeRegisteredRuntimeProject } from "../portable-backup/runtime-v1-wire";
 
 export interface TelegramReadonlyProjectSnapshot {
  readonly scope: string;
@@ -54,7 +54,7 @@ export async function verifyTelegramReadonlyCurrentSnapshot(
   const candidate = revision.candidate;
   if (revision.scope !== scope || revision.projectId !== projectId || revision.revisionId !== pointer.currentRevisionId || typeof revision.creationAttemptId !== "string" || candidate.project.projectId !== projectId || candidate.revision.projectId !== projectId || candidate.revision.revisionId !== pointer.currentRevisionId || pointer.name !== candidate.project.name) return undefined;
   // Bound the derived manifest through the existing closed grammar and policy before walking metadata arrays.
-  if (encodeRuntimeV1Project(candidate.project).kind !== "encoded" || validateRuntimeV1Project(candidate.project).kind !== "accepted") return undefined;
+  if (encodeRegisteredRuntimeProject(candidate.project).kind !== "encoded" || validateRuntimeV1Project(candidate.project).kind !== "accepted") return undefined;
   const resourceManifest = manifestFor(candidate);
   if (!exactManifest(revision.resourceManifest, resourceManifest) || !record(creation) || !exactManifest(creation.resourceManifest, resourceManifest)) return undefined;
   if (!publishedCreation(creation, scope) || creation.attemptId !== revision.creationAttemptId || creation.projectId !== projectId || creation.revisionId !== pointer.currentRevisionId || creation.intent !== "mutation" || creation.checksum !== candidate.revision.checksum || creation.serializedProject !== candidate.revision.serializedProject || !sameTelegramReadonlySnapshot(creation.resourceManifest, resourceManifest)) return undefined;

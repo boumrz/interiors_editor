@@ -3,7 +3,8 @@ import type { BinaryChecksumPort } from '../../application/ports';
 import { alphaBackupFeasibilityLimits } from '../../application/backup-feasibility-policy';
 import { parsePpjA1JsonBytes } from '../../domain/ppj-a1-lossless-json';
 import { containsLoneSurrogate, decodeRuntimeV1Utf16, encodeRuntimeV1Utf16, scanRuntimeV1Json, type RuntimeV1Node } from './runtime-v1-raw-scanner';
-import { decodeRuntimeV1LegacyProject, decodeRuntimeV1Project, encodeRuntimeV1Project, RUNTIME_V1_SCHEMA_ID, type RuntimeV1Project } from './runtime-v1-wire';
+import { decodeRuntimeV1LegacyProject, decodeRegisteredRuntimeV1Project, encodeRegisteredRuntimeProject,
+  isRegisteredRuntimeV1SchemaId, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, type RuntimeV1Project } from './runtime-v1-wire';
 import { readPpjA1ZipCentralDirectory } from './ppj-a1-zip-central-directory';
 import type { PpjA1ArchiveEntry } from './ppj-a1-canonical-project-member-ingress';
 
@@ -39,7 +40,7 @@ export type RuntimePpjValidationHandoff = {
 };
 export type RuntimePortableEncodeInput = { readonly project: unknown; readonly createdAt: string; readonly resources: readonly RuntimePortableResource[] };
 export type RuntimePortableEncodeResult<TDomainReason extends string = string> = { readonly kind: 'encoded'; readonly bytes: Uint8Array; readonly mimeType: 'application/zip'; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason>;
-export type RuntimePortableDecodeResult<TDomainReason extends string = string> = { readonly kind: 'decoded'; readonly schema: 'runtime-v1-wire' | 'runtime-v1-legacy'; readonly decodedProject: RuntimeV1Project; readonly projectBytes: Uint8Array; readonly resources: readonly RuntimePortableResource[]; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason> | RuntimePpjValidationHandoff;
+export type RuntimePortableDecodeResult<TDomainReason extends string = string> = { readonly kind: 'decoded'; readonly schema: 'runtime-v1-wire' | 'runtime-v1-floor-yaw' | 'runtime-v1-legacy'; readonly decodedProject: RuntimeV1Project; readonly projectBytes: Uint8Array; readonly resources: readonly RuntimePortableResource[]; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason> | RuntimePpjValidationHandoff;
 type ObjectNode = Extract<RuntimeV1Node, { readonly kind: 'object' }>;
 type ManifestEntry = { readonly byteLength: number; readonly path: string; readonly mediaType: string; readonly sha256: string };
 type ResourceMapping = { readonly path: string; readonly resourceHash: string };
@@ -67,9 +68,10 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
     try {
       checkCancelled(signal);
       const backupCreatedAt = input.createdAt;
-      const encoded = encodeRuntimeV1Project(input.project);
+      const encoded = encodeRegisteredRuntimeProject(input.project);
       if (encoded.kind === 'rejected') return encoded;
-      const decoded = decodeRuntimeV1Project(encoded.bytes);
+      const { projectSchemaId } = encoded;
+      const decoded = decodeRegisteredRuntimeV1Project(encoded.bytes, projectSchemaId);
       if (decoded.kind === 'rejected') return decoded;
       const project = decoded.project;
       if (!iso(backupCreatedAt)) fail('BACKUP_MANIFEST_INVALID');
@@ -88,9 +90,9 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
         entries.push({ byteLength: resource.bytes.length, mediaType: 'model/gltf-binary', path, sha256: resource.resourceHash });
         archiveEntries[path] = resource.bytes;
       }
-      const metadata = { sourceProjectId: project.projectId, createdAt: backupCreatedAt, projectSchemaId: RUNTIME_V1_SCHEMA_ID, projectSchemaVersion: 1 };
+      const metadata = { sourceProjectId: project.projectId, createdAt: backupCreatedAt, projectSchemaId, projectSchemaVersion: 1 };
       const manifestBytes = json({ backupFormat: 'interiors-portable-backup', backupFormatVersion: 1, canonicalProjectPath: PROJECT, complete: true,
-        createdAt: backupCreatedAt, entries, projectSchemaId: RUNTIME_V1_SCHEMA_ID, projectSchemaVersion: 1, requiredCapabilities: [],
+        createdAt: backupCreatedAt, entries, projectSchemaId, projectSchemaVersion: 1, requiredCapabilities: [],
         resources: verified.mappings, sourceProjectId: sourceString(project.projectId) });
       const ledgerBytes = json({ algorithm: 'sha-256', entries: entries.map(({ path, sha256 }) => ({ path, sha256 })) });
       if (manifestBytes.length > MAXIMUM_CONTROL_BYTES || ledgerBytes.length > MAXIMUM_CONTROL_BYTES) fail('BACKUP_PROJECT_LIMIT');
@@ -144,7 +146,8 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
         preview = await readEntry(projectEntry, alphaBackupFeasibilityLimits.maxProjectBytes, 'BACKUP_PROJECT_LIMIT', signal);
         if (probeRootSelector(preview) !== 'absent') return ppjHandoff(ownedArchive, manifestBytes, ledgerBytes, projectEntry, controlEntries, header);
       }
-      const knownWire = header.projectSchemaId === RUNTIME_V1_SCHEMA_ID && header.projectSchemaVersion === 1;
+      const wireSchema = header.projectSchemaVersion === 1 && isRegisteredRuntimeV1SchemaId(header.projectSchemaId) ? header.projectSchemaId : undefined;
+      const knownWire = wireSchema !== undefined;
       const knownLegacy = header.projectSchemaId === PPJ && header.projectSchemaVersion === 1;
       const manifest = parseManifest(manifestRoot, knownWire, knownLegacy);
       bindEnvelope(manifest, ledgerRoot, paths, knownWire || knownLegacy);
@@ -158,7 +161,7 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
         if (raw.kind === 'rejected') return raw;
         fail('BACKUP_SCHEMA_UNREADABLE');
       }
-      const decoded = knownWire ? decodeRuntimeV1Project(bytes) : decodeRuntimeV1LegacyProject(bytes);
+      const decoded = wireSchema === undefined ? decodeRuntimeV1LegacyProject(bytes) : decodeRegisteredRuntimeV1Project(bytes, wireSchema);
       if (decoded.kind === 'rejected') return decoded;
       const project = decoded.project;
       if (project.projectId !== manifest.sourceProjectId) fail('BACKUP_SCHEMA_UNREADABLE');
@@ -169,7 +172,8 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
       if (validation.kind === 'rejected') return { kind: 'project-validation-rejected', reasonCode: validation.reasonCode };
       const resources = await this.readProjectResources(project, manifest, paths, signal);
       checkCancelled(signal);
-      return { kind: 'decoded', schema: knownWire ? 'runtime-v1-wire' : 'runtime-v1-legacy', decodedProject: project, projectBytes: bytes, resources,
+      const schema = wireSchema === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID ? 'runtime-v1-floor-yaw' : knownWire ? 'runtime-v1-wire' : 'runtime-v1-legacy';
+      return { kind: 'decoded', schema, decodedProject: project, projectBytes: bytes, resources,
         metadata: { sourceProjectId: manifest.sourceProjectId, createdAt: manifest.createdAt, projectSchemaId: manifest.projectSchemaId, projectSchemaVersion: manifest.projectSchemaVersion } };
     } catch (error) { return rejected(error); }
   }
@@ -282,7 +286,7 @@ function selectorHeader(root: ObjectNode): RuntimePortableSelectorHeader {
   const projectSchemaId = string(root.members.get('projectSchemaId'));
   if (!/^[!-~]{1,256}$/.test(projectSchemaId)) fail('BACKUP_MANIFEST_INVALID');
   const projectSchemaVersion = integer(root.members.get('projectSchemaVersion'), 1);
-  const sourceProjectId = v1String(root.members.get('sourceProjectId'), projectSchemaId === RUNTIME_V1_SCHEMA_ID);
+  const sourceProjectId = v1String(root.members.get('sourceProjectId'), isRegisteredRuntimeV1SchemaId(projectSchemaId));
   return { sourceProjectId, projectSchemaId, projectSchemaVersion };
 }
 function parseManifest(root: ObjectNode, wire: boolean, legacy: boolean): Manifest {

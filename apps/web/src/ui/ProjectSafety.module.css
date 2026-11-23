@@ -1,7 +1,7 @@
 .card {
 	background:var(--editor-host-surface, #fff);
 	border:1px solid var(--editor-host-line, #d9e1e8);
-	border-radius:24px;
+	border-radius:var(--editor-host-radius, 24px);
 	color:var(--editor-host-ink, #192436);
 	display: grid;
 	font: 400 0.875rem/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -12,7 +12,7 @@
 }
 .card h1, .card h2 { font: 700 1.25rem/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; }
 .card p { margin: 0; }
-.card button { background:var(--editor-host-surface, #fff); border:1px solid var(--editor-host-line, #d9e1e8); border-radius:12px; color:var(--editor-host-primary, #1976b9); cursor: pointer; font: 600 0.875rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 44px; min-width: 44px; padding: 12px; text-align: center; overflow-wrap: anywhere; }
+.card button { background:var(--editor-host-surface, #fff); border:1px solid var(--editor-host-line, #d9e1e8); border-radius:var(--editor-host-radius, 12px); color:var(--editor-host-primary, #1976b9); cursor: pointer; font: 600 0.875rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 44px; min-width: 44px; padding: 12px; text-align: center; overflow-wrap: anywhere; }
 .card button:focus-visible { outline:2px solid var(--editor-host-primary, #1976b9); outline-offset: -4px; }
 .card button:disabled { cursor: wait; opacity: 0.6; }
 .card .primary { background:#1976b9; border-color:var(--editor-host-primary, #1976b9); color:#fff; }
@@ -20,7 +20,7 @@
 .card .danger { border-color:#e0c4c4; color:var(--editor-host-danger, #a33333); }
 .card .back { border:0; justify-self: start; padding-inline: 0; }
 .card .error { color:var(--editor-host-danger, #a33333); }
-.context { background:var(--editor-host-canvas, #f4f6f8); border-radius:12px; color:var(--editor-host-muted, #52647b); padding: 12px; }
+.context { background:var(--editor-host-canvas, #f4f6f8); border-radius:var(--editor-host-radius, 12px); color:var(--editor-host-muted, #52647b); padding: 12px; }
 .message, .actions, .recoveryActions { display: grid; gap: 12px; }
 .message h2 { color:var(--editor-host-danger, #a33333); }
 .floating {
@@ -66,4 +66,32 @@
 /* Fixed dialogs use the visible host height; absent host values retain the browser inset. */
 .dialog { bottom: calc(100dvh - var(--editor-viewport-height, 100dvh) + max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)))); }
 .dialog[data-confirm-tone="primary"] { bottom: calc(100dvh - var(--editor-viewport-height, 100dvh) + max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)))); }
+.telegramConfirmation .message { color: var(--editor-host-muted); gap: 8px; padding-block-end: 8px; }
+.telegramConfirmation .message p { margin: 0; }
+.telegramConfirmation .error { color: var(--editor-host-danger, #a33333); margin: 0 0 8px; }
+.sheetActions {
+	gap: 8px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+}
+.sheetActions button {
+	background: var(--editor-host-surface, var(--surface));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--editor-host-ink, var(--ink));
+	cursor: pointer;
+	font: inherit;
+	font-weight: 600;
+	min-height: 48px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	padding: 8px;
+}
+.sheetActions button:focus-visible { outline: 2px solid var(--editor-host-focus, #0b5d8e); outline-offset: -2px; }
+.sheetActions button:disabled { cursor: wait; opacity: .6; }
+.sheetActions .primary {
+	background: var(--editor-host-primary-fill, #1976b9);
+	border-color: var(--editor-host-primary-fill, #1976b9);
+	color: var(--editor-host-on-primary, #fff);
+}
+
 .saveFailure { bottom: calc(100dvh - var(--editor-viewport-height, 100dvh) + 96px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }

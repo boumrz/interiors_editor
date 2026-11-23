@@ -1,3 +1,4 @@
+import { GLASS_OPACITY, OPENING_FINISH } from "./opening-template";
 import type {
 	RectangularRoomWebGlScene,
 	SceneBox,
@@ -504,6 +505,7 @@ function createWebGl2RoomSceneRenderer(
 	scene: RectangularRoomWebGlScene,
 	qualityTier: WebGl2RendererQualityTier,
 	runtimeModels: WebGl2RuntimeModels,
+	resizeDrawingBufferOnChangeOnly = false,
 ): WebGl2SceneRenderer {
 	if (shouldUseThreeWebGl2RoomSceneRenderer(scene, runtimeModels)) {
 		try {
@@ -512,6 +514,7 @@ function createWebGl2RoomSceneRenderer(
 				scene,
 				qualityTier,
 				runtimeModels,
+				resizeDrawingBufferOnChangeOnly,
 			);
 		} catch {
 			// An unavailable optional engine does not require adding an asset or
@@ -526,6 +529,13 @@ function createWebGl2RoomSceneRenderer(
 	}
 	return createProceduralWebGl2RoomSceneRenderer(context, scene, qualityTier);
 }
+
+export const createWebGl2RoomSceneRendererWithResizeOnChange: RendererFactory = (
+	context,
+	scene,
+	qualityTier,
+	runtimeModels,
+) => createWebGl2RoomSceneRenderer(context, scene, qualityTier, runtimeModels, true);
 
 /**
  * Empty, placeholder and GLB scenes share one room pipeline. Furniture arrival
@@ -756,6 +766,21 @@ function createProceduralWebGl2RoomSceneRenderer(
 			activeScene.items.forEach((item) => {
 				drawFurniture(item, detailedFurniture, drawBox, camera);
 			});
+			const panes: SceneBox[] = [];
+			for (const part of activeScene.openingParts ?? []) {
+				if (hiddenWallSegmentIds.has(part.wallSegmentId)) continue;
+				if (part.role === "glass") panes.push(part.box);
+				else drawBox(part.box, colorFor(OPENING_FINISH[part.role]), camera);
+			}
+			if (panes.length) {
+				const [red, green, blue] = colorFor(OPENING_FINISH.glass);
+				context.enable(context.BLEND);
+				context.blendFunc(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA);
+				context.depthMask(false);
+				for (const pane of panes) drawBox(pane, [red, green, blue, GLASS_OPACITY], camera);
+				context.depthMask(true);
+				context.disable(context.BLEND);
+			}
 		},
 	};
 }

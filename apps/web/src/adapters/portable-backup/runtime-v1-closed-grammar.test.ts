@@ -1,5 +1,5 @@
 import { describe, expect, it } from '@rstest/core';
-import { decodeRuntimeV1LegacyProject, decodeRuntimeV1Project, encodeRuntimeV1Project, RUNTIME_V1_SCHEMA_ID } from './runtime-v1-wire';
+import { decodeRegisteredRuntimeV1Project, decodeRuntimeV1LegacyProject, decodeRuntimeV1Project, encodeRegisteredRuntimeProject, encodeRuntimeV1Project, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, RUNTIME_V1_SCHEMA_ID } from './runtime-v1-wire';
 import { scanRuntimeV1Json } from './runtime-v1-raw-scanner';
 
 const source = () => ({ schemaVersion: 1, projectId: 'p', name: 'P', createdAt: '2026-11-04T00:00:00.000Z', updatedAt: '+010000-01-01T00:00:00.000Z', lifecycle: 'active',
@@ -37,6 +37,51 @@ function rejectedSnapshot(value: unknown): void {
 }
 
 describe('closed V1 field contract', () => {
+  it('preserves the original bytes for ordinary snapshots and binds the precise floor selector to its member', () => {
+    const fixture = source();
+    const original = encodeRuntimeV1Project(fixture);
+    expect(original.kind).toBe('encoded');
+    expect(encodeRegisteredRuntimeProject(fixture)).toEqual({ ...original, projectSchemaId: RUNTIME_V1_SCHEMA_ID });
+    const { yawRadians: _yawRadians, yawStep: _yawStep, ...floor } = fixture.assetInstances[0];
+    for (const yawMilliDeg of [0, 37500, 359999]) {
+      const precise = { ...fixture, assetInstances: [{ ...floor, yawMilliDeg }, { ...fixture.assetInstances[0], assetInstanceId: 'ordinary' }] };
+      const exact = encodeRegisteredRuntimeProject(precise);
+      if (exact.kind !== 'encoded') throw new Error('Precise floor field must encode');
+      const unreadable = { kind: 'rejected', reasonCode: 'BACKUP_SCHEMA_UNREADABLE' };
+      expect(exact.projectSchemaId).toBe(RUNTIME_V1_FLOOR_YAW_SCHEMA_ID);
+      expect(decodeRegisteredRuntimeV1Project(exact.bytes, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID)).toMatchObject({ kind: 'decoded', project: precise });
+      expect(decodeRuntimeV1Project(exact.bytes)).toEqual(unreadable);
+      expect(decodeRuntimeV1LegacyProject(exact.bytes)).toEqual(unreadable);
+      expect(encodeRuntimeV1Project(precise)).toEqual(unreadable);
+      expect(decodeRuntimeV1Project(utf8(JSON.stringify({ projectSchemaId: RUNTIME_V1_SCHEMA_ID, ...precise })))).toEqual(unreadable);
+      expect(decodeRuntimeV1LegacyProject(utf8(JSON.stringify(precise)))).toEqual(unreadable);
+    }
+    const newWithoutAngle = utf8(JSON.stringify({ projectSchemaId: RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, ...fixture }));
+    expect(decodeRegisteredRuntimeV1Project(newWithoutAngle, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID)).toEqual({ kind: 'rejected', reasonCode: 'BACKUP_SCHEMA_UNREADABLE' });
+  });
+
+  it('rejects noncanonical range, undefined wrappers, mixed authorities and wall yaw in the precise member', () => {
+    const fixture = source();
+    const { yawRadians: _yawRadians, yawStep: _yawStep, ...floor } = fixture.assetInstances[0];
+    const wall = { assetInstanceId: 'wallitem', anchorClass: 'wall', wallSegmentId: 'w', side: 'left', offsetMm: 0, elevationMm: 0, heightMm: 1,
+      label: 'Wall', widthMm: 1, depthMm: 1, color: '#ABCDEF', yawMilliDeg: 37500 };
+    const rejected = { kind: 'rejected', reasonCode: 'BACKUP_SCHEMA_UNREADABLE' };
+    for (const invalid of [{ ...floor, yawMilliDeg: -1 }, { ...floor, yawMilliDeg: 360000 }, { ...floor, yawMilliDeg: 1.5 },
+      { ...floor, yawMilliDeg: '37500' }, { ...floor, yawMilliDeg: null }, { ...floor, yawMilliDeg: undefined },
+      { ...floor, yawMilliDeg: 37500, yawRadians: 0.5 }, { ...floor, yawMilliDeg: 37500, yawStep: undefined },
+      { ...floor, yawMilliDeg: 37500, yawStep: 0 }, wall]) {
+      const project = { ...fixture, assetInstances: [invalid, { ...floor, assetInstanceId: 'exact-sibling', yawMilliDeg: 1000 }] };
+      expect(encodeRegisteredRuntimeProject(project)).toEqual(rejected);
+      const raw = JSON.stringify({ projectSchemaId: RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, ...project }, (_key, value: unknown) => value === undefined ? { undefined: true } : value);
+      expect(decodeRegisteredRuntimeV1Project(utf8(raw), RUNTIME_V1_FLOOR_YAW_SCHEMA_ID)).toEqual(rejected);
+    }
+    const project = { ...fixture, assetInstances: [{ ...floor, yawMilliDeg: 37500 }] };
+    const canonical = JSON.stringify({ projectSchemaId: RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, ...project });
+    for (const spelling of ['37500.0', '3.75e4']) {
+      expect(decodeRegisteredRuntimeV1Project(utf8(canonical.replace('37500', spelling)), RUNTIME_V1_FLOOR_YAW_SCHEMA_ID)).toEqual(rejected);
+    }
+  });
+
   it.each([
     ['level/vertices/0/xMm', -100000, 100000], ['level/vertices/0/zMm', -100000, 100000],
     ['level/wallSegments/0/thicknessMm', 20, 1000], ['level/rooms/0/heightMm', 500, 10000],

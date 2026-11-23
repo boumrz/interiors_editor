@@ -53,7 +53,7 @@ export function validateRuntimeV1Project(
 		if (!Number.isFinite(yawRadians)) return reject("INVALID_DIMENSION");
 		floorInputs.set(item.assetInstanceId, {
 			assetDefinitionId: item.assetDefinitionId,
-			yawStep: rotationStepForYawRadians(yawRadians),
+			...(item.yawMilliDeg === undefined ? { yawStep: rotationStepForYawRadians(yawRadians) } : { yawMilliDeg: item.yawMilliDeg }),
 			roomId: item.roomId,
 			label: item.label,
 			xMm: item.xMm,
@@ -135,7 +135,9 @@ function withinProjectLimits(project: Project): boolean {
 		const dx = BigInt(end.xMm) - BigInt(start.xMm);
 		const dz = BigInt(end.zMm) - BigInt(start.zMm);
 		const squared = dx * dx + dz * dz;
-		if ((squared > 0n && squared < 50n * 50n) || squared > 100_000n * 100_000n)
+		// A snapshot can contain exact contact fragments shorter than the
+		// authored-wall minimum. Topology validation still rejects zero length.
+		if (squared > 100_000n * 100_000n)
 			return false;
 	}
 	return true;

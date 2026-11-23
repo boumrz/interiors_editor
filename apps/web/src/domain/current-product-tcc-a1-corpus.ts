@@ -66,7 +66,8 @@ type ContactVector =
 	| "duplicate-identity"
 	| "collinear-overlap"
 	| "zero-partition"
-	| "short-partition";
+	| "short-partition"
+	| "retained-short-partition";
 
 type FaceVector =
 	| "exterior"
@@ -145,7 +146,7 @@ const raw = {
 		'{"family":"measurement-and-projections","kind":"distance","from":{"xMm":0,"zMm":0},"to":{"xMm":3000,"zMm":4000}}',
 } as const;
 
-export const currentProductTccA1Corpus: TccA1CorpusManifest<CurrentProductKernelIntent> =
+export const historicalCurrentProductTccA1CorpusRevision1: TccA1CorpusManifest<CurrentProductKernelIntent> =
 	{
 		contractId: TCC_A1_CONTRACT_ID,
 		contractVersion: TCC_A1_CONTRACT_VERSION,
@@ -488,6 +489,23 @@ export const currentProductTccA1Corpus: TccA1CorpusManifest<CurrentProductKernel
 			"topology-corpus-contract.md#4-v1v2-classification-migration-and-recovery-matrix",
 		],
 	};
+
+/** Revision 2 supersedes only SHORT-PARTITION; revision 1 remains historical evidence. */
+export const currentProductTccA1Corpus: TccA1CorpusManifest<CurrentProductKernelIntent> = {
+	...historicalCurrentProductTccA1CorpusRevision1,
+	corpusRevision: 2,
+	fixtures: historicalCurrentProductTccA1CorpusRevision1.fixtures.map((entry) => entry.fixtureId === "TCC-A1-CONTACT-SHORT-PARTITION"
+		? contactFixture(
+			"TCC-A1-CONTACT-RETAINED-SHORT-PARTITION-R2",
+			"retained-short-partition",
+			'{"family":"contacts","vector":"retained-short-partition","kind":"add-wall"}',
+			"ff400024677c306645b15f80499110c6fe0f04d7ebff5e47578b07a022e6de3d",
+		) : entry),
+	policyReferences: [
+		...historicalCurrentProductTccA1CorpusRevision1.policyReferences,
+		"contracts/tma-ui-and-wall-contact-2026-11-14.md",
+	],
+};
 
 /**
  * The source-owned Alpha §4 closure intentionally has one current selector
@@ -866,6 +884,12 @@ function contactFixture(
 				rawInputSha256,
 				"TOO_SHORT_WALL",
 			);
+		case "retained-short-partition":
+			return fixture(fixtureId, baseStateDigest, { family: "contacts", kind: vector }, source, rawInputSha256,
+				accepted(
+					["vertex:bottom", "vertex:cross", "vertex:top", "wall:horizontal-tail", "wall:vertical-bottom", "wall:vertical-top"],
+					["vertex:short-bottom", "vertex:short-cross", "vertex:short-top", "wall:short-horizontal-tail", "wall:short-vertical-bottom", "wall:short-vertical-top"],
+				));
 	}
 }
 
@@ -1439,7 +1463,9 @@ function contactOutcome(
 				["vertex:zero-partition-end", "wall:zero-partition"],
 			);
 		}
-		case "short-partition": {
+		case "short-partition":
+			throw new TypeError("Historical short-partition fixture requires the revision-1 contact policy");
+		case "retained-short-partition": {
 			const result = addWallSegment(
 				horizontalSegmentGraph(),
 				{
@@ -1447,11 +1473,20 @@ function contactOutcome(
 					start: { xMm: 100, zMm: -500 },
 					thicknessMm: 100,
 				},
-				idsThatMustNotAllocate(),
+				ids("short-bottom", "short-cross", "short-top", "short-horizontal-tail", "short-vertical-bottom", "short-vertical-top"),
 			);
-			if (result.kind !== "rejected" || result.reasonCode !== "TOO_SHORT_WALL")
-				throw new TypeError("Short partition unexpectedly materialized");
-			return rejected("TOO_SHORT_WALL");
+			const graph = requireAcceptedPlanGraph(result, "retained short partition");
+			if (graph.vertices.length !== 5 || graph.wallSegments.length !== 4 ||
+				!hasVertex(graph, "short-cross", 100, 0) ||
+				!hasWall(graph, "horizontal", "a", "short-cross") ||
+				!hasWall(graph, "short-horizontal-tail", "short-cross", "b") ||
+				!hasWall(graph, "short-vertical-bottom", "short-bottom", "short-cross") ||
+				!hasWall(graph, "short-vertical-top", "short-cross", "short-top"))
+				throw new TypeError("Short contact fragments were moved, deleted or disconnected");
+			return accepted(
+				["vertex:bottom", "vertex:cross", "vertex:top", "wall:horizontal-tail", "wall:vertical-bottom", "wall:vertical-top"],
+				["vertex:short-bottom", "vertex:short-cross", "vertex:short-top", "wall:short-horizontal-tail", "wall:short-vertical-bottom", "wall:short-vertical-top"],
+			);
 		}
 	}
 }

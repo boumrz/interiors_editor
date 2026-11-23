@@ -1,0 +1,94 @@
+.row {
+	--rotation-step-size: 48px;
+	--rotation-control-gap: 8px;
+	align-items: start;
+	box-sizing: border-box;
+	display: grid;
+	gap: var(--rotation-control-gap);
+	grid-template-columns: var(--rotation-step-size) minmax(0, 1fr) var(--rotation-step-size);
+	inline-size: min(100%, calc(7rem + 2 * (var(--rotation-step-size) + var(--rotation-control-gap))));
+	margin: 0 auto;
+	min-inline-size: 0;
+	padding: 0;
+	border: 0;
+	pointer-events: auto;
+}
+
+.row[data-rotation-target="selected"] {
+	margin-block-start: 4px;
+}
+
+.row[data-rotation-target] > .step,
+.row > .cancel {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--editor-host-radius, 10px);
+	box-sizing: border-box;
+	color: var(--ink);
+	cursor: pointer;
+	display: grid;
+	place-content: center;
+}
+
+.row[data-rotation-target] > .step {
+	block-size: var(--rotation-step-size);
+	inline-size: var(--rotation-step-size);
+	min-block-size: var(--rotation-step-size);
+	min-inline-size: var(--rotation-step-size);
+	padding: 0;
+	font: 600 1.4rem/1 var(--font-display);
+}
+
+.row[data-rotation-target] > .step:disabled {
+	color: var(--muted);
+	cursor: default;
+}
+
+.step:focus-visible,
+.cancel:focus-visible,
+.angle input:focus-visible {
+	outline: 2px solid var(--editor-host-primary, var(--blue));
+	outline-offset: -2px;
+}
+
+.row .angle > label {
+	block-size: var(--rotation-step-size);
+	box-sizing: border-box;
+	grid-template-columns: 0.75rem minmax(0, 1fr) 0.75rem;
+	inline-size: 100%;
+	padding: 0;
+}
+
+.angle > label::before {
+	content: "";
+}
+
+.row .angle input {
+	block-size: 100%;
+	min-block-size: 0;
+	padding: 0;
+	text-align: center;
+}
+
+.angle span {
+	text-align: center;
+}
+
+.row > .value,
+.row > .cancel {
+	min-block-size: var(--rotation-step-size);
+	overflow-wrap: anywhere;
+	text-align: center;
+}
+
+.value {
+	display: grid;
+	place-content: center;
+	font: 650 0.9rem/1.25 var(--font-display);
+}
+
+.cancel {
+	min-inline-size: 0;
+	padding: 4px;
+	font: 650 0.8rem/1.2 var(--font-display);
+}

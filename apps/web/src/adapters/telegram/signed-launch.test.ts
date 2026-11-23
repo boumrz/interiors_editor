@@ -22,7 +22,7 @@ describe("signed Telegram bootstrap", () => {
 		const expectedScope = `tma-v1-${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 		expect(
 			await verifyTelegramLaunch(signedExample, configuration, { nowEpochMs }),
-		).toEqual({ kind: "verified", scope: expectedScope });
+		).toEqual({ kind: "verified", scope: expectedScope, authenticatedAt: 1733584787 });
 	});
 
 	it("accepts reordered pairs, equivalent single query decoding, optional hash and base64url padding", async () => {
@@ -316,3 +316,55 @@ function withoutField(name: string): string {
 	fields.delete(name);
 	return fields.toString();
 }
+
+it("accepts known signed launch parameters without exposing a dedicated analytics or test mode", async () => {
+	const native = crypto.subtle;
+	const keys = (await native.generateKey({ name: "Ed25519" }, false, [
+		"sign",
+		"verify",
+	])) as CryptoKeyPair;
+	const subtle = {
+		importKey: async () => keys.publicKey,
+		verify: native.verify.bind(native),
+		digest: native.digest.bind(native),
+	};
+	for (const value of [
+		"metrica_check",
+		"metrica_check_other",
+		"",
+		"METRICA_CHECK",
+	]) {
+		const fields = new URLSearchParams(signedExample);
+		fields.set("start_param", value);
+		const payload = [...fields.entries()]
+			.filter(([key]) => key !== "hash" && key !== "signature")
+			.sort(([a], [b]) => (a < b ? -1 : 1))
+			.map(([key, v]) => `${key}=${v}`)
+			.join("\n");
+		const sig = await native.sign(
+			{ name: "Ed25519" },
+			keys.privateKey,
+			new TextEncoder().encode(`${configuration.botId}:WebAppData\n${payload}`),
+		);
+		fields.set(
+			"signature",
+			btoa(String.fromCharCode(...new Uint8Array(sig)))
+				.replaceAll("+", "-")
+				.replaceAll("/", "_")
+				.replace(/=+$/, ""),
+		);
+		const result = await verifyTelegramLaunch(
+			fields.toString(),
+			configuration,
+			{ nowEpochMs, subtle },
+		);
+		expect(result.kind).toBe("verified");
+		expect("measurementCheck" in result).toBe(false);
+	}
+	const modified = await verifyTelegramLaunch(
+		`${signedExample}&start_param=metrica_check`,
+		configuration,
+		{ nowEpochMs },
+	);
+	expect(modified).toEqual({ kind: "rejected", reason: "invalid-signature" });
+});

@@ -222,12 +222,15 @@ for (const [name, value] of [
 		await page.addInitScript(
 			({ key, initial }) => {
 				if (initial === "denied") {
-					Object.defineProperty(window, "localStorage", {
-						configurable: true,
-						get() {
-							throw new DOMException("Unavailable", "SecurityError");
-						},
-					});
+					const { getItem, setItem } = Storage.prototype;
+					Storage.prototype.getItem = function (name) {
+						if (name === key) throw new DOMException("Unavailable", "SecurityError");
+						return getItem.call(this, name);
+					};
+					Storage.prototype.setItem = function (name, next) {
+						if (name === key) throw new DOMException("Unavailable", "SecurityError");
+						setItem.call(this, name, next);
+					};
 				} else localStorage.setItem(key, initial);
 			},
 			{ key: preferenceKey, initial: value },

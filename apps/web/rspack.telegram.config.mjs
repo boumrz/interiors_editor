@@ -1,8 +1,10 @@
 import "./scripts/check-runtime.mjs";
+import { returnStudyConfiguration } from "./scripts/telegram-analytics-configuration.mjs";
 import { resolve } from "node:path";
 import { rspack } from "@rspack/core";
 import browserConfiguration from "./rspack.config.mjs";
 import { telegramSdkAssetPatterns } from "./scripts/telegram-sdk-asset.mjs";
+import { LegalDocumentsPlugin } from "./scripts/legal-documents-build.mjs";
 import {
 	assertTelegramOutputDirectory,
 	telegramPublicConfiguration,
@@ -26,7 +28,11 @@ export default (environment, arguments_) => {
 			cssChunkFilename: "[name].[contenthash].css",
 		},
 		plugins: [
-			new rspack.DefinePlugin({ __INTERIORS_TEST_SEAM__: "false" }),
+			new rspack.DefinePlugin({
+				__INTERIORS_TEST_SEAM__: "false",
+				__INTERIORS_EXACT_FLOOR_YAW__: JSON.stringify(process.env.INTERIORS_EXACT_FLOOR_YAW === "1"),
+				__INTERIORS_RETURN_STUDY__: JSON.stringify(returnStudyConfiguration(process.env)),
+			}),
 			new rspack.HtmlRspackPlugin({
 				template: "./public/telegram-index.html",
 				title: "InteriorsEditor · Telegram",
@@ -42,6 +48,7 @@ export default (environment, arguments_) => {
 					},
 				],
 			}),
+			new LegalDocumentsPlugin(),
 			new TelegramReleasePlugin(telegramPublicConfiguration(process.env)),
 		],
 		// Preview delivery is explicit and has no SPA fallback or inherited PWA proxy.

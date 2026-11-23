@@ -6,7 +6,7 @@
 .createCard h1 { font-family: var(--font-display); font-size: clamp(2.45rem, 13vw, 4.4rem); letter-spacing: -0.075em; line-height: 0.86; margin: 0; }
 .createForm { display: grid; gap: 8px; }
 .createForm label, .selectionPanel label, .contourFields label { display: grid; font-size: 0.79rem; font-weight: 800; gap: 5px; }
-.createForm input, .selectionPanel input, .contourFields input { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 48px; padding: 0 11px; width: 100%; }
+.createForm input, .selectionPanel input, .contourFields input { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:var(--editor-host-radius, 0px); color:var(--ink); font: inherit; min-height: 48px; padding: 0 11px; width: 100%; }
 .createForm input:focus-visible, .selectionPanel input:focus-visible, .contourFields input:focus-visible, button:focus-visible, .editorMark:focus-visible { outline:3px solid color-mix(in srgb, var(--editor-host-primary, var(--blue)) 52%, transparent); outline-offset: 2px; }
 .primaryAction, .secondaryAction, .textAction, .retryButton { cursor: pointer; font: inherit; font-weight: 800; min-height: 46px; }
 .primaryAction { background:var(--ink); border:1px solid var(--ink); color:var(--surface); padding: 0 14px; }
@@ -19,8 +19,8 @@
 .projectTransferStatus progress { accent-color:var(--editor-host-primary, var(--blue)); inline-size: 100%; }
 .projectTransferStatus button { background:var(--surface); border:1px solid var(--ink); color:var(--ink); cursor: pointer; font: inherit; font-weight: 800; min-height: 44px; }
 .startStatus { color:var(--muted); font-size: 0.85rem; }
-.firstRunGuidance { align-items: center; background:color-mix(in srgb, var(--editor-accent) 8%, var(--surface)); border:1px solid color-mix(in srgb, var(--editor-accent) 21%, var(--line)); border-radius:999px; color:color-mix(in srgb, var(--editor-accent) 68%, var(--ink)); display: inline-flex; font-family: var(--font-mono); font-size: 0.63rem; font-weight: 800; justify-self: start; letter-spacing: 0.04em; line-height: 1; margin: 0; padding: 8px 10px; }
-.firstRunHelp { background:color-mix(in srgb, var(--canvas) 54%, var(--surface)); border:1px solid color-mix(in srgb, var(--line) 86%, transparent); border-radius:14px; color:var(--muted); font-size: 0.76rem; line-height: 1.4; padding: 0 12px; }.firstRunHelp summary { align-items: center; color:var(--ink); cursor: pointer; display: flex; font-size: 0.77rem; font-weight: 800; justify-content: space-between; min-height: 44px; }.firstRunHelp summary::-webkit-details-marker { display: none; }.firstRunHelp summary::after { color:var(--muted); content: "+"; font-size: 1.15rem; font-weight: 400; }.firstRunHelp[open] summary::after { content: "−"; }.firstRunHelp ul { display: grid; gap: 6px; margin: 0 0 11px; padding-left: 18px; }
+.firstRunGuidance { align-items: center; background:color-mix(in srgb, var(--editor-accent) 8%, var(--surface)); border:1px solid color-mix(in srgb, var(--editor-accent) 21%, var(--line)); border-radius:var(--editor-host-radius, 999px); color:color-mix(in srgb, var(--editor-accent) 68%, var(--ink)); display: inline-flex; font-family: var(--font-mono); font-size: 0.63rem; font-weight: 800; justify-self: start; letter-spacing: 0.04em; line-height: 1; margin: 0; padding: 8px 10px; }
+.firstRunHelp { background:color-mix(in srgb, var(--canvas) 54%, var(--surface)); border:1px solid color-mix(in srgb, var(--line) 86%, transparent); border-radius:var(--editor-host-radius, 14px); color:var(--muted); font-size: 0.76rem; line-height: 1.4; padding: 0 12px; }.firstRunHelp summary { align-items: center; color:var(--ink); cursor: pointer; display: flex; font-size: 0.77rem; font-weight: 800; justify-content: space-between; min-height: 44px; }.firstRunHelp summary::-webkit-details-marker { display: none; }.firstRunHelp summary::after { color:var(--muted); content: "+"; font-size: 1.15rem; font-weight: 400; }.firstRunHelp[open] summary::after { content: "−"; }.firstRunHelp ul { display: grid; gap: 6px; margin: 0 0 11px; padding-left: 18px; }
 .textAction { background:transparent; border:0; color:var(--editor-host-primary, var(--blue)); padding: 0; text-align: left; text-decoration: underline; }
 .projectDirectory { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
 .projectDirectoryCard { align-items: center; border:1px solid var(--line); display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; padding: 10px; }
@@ -30,7 +30,7 @@
 .projectDirectoryCard button { background:var(--surface); border:1px solid var(--ink); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.75rem; font-weight: 800; min-height: 44px; padding: 0 10px; }
 
 .projectIdentity { align-items: start; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); box-shadow: 2px 3px 0 color-mix(in srgb, var(--shadow) 58%, transparent); color:var(--ink); cursor: pointer; display: grid; gap: 2px; left: 12px; max-width: min(180px, calc(100% - 142px)); min-height: 44px; padding: 6px 9px; position: absolute; text-align: left; top: 12px; z-index: 3; }.projectIdentity span { font-family: var(--font-display); font-size: 0.86rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }.projectIdentity small { color:var(--muted); font-family: var(--font-mono); font-size: 0.54rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }.projectIdentity:disabled { color:var(--muted); cursor: wait; }
-.renameProjectDialog { background:var(--surface); border:1px solid var(--line); box-shadow: 5px 6px 0 var(--shadow); display: grid; gap: 12px; left: 50%; max-width: min(360px, calc(100% - 32px)); padding: 18px; position: absolute; top: 50%; transform: translate(-50%, -50%); width: 100%; z-index: 12; }.renameProjectDialog strong { font-family: var(--font-display); font-size: 1.3rem; letter-spacing: -0.04em; }.renameProjectDialog form { display: grid; gap: 8px; }.renameProjectDialog label { display: grid; font-size: 0.78rem; font-weight: 800; gap: 5px; }.renameProjectDialog input { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 48px; padding: 0 11px; width: 100%; }.renameProjectDialog form > div { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }.renameProjectDialog button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 800; min-height: 44px; padding: 7px; }.renameProjectDialog button[type="submit"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.renameProjectDialog button:disabled { color:var(--muted); cursor: wait; }
+.renameProjectDialog { background:var(--surface); border:1px solid var(--line); box-shadow: 5px 6px 0 var(--shadow); display: grid; gap: 12px; left: 50%; max-width: min(360px, calc(100% - 32px)); padding: 18px; position: absolute; top: 50%; transform: translate(-50%, -50%); width: 100%; z-index: 12; }.renameProjectDialog strong { font-family: var(--font-display); font-size: 1.3rem; letter-spacing: -0.04em; }.renameProjectDialog form { display: grid; gap: 8px; }.renameProjectDialog label { display: grid; font-size: 0.78rem; font-weight: 800; gap: 5px; }.renameProjectDialog input { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:var(--editor-host-radius, 0px); color:var(--ink); font: inherit; min-height: 48px; padding: 0 11px; width: 100%; }.renameProjectDialog form > div { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }.renameProjectDialog button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.74rem; font-weight: 800; min-height: 44px; padding: 7px; }.renameProjectDialog button[type="submit"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.renameProjectDialog button:disabled { color:var(--muted); cursor: wait; }
 
 .editorShell { background:var(--canvas); height: var(--editor-viewport-height, 100dvh); overflow: hidden; padding: 0; }
 .editorHeader { align-items: center; background:color-mix(in srgb, var(--surface) 93%, transparent); border-bottom:1px solid var(--line-soft); display: grid; gap: 7px; grid-template-columns: 36px minmax(0, 1fr) auto; min-height: 52px; padding: 4px 9px; }
@@ -51,10 +51,13 @@
 .selectToolButton svg { display: block; height: 24px; width: 24px; }
 .mobileChromeHide, .mobileChromeRestore { display: none; }
 .roomDirectoryToggle { background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.7rem; font-weight: 800; min-height: 44px; padding: 0 11px; position: absolute; right: 128px; top: 12px; z-index: 4; }.roomDirectoryToggle[aria-expanded="true"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.roomDirectoryToggle:disabled { color:var(--muted); cursor: wait; }
-.returnToDrawing { align-items: center; aspect-ratio: 1; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); border-radius:50%; bottom: 12px; box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 1.15rem; font-weight: 800; justify-content: center; left: 12px; min-height: 48px; padding: 0; position: absolute; width: 48px; z-index: 5; }.drawingCompassArrow { display: block; line-height: 1; transition: transform 160ms ease-out; }
+.returnToDrawing { align-items: center; aspect-ratio: 1; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); border-radius:var(--editor-host-radius, 50%); bottom: 12px; box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 1.15rem; font-weight: 800; justify-content: center; left: 12px; min-height: 48px; padding: 0; position: absolute; width: 48px; z-index: 5; }.drawingCompassArrow { display: block; line-height: 1; transition: transform 160ms ease-out; }
 .restartProjectDialog { background:var(--surface); border:1px solid var(--line); box-shadow: 4px 5px 0 var(--shadow); display: grid; gap: 12px; left: 50%; max-width: min(340px, calc(100% - 32px)); padding: 18px; position: fixed; top: 50%; transform: translate(-50%, -50%); width: 100%; z-index: 12; }.restartProjectDialog strong { font-family: var(--font-display); font-size: 1.3rem; }.restartProjectDialog p { color:var(--muted); font-size: 0.84rem; line-height: 1.35; margin: 0; }.restartProjectDialog > div { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }.restartProjectDialog button { background:var(--surface); border:1px solid var(--line); color:var(--ink); font: inherit; font-size: 0.72rem; font-weight: 800; min-height: 44px; padding: 7px; }.restartProjectDialog .restartProjectConfirm { background:var(--ink); border-color:var(--ink); color:var(--surface); }
 .planSvg, .emptyCanvas, .scenePanel { height: 100%; inset: 0; position: absolute; width: 100%; }
 .planSvg { display: block; touch-action: none; user-select: none; }
+.editorShell[data-editor-host="telegram"] .planSvg {
+	height: calc(100% + var(--editor-keyboard-inset, 0px));
+}
 .planReferenceMarkers { fill: var(--ink); opacity: 0.88; }
 .planScaleLabel, .planOrientationLabel { fill: var(--ink); font-family: var(--font-mono); font-size: 10px; font-weight: 800; }
 .planScaleLine, .planOrientationArrow { fill: none; stroke: var(--ink); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.25; vector-effect: non-scaling-stroke; }
@@ -95,7 +98,7 @@
   .toolRailHistory { display: contents; }
   .toolRailHistory button { font-size: 1.35rem; min-width: 0; width: auto; }
   .mobileChromeHide { display: block; position: static; z-index: auto; }
-  .mobileChromeRestore { align-items: center; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); bottom: max(16px, calc(var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 8px)); border-radius:12px; box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.8rem; font-weight: 800; justify-content: center; left: 8px; min-height: 52px; min-width: 132px; padding: 0 12px; position: absolute; z-index: 5; }
+  .mobileChromeRestore { align-items: center; background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); bottom: max(16px, calc(var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 8px)); border-radius:var(--editor-host-radius, 12px); box-shadow: 3px 4px 0 color-mix(in srgb, var(--shadow) 72%, transparent); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.8rem; font-weight: 800; justify-content: center; left: 8px; min-height: 52px; min-width: 132px; padding: 0 12px; position: absolute; z-index: 5; }
   /* The full two-row dock keeps its controls visible; transient sheets stop
      above it instead of competing for the same lower screen area. */
   .selectionPanel { bottom: calc(128px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); left: 8px; max-height: min(46dvh, 390px); max-width: calc(100% - 16px); overflow-y: auto; padding: 12px; width: calc(100% - 16px); z-index: 5; }
@@ -109,7 +112,7 @@
   .planInspectorToggle { background:color-mix(in srgb, var(--surface) 94%, transparent); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.66rem; font-weight: 800; left: auto; min-height: 44px; padding: 0 10px; position: absolute; right: 8px; top: 8px; z-index: 3; }
   .roomDirectoryToggle { left: 110px; right: auto; top: 8px; }
   .planInspectorClose { align-items: center; background:transparent; border:1px solid var(--line); color:var(--ink); cursor: pointer; display: inline-flex; font: inherit; font-size: 1.2rem; justify-content: center; min-height: 44px; min-width: 44px; padding: 0; }
-  .selectionInspectorToggle { align-items: center; align-self: stretch; background:color-mix(in srgb, var(--editor-accent) 12%, var(--surface)); border:1px solid color-mix(in srgb, var(--editor-accent) 30%, var(--line)); border-radius:12px; color:color-mix(in srgb, var(--editor-accent) 82%, var(--ink)); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.6rem; font-weight: 800; grid-column: 2; grid-row: 1 / span 2; justify-content: center; margin-left: 0; min-height: 50px; padding: 0 10px; }
+  .selectionInspectorToggle { align-items: center; align-self: stretch; background:color-mix(in srgb, var(--editor-accent) 12%, var(--surface)); border:1px solid color-mix(in srgb, var(--editor-accent) 30%, var(--line)); border-radius:var(--editor-host-radius, 12px); color:color-mix(in srgb, var(--editor-accent) 82%, var(--ink)); cursor: pointer; display: inline-flex; font: inherit; font-size: 0.6rem; font-weight: 800; grid-column: 2; grid-row: 1 / span 2; justify-content: center; margin-left: 0; min-height: 50px; padding: 0 10px; }
   .selectionInspectorCue { display: none; }
   /* iOS Safari zooms the page on focus for controls below 16px.  Editor
      fields deliberately retain the same visual size, but their computed text
@@ -140,23 +143,23 @@
 
 .headerActions { align-items: center; display: flex; gap: 0; }.headerActions button + button { border-left:0; }.headerActions .historyAction { font-family: var(--font-display); font-size: 1.35rem; line-height: 1; min-width: 44px; padding: 0; width: 44px; }.headerActions button:first-child { align-items: center; display: inline-flex; gap: 5px; white-space: nowrap; }.activeToolChip { color:var(--editor-host-primary, var(--blue)); font-family: var(--font-mono); font-size: 0.57rem; letter-spacing: 0.04em; }.headerActions button:first-child[aria-expanded="true"] .activeToolChip { color:inherit; }
 .dialogHeading { align-items: start; display: flex; justify-content: space-between; }.dialogHeading span { color:var(--muted); display: block; font-family: var(--font-mono); font-size: 0.58rem; font-weight: 800; letter-spacing: 0.11em; }.dialogHeading strong { display: block; font-family: var(--font-display); font-size: 1.38rem; letter-spacing: -0.04em; }.dialogHeading > button { background:transparent; border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 1.3rem; line-height: 1; min-height: 44px; width: 44px; }.viewportHint { color:var(--muted); font-family: var(--font-mono); font-size: 0.63rem; font-weight: 800; letter-spacing: 0.08em; }
-.roomDirectoryDialog { background:var(--canvas); display: grid; gap: 14px; grid-template-rows: auto auto minmax(0, 1fr); inset: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: max(16px, var(--editor-safe-area-top, env(safe-area-inset-top))) 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); position: fixed; z-index: 20; }.roomDirectoryNote, .roomGeometryNote, .roomPropertyConfirmation { color:var(--muted); font-size: 0.82rem; line-height: 1.4; margin: 0; }.roomDirectoryContent { align-content: start; display: grid; gap: 14px; min-height: 0; }.roomDirectoryList { display: grid; gap: 8px; }.roomDirectoryList button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: grid; font: inherit; gap: 4px; min-height: 58px; padding: 9px 11px; text-align: left; }.roomDirectoryList button[aria-pressed="true"] { border-color:var(--blue); box-shadow: 3px 3px 0 color-mix(in srgb, var(--blue) 42%, transparent); }.roomDirectoryList strong { font-size: 0.95rem; }.roomDirectoryList small { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }.roomPropertyForm { background:var(--surface); border:1px solid var(--line); display: grid; gap: 11px; padding: 14px; }.roomPropertyForm label { display: grid; font-size: 0.82rem; font-weight: 800; gap: 5px; }.roomPropertyForm input, .roomPropertyForm select { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; font-size: 1rem; min-height: 48px; padding: 0 11px; width: 100%; }.roomPropertyForm select { appearance: auto; }.roomPropertyForm input:disabled, .roomPropertyForm select:disabled { color:var(--muted); }.roomPropertySave { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 800; min-height: 48px; padding: 7px 11px; }.roomPropertySave:disabled { cursor: wait; opacity: 0.55; }.roomPropertyConfirmation { color:var(--editor-host-primary, var(--blue)); font-weight: 800; }
+.roomDirectoryDialog { background:var(--canvas); display: grid; gap: 14px; grid-template-rows: auto auto minmax(0, 1fr); inset: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: max(16px, var(--editor-safe-area-top, env(safe-area-inset-top))) 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); position: fixed; z-index: 20; }.roomDirectoryNote, .roomGeometryNote, .roomPropertyConfirmation { color:var(--muted); font-size: 0.82rem; line-height: 1.4; margin: 0; }.roomDirectoryContent { align-content: start; display: grid; gap: 14px; min-height: 0; }.roomDirectoryList { display: grid; gap: 8px; }.roomDirectoryList button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: grid; font: inherit; gap: 4px; min-height: 58px; padding: 9px 11px; text-align: left; }.roomDirectoryList button[aria-pressed="true"] { border-color:var(--blue); box-shadow: 3px 3px 0 color-mix(in srgb, var(--blue) 42%, transparent); }.roomDirectoryList strong { font-size: 0.95rem; }.roomDirectoryList small { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }.roomPropertyForm { background:var(--surface); border:1px solid var(--line); display: grid; gap: 11px; padding: 14px; }.roomPropertyForm label { display: grid; font-size: 0.82rem; font-weight: 800; gap: 5px; }.roomPropertyForm input, .roomPropertyForm select { appearance: none; background:var(--canvas); border:1px solid var(--line); border-radius:var(--editor-host-radius, 0px); color:var(--ink); font: inherit; font-size: 1rem; min-height: 48px; padding: 0 11px; width: 100%; }.roomPropertyForm select { appearance: auto; }.roomPropertyForm input:disabled, .roomPropertyForm select:disabled { color:var(--muted); }.roomPropertySave { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 800; min-height: 48px; padding: 7px 11px; }.roomPropertySave:disabled { cursor: wait; opacity: 0.55; }.roomPropertyConfirmation { color:var(--editor-host-primary, var(--blue)); font-weight: 800; }
 .roomDirectoryDialog { background:color-mix(in srgb, var(--ink) 24%, transparent); display: grid; gap: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); overflow: hidden; padding: max(54px, var(--editor-safe-area-top, env(safe-area-inset-top))) 0 0; }
-.roomDirectorySheet { align-self: end; background:var(--surface); border-radius:28px 28px 0 0; box-shadow: 0 -16px 38px color-mix(in srgb, var(--ink) 23%, transparent); display: grid; gap: 0; grid-template-rows: 24px auto auto minmax(0, 1fr); max-height: calc(var(--editor-viewport-height, 100dvh) - max(54px, var(--editor-safe-area-top, env(safe-area-inset-top)))); min-height: min(520px, calc(var(--editor-viewport-height, 100dvh) - max(54px, var(--editor-safe-area-top, env(safe-area-inset-top))))); overflow: hidden; padding: 0 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }
+.roomDirectorySheet { align-self: end; background:var(--surface); border-radius:var(--editor-host-radius, 28px) var(--editor-host-radius, 28px) 0 0; box-shadow: 0 -16px 38px color-mix(in srgb, var(--ink) 23%, transparent); display: grid; gap: 0; grid-template-rows: 24px auto auto minmax(0, 1fr); max-height: calc(var(--editor-viewport-height, 100dvh) - max(54px, var(--editor-safe-area-top, env(safe-area-inset-top)))); min-height: min(520px, calc(var(--editor-viewport-height, 100dvh) - max(54px, var(--editor-safe-area-top, env(safe-area-inset-top))))); overflow: hidden; padding: 0 16px max(16px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }
 .roomDirectorySheetHandle { align-self: center; background:color-mix(in srgb, var(--ink) 26%, transparent); border-radius:999px; height: 5px; justify-self: center; width: 38px; }
-.roomDirectorySheet .dialogHeading { align-items: center; min-height: 52px; }.roomDirectorySheet .dialogHeading span { color:var(--editor-host-primary, var(--blue)); font-size: 0.58rem; letter-spacing: 0.1em; }.roomDirectorySheet .dialogHeading strong { font-size: 1.38rem; }.roomDirectorySheet .dialogHeading > button { align-items: center; background:color-mix(in srgb, var(--canvas) 80%, var(--surface)); border:0; border-radius:50%; display: inline-flex; font-size: 1.45rem; justify-content: center; min-height: 38px; width: 38px; }
-.roomDirectoryNote { background:color-mix(in srgb, var(--blue) 7%, var(--surface)); border-radius:12px; color:color-mix(in srgb, var(--ink) 76%, var(--muted)); font-size: 0.75rem; line-height: 1.34; margin: 6px 0 12px; padding: 9px 11px; }
-.roomDirectoryContent { display: grid; gap: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 2px; }.roomDirectoryList { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 1px 1px 4px; scroll-snap-type: inline mandatory; }.roomDirectoryList button { background:color-mix(in srgb, var(--canvas) 76%, var(--surface)); border:1px solid transparent; border-radius:14px; flex: 0 0 min(186px, 58vw); gap: 3px; min-height: 70px; padding: 10px 12px; scroll-snap-align: start; }.roomDirectoryList button[aria-pressed="true"] { background:color-mix(in srgb, var(--blue) 11%, var(--surface)); border-color:color-mix(in srgb, var(--blue) 55%, var(--line)); box-shadow: none; }.roomDirectoryList strong { font-family: var(--font-display); font-size: 1.02rem; letter-spacing: -0.025em; }.roomDirectoryList small { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }
-.roomPropertyForm { background:color-mix(in srgb, var(--canvas) 74%, var(--surface)); border:0; border-radius:18px; gap: 11px; padding: 13px; }.roomPropertyForm label { color:var(--muted); font-size: 0.7rem; gap: 5px; }.roomPropertyForm label > span { font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }.roomPropertyForm input, .roomPropertyForm select { background:var(--surface); border:1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius:11px; font-size: 1rem; font-weight: 700; min-height: 46px; padding: 0 12px; }.roomGeometryNote { border-top:1px solid color-mix(in srgb, var(--line) 72%, transparent); font-size: 0.71rem; line-height: 1.35; padding-top: 10px; }.roomPropertySave { background:var(--blue); border-color:var(--blue); border-radius:12px; box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 24%, transparent); font-size: 0.91rem; min-height: 50px; }.roomPropertyConfirmation { color:var(--editor-host-primary, var(--blue)); }
+.roomDirectorySheet .dialogHeading { align-items: center; min-height: 52px; }.roomDirectorySheet .dialogHeading span { color:var(--editor-host-primary, var(--blue)); font-size: 0.58rem; letter-spacing: 0.1em; }.roomDirectorySheet .dialogHeading strong { font-size: 1.38rem; }.roomDirectorySheet .dialogHeading > button { align-items: center; background:color-mix(in srgb, var(--canvas) 80%, var(--surface)); border:0; border-radius:var(--editor-host-radius, 50%); display: inline-flex; font-size: 1.45rem; justify-content: center; min-height: 38px; width: 38px; }
+.roomDirectoryNote { background:color-mix(in srgb, var(--blue) 7%, var(--surface)); border-radius:var(--editor-host-radius, 12px); color:color-mix(in srgb, var(--ink) 76%, var(--muted)); font-size: 0.75rem; line-height: 1.34; margin: 6px 0 12px; padding: 9px 11px; }
+.roomDirectoryContent { display: grid; gap: 12px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 0 2px; }.roomDirectoryList { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 1px 1px 4px; scroll-snap-type: inline mandatory; }.roomDirectoryList button { background:color-mix(in srgb, var(--canvas) 76%, var(--surface)); border:1px solid transparent; border-radius:var(--editor-host-radius, 14px); flex: 0 0 min(186px, 58vw); gap: 3px; min-height: 70px; padding: 10px 12px; scroll-snap-align: start; }.roomDirectoryList button[aria-pressed="true"] { background:color-mix(in srgb, var(--blue) 11%, var(--surface)); border-color:color-mix(in srgb, var(--blue) 55%, var(--line)); box-shadow: none; }.roomDirectoryList strong { font-family: var(--font-display); font-size: 1.02rem; letter-spacing: -0.025em; }.roomDirectoryList small { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }
+.roomPropertyForm { background:color-mix(in srgb, var(--canvas) 74%, var(--surface)); border:0; border-radius:var(--editor-host-radius, 18px); gap: 11px; padding: 13px; }.roomPropertyForm label { color:var(--muted); font-size: 0.7rem; gap: 5px; }.roomPropertyForm label > span { font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }.roomPropertyForm input, .roomPropertyForm select { background:var(--surface); border:1px solid color-mix(in srgb, var(--line) 80%, transparent); border-radius:var(--editor-host-radius, 11px); font-size: 1rem; font-weight: 700; min-height: 46px; padding: 0 12px; }.roomGeometryNote { border-top:1px solid color-mix(in srgb, var(--line) 72%, transparent); font-size: 0.71rem; line-height: 1.35; padding-top: 10px; }.roomPropertySave { background:var(--blue); border-color:var(--blue); border-radius:var(--editor-host-radius, 12px); box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 24%, transparent); font-size: 0.91rem; min-height: 50px; }.roomPropertyConfirmation { color:var(--editor-host-primary, var(--blue)); }
 .roomOpeningConflict { background:color-mix(in srgb, var(--danger) 5%, var(--canvas)); border:1px solid color-mix(in srgb, var(--danger) 52%, var(--line)); display: grid; gap: 10px; padding: 12px; }.roomOpeningConflict > strong { font-size: 1rem; }.roomOpeningConflict > p { color:var(--muted); font-size: 0.78rem; line-height: 1.35; margin: 0; }.roomOpeningResolution { border-top:1px solid var(--line-soft); display: grid; gap: 7px; grid-template-columns: 1fr 1fr; padding-top: 10px; }.roomOpeningResolution > span { font-size: 0.75rem; font-weight: 800; grid-column: 1 / -1; }.roomOpeningResolution button, .roomOpeningConflictActions button { background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; font: inherit; font-size: 0.72rem; font-weight: 800; min-height: 44px; padding: 6px; }.roomOpeningResolution button[aria-pressed="true"] { background:var(--blue); border-color:var(--blue); color:var(--surface); }.roomOpeningConflictActions { display: grid; gap: 7px; grid-template-columns: 1fr 1fr; }.roomOpeningConflictActions button:last-child { background:var(--ink); border-color:var(--ink); color:var(--surface); }.roomOpeningResolution button:disabled, .roomOpeningConflictActions button:disabled { cursor: wait; opacity: 0.55; }
 .catalogDialog { background:var(--canvas); display: grid; gap: 10px; grid-template-rows: auto auto auto auto auto 48px minmax(0, 1fr) auto; inset: 0; overflow: hidden; padding: max(14px, var(--editor-safe-area-top, env(safe-area-inset-top))) 14px max(12px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); position: fixed; z-index: 20; }.catalogNote { color:var(--muted); font-size: 0.74rem; line-height: 1.3; margin: 0; }.catalogImport { align-items: center; background:color-mix(in srgb, var(--blue) 7%, var(--surface)); border:1px solid color-mix(in srgb, var(--blue) 40%, var(--line)); display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; padding: 8px; }.catalogImport > div { display: grid; gap: 2px; min-width: 0; }.catalogImport strong { font-family: var(--font-display); font-size: 0.95rem; letter-spacing: -0.03em; }.catalogImport small, .catalogImportStatus span { color:var(--muted); font-family: var(--font-mono); font-size: 0.57rem; font-weight: 800; line-height: 1.3; }.catalogImport > button, .catalogImportStatus button { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.68rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.catalogImportStatus { align-items: center; display: flex; flex: 1 1 100%; flex-wrap: wrap; gap: 7px; grid-column: 1 / -1; }.catalogImportStatus span { flex: 1 1 180px; }.catalogImportStatus button + button { background:var(--surface); border-color:var(--line); color:var(--ink); }.catalogCategoryTabs { display: flex; gap: 7px; margin: 0 -14px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 1px 14px 4px; scroll-snap-type: inline mandatory; }.catalogCategoryTabs button { align-items: center; background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: inline-flex; flex: 0 0 auto; font: inherit; font-size: 0.72rem; font-weight: 800; gap: 5px; justify-content: center; min-height: 44px; padding: 0 11px; scroll-snap-align: start; }.catalogCategoryTabs button span { color:var(--editor-host-primary, var(--blue)); font-family: var(--font-display); font-size: 1.05rem; line-height: 1; }.catalogCategoryTabs button[aria-pressed="true"] { background:var(--ink); border-color:var(--ink); color:var(--surface); }.catalogCategoryTabs button[aria-pressed="true"] span { color:var(--editor-host-on-primary, var(--surface)); }.catalogGrid { align-content: start; display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 1px 1px 12px; }.catalogCard { align-content: stretch; background:var(--surface); border:1px solid var(--line); color:var(--ink); cursor: pointer; display: grid; font: inherit; gap: 0; grid-template-rows: 148px auto; min-height: 0; overflow: hidden; padding: 0; text-align: left; }.catalogCard:hover, .catalogCard[aria-pressed="true"] { border-color:var(--blue); box-shadow: 3px 3px 0 color-mix(in srgb, var(--blue) 45%, transparent); }.catalogCard:focus-visible { outline:3px solid color-mix(in srgb, var(--editor-host-primary, var(--blue)) 52%, transparent); outline-offset: 2px; }.catalogCardDetails { align-content: start; border-top:1px solid var(--line-soft); display: grid; gap: 4px; min-height: 72px; padding: 8px; }.catalogCard strong { font-family: var(--font-display); font-size: 1.1rem; letter-spacing: -0.03em; }.catalogCard small, .catalogCardDetails span { color:var(--muted); font-family: var(--font-mono); font-size: 0.59rem; font-weight: 800; line-height: 1.2; }.catalogCardDetails span { color:var(--editor-host-primary, var(--blue)); text-transform: uppercase; }.greyboxPreview { background:linear-gradient(135deg, color-mix(in srgb, var(--canvas) 80%, white), var(--canvas)); border:0; border-bottom:1px solid var(--line-soft); display: block; height: 148px; min-height: 0; width: 100%; }.previewFloor { fill: color-mix(in srgb, var(--ink) 8%, transparent); }.previewbase { filter: brightness(0.87); }.previewhighlight { filter: brightness(1.18); }.previewshadow { filter: brightness(0.62); }
 .customGlbPreview { background:var(--canvas); border:1px solid var(--line); display: grid; gap: 6px; min-height: 0; padding: 6px; }.customGlbPreview canvas { display: block; height: 190px; min-height: 0; width: 100%; }.customGlbPreview output { color:var(--muted); font-family: var(--font-mono); font-size: 0.6rem; font-weight: 800; line-height: 1.3; }
-.placeholderComposer { display: grid; gap: 9px; grid-column: 1 / -1; }.placeholderComposer > label, .placeholderDimensions label { display: grid; font-size: 0.62rem; font-weight: 800; gap: 4px; }.placeholderComposer input { appearance: none; background:var(--surface); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 40px; min-width: 0; padding: 0 7px; width: 100%; }.placeholderDimensions { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }.placeholderPalette { border:0; margin: 0; min-inline-size: 0; padding: 0; }.placeholderPalette legend { font-size: 0.62rem; font-weight: 800; margin-bottom: 4px; padding: 0; }.placeholderPalette > div { display: flex; flex-wrap: wrap; gap: 5px; }.placeholderPalette button { align-items: center; background:var(--surface); border:1px solid var(--line); cursor: pointer; display: inline-flex; height: 36px; justify-content: center; padding: 4px; width: 36px; }.placeholderPalette button[aria-pressed="true"] { border-color:var(--blue); box-shadow: 2px 2px 0 color-mix(in srgb, var(--blue) 45%, transparent); }.placeholderPalette .itemColorSwatch { height: 20px; width: 20px; }.placeholderHost { color:var(--muted); font-family: var(--font-mono); font-size: 0.6rem; font-weight: 800; margin: 0; }
+.placeholderComposer { display: grid; gap: 9px; grid-column: 1 / -1; }.placeholderComposer > label, .placeholderDimensions label { display: grid; font-size: 0.62rem; font-weight: 800; gap: 4px; }.placeholderComposer input { appearance: none; background:var(--surface); border:1px solid var(--line); border-radius:var(--editor-host-radius, 0px); color:var(--ink); font: inherit; min-height: 40px; min-width: 0; padding: 0 7px; width: 100%; }.placeholderDimensions { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }.placeholderPalette { border:0; margin: 0; min-inline-size: 0; padding: 0; }.placeholderPalette legend { font-size: 0.62rem; font-weight: 800; margin-bottom: 4px; padding: 0; }.placeholderPalette > div { display: flex; flex-wrap: wrap; gap: 5px; }.placeholderPalette button { align-items: center; background:var(--surface); border:1px solid var(--line); cursor: pointer; display: inline-flex; height: 36px; justify-content: center; padding: 4px; width: 36px; }.placeholderPalette button[aria-pressed="true"] { border-color:var(--blue); box-shadow: 2px 2px 0 color-mix(in srgb, var(--blue) 45%, transparent); }.placeholderPalette .itemColorSwatch { height: 20px; width: 20px; }.placeholderHost { color:var(--muted); font-family: var(--font-mono); font-size: 0.6rem; font-weight: 800; margin: 0; }
 .customGlbCatalogPreview, .customGlbCatalogPlaceholder { background:linear-gradient(135deg, color-mix(in srgb, var(--canvas) 84%, white), var(--canvas)); border:0; border-bottom:1px solid var(--line-soft); height: 148px; min-height: 148px; padding: 0; width: 100%; }.customGlbCatalogPreview canvas { height: 148px; width: 100%; }.customGlbCatalogPreview output { display: none; }.customGlbCatalogPlaceholder { align-items: center; color:var(--muted); display: grid; font-family: var(--font-mono); font-size: 0.6rem; font-weight: 800; justify-items: center; padding: 12px; text-align: center; }
-.customGlbReview { display: grid; gap: 9px; grid-column: 1 / -1; }.customGlbFields { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }.customGlbFields label:first-child { grid-column: 1 / -1; }.customGlbFields label { display: grid; font-size: 0.62rem; font-weight: 800; gap: 4px; }.customGlbFields input { background:var(--surface); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 40px; min-width: 0; padding: 0 7px; width: 100%; }
-.catalogFilters { display: grid; gap: 4px; }.catalogFilters label { display: grid; font-size: 0.7rem; font-weight: 800; gap: 4px; }.catalogFilters input { appearance: none; background:var(--surface); border:1px solid var(--line); border-radius:0; color:var(--ink); font: inherit; min-height: 44px; padding: 0 9px; width: 100%; }.catalogFilters output { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }.catalogPlacementBar { align-items: center; background:var(--surface); border:1px solid var(--line); box-shadow: 0 -3px 0 color-mix(in srgb, var(--shadow) 35%, transparent); display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; min-height: 60px; padding: 7px; }.catalogPlacementBar > div { display: grid; gap: 3px; min-width: 0; }.catalogPlacementBar strong { font-family: var(--font-display); font-size: 1rem; letter-spacing: -0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.catalogPlacementBar small { color:var(--muted); font-family: var(--font-mono); font-size: 0.56rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.catalogPlacementBar button { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.7rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.catalogPlacementBar button:disabled { background:var(--canvas); border-color:var(--line); color:var(--muted); cursor: not-allowed; }.catalogEmpty { color:var(--muted); font-size: 0.8rem; font-weight: 700; line-height: 1.35; margin: 0; }
+.customGlbReview { display: grid; gap: 9px; grid-column: 1 / -1; }.customGlbFields { display: grid; gap: 7px; grid-template-columns: repeat(3, minmax(0, 1fr)); }.customGlbFields label:first-child { grid-column: 1 / -1; }.customGlbFields label { display: grid; font-size: 0.62rem; font-weight: 800; gap: 4px; }.customGlbFields input { background:var(--surface); border:1px solid var(--line); border-radius:var(--editor-host-radius, 0px); color:var(--ink); font: inherit; min-height: 40px; min-width: 0; padding: 0 7px; width: 100%; }
+.catalogFilters { display: grid; gap: 4px; }.catalogFilters label { display: grid; font-size: 0.7rem; font-weight: 800; gap: 4px; }.catalogFilters input { appearance: none; background:var(--surface); border:1px solid var(--line); border-radius:var(--editor-host-radius, 0px); color:var(--ink); font: inherit; min-height: 44px; padding: 0 9px; width: 100%; }.catalogFilters output { color:var(--muted); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 800; }.catalogPlacementBar { align-items: center; background:var(--surface); border:1px solid var(--line); box-shadow: 0 -3px 0 color-mix(in srgb, var(--shadow) 35%, transparent); display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; min-height: 60px; padding: 7px; }.catalogPlacementBar > div { display: grid; gap: 3px; min-width: 0; }.catalogPlacementBar strong { font-family: var(--font-display); font-size: 1rem; letter-spacing: -0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.catalogPlacementBar small { color:var(--muted); font-family: var(--font-mono); font-size: 0.56rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.catalogPlacementBar button { background:var(--ink); border:1px solid var(--ink); color:var(--surface); cursor: pointer; font: inherit; font-size: 0.7rem; font-weight: 800; min-height: 44px; padding: 0 10px; }.catalogPlacementBar button:disabled { background:var(--canvas); border-color:var(--line); color:var(--muted); cursor: not-allowed; }.catalogEmpty { color:var(--muted); font-size: 0.8rem; font-weight: 700; line-height: 1.35; margin: 0; }
 
-.catalogPlacementSelection { align-items: center; display: grid; gap: 9px; grid-template-columns: 44px minmax(0, 1fr); min-width: 0; }.catalogPlacementPreview { align-items: center; background:color-mix(in srgb, var(--blue) 8%, var(--canvas)); border:1px solid color-mix(in srgb, var(--blue) 22%, var(--line)); border-radius:12px; display: grid; height: 44px; justify-items: center; overflow: hidden; width: 44px; }.catalogPlacementPreview img { display: block; height: 100%; object-fit: contain; width: 100%; }.catalogPlacementPreview > span { color:var(--editor-host-primary, var(--blue)); font-family: var(--font-display); font-size: 1.25rem; line-height: 1; }.catalogPlacementCopy { display: grid; gap: 3px; min-width: 0; }
+.catalogPlacementSelection { align-items: center; display: grid; gap: 9px; grid-template-columns: 44px minmax(0, 1fr); min-width: 0; }.catalogPlacementPreview { align-items: center; background:color-mix(in srgb, var(--blue) 8%, var(--canvas)); border:1px solid color-mix(in srgb, var(--blue) 22%, var(--line)); border-radius:var(--editor-host-radius, 12px); display: grid; height: 44px; justify-items: center; overflow: hidden; width: 44px; }.catalogPlacementPreview img { display: block; height: 100%; object-fit: contain; width: 100%; }.catalogPlacementPreview > span { color:var(--editor-host-primary, var(--blue)); font-family: var(--font-display); font-size: 1.25rem; line-height: 1; }.catalogPlacementCopy { display: grid; gap: 3px; min-width: 0; }
 
 .catalogModelLoadingStatus { align-items: center; color:var(--editor-host-primary, var(--blue)) !important; display: grid; gap: 4px; grid-template-columns: minmax(0, 1fr) 72px; overflow: visible !important; text-overflow: clip !important; white-space: normal !important; }.catalogModelLoadingStatus span { min-width: 0; }.catalogModelLoadingStatus progress { accent-color:var(--editor-host-primary, var(--blue)); height: 6px; margin: 0; width: 72px; }
 
@@ -172,14 +175,14 @@
   .catalogDialog { display: flex; flex-direction: column; gap: 14px; grid-template-rows: none; overflow-x: hidden; overflow-y: auto; overscroll-behavior-y: contain; }
   .catalogDialog > * { flex: 0 0 auto; }
   .catalogDialog .catalogNote { font-size: 0.875rem; line-height: 1.45; }
-  .catalogImport { border-radius:12px; gap: 12px; grid-template-columns: 1fr; padding: 14px; }
+  .catalogImport { border-radius:var(--editor-host-radius, 12px); gap: 12px; grid-template-columns: 1fr; padding: 14px; }
   .catalogImport strong { font-family: inherit; font-size: 1.05rem; letter-spacing: 0; }
   .catalogImport small, .catalogImportStatus span { font-family: inherit; font-size: 0.8125rem; line-height: 1.4; }
-  .catalogImport > button, .catalogImportStatus button { border-radius:8px; font-size: 0.9375rem; min-height: 48px; }
+  .catalogImport > button, .catalogImportStatus button { border-radius:var(--editor-host-radius, 8px); font-size: 0.9375rem; min-height: 48px; }
   .catalogCategoryTabs { margin: 0 -14px; padding-bottom: 6px; }
-  .catalogCategoryTabs button { border-radius:10px; font-size: 0.875rem; min-height: 48px; }
+  .catalogCategoryTabs button { border-radius:var(--editor-host-radius, 10px); font-size: 0.875rem; min-height: 48px; }
   .catalogGrid { flex: 0 0 auto; grid-auto-rows: 248px; grid-template-columns: 1fr; overflow: visible; }
-  .catalogCard { border-radius:12px; grid-template-rows: 160px minmax(82px, 1fr); }
+  .catalogCard { border-radius:var(--editor-host-radius, 12px); grid-template-rows: 160px minmax(82px, 1fr); }
   .greyboxPreview { height: 160px; }
   .catalogCardDetails { gap: 6px; min-height: 82px; padding: 11px; }
   .catalogCard strong { font-family: inherit; font-size: 1.1rem; letter-spacing: 0; }
@@ -188,9 +191,9 @@
   .customGlbFields label:first-child { grid-column: auto; }
   .customGlbFields label { font-size: 0.875rem; }
   .customGlbFields input { min-height: 48px; }
-	.placeholderComposer > label, .placeholderDimensions label { font-size: 0.875rem; }.placeholderComposer input { min-height: 48px; }.placeholderDimensions { grid-template-columns: 1fr; }.placeholderPalette legend { font-size: 0.875rem; }.placeholderPalette button { border-radius:8px; height: 44px; width: 44px; }.placeholderHost { font-family: inherit; font-size: 0.8125rem; }
-  .catalogPlacementBar { bottom: 0; border-radius:12px 12px 0 0; min-height: 68px; padding: 10px; position: sticky; z-index: 1; }
-  .catalogPlacementBar button { border-radius:8px; font-size: 0.875rem; min-height: 48px; }
+	.placeholderComposer > label, .placeholderDimensions label { font-size: 0.875rem; }.placeholderComposer input { min-height: 48px; }.placeholderDimensions { grid-template-columns: 1fr; }.placeholderPalette legend { font-size: 0.875rem; }.placeholderPalette button { border-radius:var(--editor-host-radius, 8px); height: 44px; width: 44px; }.placeholderHost { font-family: inherit; font-size: 0.8125rem; }
+  .catalogPlacementBar { bottom: 0; border-radius:var(--editor-host-radius, 12px) var(--editor-host-radius, 12px) 0 0; min-height: 68px; padding: 10px; position: sticky; z-index: 1; }
+  .catalogPlacementBar button { border-radius:var(--editor-host-radius, 8px); font-size: 0.875rem; min-height: 48px; }
 }
 
 /* Keep the placement action outside the catalog's scroll region. The content
@@ -242,13 +245,13 @@
 .itemPlacementPreviewInvalid { fill: color-mix(in srgb, var(--danger) 40%, transparent); pointer-events: none; stroke: var(--danger); stroke-dasharray: 5 3; stroke-width: 2; }
 .planSvg .itemPlacementFeedback,
 .planSvg .itemPlacementActionBar { display: none; }
-.itemPlacementDock { --placement-primary: #1976b9; background:var(--editor-host-surface, #fff); border:1px solid var(--editor-host-line, #dbe2e8); border-radius:28px; bottom: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent); display: grid; gap: 10px; left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left))); padding: 11px 12px 12px; position: absolute; right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right))); z-index: 9; }
+.itemPlacementDock { --placement-primary: #1976b9; background:var(--editor-host-surface, #fff); border:1px solid var(--editor-host-line, #dbe2e8); border-radius:var(--editor-host-radius, 28px); bottom: max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent); display: grid; gap: 10px; left: max(10px, var(--editor-safe-area-left, env(safe-area-inset-left))); padding: 11px 12px 12px; position: absolute; right: max(10px, var(--editor-safe-area-right, env(safe-area-inset-right))); z-index: 9; }
 .itemPlacementDockHandle { background:#c8cdd2; border-radius:999px; height: 4px; justify-self: center; width: 44px; }
 .itemPlacementDock .itemPlacementFeedback { color:var(--ink); font: 700 0.82rem/1.35 system-ui, sans-serif; margin: 0; text-align: center; }
 .itemPlacementDock[data-placement-tier="warning"] .itemPlacementFeedback { color:var(--editor-host-warning, #8a5800); }
 .itemPlacementDock[data-placement-tier="invalid"] .itemPlacementFeedback { color:var(--danger); }
 .itemPlacementDockActions { display: grid; gap: 8px; grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr); }
-.itemPlacementDockActions button { border-radius:14px; cursor: pointer; font: 800 0.92rem/1 system-ui, sans-serif; min-height: 48px; padding: 0 12px; }
+.itemPlacementDockActions button { border-radius:var(--editor-host-radius, 14px); cursor: pointer; font: 800 0.92rem/1 system-ui, sans-serif; min-height: 48px; padding: 0 12px; }
 .itemPlacementDock .itemPlacementCancel { background:var(--editor-host-surface, #fff); border:1.5px solid var(--editor-host-primary, var(--placement-primary)); color:var(--editor-host-primary, var(--placement-primary)); }
 .itemPlacementDock .itemPlacementConfirm { background:var(--placement-primary); border:1.5px solid var(--editor-host-primary, var(--placement-primary)); color:#fff; }
 .itemPlacementDock .itemPlacementConfirm:disabled,
@@ -297,7 +300,7 @@
 	background:var(--editor-glass);
 	backdrop-filter: blur(18px);
 	border:1px solid color-mix(in srgb, var(--line) 74%, transparent);
-	border-radius:14px;
+	border-radius:var(--editor-host-radius, 14px);
 	box-shadow: 0 8px 22px color-mix(in srgb, var(--ink) 11%, transparent);
 	flex: 1 1 auto;
 	left: auto;
@@ -324,7 +327,7 @@
 	background:var(--editor-glass);
 	backdrop-filter: blur(18px);
 	border:1px solid color-mix(in srgb, var(--line) 74%, transparent);
-	border-radius:14px;
+	border-radius:var(--editor-host-radius, 14px);
 	box-shadow: 0 8px 22px color-mix(in srgb, var(--ink) 11%, transparent);
 	display: grid;
 	grid-template-columns: 1.35fr 0.84fr;
@@ -337,7 +340,7 @@
 .editorViewSwitch button {
 	background:transparent;
 	border:0;
-	border-radius:10px;
+	border-radius:var(--editor-host-radius, 10px);
 	color:var(--muted);
 	cursor: pointer;
 	font: 800 0.72rem/1 var(--font-display);
@@ -357,7 +360,7 @@
 	background:color-mix(in srgb, var(--surface) 86%, transparent);
 	backdrop-filter: blur(14px);
 	border:1px solid color-mix(in srgb, var(--line) 66%, transparent);
-	border-radius:999px;
+	border-radius:var(--editor-host-radius, 999px);
 	box-shadow: 0 5px 16px color-mix(in srgb, var(--ink) 9%, transparent);
 	font-family: var(--font-mono);
 	font-size: 0.58rem;
@@ -398,7 +401,7 @@
 	background:color-mix(in srgb, var(--surface) 93%, transparent);
 	backdrop-filter: blur(22px);
 	border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
-	border-radius:20px;
+	border-radius:var(--editor-host-radius, 20px);
 	box-shadow: 0 14px 32px color-mix(in srgb, var(--ink) 18%, transparent);
 	display: grid;
 	gap: 4px;
@@ -410,7 +413,7 @@
 .toolRail .editorActionDock button,
 .editorActionMenu button {
 	border:0;
-	border-radius:15px;
+	border-radius:var(--editor-host-radius, 15px);
 	font-family: var(--font-display);
 	font-size: 0.72rem;
 	font-weight: 800;
@@ -468,7 +471,7 @@
 	background:color-mix(in srgb, var(--surface) 96%, transparent);
 	backdrop-filter: blur(24px);
 	border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
-	border-radius:20px;
+	border-radius:var(--editor-host-radius, 20px);
 	bottom: 68px;
 	box-shadow: 0 18px 38px color-mix(in srgb, var(--ink) 19%, transparent);
 	display: grid;
@@ -504,7 +507,7 @@
 .editorActionMenu .editorActionMenuHeader button {
 	background:transparent;
 	border:0;
-	border-radius:10px;
+	border-radius:var(--editor-host-radius, 10px);
 	color:var(--muted);
 	font-size: 0.68rem;
 	min-height: 32px;
@@ -535,7 +538,7 @@
 
 @media (max-width: 559px) {
 	.editorActionMenu {
-		border-radius:24px 24px 18px 18px;
+		border-radius:var(--editor-host-radius, 24px) var(--editor-host-radius, 24px) var(--editor-host-radius, 18px) var(--editor-host-radius, 18px);
 		gap: 6px;
 		padding: 5px 7px 7px;
 	}
@@ -565,7 +568,7 @@
 @media (max-width: 559px) {
 	.selectionPanel,
 	.contourPanel {
-		border-radius:18px;
+		border-radius:var(--editor-host-radius, 18px);
 		bottom: calc(max(84px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom)) + 74px));
 		box-shadow: 0 16px 36px color-mix(in srgb, var(--ink) 17%, transparent);
 		left: 10px;
@@ -582,7 +585,7 @@
 	}
 
 	.wallThicknessControl {
-		border-radius:14px;
+		border-radius:var(--editor-host-radius, 14px);
 		left: 10px;
 		top: 94px;
 	}
@@ -590,7 +593,7 @@
 	.itemCount,
 	.itemDraftHint,
 	.planRoomStatus {
-		border-radius:999px;
+		border-radius:var(--editor-host-radius, 999px);
 		left: 10px;
 		top: 94px;
 	}
@@ -623,7 +626,7 @@
 .pwaInstallDisclosure {
 	background:color-mix(in srgb, var(--canvas) 52%, var(--surface));
 	border:1px solid color-mix(in srgb, var(--line) 70%, transparent);
-	border-radius:15px;
+	border-radius:var(--editor-host-radius, 15px);
 	padding: 0 13px;
 }
 
@@ -678,6 +681,16 @@
 	padding: 0;
 }
 
+.projectsWithFooter,
+.projectsWithFooter .createCard {
+	display: flex;
+	flex-direction: column;
+}
+
+.projectsWithFooter .createCard {
+	flex: 1;
+}
+
 /* First-run is a single focused task.  It shares the calm project-hub shell,
    but gives the project name and the create action a much clearer hierarchy. */
 .createCard[aria-labelledby="create-heading"] h1 {
@@ -691,7 +704,7 @@
 .createCard[aria-labelledby="create-heading"] .createForm {
 	background:var(--surface);
 	border:1px solid var(--projects-line);
-	border-radius:20px;
+	border-radius:var(--editor-host-radius, 20px);
 	gap: 14px;
 	padding: 20px;
 }
@@ -703,7 +716,7 @@
 
 .createCard[aria-labelledby="create-heading"] .createForm input {
 	background:var(--surface);
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	font-size: 1rem;
 	min-width: 0;
 }
@@ -711,13 +724,14 @@
 .createCard[aria-labelledby="create-heading"] .createForm .primaryAction {
 	background:var(--projects-primary);
 	border-color:var(--editor-host-primary, var(--projects-primary));
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	font-weight: 600;
 	min-height: 52px;
 	padding-block: 12px;
 }
 
 .projectHubHeading { display: grid; gap: 8px; }
+.documentsSettings { justify-self: start; min-height: 44px; padding: 6px 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; font: inherit; cursor: pointer; }
 .projectHubHeading p { color:var(--muted); font-size: 0.875rem; line-height: 1.4; margin: 0; }
 .projectHubHeading h1 {
 	font-family: inherit;
@@ -735,7 +749,7 @@
 .projectHubActions .primaryAction,
 .projectHubActions .secondaryAction {
 	align-items: center;
-	border-radius:14px;
+	border-radius:var(--editor-host-radius, 14px);
 	display: inline-flex;
 	font-size: 0.875rem;
 	font-weight: 600;
@@ -760,7 +774,7 @@
 	align-content: center;
 	background:color-mix(in srgb, var(--projects-canvas) 42%, var(--surface));
 	border:1px solid color-mix(in srgb, var(--projects-line) 72%, transparent);
-	border-radius:18px;
+	border-radius:var(--editor-host-radius, 18px);
 	display: grid;
 	gap: 8px;
 	justify-items: center;
@@ -805,8 +819,8 @@
 .projectDirectoryCard {
 	background:var(--surface);
 	border:1px solid var(--projects-line);
-	border-radius:18px;
-	column-gap: 0;
+	border-radius:var(--editor-host-radius, 18px);
+	column-gap: var(--editor-host-touch-gap, 8px);
 	grid-template-columns: minmax(0, 1fr) 44px;
 	padding: 8px;
 }
@@ -827,7 +841,7 @@
 .projectDirectoryCard button {
 	background:var(--surface);
 	border:1px solid var(--projects-line);
-	border-radius:11px;
+	border-radius:var(--editor-host-radius, 11px);
 	font-size: 0.875rem;
 	font-weight: 500;
 	min-height: 44px;
@@ -847,11 +861,11 @@
 }
 
 .projectCardOpen:hover { background:var(--editor-host-canvas, #f4f6f8); }
-.projectCardPreview { align-items: center; background:var(--editor-host-canvas, #f0f3f5); border-radius:12px; color:var(--editor-host-muted, #8393a1); display: flex; height: 80px; justify-content: center; }
+.projectCardPreview { align-items: center; background:var(--editor-host-canvas, #f0f3f5); border-radius:var(--editor-host-radius, 12px); color:var(--editor-host-muted, #8393a1); display: flex; height: 80px; justify-content: center; }
 .projectCardPreview svg { height: 44px; width: 44px; }
 .projectCardCopy { display: grid; gap: 6px; min-width: 0; }
 
-.projectDirectoryActions { position: relative; }
+.projectDirectoryActions { display: contents; }
 
 .projectCreationBack {
 	align-items: center;
@@ -871,7 +885,7 @@
 	align-items: center;
 	background:color-mix(in srgb, var(--surface) 76%, transparent);
 	border:1px solid color-mix(in srgb, var(--projects-line) 78%, transparent);
-	border-radius:11px;
+	border-radius:var(--editor-host-radius, 11px);
 	color:var(--muted);
 	cursor: pointer;
 	display: flex;
@@ -883,9 +897,13 @@
 	justify-content: center;
 	letter-spacing: 0.08em;
 	list-style: none;
+	grid-column: 3;
+	grid-row: 1;
 }
 
 .projectDirectoryActions summary::-webkit-details-marker { display: none; }
+.projectDirectoryActions summary:focus-visible { outline:2px solid var(--editor-host-primary, var(--projects-primary)); outline-offset: 2px; }
+.projectDirectoryActions:not([open]) > div { display: none; }
 
 .projectDirectoryActions[open] summary {
 	background:color-mix(in srgb, var(--editor-accent, var(--projects-primary)) 13%, var(--surface));
@@ -893,53 +911,32 @@
 	color:color-mix(in srgb, var(--editor-accent, var(--editor-host-primary, var(--projects-primary))) 90%, var(--ink));
 }
 
-.projectDirectoryActions[open] {
+.projectDirectoryActions[open]::details-content {
 	grid-column: 1 / -1;
-}
-
-.projectDirectoryActions[open] summary {
-	justify-content: space-between;
-	padding: 0 12px;
-}
-
-.projectDirectoryActions[open] summary span { display: none; }
-
-.projectDirectoryActions[open] summary::before {
-	color:var(--ink);
-	content: "Действия";
-	font-family: var(--font-mono);
-	font-size: 0.62rem;
-	letter-spacing: 0.06em;
-}
-
-.projectDirectoryActions[open] summary::after {
-	color:var(--muted);
-	content: "−";
-	font-family: var(--font-display);
-	font-size: 1.15rem;
-	font-weight: 400;
+	min-width: 0;
 }
 
 .projectDirectoryActions[open] > div {
-	background:color-mix(in srgb, var(--surface) 97%, transparent);
-	border:1px solid color-mix(in srgb, var(--projects-line) 78%, transparent);
-	border-radius:13px;
+	border-top:1px solid var(--projects-line);
 	display: grid;
-	gap: 6px;
+	gap: var(--editor-host-touch-gap, 8px);
+	grid-column: 1 / -1;
 	grid-template-columns: minmax(0, 1fr);
-	margin-top: 7px;
 	min-width: 0;
-	padding: 7px;
+	padding-top: 8px;
 }
 
 .projectDirectoryActions[open] button {
-	background:color-mix(in srgb, var(--projects-canvas) 62%, var(--surface));
-	border-color:color-mix(in srgb, var(--projects-line) 82%, transparent);
-	color:var(--ink);
+	background:transparent;
+	border:0;
+	color:var(--editor-host-primary, var(--projects-primary));
 	font-size: 0.875rem;
 	justify-content: flex-start;
+	min-width: 0;
+	overflow-wrap: anywhere;
 	padding: 12px;
 	text-align: left;
+	white-space: normal;
 	width: 100%;
 }
 
@@ -1012,7 +1009,7 @@
 .editorViewSwitch {
 	background:color-mix(in srgb, var(--surface) 90%, transparent);
 	border-color:color-mix(in srgb, var(--line) 85%, transparent);
-	border-radius:11px;
+	border-radius:var(--editor-host-radius, 11px);
 	box-shadow: none;
 	grid-column: 1 / -1;
 	grid-row: 2;
@@ -1023,7 +1020,7 @@
 }
 
 .editorViewSwitch button {
-	border-radius:8px;
+	border-radius:var(--editor-host-radius, 8px);
 	color:var(--ink);
 	font-family: var(--font-display);
 	font-size: 0.78rem;
@@ -1062,7 +1059,7 @@
 	background:color-mix(in srgb, var(--surface) 94%, transparent);
 	backdrop-filter: blur(14px);
 	border-color:color-mix(in srgb, var(--line) 72%, transparent);
-	border-radius:999px;
+	border-radius:var(--editor-host-radius, 999px);
 	box-shadow: 0 5px 14px color-mix(in srgb, var(--ink) 10%, transparent);
 	display: inline-flex;
 	height: 44px;
@@ -1094,7 +1091,7 @@
 		align-items: center;
 		background:color-mix(in srgb, var(--blue) 5%, var(--surface));
 		border:1px solid color-mix(in srgb, var(--blue) 26%, var(--line));
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		display: grid;
 		gap: 8px;
 		grid-template-columns: minmax(0, 1fr) auto;
@@ -1123,7 +1120,7 @@
 	}
 
 	.catalogContent > .catalogImportStatus[role="alert"] button {
-		border-radius:9px;
+		border-radius:var(--editor-host-radius, 9px);
 		font-size: 0.66rem;
 		min-height: 38px;
 		padding-inline: 11px;
@@ -1135,7 +1132,7 @@
 	.catalogPlacementBar {
 		background:color-mix(in srgb, var(--surface) 97%, transparent);
 		border-color:color-mix(in srgb, var(--line) 78%, transparent);
-		border-radius:16px;
+		border-radius:var(--editor-host-radius, 16px);
 		box-shadow: 0 -8px 20px color-mix(in srgb, var(--ink) 12%, transparent);
 		padding: 8px;
 	}
@@ -1143,7 +1140,7 @@
 	.catalogPlacementBar button {
 		background:var(--blue);
 		border-color:var(--blue);
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		box-shadow: 0 7px 16px color-mix(in srgb, var(--blue) 20%, transparent);
 		min-height: 48px;
 		padding-inline: 12px;
@@ -1156,7 +1153,7 @@
 	}
 
 	.catalogContent .catalogCard {
-		border-radius:15px;
+		border-radius:var(--editor-host-radius, 15px);
 		grid-template-rows: 118px minmax(0, 1fr);
 	}
 
@@ -1200,7 +1197,7 @@
 
 .catalogCardDetails .catalogCardMeta > span {
 	border:0;
-	border-radius:999px;
+	border-radius:var(--editor-host-radius, 999px);
 	color:var(--muted);
 	font-family: var(--font-mono);
 	font-size: 0.54rem;
@@ -1227,7 +1224,7 @@
 /* Categories are small visual destinations, not a row of admin filters. The
    label stays explicit, while the line icon makes scanning with a thumb fast. */
 .catalogCategoryTabs button[data-testid="catalog-category-filter"] {
-	border-radius:14px;
+	border-radius:var(--editor-host-radius, 14px);
 	gap: 7px;
 	min-height: 48px;
 	padding: 0 12px 0 8px;
@@ -1236,7 +1233,7 @@
 .catalogCategoryGlyph {
 	align-items: center;
 	background:color-mix(in srgb, var(--blue) 8%, var(--surface));
-	border-radius:10px;
+	border-radius:var(--editor-host-radius, 10px);
 	color:var(--editor-host-primary, var(--blue));
 	display: inline-flex;
 	height: 32px;
@@ -1296,7 +1293,7 @@
 	background:color-mix(in srgb, var(--surface) 98%, transparent);
 	border:1px solid color-mix(in srgb, var(--line) 70%, transparent);
 	border-bottom:0;
-	border-radius:24px 24px 0 0;
+	border-radius:var(--editor-host-radius, 24px) var(--editor-host-radius, 24px) 0 0;
 	box-shadow: 0 -10px 28px color-mix(in srgb, var(--shadow) 18%, transparent);
 	gap: 11px;
 	max-width: none;
@@ -1345,7 +1342,7 @@
 
 .editorShell .windowDraftPanel input {
 	border-color:color-mix(in srgb, var(--line) 70%, transparent);
-	border-radius:10px;
+	border-radius:var(--editor-host-radius, 10px);
 	font-family: var(--font-mono);
 	font-size: 0.82rem;
 	min-height: 42px;
@@ -1361,7 +1358,7 @@
 
 .editorShell .windowDraftPanel form > div button {
 	border-color:color-mix(in srgb, var(--blue) 48%, var(--line));
-	border-radius:10px;
+	border-radius:var(--editor-host-radius, 10px);
 	color:var(--editor-host-primary, var(--blue));
 	font-size: 0.78rem;
 	min-height: 50px;
@@ -1399,7 +1396,7 @@
 		align-items: center;
 		background:color-mix(in srgb, var(--blue) 12%, var(--surface));
 		border:1px solid color-mix(in srgb, var(--blue) 26%, transparent);
-		border-radius:14px;
+		border-radius:var(--editor-host-radius, 14px);
 		color:var(--editor-host-primary, var(--blue));
 		display: flex;
 		grid-column: 1;
@@ -1439,7 +1436,7 @@
 	.selectionInspectorPanel[data-testid="selected-item-inspector"] .selectionInspectorToggle {
 		background:color-mix(in srgb, var(--blue) 10%, var(--surface));
 		border-color:color-mix(in srgb, var(--blue) 18%, transparent);
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		box-shadow: none;
 		color:var(--editor-host-primary, var(--blue));
 		font-size: 0.66rem;
@@ -1476,14 +1473,14 @@
 	}
 
 	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions input {
-		border-radius:10px;
+		border-radius:var(--editor-host-radius, 10px);
 		padding-right: 25px;
 	}
 
 	.selectionInspectorPanel[data-testid="selected-wall-inspector"][data-inspector-expanded="false"] {
 		background:color-mix(in srgb, var(--surface) 97%, transparent);
 		border-color:color-mix(in srgb, var(--blue) 22%, var(--line));
-		border-radius:18px;
+		border-radius:var(--editor-host-radius, 18px);
 		box-shadow: 0 14px 30px color-mix(in srgb, var(--ink) 16%, transparent);
 		height: 86px;
 		max-height: 86px;
@@ -1499,7 +1496,7 @@
 		align-items: center;
 		background:color-mix(in srgb, var(--blue) 12%, var(--surface));
 		border:1px solid color-mix(in srgb, var(--blue) 26%, transparent);
-		border-radius:14px;
+		border-radius:var(--editor-host-radius, 14px);
 		color:var(--editor-host-primary, var(--blue));
 		display: flex;
 		grid-column: 1;
@@ -1533,7 +1530,7 @@
 	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectionInspectorToggle {
 		background:color-mix(in srgb, var(--blue) 10%, var(--surface));
 		border-color:color-mix(in srgb, var(--blue) 18%, transparent);
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		box-shadow: none;
 		color:var(--editor-host-primary, var(--blue));
 		font-size: 0.66rem;
@@ -1545,7 +1542,7 @@
 
 	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectedWallThicknessControl {
 		background:color-mix(in srgb, var(--canvas) 74%, var(--surface));
-		border-radius:14px;
+		border-radius:var(--editor-host-radius, 14px);
 		padding: 10px;
 		position: relative;
 	}
@@ -1570,7 +1567,7 @@
 
 	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectedWallThicknessControl input {
 		background:var(--surface);
-		border-radius:10px;
+		border-radius:var(--editor-host-radius, 10px);
 		font-family: var(--font-mono);
 		font-size: 1rem;
 		min-height: 44px;
@@ -1607,7 +1604,7 @@
 	   kept close to the thumb zone. */
 	.restartProjectDialog {
 		border:0;
-		border-radius:26px 26px 0 0;
+		border-radius:var(--editor-host-radius, 26px) var(--editor-host-radius, 26px) 0 0;
 		bottom: 0;
 		box-shadow: 0 -14px 38px color-mix(in srgb, var(--ink) 21%, transparent);
 		gap: 11px;
@@ -1647,7 +1644,7 @@
 	}
 
 	.restartProjectDialog button {
-		border-radius:13px;
+		border-radius:var(--editor-host-radius, 13px);
 		font-size: 0.76rem;
 		min-height: 50px;
 	}
@@ -1670,7 +1667,7 @@
 	.planInspectorPanel {
 		background:color-mix(in srgb, var(--surface) 97%, transparent);
 		border:0;
-		border-radius:24px;
+		border-radius:var(--editor-host-radius, 24px);
 		box-shadow: 0 12px 28px color-mix(in srgb, var(--ink) 18%, transparent);
 		gap: 10px;
 		padding: 0 14px 14px;
@@ -1716,7 +1713,7 @@
 		align-self: center;
 		background:color-mix(in srgb, var(--canvas) 78%, var(--surface));
 		border:0;
-		border-radius:50%;
+		border-radius:var(--editor-host-radius, 50%);
 		font-size: 1.35rem;
 		grid-column: 2;
 		grid-row: 1 / span 2;
@@ -1734,7 +1731,7 @@
 		align-items: center;
 		background:color-mix(in srgb, var(--canvas) 78%, var(--surface));
 		border:1px solid color-mix(in srgb, var(--line) 84%, transparent);
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		display: grid;
 		font-size: 0.72rem;
 		grid-template-columns: minmax(0, 1fr) 118px;
@@ -1755,7 +1752,7 @@
 		background:var(--surface);
 		border:0;
 		border:1px solid color-mix(in srgb, var(--line) 80%, transparent);
-		border-radius:0;
+		border-radius:var(--editor-host-radius, 0px);
 		font-family: var(--font-mono);
 		font-size: 0.94rem;
 		min-height: 46px;
@@ -1766,7 +1763,7 @@
 	.planInspectorPanel .planDimensionsSave {
 		background:var(--blue);
 		border-color:var(--blue);
-		border-radius:13px;
+		border-radius:var(--editor-host-radius, 13px);
 		box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 22%, transparent);
 		font-size: 0.78rem;
 		min-height: 50px;
@@ -1776,7 +1773,7 @@
 	.planInspectorPanel .inlineMetrics {
 		background:color-mix(in srgb, var(--canvas) 62%, var(--surface));
 		border:0;
-		border-radius:13px;
+		border-radius:var(--editor-host-radius, 13px);
 		gap: 0;
 		grid-template-columns: repeat(3, minmax(0, 1fr));
 		margin: 0;
@@ -1792,7 +1789,7 @@
 	   natural right-thumb position and no competing technical chrome. */
 	.renameProjectDialog {
 		border:0;
-		border-radius:26px 26px 0 0;
+		border-radius:var(--editor-host-radius, 26px) var(--editor-host-radius, 26px) 0 0;
 		bottom: 0;
 		box-shadow: 0 -14px 38px color-mix(in srgb, var(--ink) 21%, transparent);
 		gap: 12px;
@@ -1833,7 +1830,7 @@
 	.renameProjectDialog input {
 		background:color-mix(in srgb, var(--canvas) 80%, var(--surface));
 		border:1px solid color-mix(in srgb, var(--line) 82%, transparent);
-		border-radius:13px;
+		border-radius:var(--editor-host-radius, 13px);
 		min-height: 52px;
 		padding-inline: 13px;
 	}
@@ -1845,7 +1842,7 @@
 	}
 
 	.renameProjectDialog button {
-		border-radius:13px;
+		border-radius:var(--editor-host-radius, 13px);
 		font-size: 0.76rem;
 		min-height: 50px;
 	}
@@ -1877,7 +1874,7 @@
 		background:color-mix(in srgb, var(--surface) 94%, transparent);
 		border:1px solid color-mix(in srgb, var(--safe) 30%, var(--line));
 		
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		bottom: auto;
 		box-shadow: 0 8px 18px color-mix(in srgb, var(--ink) 12%, transparent);
 		font-size: 0.72rem;
@@ -1915,7 +1912,7 @@
 		align-items: center;
 		background:color-mix(in srgb, var(--canvas) 78%, var(--surface));
 		border:0;
-		border-radius:50%;
+		border-radius:var(--editor-host-radius, 50%);
 		display: inline-flex;
 		font-size: 1.35rem;
 		justify-content: center;
@@ -1936,7 +1933,7 @@
 		align-items: center;
 		background:color-mix(in srgb, var(--blue) 6%, var(--surface));
 		border:1px solid color-mix(in srgb, var(--blue) 18%, var(--line));
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		color:var(--editor-host-primary, var(--blue));
 		font-family: var(--font-mono);
 		font-size: 0.6rem;
@@ -1965,7 +1962,7 @@
 	}
 
 	.catalogContent > .catalogImportStatus[role="alert"] button {
-		border-radius:10px;
+		border-radius:var(--editor-host-radius, 10px);
 		font-size: 0.62rem;
 		min-height: 34px;
 		padding-inline: 10px;
@@ -2010,7 +2007,7 @@
 	.catalogFilters input {
 		background:color-mix(in srgb, var(--canvas) 70%, var(--surface));
 		border:0;
-		border-radius:14px;
+		border-radius:var(--editor-host-radius, 14px);
 		font-size: 0.84rem;
 		min-height: 48px;
 		padding: 0 12px 0 38px;
@@ -2025,7 +2022,7 @@
 	.catalogCategoryTabs button {
 		background:color-mix(in srgb, var(--canvas) 76%, var(--surface));
 		border:0;
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		font-size: 0.67rem;
 		gap: 4px;
 		min-height: 40px;
@@ -2048,7 +2045,7 @@
 	.catalogContent .catalogCard {
 		background:var(--surface);
 		border:1px solid color-mix(in srgb, var(--line) 62%, transparent);
-		border-radius:18px;
+		border-radius:var(--editor-host-radius, 18px);
 		box-shadow: 0 4px 14px color-mix(in srgb, var(--ink) 7%, transparent);
 		grid-template-rows: 126px minmax(80px, 1fr);
 	}
@@ -2105,7 +2102,7 @@
 	.catalogPlacementBar {
 		background:color-mix(in srgb, var(--surface) 96%, transparent);
 		border:1px solid color-mix(in srgb, var(--line) 72%, transparent);
-		border-radius:18px;
+		border-radius:var(--editor-host-radius, 18px);
 		box-shadow: 0 10px 24px color-mix(in srgb, var(--ink) 12%, transparent);
 		gap: 10px;
 		min-height: 66px;
@@ -2132,7 +2129,7 @@
 
 	.catalogPlacementBar .catalogModelLoadingStatus progress { width: 66px; }
 	.catalogPlacementBar button {
-		border-radius:13px;
+		border-radius:var(--editor-host-radius, 13px);
 		font-size: 0.75rem;
 		min-height: 48px;
 		padding: 0 14px;
@@ -2149,7 +2146,7 @@
 		var(--surface)
 	);
 	border:1px solid color-mix(in srgb, var(--blue) 22%, var(--line));
-	border-radius:18px;
+	border-radius:var(--editor-host-radius, 18px);
 	overflow: clip;
 }
 
@@ -2175,7 +2172,7 @@
 .catalogAuthoringIcon {
 	align-items: center;
 	background:var(--blue);
-	border-radius:11px;
+	border-radius:var(--editor-host-radius, 11px);
 	box-shadow: 0 6px 12px color-mix(in srgb, var(--blue) 24%, transparent);
 	color:var(--surface);
 	display: inline-flex;
@@ -2227,7 +2224,7 @@
 .catalogAuthoringContent .catalogImport {
 	background:color-mix(in srgb, var(--surface) 88%, var(--canvas));
 	border:1px solid color-mix(in srgb, var(--line) 76%, transparent);
-	border-radius:13px;
+	border-radius:var(--editor-host-radius, 13px);
 }
 
 .catalogCard { position: relative; }
@@ -2265,7 +2262,7 @@
 	align-items: center;
 	background:color-mix(in srgb, var(--canvas) 70%, var(--surface));
 	border:1px dashed color-mix(in srgb, var(--line) 80%, transparent);
-	border-radius:16px;
+	border-radius:var(--editor-host-radius, 16px);
 	display: grid;
 	gap: 7px;
 	justify-items: center;
@@ -2334,7 +2331,7 @@
 	.catalogContent > .catalogAuthoring { order: 1; }
 
 	.catalogAuthoring {
-		border-radius:16px;
+		border-radius:var(--editor-host-radius, 16px);
 		margin: 0 1px;
 	}
 
@@ -2497,6 +2494,24 @@
 	opacity: 0.9;
 }
 
+[data-editor-host="telegram"] .rotationGizmo > circle:first-child {
+	opacity: 0.9;
+	stroke-dasharray: 4 4;
+	stroke-width: 2;
+	vector-effect: non-scaling-stroke;
+}
+
+[data-editor-host="telegram"] .rotationHandle {
+	opacity: 1;
+	stroke-width: 2;
+	vector-effect: non-scaling-stroke;
+}
+
+[data-editor-host="telegram"] .rotationHitArea {
+	stroke-width: 44px;
+	vector-effect: non-scaling-stroke;
+}
+
 .editorActionDock {
 	border-color:color-mix(in srgb, var(--line) 76%, transparent);
 	box-shadow: 0 12px 28px color-mix(in srgb, var(--ink) 15%, transparent);
@@ -2515,7 +2530,7 @@
 	background:color-mix(in srgb, var(--surface) 97%, transparent);
 	backdrop-filter: blur(18px);
 	border-color:color-mix(in srgb, var(--line) 76%, transparent);
-	border-radius:18px;
+	border-radius:var(--editor-host-radius, 18px);
 	box-shadow: 0 14px 30px color-mix(in srgb, var(--ink) 16%, transparent);
 }
 
@@ -2607,12 +2622,12 @@
 	}
 
 	.editorViewSwitch {
-		border-radius:10px;
+		border-radius:var(--editor-host-radius, 10px);
 		width: min(266px, calc(100% - 58px));
 	}
 
 	.editorViewSwitch button {
-		border-radius:8px;
+		border-radius:var(--editor-host-radius, 8px);
 		font-size: 0.76rem;
 		font-weight: 500;
 		min-height: 34px;
@@ -2649,7 +2664,7 @@
 	.planGridLine { stroke-width: 0.55; }
 	.planGridMajor { stroke-width: 0.78; }
 
-	.editorActionDock { border-radius:21px; }
+	.editorActionDock { border-radius:var(--editor-host-radius, 21px); }
 	.toolRail .editorActionDock button { min-height: 52px; }
 
 	/* Drawing a wall needs one editable dimension, not a competing inspector.
@@ -2660,7 +2675,7 @@
 		backdrop-filter: blur(14px);
 		background:color-mix(in srgb, var(--surface) 95%, transparent);
 		border-color:color-mix(in srgb, var(--line) 76%, transparent);
-		border-radius:12px;
+		border-radius:var(--editor-host-radius, 12px);
 		bottom: calc(max(10px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))) + 72px);
 		box-shadow: 0 5px 14px color-mix(in srgb, var(--ink) 12%, transparent);
 		display: grid;
@@ -2699,7 +2714,7 @@
 	.editorShell .wallMoveDraftActions,
 	.editorShell .windowDraftPanel form,
 	.editorShell .windowDraftPanel > div {
-		border-radius:20px;
+		border-radius:var(--editor-host-radius, 20px);
 	}
 
 	/* Large enough to judge the silhouette before downloading the full model.
@@ -2742,7 +2757,7 @@
 .threeDimensionalMeasurementAction {
 	background:var(--editor-host-surface, #fff);
 	border:1px solid var(--editor-host-line, #d9e1e8);
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	color:var(--editor-host-primary, #1976b9);
 	cursor: pointer;
 	font: 600 0.875rem/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -2770,7 +2785,7 @@
 .sceneRecoveryNotices .sceneRecovery {
 	background:var(--editor-host-surface, #fff);
 	border:1px solid var(--editor-line);
-	border-radius:20px;
+	border-radius:var(--editor-host-radius, 20px);
 	display: grid;
 	font-size: 0.875rem;
 	gap: 12px;
@@ -2781,7 +2796,7 @@
 .sceneRecoveryNotices button {
 	background:var(--editor-primary);
 	border:0;
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	color:#fff;
 	cursor: pointer;
 	font: inherit;
@@ -2824,7 +2839,7 @@
 .healthyOfflineStatus {
 	background:color-mix(in srgb, var(--editor-host-primary-soft, #eef5fb) 92%, var(--editor-host-surface, #ffffff));
 	border:1px solid color-mix(in srgb, var(--editor-host-primary, var(--editor-primary)) 20%, var(--editor-line));
-	border-radius:999px;
+	border-radius:var(--editor-host-radius, 999px);
 	box-shadow: 0 3px 10px color-mix(in srgb, var(--ink) 7%, transparent);
 	color:var(--editor-host-muted, #50637a);
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -2855,7 +2870,7 @@
 	align-items: center;
 	background:transparent;
 	border:0;
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	color:var(--editor-host-muted, #6b778d);
 	cursor: pointer;
 	display: inline-flex;
@@ -2894,7 +2909,7 @@
 	background:var(--editor-host-surface, #fff);
 	backdrop-filter: none;
 	border-color:var(--editor-line);
-	border-radius:28px;
+	border-radius:var(--editor-host-radius, 28px);
 	box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent);
 }
 
@@ -2908,7 +2923,7 @@
 	background:var(--editor-host-surface, #fff);
 	backdrop-filter: none;
 	border-color:var(--editor-line);
-	border-radius:28px;
+	border-radius:var(--editor-host-radius, 28px);
 	box-shadow: 0 12px 30px color-mix(in srgb, var(--ink) 14%, transparent);
 	z-index: 9;
 }
@@ -2968,7 +2983,7 @@
 	background:var(--editor-host-surface, #fff);
 	border:1px solid var(--editor-line);
 	border-bottom:0;
-	border-radius:24px 24px 0 0;
+	border-radius:var(--editor-host-radius, 24px) var(--editor-host-radius, 24px) 0 0;
 	box-shadow: 0 -12px 32px color-mix(in srgb, var(--ink) 15%, transparent);
 	color:var(--ink);
 	display: grid;
@@ -3013,7 +3028,7 @@
 .editorShell .openingCreationKindPicker button {
 	background:var(--editor-host-surface, #fff);
 	border:1px solid var(--editor-line);
-	border-radius:10px;
+	border-radius:var(--editor-host-radius, 10px);
 	color:var(--muted);
 	cursor: pointer;
 	font: 720 0.82rem/1 var(--font-display);
@@ -3053,7 +3068,7 @@
 .editorShell .openingCreationFields input {
 	background:var(--editor-host-surface, #fff);
 	border:1px solid var(--editor-line);
-	border-radius:10px;
+	border-radius:var(--editor-host-radius, 10px);
 	color:var(--ink);
 	font: 700 0.83rem/1 var(--font-mono);
 	min-height: 42px;
@@ -3081,7 +3096,7 @@
 .editorShell .openingCreationActions button {
 	background:var(--editor-host-surface, #fff);
 	border:1px solid #8dc5e3;
-	border-radius:11px;
+	border-radius:var(--editor-host-radius, 11px);
 	color:var(--editor-host-primary, var(--editor-primary));
 	cursor: pointer;
 	font: 760 0.85rem/1 var(--font-display);
@@ -3117,6 +3132,17 @@
 
 .editorShell .doorOpeningMarker.selectedOpening {
 	stroke: var(--editor-primary);
+}
+
+/* Telegram drawing symbols share the plan and selection colours in each theme. */
+.openingSymbol { stroke: var(--editor-host-ink, #4e4d49); }
+.openingSymbol[data-selected="true"], .openingSymbolPreview { stroke: var(--editor-primary); }
+.openingSymbol[data-collision="true"] { stroke: var(--danger); }
+.openingSymbolCutout { stroke: var(--editor-host-plan-canvas, #fcfbf9); }
+.editorShell .openingSwingLegend {
+	color: var(--muted);
+	font: 600 0.8rem/1.3 var(--font-display);
+	padding: 0 0 6px;
 }
 
 /* A Window remains a neutral wall-hosted Opening, but its two slim parallel
@@ -3160,7 +3186,7 @@
 .catalogOutageDialog {
 	background:var(--surface);
 	border:1px solid var(--line);
-	border-radius:26px 26px 0 0;
+	border-radius:var(--editor-host-radius, 26px) var(--editor-host-radius, 26px) 0 0;
 	bottom: 0;
 	box-shadow: 0 -14px 38px color-mix(in srgb, var(--ink) 21%, transparent);
 	display: grid;
@@ -3207,7 +3233,7 @@
 .catalogOutageActions button {
 	background:var(--blue);
 	border:1px solid var(--blue);
-	border-radius:13px;
+	border-radius:var(--editor-host-radius, 13px);
 	box-shadow: 0 8px 18px color-mix(in srgb, var(--blue) 22%, transparent);
 	color:var(--surface);
 	cursor: pointer;
@@ -3231,7 +3257,7 @@
 @media (min-width: 560px) {
 	.catalogOutageDialog {
 		bottom: 18px;
-		border-radius:22px;
+		border-radius:var(--editor-host-radius, 22px);
 		padding-bottom: 18px;
 	}
 }
@@ -3258,7 +3284,7 @@
 		align-items: stretch;
 		background:var(--surface);
 		border:0;
-		border-radius:28px 28px 0 0;
+		border-radius:var(--editor-host-radius, 28px) var(--editor-host-radius, 28px) 0 0;
 		bottom: 0;
 		box-shadow: 0 -14px 38px color-mix(in srgb, var(--ink) 21%, transparent);
 		display: grid;
@@ -3292,7 +3318,7 @@
 	}
 
 	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementPreview {
-		border-radius:18px;
+		border-radius:var(--editor-host-radius, 18px);
 		height: 136px;
 		width: 112px;
 	}
@@ -3378,7 +3404,7 @@
 	}
 
 	.catalogDialog[data-focused-preloaded-selection="true"] .catalogPlacementBar > button {
-		border-radius:13px;
+		border-radius:var(--editor-host-radius, 13px);
 		font: 760 0.92rem/1 var(--font-display);
 		min-height: 54px;
 		padding: 0 12px;
@@ -3412,7 +3438,7 @@
 .customCatalogEntry { display: grid; grid-template-rows: minmax(214px, 1fr) auto auto; gap: 6px; min-width: 0; }
 .customCatalogEntry > .catalogCard { width: 100%; }
 .customCatalogEntry > small { color:var(--muted); font-size: .68rem; line-height: 1.35; overflow-wrap: anywhere; }
-.customCatalogRemove { background:var(--surface); border:1px solid var(--line); border-radius:10px; color:var(--ink); cursor: pointer; font: inherit; font-size: .78rem; min-height: 44px; padding: 8px; }
+.customCatalogRemove { background:var(--surface); border:1px solid var(--line); border-radius:var(--editor-host-radius, 10px); color:var(--ink); cursor: pointer; font: inherit; font-size: .78rem; min-height: 44px; padding: 8px; }
 .customCatalogRemove:focus-visible { outline:3px solid var(--editor-host-primary, var(--blue)); outline-offset: 2px; }
 
 /* Direct manipulation and compact phone inspectors, October 2026. */
@@ -3439,6 +3465,8 @@
 .drawingDimensions line { stroke: color-mix(in srgb, var(--ink) 72%, transparent); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .drawingDimensions text { fill: var(--ink); font: 500 14px/1 var(--font-mono); paint-order: stroke; stroke: var(--canvas); stroke-width: 5px; stroke-linejoin: round; }
 
+.openingMoveDot[data-idle="true"] { opacity: 0; }
+[data-door-opening-handle]:focus-visible + .openingMoveDot { opacity: 1; }
 .openingMoveDotInvalid { fill: var(--danger); }
 [data-testid="opening-move-feedback"][data-invalid="true"] { color:var(--danger); }
 
@@ -3447,7 +3475,7 @@
 /* Display preferences share the view row without adding a canvas overlay. */
 .editorViewRow { align-items: center; display: flex; gap: 8px; grid-column: 1 / -1; grid-row: 2; justify-content: center; min-width: 0; width: 100%; }
 .editorShell .editorViewRow .editorViewSwitch { flex: 1 1 180px; grid-column: auto; grid-row: auto; max-width: 266px; min-width: 0; width: auto; }
-.dimensionFilterTrigger { background:var(--surface); border:1px solid var(--line-soft); border-radius:10px; color:var(--ink); cursor: pointer; flex: 0 1 auto; font: 500 .78rem/1.2 var(--font-display); min-height: 48px; min-width: 76px; overflow-wrap: anywhere; padding: 8px 12px; }
+.dimensionFilterTrigger { background:var(--surface); border:1px solid var(--line-soft); border-radius:var(--editor-host-radius, 10px); color:var(--ink); cursor: pointer; flex: 0 1 auto; font: 500 .78rem/1.2 var(--font-display); min-height: 48px; min-width: 76px; overflow-wrap: anywhere; padding: 8px 12px; }
 .dimensionFilterTrigger:disabled { cursor: not-allowed; opacity: .45; }
 .dimensionFilterTrigger:focus-visible { outline:3px solid var(--editor-host-primary, var(--blue)); outline-offset: 2px; }
 
@@ -3455,35 +3483,35 @@
 .dimensionFilterTrigger { align-items: center; display: inline-flex; gap: 6px; justify-content: center; min-width: 48px; }
 .dimensionFilterTrigger svg { flex: 0 0 20px; height: 20px; width: 20px; }
 .projectDirectoryCard { grid-template-columns: minmax(0, 1fr) 44px 44px; }
-.projectDirectoryCard .projectDeleteAction { align-items: center; border:1px solid var(--line-soft); border-radius:12px; color:var(--danger); display: flex; height: 44px; justify-content: center; padding: 10px; width: 44px; }
+.projectDirectoryCard .projectDeleteAction { align-items: center; border:1px solid var(--line-soft); border-radius:var(--editor-host-radius, 12px); color:var(--danger); display: flex; height: 44px; justify-content: center; padding: 10px; width: 44px; }
 .projectDeleteAction svg { height: 22px; width: 22px; }
-.canvasHistory, .planZoomControls { align-items: center; background:var(--surface); border:1px solid var(--line); border-radius:16px; bottom: calc(96px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 4px 16px #19283c14; display: flex; gap: 2px; padding: 4px; position: absolute; z-index: 7; }
+.canvasHistory, .planZoomControls { align-items: center; background:var(--surface); border:1px solid var(--line); border-radius:var(--editor-host-radius, 16px); bottom: calc(96px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 4px 16px #19283c14; display: flex; gap: 2px; padding: 4px; position: absolute; z-index: 7; }
 .canvasHistory { left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left))); }
 .editorShell[data-view-mode="three-dimensional"] .canvasHistory { bottom: auto; top: calc(var(--editor-header-bottom, 116px) + 8px); }
 .planZoomControls { right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right))); }
-.canvasHistory button, .planZoomControls button { align-items: center; background:transparent; border:0; border-radius:12px; color:var(--ink); cursor: pointer; display: flex; font: 500 24px/1 var(--font-display); height: 44px; justify-content: center; min-height: 44px; min-width: 44px; padding: 0; width: 44px; }
+.canvasHistory button, .planZoomControls button { align-items: center; background:transparent; border:0; border-radius:var(--editor-host-radius, 12px); color:var(--ink); cursor: pointer; display: flex; font: 500 24px/1 var(--font-display); height: 44px; justify-content: center; min-height: 44px; min-width: 44px; padding: 0; width: 44px; }
 .canvasHistory button:disabled, .planZoomControls button:disabled { color:var(--muted); cursor: default; opacity: .45; }
 .canvasHistory button:focus-visible, .planZoomControls button:focus-visible { outline:2px solid var(--editor-host-primary, var(--blue)); outline-offset: -2px; }
 .editorShell .selectionInspectorPanel { bottom: calc(160px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); max-height: calc(var(--editor-viewport-height, 100dvh) - 292px - var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }
-.openingContext { align-items: center; background:var(--surface); border:1px solid var(--line); border-radius:18px; bottom: calc(160px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 4px 16px #19283c14; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto auto; left: 12px; padding: 12px; position: absolute; right: 12px; z-index: 7; }
+.openingContext { align-items: center; background:var(--surface); border:1px solid var(--line); border-radius:var(--editor-host-radius, 18px); bottom: calc(160px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 4px 16px #19283c14; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto auto; left: 12px; padding: 12px; position: absolute; right: 12px; z-index: 7; }
 .openingContext strong { grid-column: 1; }
 .openingContext span { color:var(--muted); font-size: .8rem; grid-column: 1; }
-.openingContext button { background:var(--surface); border:1px solid var(--line); border-radius:12px; color:var(--editor-host-primary, var(--blue)); font: inherit; grid-row: 1 / 3; min-height: 44px; padding: 8px 12px; }
+.openingContext button { background:var(--surface); border:1px solid var(--line); border-radius:var(--editor-host-radius, 12px); color:var(--editor-host-primary, var(--blue)); font: inherit; grid-row: 1 / 3; min-height: 44px; padding: 8px 12px; }
 .openingContext button:first-of-type { grid-column: 2; }
 .openingContext button:last-of-type { grid-column: 3; }
 .editorShell .returnToDrawing { background:var(--editor-host-primary-fill, var(--blue)); border:2px solid var(--surface); bottom: calc(96px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); box-shadow: 0 4px 16px #1976b940; color:#fff; font-size: 1.75rem; height: 52px; left: calc(50% - 26px); width: 52px; z-index: 7; }
-.editorShell .canvasError { background:var(--surface); border:1px solid var(--line);  border-radius:16px; bottom: auto; box-shadow: 0 8px 24px #19283c20; left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left))); max-width: none; padding: 14px 54px 14px 16px; right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right))); top: calc(var(--editor-header-bottom, 116px) + 8px); z-index: 15; }
-.notificationClose { align-items: center; background:transparent; border:0; border-radius:10px; color:var(--ink); cursor: pointer; display: flex; font: 500 24px/1 var(--font-display); height: 44px; justify-content: center; position: absolute; right: 4px; top: 4px; width: 44px; }
+.editorShell .canvasError { background:var(--surface); border:1px solid var(--line);  border-radius:var(--editor-host-radius, 16px); bottom: auto; box-shadow: 0 8px 24px #19283c20; left: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left))); max-width: none; padding: 14px 54px 14px 16px; right: max(12px, var(--editor-safe-area-right, env(safe-area-inset-right))); top: calc(var(--editor-header-bottom, 116px) + 8px); z-index: 15; }
+.notificationClose { align-items: center; background:transparent; border:0; border-radius:var(--editor-host-radius, 10px); color:var(--ink); cursor: pointer; display: flex; font: 500 24px/1 var(--font-display); height: 44px; justify-content: center; position: absolute; right: 4px; top: 4px; width: 44px; }
 .catalogDialog, .catalogContent, .catalogAuthoringContent, .placeholderComposer { min-width: 0; overflow-x: hidden; }
 .catalogContent > .catalogAuthoring { order: -10; }
 .catalogContent > .catalogInlineError { order: -9; }
-.catalogInlineError { align-items: center; background:var(--editor-host-warning-soft, #fff4ed); border:1px solid #d8aa8b; border-radius:14px; color:var(--editor-host-warning, #843e20); display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+.catalogInlineError { align-items: center; background:var(--editor-host-warning-soft, #fff4ed); border:1px solid #d8aa8b; border-radius:var(--editor-host-radius, 14px); color:var(--editor-host-warning, #843e20); display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
 .catalogInlineError strong { flex: 1 1 170px; font-size: .9rem; }
-.catalogInlineError button { background:var(--surface); border:1px solid currentColor; border-radius:10px; color:inherit; font: inherit; min-height: 44px; padding: 8px 12px; }
+.catalogInlineError button { background:var(--surface); border:1px solid currentColor; border-radius:var(--editor-host-radius, 10px); color:inherit; font: inherit; min-height: 44px; padding: 8px 12px; }
 .catalogCategoryTabs { flex-wrap: wrap; margin: 0; overflow: visible; padding: 0; }
 .catalogCategoryTabs button { flex: 1 1 auto; min-height: 44px; min-width: 0; white-space: normal; }
 .catalogCategoryTabs button[aria-pressed="true"] { background:var(--editor-host-primary-fill, var(--blue)); color:#fff; }
-.catalogAuthoringContent .placeholderComposer > .primaryAction { background:var(--editor-host-primary-fill, var(--blue)); border:1px solid var(--blue); border-radius:12px; color:#fff; font: 600 .9rem/1.4 var(--font-display); min-height: 48px; padding: 12px 16px; width: 100%; }
+.catalogAuthoringContent .placeholderComposer > .primaryAction { background:var(--editor-host-primary-fill, var(--blue)); border:1px solid var(--blue); border-radius:var(--editor-host-radius, 12px); color:#fff; font: 600 .9rem/1.4 var(--font-display); min-height: 48px; padding: 12px 16px; width: 100%; }
 .wallBody { stroke: none; }
 .wallBodyOutline { fill: none; stroke: var(--editor-host-ink, #55534f); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .wallHatchLine { stroke: #aaa59d; stroke-width: .7; vector-effect: non-scaling-stroke; }
@@ -3491,7 +3519,7 @@
 .catalogAuthoringContent .catalogImport > button, .catalogAuthoringContent .catalogImportStatus button { min-height: 44px; }
 .catalogImportStatus, .catalogCardMeta { font-family: var(--font-display); }
 .catalogContent .catalogCard strong, .catalogContent .catalogCardDetails span, .catalogContent .catalogCard small { overflow-wrap: anywhere; }
-.catalogAuthoringContent input { background:var(--surface); border:1px solid var(--line); border-radius:12px; color:var(--ink); font: 400 1rem/1.4 var(--font-display); min-height: 48px; min-width: 0; padding: 10px 12px; width: 100%; }
+.catalogAuthoringContent input { background:var(--surface); border:1px solid var(--line); border-radius:var(--editor-host-radius, 12px); color:var(--ink); font: 400 1rem/1.4 var(--font-display); min-height: 48px; min-width: 0; padding: 10px 12px; width: 100%; }
 @media (max-width: 360px) {
 	.openingContext { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 	.openingContext strong, .openingContext span { grid-column: 1 / -1; }
@@ -3505,9 +3533,31 @@
 .editorTopBar { grid-template-rows: auto auto; }
 
 .placementRotationActions { align-items: center; display: flex; gap: 16px; justify-content: center; }
-.placementRotationActions button { background:var(--surface); border:1px solid var(--line-soft); border-radius:10px; color:var(--ink); cursor: pointer; font: 600 1.4rem/1 var(--font-display); min-height: 48px; min-width: 52px; }
+.placementRotationActions button { background:var(--surface); border:1px solid var(--line-soft); border-radius:var(--editor-host-radius, 10px); color:var(--ink); cursor: pointer; font: 600 1.4rem/1 var(--font-display); min-height: 48px; min-width: 52px; }
 .placementRotationActions output { font: 650 .9rem/1.3 var(--font-display); min-width: 48px; text-align: center; }
 .placementRotationControl { color:var(--editor-host-primary, var(--blue)); cursor: grab; }
+.floorRotationAngleField { min-inline-size: 0; }
+.floorRotationAngleField label {
+	align-items: center;
+	background: var(--canvas);
+	border: 1px solid var(--line);
+	border-radius: var(--editor-host-radius, 10px);
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	inline-size: min(100%, 7rem);
+	padding-inline-end: 8px;
+}
+.floorRotationAngleField input {
+	background: transparent;
+	border: 0;
+	color: var(--ink);
+	font: 600 1rem/1.25 var(--font-display);
+	font-variant-numeric: tabular-nums;
+	inline-size: 100%;
+	min-block-size: 44px;
+	min-inline-size: 0;
+	padding-inline: 8px 4px;
+}
 
 /* Forms and draft actions occupy their own space above the canvas controls. */
 .editorShell .contourPanel,
@@ -3516,7 +3566,7 @@
 	background:var(--surface);
 	backdrop-filter: none;
 	border:1px solid var(--editor-line);
-	border-radius:20px;
+	border-radius:var(--editor-host-radius, 20px);
 	bottom: calc(160px + var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
 	box-shadow: 0 8px 24px rgb(25 40 60 / 10%);
 	font-family: var(--font-display);
@@ -3558,7 +3608,7 @@
 .editorShell .contourFields input {
 	background:var(--surface);
 	border:1px solid var(--editor-line);
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	font: 400 1rem/1.4 var(--font-display);
 	min-height: 48px;
 	min-width: 0;
@@ -3576,7 +3626,7 @@
 .editorShell .wallMoveDraftActions button {
 	background:var(--surface);
 	border:1px solid var(--editor-line);
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	box-shadow: none;
 	color:var(--editor-host-primary, var(--editor-primary));
 	font: 600 1rem/1.35 var(--font-display);
@@ -3599,7 +3649,7 @@
 .editorShell .editorActionMenu {
 	background:var(--surface);
 	border:1px solid var(--editor-line);
-	border-radius:24px;
+	border-radius:var(--editor-host-radius, 24px);
 	bottom: auto;
 	box-shadow: 0 12px 36px rgb(25 40 60 / 16%);
 	gap: 10px;
@@ -3628,7 +3678,7 @@
 .editorActionMenu .editorActionMenuHeader button {
 	background:var(--surface);
 	border:1px solid var(--editor-line);
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	color:var(--ink);
 	font: 500 1rem/1.4 var(--font-display);
 	min-height: 48px;
@@ -3668,7 +3718,7 @@
 .editorShell .selectionInspectorPanel[data-testid="selected-wall-inspector"] {
 	background:var(--surface);
 	border:1px solid var(--editor-line);
-	border-radius:20px;
+	border-radius:var(--editor-host-radius, 20px);
 	gap: 12px;
 	max-height: calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 116px) - 172px - var(--editor-safe-area-bottom, env(safe-area-inset-bottom)));
 	overflow-x: hidden;
@@ -3679,7 +3729,7 @@
 .editorShell .selectionInspectorPanel[data-testid="selected-wall-inspector"] button {
 	background:var(--surface);
 	border:1px solid var(--editor-line);
-	border-radius:12px;
+	border-radius:var(--editor-host-radius, 12px);
 	color:var(--editor-host-primary, var(--editor-primary));
 	font: 600 .875rem/1.4 var(--font-display);
 	min-height: 48px;
@@ -3737,14 +3787,14 @@
 .editorShell .starterProjectStack .storagePressure {
     background:var(--surface);
     border:1px solid var(--editor-line);
-    border-radius:20px;
+    border-radius:var(--editor-host-radius, 20px);
     box-shadow: none;
     gap: 12px;
     padding: 16px;
 }
 .editorShell .starterProjectStack .storagePressure button {
     border:1px solid var(--editor-line);
-    border-radius:12px;
+    border-radius:var(--editor-host-radius, 12px);
     color:var(--editor-host-primary, var(--editor-primary));
     min-height: 48px;
     padding: 12px;
@@ -3761,4 +3811,881 @@ main[data-editor-host="telegram"] .roomDirectoryDialog, main[data-editor-host="t
 .scopedProjectDirectory .projectDirectoryActions { grid-column: 3; grid-row: 2; }
 .scopedProjectDirectory .projectDirectoryActions summary span { font-size: 20px; line-height: 1; }
 
-.scopedProjectDirectory .projectDirectoryActions[open] { grid-column: 1 / -1; grid-row: 3; }
+.scopedProjectDirectory .projectDirectoryActions summary { grid-column: 3; grid-row: 2; }
+
+/* Project cards share the action grid and keep pointer feedback on the card edge. */
+main[data-editor-host="telegram"] .projectHubActions :is(.primaryAction, .secondaryAction) {
+	line-height: 1.25;
+	padding-inline: 8px;
+	text-wrap: balance;
+}
+main[data-editor-host="telegram"] .projectHubActions .primaryAction {
+	background:var(--editor-host-primary-soft, #e7f3fb);
+	border-color:transparent;
+	color:var(--editor-host-primary, #1976b9);
+}
+
+main[data-editor-host="telegram"] .projectDirectoryCard {
+	--project-preview-size: 56px;
+	border-color: var(--editor-host-line, var(--projects-line));
+	gap: 8px;
+	padding: 10px;
+}
+main[data-editor-host="telegram"] .projectDirectoryCard .projectCardOpen {
+	background: transparent;
+	grid-template-columns: var(--project-preview-size) minmax(0, 1fr);
+	min-block-size: var(--project-preview-size);
+	padding: 0;
+}
+main[data-editor-host="telegram"] .projectCardPreview {
+	block-size: var(--project-preview-size);
+	inline-size: var(--project-preview-size);
+}
+main[data-editor-host="telegram"] .projectCardPreview svg { width: 32px; height: 32px; }
+main[data-editor-host="telegram"] .projectCardOpen:focus-visible {
+	outline: 2px solid var(--editor-host-focus, var(--projects-primary));
+	outline-offset: 2px;
+}
+main[data-editor-host="telegram"] .projectDirectoryCard :is(.projectDeleteAction, summary) {
+	border-color: var(--editor-host-line, var(--projects-line));
+	height: 44px;
+	width: 44px;
+}
+@media (hover: hover) and (pointer: fine) {
+	main[data-editor-host="telegram"] .projectDirectoryCard:has(.projectCardOpen:hover) {
+		border-color: var(--editor-host-primary, var(--projects-primary));
+	}
+}
+@media (max-width: 359px) {
+	main[data-editor-host="telegram"] .projectDirectoryCard { --project-preview-size: 48px; }
+	main[data-editor-host="telegram"] .projectDirectoryCard .projectCardOpen { gap: 8px; }
+}
+
+.canvasHistory, .planZoomControls { gap:var(--editor-host-touch-gap, 2px); }
+.editorViewSwitch, .editorActionDock, .toolRailHistory, .catalogCategoryTabs, .placeholderPalette > div {
+	gap:var(--editor-host-touch-gap, 8px);
+}
+
+main[data-editor-host="telegram"] .editorActionDock {
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 4rem), 1fr));
+}
+main[data-editor-host="telegram"] .toolRail .editorActionDock button { padding-inline:4px; }
+main[data-editor-host="telegram"] .toolRail .editorActionDock button span { overflow-wrap:normal; }
+main[data-editor-host="telegram"] .windowDraftPanel input,
+main[data-editor-host="telegram"] .openingRow input,
+main[data-editor-host="telegram"] .wallThicknessControl input {
+	border-radius:var(--editor-host-radius, 12px);
+	min-height:44px;
+	min-width:44px;
+}
+main[data-editor-host="telegram"] .roomDirectorySheet .dialogHeading > button { min-height:44px; width:44px; }
+
+@media (min-width: 560px) {
+	.editorShell[data-editor-host="telegram"] .toolRail { width:min(360px, calc(100% - 32px)); }
+}
+
+main[data-editor-host="telegram"] .windowDraftPanel { font-family:var(--font-display); }
+main[data-editor-host="telegram"] .windowDraftPanel span { font:400 .875rem/1.45 var(--font-display); }
+main[data-editor-host="telegram"] .windowDraftPanel button { border-radius:var(--editor-host-radius, 12px); min-height:44px; }
+main[data-editor-host="telegram"] .sidePicker,
+main[data-editor-host="telegram"] .quickPalette > div,
+main[data-editor-host="telegram"] .itemActions { gap:var(--editor-host-touch-gap, 8px); }
+
+main[data-editor-host="telegram"] button {
+	border-radius:var(--editor-host-radius, 12px);
+}
+.itemWallDistanceLines {
+	color: var(--editor-host-primary, var(--blue));
+	font-family: var(--font-mono);
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.itemWallDistanceLines line {
+	stroke: currentColor;
+	stroke-width: 1.5;
+}
+
+.itemWallDistanceLines [data-conflict="true"] line {
+	stroke: var(--invalid, #b84036);
+	stroke-dasharray: 4 3;
+}
+
+.itemWallDistanceLines text {
+	fill: var(--ink);
+	paint-order: stroke;
+	stroke: var(--canvas);
+	stroke-linejoin: round;
+	stroke-width: 4;
+}
+
+.itemWallDistancePanel {
+	background: var(--editor-host-surface, var(--surface));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	inset-inline: 12px;
+	padding: 8px 10px;
+	pointer-events: none;
+	position: absolute;
+	z-index: 3;
+}
+
+.itemWallDistanceValues {
+	display: grid;
+	font-size: 0.75rem;
+	gap: 6px 10px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5em), 1fr));
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.itemWallDistanceValues > li {
+	display: grid;
+	gap: 2px;
+}
+
+.itemWallDistanceValues strong {
+	font-variant-numeric: tabular-nums;
+}
+
+.catalogDialog.tmaGreyboxDialog {
+	border: 0;
+	box-shadow: none;
+	align-items: center;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	inset-inline: 0;
+	margin: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+	padding: max(12px, var(--editor-safe-area-top, 0px))
+		max(16px, var(--editor-safe-area-right, 0px))
+		max(12px, var(--editor-safe-area-bottom, 0px))
+		max(16px, var(--editor-safe-area-left, 0px));
+	width: auto;
+}
+
+.tmaGreyboxDialog > * {
+	justify-self: center;
+	max-inline-size: 42rem;
+	min-inline-size: 0;
+	width: 100%;
+}
+
+.tmaGreyboxDialog .dialogHeading {
+	align-items: center;
+	gap: 12px;
+}
+
+.tmaGreyboxDialog .dialogHeading strong {
+	font-size: 1.4rem;
+	letter-spacing: -.02em;
+	line-height: 1.2;
+	overflow-wrap: anywhere;
+}
+
+.tmaGreyboxDialog .dialogHeading > button {
+	background: var(--surface);
+	border: 1px solid var(--editor-line);
+	color: var(--ink);
+}
+
+.tmaGreyboxDialog .catalogContent {
+	align-content: start;
+	contain: none;
+	display: grid;
+	flex: 1 0 auto;
+	gap: 12px;
+	max-height: none;
+	overflow: visible;
+}
+
+.tmaGreyboxDialog .catalogContent > * { order: initial; }
+
+.tmaGreyboxDialog .catalogContent .catalogGrid {
+	display: grid;
+	flex: none;
+	gap: 10px;
+	grid-auto-rows: auto;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.75rem), 1fr));
+	min-block-size: 0;
+	overflow: visible;
+}
+
+.tmaGreyboxDialog .catalogContent .catalogCard {
+	grid-template-rows: auto auto;
+	min-inline-size: 0;
+}
+
+.tmaGreyboxDialog .catalogContent .catalogCardDetails {
+	min-inline-size: 0;
+	overflow: visible;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.tmaCatalogControls {
+	display: grid;
+	gap: 10px;
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.tmaCatalogSections {
+	background: var(--surface);
+	border: 1px solid var(--editor-line);
+	border-radius: var(--editor-host-radius, 12px);
+	display: grid;
+	gap: 8px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	padding: 4px;
+}
+
+.tmaCatalogSections button {
+	background: transparent;
+	border: 0;
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--ink);
+	font: 600 .9rem/1.3 var(--font-display);
+	min-height: 44px;
+	overflow-wrap: anywhere;
+	padding: 8px;
+}
+
+.tmaCatalogSections button[aria-selected="true"] {
+	background: var(--editor-host-primary-fill, var(--blue));
+	color: var(--editor-host-on-primary, white);
+}
+
+.tmaGreyboxCatalog[hidden] { display: none; }
+
+.tmaGreyboxDialog .catalogPlacementBar {
+	gap: 8px;
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.tmaGreyboxDialog .catalogPlacementBar :is(strong, small, button) {
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.tmaGreyboxDialog .catalogPlacementBar > button { padding: 8px 12px; }
+
+.tmaGreyboxDialog .catalogAuthoring,
+.tmaGreyboxDialog .catalogAuthoringContent,
+.tmaGreyboxDialog .catalogAuthoringContent .catalogImport {
+	background: transparent;
+	border: 0;
+	padding: 0;
+}
+
+.tmaGreyboxCatalog {
+	display: flex;
+	flex: 1 1 auto;
+	min-height: 0;
+	flex-direction: column;
+	gap: 14px;
+	min-inline-size: 0;
+}
+
+.tmaGreyboxSearch {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.tmaGreyboxSearch input,
+.tmaGreyboxSearch button,
+.tmaGreyboxActions button {
+	background: var(--surface);
+	border: 1px solid var(--editor-line);
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--ink);
+	font: 500 .875rem/1.35 var(--font-display);
+	min-height: 44px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	padding: 9px 12px;
+	white-space: normal;
+}
+
+.tmaGreyboxSearch input {
+	flex: 1 1 9rem;
+	font-size: 1rem;
+}
+
+.tmaGreyboxSearch input::placeholder {
+	color: var(--muted);
+}
+
+.tmaGreyboxActions {
+	display: grid;
+	gap: 8px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.5rem), 1fr));
+}
+
+.tmaGreyboxActions button:first-child {
+	background: var(--editor-host-primary-soft, var(--editor-selected));
+	color: var(--editor-host-primary, var(--blue));
+}
+
+.tmaGreyboxCatalog .catalogCard {
+	--tma-thumbnail-surface: color-mix(in srgb, var(--surface) 89%, var(--ink));
+	align-content: start;
+	background: linear-gradient(to bottom, var(--tma-thumbnail-surface) 5.75rem, var(--surface) 5.75rem);
+	border: 1px solid var(--editor-line);
+	border-radius: var(--editor-host-radius, 12px);
+	box-shadow: none;
+	gap: 0;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: 5.75rem auto;
+	min-block-size: min-content;
+	min-inline-size: 0;
+	padding: 0;
+}
+
+.tmaGreyboxCatalog .catalogGrid {
+	align-content: start;
+	flex: 1 1 0;
+	gap: 10px;
+	grid-auto-rows: max-content;
+	grid-template-columns: repeat(auto-fill, minmax(min(100%, 8.75rem), 1fr));
+	min-block-size: 12rem;
+	min-inline-size: 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior-y: contain;
+	padding: 2px 2px 8px;
+}
+
+.tmaGreyboxCatalog .catalogGrid > p {
+	grid-column: 1 / -1;
+	margin: 0;
+	padding-block: 12px;
+}
+
+.tmaGreyboxCatalog .catalogCardDetails {
+	align-content: start;
+	display: grid;
+	gap: 4px;
+	min-block-size: min-content;
+	min-inline-size: 0;
+	overflow: visible;
+	overflow-wrap: anywhere;
+	padding: 12px;
+	white-space: normal;
+}
+
+.tmaGreyboxCatalog .catalogCardDetails strong {
+	font: 650 .875rem/1.3 var(--font-display);
+	white-space: normal;
+}
+
+.tmaGreyboxCatalog .catalogCardDetails small {
+	color: var(--muted);
+	font: 500 .75rem/1.35 var(--font-display);
+	font-variant-numeric: tabular-nums;
+	white-space: normal;
+}
+
+.tmaGreyboxCatalog .catalogCategoryTabs {
+	border: 0;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 8px;
+	margin: 0;
+	min-width: 0;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	padding: 2px 2px 5px;
+	scrollbar-width: thin;
+}
+
+.tmaGreyboxCatalog .catalogCategoryTabs button {
+	background: var(--surface);
+	border: 1px solid var(--editor-line);
+	color: var(--muted);
+	flex: 0 0 auto;
+	font: 600 .8rem/1.3 var(--font-display);
+	padding: 8px 12px;
+	white-space: nowrap;
+}
+
+.tmaGreyboxCatalog .catalogCategoryTabs button[aria-pressed="true"] {
+	background: var(--editor-host-primary-soft, var(--editor-selected));
+	color: var(--editor-host-primary, var(--blue));
+}
+
+.tmaGreyboxDialog :is(button, input):focus-visible,
+.tmaItemColor summary:focus-visible {
+	outline: 2px solid var(--editor-host-focus, var(--blue));
+	outline-offset: -2px;
+}
+
+.tmaGreyboxThumbnail {
+	display: block;
+	height: 100%;
+	object-fit: contain;
+	width: 100%;
+}
+
+.tmaGreyboxFootprint {
+	align-self: center;
+	border-radius: 4px;
+	height: 60%;
+	justify-self: center;
+	max-width: 72%;
+}
+
+.tmaItemColor {
+	background: var(--surface);
+	border: 1px solid var(--editor-line);
+	border-radius: var(--editor-host-radius, 12px);
+	min-inline-size: 0;
+}
+
+.tmaItemColorTrigger {
+	align-items: center;
+	color: var(--ink);
+	cursor: pointer;
+	display: flex;
+	font: 600 .875rem/1.4 var(--font-display);
+	gap: 8px;
+	list-style: none;
+	min-height: 44px;
+	overflow-wrap: anywhere;
+	padding: 8px 12px;
+}
+
+.tmaItemColorTrigger::-webkit-details-marker { display: none; }
+
+.tmaItemColorTrigger::after {
+	border: solid currentColor;
+	border-width: 0 1.5px 1.5px 0;
+	content: "";
+	flex: 0 0 auto;
+	height: 6px;
+	margin-inline-start: auto;
+	transform: rotate(45deg);
+	width: 6px;
+}
+
+.tmaItemColor[open] .tmaItemColorTrigger::after { transform: rotate(225deg); }
+
+.tmaItemColor .quickPalette {
+	border: 0;
+	margin: 0;
+	min-inline-size: 0;
+	padding: 0 8px 8px;
+}
+
+.tmaItemColor .quickPalette legend {
+	height: 1px;
+	overflow: hidden;
+	position: absolute;
+	clip-path: inset(50%);
+	width: 1px;
+	white-space: nowrap;
+}
+
+main[data-editor-host="telegram"] .tmaItemColor .quickPalette button small {
+	color: var(--ink);
+	font: 500 .8125rem/1.35 var(--font-display);
+	overflow-wrap: anywhere;
+	white-space: normal;
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel[data-inspector-expanded="false"][data-testid="selected-item-inspector"][data-inspector-compact="true"]:not([hidden]) {
+	display: grid;
+	gap: 8px;
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel[data-inspector-expanded="false"] > .tmaItemColor { display: block; }
+
+main[data-editor-host="telegram"] .tmaItemColor .quickPalette > div {
+	display: grid;
+	gap: var(--editor-host-touch-gap, 8px);
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+	overflow: visible;
+}
+
+main[data-editor-host="telegram"] .tmaItemColor .quickPalette button {
+	align-items: center;
+	background: var(--canvas);
+	border: 1px solid var(--editor-line);
+	box-shadow: none;
+	display: grid;
+	gap: 8px;
+	grid-template-columns: auto minmax(0, 1fr);
+	justify-items: start;
+	text-align: start;
+	min-height: 44px;
+	min-width: 0;
+	padding: 8px;
+}
+
+main[data-editor-host="telegram"] .tmaItemColor .quickPalette button[aria-pressed="true"] {
+	background: var(--editor-host-primary-soft, var(--editor-selected));
+	cursor: default;
+	opacity: 1;
+	border-color: var(--editor-host-primary, var(--blue));
+	outline: 1px solid var(--editor-host-primary, var(--blue));
+	outline-offset: -3px;
+}
+
+main[data-editor-host="telegram"] .tmaItemColor .quickPalette button[aria-pressed="true"] .itemColorSwatch::after {
+	align-items: center;
+	color: white;
+	content: "✓";
+	display: grid;
+	font: 700 .8rem/1 var(--font-display);
+	height: 100%;
+	justify-content: center;
+}
+
+main[data-editor-host="telegram"] .tmaItemColor .catalogNote {
+	margin: 0 0 8px;
+	font: 400 .8125rem/1.4 var(--font-display);
+}
+
+main[data-editor-host="telegram"] .openingRow > label > span {
+	color: var(--muted);
+	font: 500 .875rem/1.4 var(--font-display);
+}
+
+.editorShell[data-editor-host="telegram"] :is(.openingCreationSheet form, .selectionInspectorPanel, .windowDraftPanel > *, .itemPlacementDock, .roomDirectorySheet) {
+	align-content: start;
+	background: var(--surface);
+	box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent);
+	min-inline-size: 0;
+	overflow-wrap: anywhere;
+	scroll-padding-block: 12px;
+}
+
+.editorShell[data-editor-host="telegram"] .openingCreationSheet form {
+	gap: 14px;
+	justify-self: center;
+	max-block-size: calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 100px) - 8px);
+	padding: 28px max(16px, var(--editor-safe-area-right, 0px))
+		max(14px, var(--editor-safe-area-bottom, 0px))
+		max(16px, var(--editor-safe-area-left, 0px));
+	width: min(100%, 32rem);
+}
+
+main[data-editor-host="telegram"] .openingCreationHost {
+	font: 500 .875rem/1.4 var(--font-display);
+	margin: 0;
+}
+
+/* Reserve the actual measured dock and the floating history/zoom row. */
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel[data-testid="selected-item-inspector"] {
+	bottom: calc(var(--editor-dock-inset, 84px) + 76px);
+	max-height: calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 116px) - var(--editor-dock-inset, 84px) - 88px);
+}
+
+main[data-editor-host="telegram"] .inspectorItemActions {
+	align-items: stretch;
+	display: grid;
+	gap: var(--editor-host-touch-gap, 8px);
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+	padding-top: 10px;
+	border-top: 1px solid var(--editor-line);
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel .inspectorItemActions > button {
+	appearance: none;
+	background: var(--surface);
+	border: 1px solid var(--editor-line);
+	border-radius: var(--editor-host-radius, 12px);
+	box-shadow: none;
+	color: var(--ink);
+	cursor: pointer;
+	font: 600 .875rem/1.35 var(--font-display);
+	min-height: 44px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	padding: 9px;
+	white-space: normal;
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel .inspectorItemActions > button[aria-pressed="true"] {
+	background: var(--editor-host-primary-soft, var(--editor-selected));
+	border-color: var(--editor-host-primary, var(--blue));
+	color: var(--editor-host-primary, var(--blue));
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel .inspectorItemActions > button.deleteAction {
+	border-color: var(--editor-host-danger, var(--danger));
+	color: var(--editor-host-danger, var(--danger));
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel .inspectorItemActions > button:nth-child(3) {
+	grid-column: 1 / -1;
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel .inspectorItemActions > button:disabled {
+	background: var(--canvas);
+	border-color: var(--editor-line);
+	color: var(--muted);
+	cursor: default;
+	opacity: .7;
+}
+
+main[data-editor-host="telegram"] :is(.inspectorItemActions > button, .schematicItem):focus-visible {
+	outline: 2px solid var(--editor-host-focus, var(--blue));
+	outline-offset: -2px;
+}
+
+main[data-editor-host="telegram"] .openingCreationFields,
+main[data-editor-host="telegram"] .itemDimensions,
+main[data-editor-host="telegram"] .customGlbFields {
+	display: grid;
+	gap: 10px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
+}
+
+main[data-editor-host="telegram"] .openingCreationFields label,
+main[data-editor-host="telegram"] .selectionInspectorPanel .itemDimensions label,
+main[data-editor-host="telegram"] .selectionInspectorPanel .selectedWallThicknessControl {
+	align-content: start;
+	background: transparent;
+	color: var(--muted);
+	font: 500 .875rem/1.35 var(--font-display);
+	gap: 6px;
+	grid-template-columns: minmax(0, 1fr);
+	min-width: 0;
+	padding: 0;
+}
+
+main[data-editor-host="telegram"] .selectionInspectorPanel :is(.itemDimensions, .selectedWallThicknessControl) label > span,
+main[data-editor-host="telegram"] .selectionInspectorPanel .selectedWallThicknessControl > span {
+	font: inherit;
+	letter-spacing: normal;
+	text-transform: none;
+}
+
+main[data-editor-host="telegram"] :is(.openingCreationFields label, .selectionInspectorPanel .itemDimensions label, .selectedWallThicknessControl)::after {
+	bottom: 13px;
+	font-size: 12px;
+	right: 10px;
+}
+
+main[data-editor-host="telegram"] :is(.openingCreationFields, .windowDraftPanel, .selectionInspectorPanel, .customGlbFields) input:not([type="checkbox"]) {
+	background: var(--canvas);
+	border: 1px solid var(--editor-line);
+	border-radius: var(--editor-host-radius, 10px);
+	color: var(--ink);
+	font-size: max(16px, 1rem);
+	min-height: 44px;
+	min-width: 0;
+	width: 100%;
+}
+
+main[data-editor-host="telegram"] .openingCreationFields input { text-align: start; }
+
+/* Keep text entry above WebKit’s focus-zoom threshold while respecting larger type. */
+main[data-editor-host="telegram"] :is(input:not([type]), input[type="text"], input[type="search"], input[type="number"], textarea) {
+	font-size: max(16px, 1rem);
+}
+
+main[data-editor-host="telegram"] :is(.openingCreationKindPicker, .openingCreationActions, .itemPlacementDockActions, .itemActions) {
+	display: grid;
+	gap: 8px;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr));
+}
+
+main[data-editor-host="telegram"] :is(.openingCreationKindPicker, .openingCreationActions, .windowDraftPanel, .itemPlacementDock, .selectionInspectorPanel) button {
+	line-height: 1.35;
+	min-height: 44px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	padding-block: 8px;
+	white-space: normal;
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel .panelHeading {
+	display: grid;
+	gap: 8px 10px;
+	grid-template-columns: 36px minmax(0, 1fr) minmax(44px, 33%);
+	grid-template-rows: auto;
+	min-height: 44px;
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel .panelHeading strong {
+	align-self: center;
+	grid-column: 2;
+	grid-row: 1;
+	letter-spacing: -.02em;
+	line-height: 1.25;
+	overflow: visible;
+	white-space: normal;
+}
+
+main[data-editor-host="telegram"] .selectionInspectorPanel .panelHeading :is(.selectionItemInspectorIcon, .selectionWallInspectorIcon) {
+	align-self: center;
+	grid-column: 1;
+	grid-row: 1;
+	height: 36px;
+	width: 36px;
+}
+
+main[data-editor-host="telegram"] .selectionInspectorPanel .panelHeading :is(.selectionItemInspectorCategory, .selectionWallInspectorCategory) { display: none; }
+
+main[data-editor-host="telegram"] .selectionInspectorPanel .panelHeading .selectionInspectorToggle {
+	font-size: .75rem;
+	grid-column: 3;
+	grid-row: 1;
+	height: auto;
+	padding: 8px;
+}
+
+.editorShell[data-editor-host="telegram"] .selectionInspectorPanel[data-inspector-expanded="false"] {
+	height: auto;
+	max-height: none;
+}
+
+.editorShell[data-editor-host="telegram"] .itemPlacementDock {
+	max-block-size: calc(var(--editor-viewport-height, 100dvh) - var(--editor-header-bottom, 100px) - 12px - var(--editor-safe-area-bottom, 0px));
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.editorShell[data-editor-host="telegram"] .openingContext {
+	align-items: stretch;
+	gap: 6px 8px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	overflow-wrap: anywhere;
+	overflow-y: auto;
+}
+
+.editorShell[data-editor-host="telegram"] .openingContext :is(strong, span) { grid-column: 1 / -1; }
+
+.editorShell[data-editor-host="telegram"] .openingContext button {
+	grid-column: auto;
+	grid-row: auto;
+	line-height: 1.35;
+	min-width: 0;
+	white-space: normal;
+}
+
+/* A control's action determines its emphasis even when a host sheet rearranges it. */
+main[data-editor-host="telegram"] button[type="button"][data-editor-action="confirm"] {
+	background: var(--editor-host-primary-fill);
+	border-color: var(--editor-host-primary-fill);
+	color: var(--editor-host-on-primary);
+	box-shadow: none;
+}
+main[data-editor-host="telegram"] button[type="button"][data-editor-action="cancel"] {
+	background: var(--editor-host-surface);
+	border-color: var(--editor-host-line);
+	color: var(--editor-host-ink);
+	box-shadow: none;
+}
+
+
+@media (min-width: 560px) and (max-height: 550px) {
+	/* The compact landscape scene uses the same single action dock as portrait. */
+	.editorShell[data-editor-host="telegram"][data-view-mode="three-dimensional"]:has([data-scene-color-dock="selected"]) .toolRail {
+		display: none;
+	}
+}
+
+.itemWallDistanceFields {
+	border: 0;
+	margin: 0;
+	min-inline-size: 0;
+	padding: 0;
+}
+
+.itemWallDistanceGrid {
+	display: grid;
+	gap: 6px;
+	grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.itemWallDistanceCell {
+	display: grid;
+	gap: 4px;
+	min-inline-size: 0;
+}
+
+.itemWallDistanceCell label {
+	color: var(--muted);
+	font-size: 0.75rem;
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+.itemWallDistanceGrid input {
+	background: var(--surface-2, var(--surface));
+	border: 1px solid var(--line);
+	border-radius: var(--editor-host-radius, 10px);
+	box-sizing: border-box;
+	color: var(--ink);
+	font: inherit;
+	font-size: max(16px, 0.95rem);
+	font-variant-numeric: tabular-nums;
+	min-block-size: 44px;
+	min-inline-size: 0;
+	padding-inline: 6px;
+	width: 100%;
+}
+
+.itemWallDistanceGrid input:focus-visible {
+	outline: 2px solid var(--editor-host-primary, var(--blue));
+	outline-offset: -2px;
+}
+
+.itemWallDistanceGrid input[aria-invalid="true"] {
+	border-color: var(--danger, #b33c36);
+}
+
+@media (max-width: 19rem) {
+	.itemWallDistanceGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.editorShell[data-editor-host="telegram"] dialog.editorActionMenu[open] {
+	display: grid;
+	padding: 8px 16px 16px;
+}
+
+.editorShell[data-editor-host="telegram"] [data-telegram-modal-sheet]:is(
+	.selectionInspectorPanel[data-inspector-expanded="true"],
+	.openingCreationSheet,
+	.catalogDialog.tmaGreyboxDialog
+) {
+	padding: 8px 16px 16px;
+	transform: none;
+	z-index: 21;
+}
+
+.editorShell[data-editor-host="telegram"] .catalogDialog.tmaGreyboxDialog[data-telegram-modal-sheet] {
+	border: 1px solid var(--editor-line);
+	box-shadow: 0 12px 40px rgb(11 23 32 / 16%);
+	height: min(560px, calc(var(--editor-viewport-height, 100dvh) * 0.8));
+}
+
+.editorShell[data-editor-host="telegram"] .openingCreationSheet[data-telegram-modal-sheet] {
+	display: block;
+}
+
+.editorShell[data-editor-host="telegram"] .openingCreationSheet[data-telegram-modal-sheet] form {
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	max-block-size: none;
+	overflow: visible;
+	padding: 0;
+	width: 100%;
+}
+
+.editorShell[data-editor-host="telegram"] .openingCreationSheet[data-telegram-modal-sheet] .openingCreationSheetHandle {
+	display: none;
+}
+
+.editorShell[data-editor-host="telegram"] .openingCreationSheet[data-telegram-modal-sheet] .openingCreationActions {
+	border-top: 1px solid var(--editor-line);
+	padding-top: 12px;
+}

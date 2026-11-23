@@ -84,6 +84,7 @@ export interface SharedProjectControllerDependencies {
 	readonly resources: CustomAssetResourceStorePort;
 	readonly library: CustomAssetLibraryPort;
 	readonly pinStaging: PinStagingLeasePort;
+	readonly probePinnedResourceByteLength?: (hash: string) => Promise<number | undefined>;
 	readonly checksum: ChecksumPort;
 	readonly binaryChecksum: BinaryChecksumPort;
 	readonly clock: ClockPort;
@@ -276,6 +277,7 @@ export function createSharedProjectController(
 		}),
 		portable.recoveryDecoder ?? portable.decoder,
 		portable.recoveryEncoder ?? portable.encoder,
+		dependencies.probePinnedResourceByteLength,
 	);
 	return { controller, publicationRepository };
 }

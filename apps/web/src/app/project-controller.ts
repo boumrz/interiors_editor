@@ -601,6 +601,10 @@ export class ProjectController {
 	private current: DurablePublicationCandidate | undefined;
 	private readonly redoStack: DurablePublicationCandidate[] = [];
 	private readonly undoStack: DurablePublicationCandidate[] = [];
+	private integrityRefresh?: {
+		readonly current: DurablePublicationCandidate;
+		readonly result: Promise<SessionHistoryIntegrityResult>;
+	};
 	/** Command copy is session-only metadata, keyed by a history root revision. */
 	private readonly historyCommandLabels = new Map<string, string>();
 	private readonly listeners = new Set<(state: ProjectScreenState) => void>();
@@ -668,6 +672,7 @@ export class ProjectController {
 		private readonly importPortableBackupUseCase?: ImportPortableBackupUseCase,
 		private readonly recoveryPortableBackupDecoder?: import("../application/ports").PortableBackupDecoderPort,
 		private readonly recoveryPortableBackupEncoder?: import("../application/ports").PortableBackupEncoderPort,
+		private readonly probePinnedResourceByteLength?: (hash: string) => Promise<number | undefined>,
 	) {}
 
 	public snapshot(): ProjectScreenState {
@@ -751,9 +756,49 @@ export class ProjectController {
 		const current = this.current;
 		if (!current) return { kind: "not-ready" };
 		if (this.publicationInFlight) return { kind: "in-progress" };
+		const probe = this.probePinnedResourceByteLength;
+		if (!probe) {
+			return this.scanSessionHistoryIntegrity(current, (candidate) =>
+				this.unresolvedPinnedCustomGlbResourceHashes(candidate),
+			);
+		}
+		if (this.integrityRefresh?.current === current) return this.integrityRefresh.result;
 
-		const currentResourceHashes =
-			await this.unresolvedPinnedCustomGlbResourceHashes(current);
+		// Deduplicate exact storage addresses within one sweep, including undo/redo.
+		// Each new sweep must read again so it can detect a real loss after resume.
+		const proofs = new Map<string, Promise<number | undefined>>();
+		const result = this.scanSessionHistoryIntegrity(current, async (candidate) => {
+			if (!isV1Candidate(candidate)) return [];
+			const invalid = await Promise.all(
+				candidate.project.assetDefinitionRefs.map(async (asset) => {
+					let proof = proofs.get(asset.resourceHash);
+					if (!proof) {
+						proof = probe(asset.resourceHash);
+						proofs.set(asset.resourceHash, proof);
+					}
+					return (await proof) !== asset.byteLength ? asset.resourceHash : undefined;
+				}),
+			);
+			return [...new Set(invalid.filter((hash) => hash !== undefined))];
+		}).catch((): SessionHistoryIntegrityResult => {
+			// A failed read proves neither corruption nor recovery. Publication
+			// and destructive repair still run their independent exact checks.
+			return { kind: "not-ready" };
+		});
+		const refresh = { current, result };
+		this.integrityRefresh = refresh;
+		try {
+			return await result;
+		} finally {
+			if (this.integrityRefresh === refresh) this.integrityRefresh = undefined;
+		}
+	}
+
+	private async scanSessionHistoryIntegrity(
+		current: DurablePublicationCandidate,
+		check: (candidate: DurablePublicationCandidate) => Promise<readonly string[]>,
+	): Promise<SessionHistoryIntegrityResult> {
+		const currentResourceHashes = await check(current);
 		if (this.current !== current || this.publicationInFlight) {
 			return { kind: "in-progress" };
 		}
@@ -775,8 +820,7 @@ export class ProjectController {
 		const missingResourceHashes = new Set<string>();
 		let firstIssue: HistoryResourceIssue | undefined;
 		for (const { direction, target } of historyTargets) {
-			const resourceHashes =
-				await this.unresolvedPinnedCustomGlbResourceHashes(target);
+			const resourceHashes = await check(target);
 			if (this.current !== current || this.publicationInFlight) {
 				return { kind: "in-progress" };
 			}

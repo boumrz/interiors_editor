@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { createServer } from "node:http";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
 	sealTelegramRelease,
 	telegramPublicConfiguration,
@@ -12,7 +12,7 @@ import {
 	createTelegramPreviewServer,
 	readTelegramRelease,
 } from "./telegram-preview-server.mjs";
-async function release(root, name, entry = "entry-a", lazy = "lazy-a") {
+async function release(root, name, entry = "entry-a", lazy = "lazy-a", legalAssets = []) {
 	const directory = join(root, name);
 	await mkdir(directory, { recursive: true });
 	const entryPath = `/telegram.${name}.js`,
@@ -20,6 +20,7 @@ async function release(root, name, entry = "entry-a", lazy = "lazy-a") {
 	const assets = new Map([
 		[entryPath, Buffer.from(entry)],
 		[lazyPath, Buffer.from(lazy)],
+		...legalAssets,
 	]);
 	const html = `<html><script defer src="${entryPath}"></script><script id="telegram-loaded-release" type="application/json">__TELEGRAM_RELEASE_CAPSULE__</script><script id="telegram-deployment" type="application/json">__TELEGRAM_DEPLOYMENT__</script>__TELEGRAM_FALLBACK_LINKS__</html>`;
 	const sealed = sealTelegramRelease({
@@ -34,14 +35,42 @@ async function release(root, name, entry = "entry-a", lazy = "lazy-a") {
 		["/release-manifest.json", Buffer.from(JSON.stringify(sealed.manifest))],
 		["/release-set.json", Buffer.from(JSON.stringify(sealed.releaseSet))],
 	]);
-	for (const [path, bytes] of files)
+	for (const [path, bytes] of files) {
+		await mkdir(dirname(join(directory, path.slice(1))), { recursive: true });
 		await writeFile(join(directory, path.slice(1)), bytes);
+	}
 	return { directory, id: sealed.manifest.appBuildId, entryPath, lazyPath };
 }
 const listen = async (server) => {
 	await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 	return `http://127.0.0.1:${server.address().port}`;
 };
+test("legal links follow the active release while old archived bytes survive updates and rollback", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "legal-release-history-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const legacy = await release(root, "legacy");
+	const stable = "/legal/privacy-policy.html";
+	const oldArchive = "/legal/2026-11-22/privacy-policy.html";
+	const nextArchive = "/legal/2026-11-23/privacy-policy.html";
+	const first = await release(root, "first", "entry", "lazy", [[stable, Buffer.from("first")], [oldArchive, Buffer.from("first")]]);
+	const next = await release(root, "next", "entry", "lazy", [[stable, Buffer.from("next")], [nextArchive, Buffer.from("next")]]);
+	const bad = await release(root, "collision", "entry", "lazy", [[oldArchive, Buffer.from("changed")]]);
+	const preview = await createTelegramPreviewServer({ directory: legacy.directory });
+	t.after(() => preview.close());
+	const origin = await listen(preview.server);
+	await preview.activate(legacy.directory);
+	await preview.activate(first.directory);
+	await preview.activate(next.directory);
+	assert.equal(await fetch(origin + stable).then(res => res.text()), "next");
+	assert.equal(await fetch(origin + oldArchive).then(res => res.text()), "first");
+	await assert.rejects(preview.activate(bad.directory), /collision/);
+	await preview.activate(first.directory);
+	assert.equal(await fetch(origin + stable).then(res => res.text()), "first");
+	assert.equal(await fetch(origin + nextArchive).then(res => res.text()), "next");
+	await preview.activate(legacy.directory);
+	assert.equal((await fetch(origin + stable)).status, 404);
+	assert.equal(await fetch(origin + oldArchive).then(res => res.text()), "first");
+});
 test("verified complete release snapshots reject missing/corrupt lazy bytes and foreign embedded manifests", async () => {
 	const root = await mkdtemp(join(tmpdir(), "tma-release-reader-"));
 	try {

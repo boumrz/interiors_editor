@@ -17,6 +17,7 @@ export interface TelegramBrowserLayout {
 	readonly height: number;
 	readonly width: number;
 	readonly visualHeight?: number;
+	readonly textEntryFocused?: boolean;
 	readonly visible: boolean;
 	readonly focused: boolean;
 }
@@ -47,6 +48,7 @@ export interface TelegramHostLayout {
 	readonly colorScheme: "light" | "dark";
 }
 export interface TelegramHostEnvironment {
+	readonly showSettings?: (listener:()=>void)=>()=>void;
 	readonly navigation: HostNavigationPort;
 	readonly lifecycle: HostLifecyclePort;
 	readonly capabilities: Readonly<{
@@ -62,6 +64,8 @@ export interface TelegramHostEnvironment {
 export interface TelegramHostCapture {
 	/** Immutable critical fields only, passed straight to the signed-launch bootstrap. */
 	readonly bootstrapValue: unknown;
+	/** Checks whether the same signed host is still present without reauthenticating it. */
+	readonly matchesCurrent: (readCurrentSdk: () => unknown) => boolean;
 	/** One live host environment per SDK; the entry revokes/drains its predecessor before connecting. */
 	readonly connect: (
 		dependencies: TelegramHostEnvironmentDependencies,
@@ -257,8 +261,12 @@ export function captureTelegramHostSdk(
 			close();
 		},
 	});
+	const matchesCurrent = (readCurrentSdk: () => unknown) => {
+		try { return readCurrentSdk() === raw && read(sdk, "initData") === initData; }
+		catch { return false; }
+	};
 	return Object.freeze({
-		bootstrapValue,
+		bootstrapValue, matchesCurrent,
 		connect(dependencies: TelegramHostEnvironmentDependencies) {
 			const on = method(sdk, "onEvent"),
 				off = method(sdk, "offEvent"),
@@ -303,21 +311,13 @@ export function captureTelegramHostSdk(
 				active: false,
 				layoutVersion: 0,
 			});
+			let drawingHeight = 0;
 			let layout: TelegramHostLayout,
 				stableHeight =
 					positive(read(sdk, "viewportStableHeight")) ??
 					positive(read(sdk, "viewportHeight"));
 			let css: ReturnType<typeof ownStyles> | undefined;
-			const contextMatches = () => {
-				try {
-					return (
-						dependencies.readCurrentSdk() === raw &&
-						read(sdk, "initData") === initData
-					);
-				} catch {
-					return false;
-				}
-			};
+			const contextMatches = () => matchesCurrent(dependencies.readCurrentSdk);
 			const notify = () => {
 				for (const listener of [...listeners]) {
 					try {
@@ -383,13 +383,23 @@ export function captureTelegramHostSdk(
 					(height): height is number => height !== undefined,
 				);
 				const height = heights.length ? Math.min(...heights) : undefined;
+				const width = positive(browser.width);
+				const prior = layout?.viewport;
+				// Keep the pre-keyboard projection until the closing animation finishes.
+				// A different width starts a new fit, including a rotation mid-entry.
+				const visibleHeight = height ?? 0;
+				const priorHeight = prior?.height ?? 0;
+				const closingKeyboard = priorHeight < drawingHeight && visibleHeight >= priorHeight;
+				drawingHeight = prior?.width === width && (browser.textEntryFocused || closingKeyboard)
+					? Math.max(drawingHeight, visibleHeight)
+					: visibleHeight;
 				const next: TelegramHostLayout = Object.freeze({
 					viewport: Object.freeze({
 						liveHeight,
 						stableHeight,
 						visualHeight,
 						height,
-						width: positive(browser.width),
+						width,
 					}),
 					safeArea: insets(
 						capabilities.safeArea ? read(sdk, "safeAreaInset") : undefined,
@@ -421,6 +431,9 @@ export function captureTelegramHostSdk(
 				))
 					values.set(`--editor-host-${name}`, value);
 				values.set("color-scheme", next.colorScheme);
+				values.set("--editor-host-radius", "12px");
+				values.set("--editor-host-touch-gap", "8px");
+				values.set("--editor-keyboard-inset", `${drawingHeight - visibleHeight}px`);
 				values.set("color", "var(--ink)");
 				values.set("background-color", "var(--canvas)");
 				values.set(
@@ -524,7 +537,20 @@ export function captureTelegramHostSdk(
 						}
 					: {}),
 			};
+			const settings=object(read(sdk,"SettingsButton"));
+			const settingsOn=method(settings,"onClick"), settingsOff=method(settings,"offClick");
+			const settingsShow=method(settings,"show"), settingsHide=method(settings,"hide");
 			return Object.freeze({
+				...(atLeast(sdk,"6.10") && settingsOn && settingsOff && settingsShow && settingsHide ? {
+					showSettings(listener:()=>void) {
+						const callback=()=>{ if(current())listener(); };
+						const wasVisible=read(settings,"isVisible")===true;
+						const remove=()=>{safely(()=>settingsOff(callback));if(!wasVisible && contextMatches())safely(settingsHide);};
+						try {settingsOn(callback);settingsShow();} catch(e){remove();throw e;}
+						removers.push(remove);
+						return ()=>{const index=removers.indexOf(remove);if(index>=0){removers.splice(index,1);remove();}};
+					}
+				}:{}),
 				navigation,
 				lifecycle: Object.freeze({
 					snapshot: () => snapshot,
@@ -559,6 +585,9 @@ export function createTelegramBrowserSignals(context: {
 			height: window.innerHeight,
 			width: window.innerWidth,
 			visualHeight: window.visualViewport?.height,
+			textEntryFocused: document.activeElement?.matches(
+				'textarea:not([readonly]), input:not([readonly]):is(:not([type]), [type="text"], [type="search"], [type="number"], [type="email"], [type="tel"], [type="url"], [type="password"])',
+			) === true,
 			visible: document.visibilityState !== "hidden",
 			focused: document.hasFocus(),
 		}),

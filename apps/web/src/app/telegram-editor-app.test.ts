@@ -43,6 +43,7 @@ function fixture(
 		configuration,
 		rawCapsule: capsule,
 		loadedEntryPath: "/telegram.1234abcd.js",
+		legal: { readable: () => true, receipts: { has: () => true, accept: () => true } },
 		secureContext: true,
 		webLocks: true,
 		readCapabilities: () => ({ indexeddb: true, webgl2: false }),
@@ -2167,4 +2168,191 @@ test("editor ownership accepts the actual current runtime and rejects clones, ol
 	expect(f.entry.ownsRuntime({ ...next.runtime })).toBe(false);
 	await expect(withinDeadline(f.entry.dispose())).resolves.toBeUndefined();
 	expect(f.entry.ownsRuntime(next.runtime)).toBe(false);
+});
+
+function legalFixture(overrides: Partial<Parameters<typeof createTelegramEntrySession>[0]> = {}) {
+	const accepted = new Set<string>();
+	let readable = true, canSave = true, writable = 0;
+	const sdk = { initData: signedExample, ready() {}, close() {} };
+	const f = fixture({
+		configuration: { ...configuration, botId: "7342037359" },
+		nowEpochMs: () => 1733584787000,
+		source: { ...signedSource(), read: () => sdk },
+		legal: {
+			readable: () => readable,
+			receipts: { has: (scope) => accepted.has(scope), accept: (scope) => {
+				if (canSave) accepted.add(scope);
+				return canSave;
+			} },
+		},
+		createRuntime(approval, scope) { writable++; return dormantActualRuntime(approval, scope); },
+		createReadonlyRuntime: (_approval, scope) => readonlyUnitRuntime(scope),
+		...overrides,
+	});
+	const prompt = () => {
+		const state = f.entry.snapshot();
+		if (state.kind !== "legal") throw new Error("Expected verified legal entry before the writable runtime");
+		return state;
+	};
+	return { ...f, accepted, prompt, writable: () => writable,
+		loseLaunch: () => { sdk.initData = ""; }, disableStorage: () => { canSave = false; }, removeText: () => { readable = false; } };
+}
+test("verified first use waits for a current readable license and records the user's choice before opening a writer", async () => {
+	const f = legalFixture();
+	await f.entry.start();
+	expect(f.writable()).toBe(0);
+	const entry = f.prompt();
+	expect(entry.scope).toMatch(/^tma-v1-[a-f0-9]{64}$/);
+	await entry.proceed();
+	expect(f.entry.snapshot().kind).toBe("editor");
+	expect(f.accepted.has(entry.scope)).toBe(true);
+	const admitted = f.entry.snapshot();
+	if (admitted.kind !== "editor") throw Error("Expected a writable editor");
+	expect(admitted.authenticatedAt).toBe(1733584787);
+	await f.entry.start();
+	expect(f.entry.snapshot().kind).toBe("editor");
+	await f.entry.dispose();
+});
+test("declining opens the verified readonly directory without a writer or a receipt", async () => {
+	const f = legalFixture();
+	await f.entry.start();
+	await f.prompt().readOnly();
+	const state = f.entry.snapshot();
+	expect(state.kind).toBe("readonly");
+	if (state.kind === "readonly") expect(await state.runtime.listProjects()).toEqual({ kind: "empty" });
+	expect(f.writable()).toBe(0);
+	expect(f.accepted.size).toBe(0);
+	await f.entry.dispose();
+});
+test("unavailable receipt storage or unavailable current text keeps the legal and readonly actions available", async () => {
+	for (const fail of ["storage", "text"]) {
+		const f = legalFixture();
+		await f.entry.start();
+		if (fail === "storage") f.disableStorage(); else f.removeText();
+		await f.prompt().proceed();
+		expect(f.prompt().error).toBe(fail);
+		expect(f.writable()).toBe(0);
+		expect(f.accepted.size).toBe(0);
+		await f.prompt().readOnly();
+		expect(f.entry.snapshot().kind).toBe("readonly");
+		await f.entry.dispose();
+	}
+});
+test("a changed host launch cannot reuse the previous account's legal action", async () => {
+	const f = legalFixture();
+	await f.entry.start();
+	const old = f.prompt();
+	f.loseLaunch();
+	await old.proceed();
+	expect(f.entry.snapshot().kind).toBe("unavailable");
+	await old.readOnly();
+	expect(f.writable()).toBe(0);
+	expect(f.accepted.size).toBe(0);
+	await f.entry.dispose();
+});
+test("declining a license without a supported readonly runtime never opens the writer", async () => {
+	const f = legalFixture({ createReadonlyRuntime: undefined });
+	await f.entry.start();
+	await f.prompt().readOnly();
+	expect(f.entry.snapshot()).toEqual({ kind: "unavailable", reason: "release" });
+	expect(f.writable()).toBe(0);
+	await f.entry.dispose();
+});
+
+test("the verified first-use shell owns the live host navigation and a failed reveal offers retry", async () => {
+	const sdk = { initData: signedExample, ready() { throw Error("SDK unavailable"); }, close() {}, version: "8.0" };
+	const f = legalFixture({
+		source: { ...signedSource(), read: () => sdk },
+		connectHost: (capture, onContextChanged) => capture.connect({
+			style: hostStyle(), readBrowser: () => ({ width: 390, height: 800, visible: true, focused: true }),
+			subscribeBrowser: () => () => undefined, readCurrentSdk: () => sdk, onContextChanged,
+		}),
+	});
+	await f.entry.start();
+	const state = f.prompt();
+	expect(state.hostEnvironment?.navigation).toBeDefined();
+	expect(f.entry.shellReady(state)).toBe(false);
+	expect(f.entry.snapshot()).toEqual({ kind: "unavailable", reason: "launch" });
+	await state.proceed();
+	expect(f.writable()).toBe(0);
+	await f.entry.dispose();
+});
+
+for (const choice of ["proceed", "readOnly"] as const)
+	test(`verified users can finish reading for ten minutes before choosing ${choice}`, async () => {
+		let now = 1_733_584_787_000;
+		const f = legalFixture({ nowEpochMs: () => now });
+		await f.entry.start();
+		const prompt = f.prompt();
+		now += 600_000;
+		await prompt[choice]();
+		expect(f.entry.snapshot().kind).toBe(choice === "proceed" ? "editor" : "readonly");
+		expect(f.writable()).toBe(choice === "proceed" ? 1 : 0);
+		await f.entry.dispose();
+	});
+
+test("one verified WebView is revealed once across legal review and editor admission", async () => {
+	let reveals = 0;
+	const sdk = { initData: signedExample, ready() { reveals++; }, close() {} };
+	const f = legalFixture({ source: { ...signedSource(), read: () => sdk } });
+	await f.entry.start();
+	const prompt = f.prompt();
+	expect(f.entry.shellReady(prompt)).toBe(true);
+	await prompt.proceed();
+	const editor = f.entry.snapshot();
+	if (editor.kind !== "editor") throw new Error("Expected writable editor after acceptance");
+	expect(f.entry.ready(editor.runtime)).toBe(true);
+	expect(reveals).toBe(1);
+	await f.entry.dispose();
+});
+
+test("a legal screen closes cleanly while reading and cannot be revived", async () => {
+	const f = legalFixture();
+	await f.entry.start();
+	const original = f.prompt();
+	expect(original.error).toBeUndefined();
+	await expectCompleted(f.entry.exit());
+	await expectCompleted(original.proceed());
+	await expectCompleted(original.readOnly());
+	expect(f.entry.snapshot()).toEqual({ kind: "closed" });
+	expect(f.accepted.size).toBe(0);
+	expect(f.writable()).toBe(0);
+	expect(f.closed()).toBe(1);
+});
+
+test("only the currently offered legal decision can resolve its admission", async () => {
+	const f = legalFixture();
+	f.disableStorage();
+	await f.entry.start();
+	const original = f.prompt();
+	const saving = original.proceed();
+	expect(f.entry.snapshot()).toEqual({ kind: "checking" });
+	await expectCompleted(saving);
+	const retry = f.prompt();
+	expect(retry.error).toBe("storage");
+	await expectCompleted(original.readOnly());
+	expect(f.entry.snapshot()).toBe(retry);
+	const reading = retry.readOnly();
+	expect(f.entry.snapshot()).toEqual({ kind: "checking" });
+	await expectCompleted(reading);
+	expect(f.entry.snapshot().kind).toBe("readonly");
+	await expectCompleted(original.proceed());
+	expect(f.entry.snapshot().kind).toBe("readonly");
+	await expectCompleted(f.entry.dispose());
+});
+
+test("the host can revoke its context during the legal action's SDK read", async () => {
+	const sdk = { initData: signedExample, ready() {}, close() {} };
+	let revoke: (() => void) | undefined;
+	const f = legalFixture({ source: {
+		...signedSource(), read() { revoke?.(); return sdk; },
+	} });
+	await f.entry.start();
+	const original = f.prompt();
+	revoke = () => { void f.entry.dispose(); };
+	await expectCompleted(original.proceed());
+	expect(f.entry.snapshot()).toEqual({ kind: "closed" });
+	expect(f.accepted.size).toBe(0);
+	expect(f.writable()).toBe(0);
+	await expectCompleted(f.entry.dispose());
 });

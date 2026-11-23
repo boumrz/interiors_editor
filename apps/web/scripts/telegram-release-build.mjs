@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
 import { rspack } from "@rspack/core";
+import { telegramAnalyticsConfiguration } from "./telegram-analytics-configuration.mjs";
 
 /** The build reads only these public values; no credentials become client metadata. */
 export function telegramPublicConfiguration(environment) {
@@ -9,6 +10,7 @@ export function telegramPublicConfiguration(environment) {
 		environment: environment.INTERIORS_TELEGRAM_ENVIRONMENT ?? "",
 		telegramURL: environment.INTERIORS_TELEGRAM_LINK ?? "",
 		webURL: environment.INTERIORS_WEB_URL ?? "",
+		...telegramAnalyticsConfiguration(environment),
 	});
 }
 export function assertTelegramOutputDirectory(value) {

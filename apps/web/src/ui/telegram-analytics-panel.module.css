@@ -1,0 +1,148 @@
+.root {
+	--stats-ink: var(--tg-theme-text-color, var(--editor-host-ink, var(--ink)));
+	--stats-secondary: color-mix(in srgb, var(--tg-theme-subtitle-text-color, var(--editor-host-muted, var(--muted))) 68%, var(--stats-ink));
+	--stats-link: color-mix(in srgb, var(--tg-theme-link-color, var(--editor-host-primary, var(--blue))) 85%, var(--stats-ink));
+	color: var(--stats-ink);
+	margin-block-start: auto;
+	min-width: 0;
+}
+
+.root button {
+	cursor: pointer;
+	font: inherit;
+}
+
+.root :is(button, summary):focus-visible {
+	outline: 2px solid var(--stats-link);
+	outline-offset: 2px;
+}
+
+button.disclosure {
+	align-items: center;
+	background: transparent;
+	border: 0;
+	color: var(--stats-secondary);
+	display: flex;
+	font-size: 0.8125rem;
+	gap: 7px;
+	margin-inline: auto;
+	min-height: 44px;
+	padding: 0 10px;
+}
+
+.chevron {
+	border-block-end: 1.5px solid currentColor;
+	border-inline-end: 1.5px solid currentColor;
+	height: 6px;
+	transform: rotate(45deg) translateY(-2px);
+	width: 6px;
+}
+
+.disclosure[aria-expanded="true"] .chevron {
+	transform: rotate(225deg) translateY(-1px);
+}
+
+.panel {
+	font-size: 0.8125rem;
+	line-height: 1.45;
+	padding-block: 4px 0;
+	text-align: start;
+}
+
+button.preference {
+	align-items: center;
+	background: var(--tg-theme-section-bg-color, var(--editor-host-surface, var(--surface)));
+	border: 0;
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--stats-ink);
+	display: flex;
+	font-size: 1rem;
+	gap: 12px;
+	justify-content: space-between;
+	min-height: 52px;
+	padding: 10px 16px;
+	text-align: start;
+	width: 100%;
+}
+
+.track {
+	align-items: center;
+	background: color-mix(in srgb, var(--stats-secondary) 45%, transparent);
+	border-radius: 99px;
+	display: flex;
+	flex: 0 0 42px;
+	height: 26px;
+	padding-inline: 3px;
+	box-sizing: border-box;
+}
+
+.track::before {
+	background: #fff;
+	border-radius: 50%;
+	content: "";
+	height: 20px;
+	width: 20px;
+}
+
+.preference[aria-checked="true"] .track {
+	background: var(--tg-theme-button-color, var(--editor-host-primary, var(--blue)));
+	justify-content: flex-end;
+}
+
+.caption, .panel [role="status"], .details p {
+	color: var(--stats-secondary);
+	margin: 8px 12px 0;
+}
+
+.details summary, .retry {
+	align-content: center;
+	color: var(--stats-link);
+	cursor: pointer;
+	display: block;
+	font-size: 0.8125rem;
+	min-height: 44px;
+	padding-inline: 12px;
+	width: fit-content;
+}
+
+.details summary::-webkit-details-marker {
+	display: none;
+}
+
+.details[open] summary {
+	text-decoration: underline;
+}
+
+.details p:first-of-type {
+	margin-top: 0;
+}
+
+.retry, .actions button {
+	background: transparent;
+	border: 0;
+	color: var(--stats-link);
+	min-height: 44px;
+}
+
+.panel form, .actions {
+	display: grid;
+	gap: 0.5rem;
+}
+
+.panel fieldset {
+	border: 1px solid var(--editor-host-line, var(--line));
+	margin: 8px 0 0;
+	min-width: 0;
+}
+
+.panel label {
+	align-items: center;
+	display: flex;
+	gap: 0.5rem;
+	min-height: 44px;
+}
+
+@media (forced-colors: active) {
+	.track { border: 1px solid ButtonText; }
+	.track::before { background: ButtonText; }
+}

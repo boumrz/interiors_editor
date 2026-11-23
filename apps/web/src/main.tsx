@@ -23,6 +23,7 @@ import type {
 	PwaUpdate,
 } from "./ui/AppShell";
 import { pwaInstallCapabilities } from "./ui/pwa-install-capabilities";
+import { BrowserLegalAccess } from "./ui/browser-legal-access";
 
 declare const __INTERIORS_TEST_SEAM__: boolean;
 
@@ -33,6 +34,12 @@ const EditorApp = lazy(async () =>
 );
 
 const root = document.getElementById("root");
+
+const ProjectBackups = lazy(async () =>
+	import(/* webpackChunkName: "editor-app" */ "./app/browser-editor-app").then(
+		(module) => ({ default: module.BrowserProjectBackups }),
+	),
+);
 
 if (!root) {
 	throw new Error("Missing #root element");
@@ -224,10 +231,14 @@ function PwaAwareEditorApp() {
 	);
 
 	return (
-		<EditorApp
-			pwaBrowseCache={pwaBrowseCache}
-			pwaInstall={pwaInstall}
-			pwaUpdate={pwaUpdate}
+		<BrowserLegalAccess
+			backups={<ProjectBackups />}
+			editor={(onOpenSettings) => <EditorApp
+				onOpenSettings={onOpenSettings}
+				pwaBrowseCache={pwaBrowseCache}
+				pwaInstall={pwaInstall}
+				pwaUpdate={pwaUpdate}
+			/>}
 		/>
 	);
 }

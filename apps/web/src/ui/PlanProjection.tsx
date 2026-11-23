@@ -1,3 +1,5 @@
+import { OpeningPlanSymbol } from "./opening-plan-symbol";
+import { DIVIDED_WINDOW_MIN_WIDTH_MM } from "../adapters/renderer/opening-template";
 import { createEditorInteractionGate, type EditorContactEpoch } from "./editor-host-boundary";
 import {
 	Fragment,
@@ -21,6 +23,7 @@ import {
 	findParametricFloorItemCollisionTargets,
 	findRoomForFloorItem,
 	floorItemFootprintCorners,
+	floorYawFieldsForRadians,
 	rotationStepForYawRadians,
 	yawRadiansFor,
 } from "../domain/parametric-item";
@@ -30,9 +33,20 @@ import {
 } from "./opening-gesture";
 import { wallOpeningIntervalMm } from "../domain/wall-opening";
 import styles from "./AppShell.module.css";
+import rotationStyles from "./FloorRotationControls.module.css";
 import { PlacementRotationControl } from "./PlacementRotationControl";
+import { FloorRotationAngleField } from "./FloorRotationAngleField";
+import {
+	beginRotationDomeGesture,
+	moveRotationDomeGesture,
+	rotationDomeGestureHasChanged,
+	type RotationDomeGesture,
+} from "./three-dimensional-rotation-gesture";
 import { degreesForYawRadians } from "./rotation-angle";
 import { DrawingDimensions } from "./DrawingDimensions";
+import { ItemWallDistanceFields, ItemWallDistanceLines, ItemWallDistanceValues } from "./ItemWallDistances";
+import { itemWallDistancePositionFor, itemWallDistancesFor, type ItemWallDistance } from "./item-wall-distances";
+import { SheetHeader } from "./SheetHeader";
 import { selectDrawingDimensions } from "./drawing-dimension-selection";
 import { filterDrawingDimensions } from "./drawing-dimension-visibility";
 import { drawingDimensionsFor } from "./drawing-dimensions";
@@ -81,6 +95,7 @@ import {
 	snappedPoint,
 	gridLinesBetween,
 	wallHitPath,
+	nearestWallAtPoint,
 	visualGridStepMm,
 	type PlanProjectionProps,
 	type PointerPosition,
@@ -91,13 +106,32 @@ import {
 	type WallSplitDraft,
 	type DoorOpeningDrag,
 	type ItemPlacementDrag,
+	type ItemPlacementPoint,
 	initialPlanCanvasSize,
 	distance,
 	centre,
 	visiblePlanFrame,
 } from "./editor-plan-presentation";
 
+const itemArrowSteps: Readonly<Partial<Record<string, { xMm: number; zMm: number }>>> = {
+	ArrowLeft: { xMm: -100, zMm: 0 },
+	ArrowRight: { xMm: 100, zMm: 0 },
+	ArrowUp: { xMm: 0, zMm: -100 },
+	ArrowDown: { xMm: 0, zMm: 100 },
+};
+
 export function PlanProjection({
+	plainLabels = false,
+	exactFloorYaw = false,
+	initialItemPlacementPoint,
+	onItemPlacementPointChange,
+	skipBlurCommit,
+	keyboardItemMovement = false,
+	showOpeningTemplates = false,
+	selectedOpeningId,
+	showItemWallDistances = false,
+	floorItemWallSnap,
+	itemPlacementControls,
 	registerTransientBoundary,
 	dimensionVisibility,
 	openingMoveErrorCopy,
@@ -114,6 +148,7 @@ export function PlanProjection({
 	onDrawWall: rawOnDrawWall,
 	onDrawingVisibilityChange,
 	onCancelItemPlacement,
+	onCloseItemPlacement,
 	onItemPlacementYawChange: rawOnItemPlacementYawChange,
 	onMoveDoorOpening: rawOnMoveDoorOpening,
 	onMoveItem: rawOnMoveItem,
@@ -153,7 +188,6 @@ export function PlanProjection({
 	}>());
 	const revokedHostContacts = useRef(new Set<number>());
 	const hostDraftState = useRef(false);
-	const hostPlacementRotationEpoch = useRef<{ readonly pointerId: number; readonly epoch: EditorContactEpoch; readonly projection: string | undefined; readonly base: typeof project } | undefined>(undefined);
 	const hostDraftContactEpoch = useRef<EditorContactEpoch | undefined>(undefined);
 	const hostSelection = useRef(selectedItemId);
 	hostSelection.current = selectedItemId;
@@ -169,18 +203,17 @@ export function PlanProjection({
 	const onRotateItem: PlanProjectionProps["onRotateItem"] = (input) => hostEnabledRef.current ? hostCommand(() => rawOnRotateItem(input), false) : rawOnRotateItem(input);
 	const onPlaceItem: PlanProjectionProps["onPlaceItem"] = (input) => hostEnabledRef.current ? hostCommand(() => rawOnPlaceItem(input), undefined) : rawOnPlaceItem(input);
 	const onItemPlacementYawChange: PlanProjectionProps["onItemPlacementYawChange"] = (value) => {
-		if (!hostEnabledRef.current) { rawOnItemPlacementYawChange(value); return; }
-		if (!hostGateRef.current.canBegin()) return;
-		const contact = hostPlacementRotationEpoch.current;
-		if (contact && (!hostGateRef.current.isCurrent(contact.epoch) || contact.projection === undefined || contact.projection !== hostProjectionKey() || contact.base !== liveProjectRef.current)) {
-			invalidateHostContacts();
-			return;
+		if (!hostEnabledRef.current || hostGateRef.current.canBegin()) {
+			rawOnItemPlacementYawChange(value);
 		}
-		rawOnItemPlacementYawChange(value);
 	};
 	const pointers = useRef(new Map<number, PointerPosition>());
 	const planSvgRef = useRef<SVGSVGElement>(null);
-	const placementRotationContacts = useRef(new Set<number>());
+	const placementRotationContact = useRef<{
+		readonly pointerId: number;
+		readonly centre: PointerPosition;
+		gesture: RotationDomeGesture | undefined;
+	}>(undefined);
 	const [hasPlacementRotationContact, setHasPlacementRotationContact] =
 		useState(false);
 	const [canvasSize, setCanvasSize] = useState<CanvasSize>(
@@ -244,7 +277,7 @@ export function PlanProjection({
 	const liveProjectRef = useRef(project);
 	liveProjectRef.current = project;
 	function hasHostContactDraft(): boolean {
-		return !!(wallDraftRef.current || wallMoveDraftRef.current || wallSplitDraftRef.current || wallVertexMoveDraftRef.current || itemDragRef.current || itemRotationRef.current || doorOpeningDragRef.current || itemPlacementDragRef.current);
+		return !!(wallDraftRef.current || wallMoveDraftRef.current || wallSplitDraftRef.current || wallVertexMoveDraftRef.current || itemDragRef.current || itemRotationRef.current || doorOpeningDragRef.current || itemPlacementDragRef.current || placementRotationContact.current);
 	}
 	function markHostDraftContact(pointerId: number): void {
 		const contact = hostEnabledRef.current ? hostContacts.current.get(pointerId) : undefined;
@@ -402,6 +435,7 @@ export function PlanProjection({
 		readonly assetInstanceId: string;
 		readonly pointerId: number;
 		readonly yawRadians: number;
+		readonly relative?: { readonly centre: PointerPosition; readonly gesture: RotationDomeGesture };
 	}>();
 	// Keep the released pose visible until its automatic Durable Revision
 	// arrives. This is not a confirmation draft: the mutation starts as soon as
@@ -442,17 +476,22 @@ export function PlanProjection({
 	);
 	const moveDraftProjectRef = useRef(project);
 	const pointerCountAtItemDragStartRef = useRef(0);
-	const [itemPoint, setItemPoint] = useState<{
-		readonly xMm: number;
-		readonly zMm: number;
-	}>();
+	const [itemPoint, setItemPoint] = useState<ItemPlacementPoint | undefined>(initialItemPlacementPoint);
+	const [itemPointIsExact, setItemPointIsExact] = useState(initialItemPlacementPoint !== undefined);
 	const [isConfirmingItemPlacement, setIsConfirmingItemPlacement] =
 		useState(false);
 	const itemPlacementConfirmationIdRef = useRef(0);
 	// A tap may deliver pointerdown and pointerup before React has committed the
 	// state update from pointerdown.  Placement is a gesture, so its endpoint
 	// needs the same synchronous source of truth as a wall draft or item drag.
-	const itemPointRef = useRef<typeof itemPoint>(undefined);
+	const itemPointRef = useRef(initialItemPlacementPoint);
+	const itemPointIsExactRef = useRef(initialItemPlacementPoint !== undefined);
+	const updateItemPoint = useCallback((next: ItemPlacementPoint | undefined, exact = false) => {
+		itemPointRef.current = next;
+		itemPointIsExactRef.current = exact;
+		setItemPoint(next);
+		setItemPointIsExact(exact);
+	}, []);
 	const itemPlacementDragRef = useRef<ItemPlacementDrag | undefined>(undefined);
 	// A wall can be tapped to select it, but it must not steal a drag
 	// that starts on the drawing.  Keep the possible selection transient until
@@ -481,32 +520,48 @@ export function PlanProjection({
 		| undefined
 	>(undefined);
 	const resetDirectManipulationContacts = useCallback(() => {
-		if (
-			!doorOpeningDragRef.current &&
-			!splitGrabRef.current &&
-			placementRotationContacts.current.size === 0
-		)
-			return;
-		placementRotationContacts.current.clear();
-		setHasPlacementRotationContact(false);
+		if (!doorOpeningDragRef.current && !splitGrabRef.current) return;
 		pointers.current.clear();
 		touchContacts.current.clear();
 		activeTouchCount.current = 0;
 		gesture.current = undefined;
 	}, []);
-	const releasePlacementRotationContact = (pointerId: number): boolean => {
-		if (!placementRotationContacts.current.delete(pointerId)) return false;
-		pointers.current.delete(pointerId);
-		touchContacts.current.delete(pointerId);
-		if (placementRotationContacts.current.size === 0) {
-			setHasPlacementRotationContact(false);
-			pointers.current.clear();
-			touchContacts.current.clear();
-			activeTouchCount.current = 0;
-			gesture.current = undefined;
-		}
-		return true;
-	};
+	const livePlacementYawChange = useRef(onItemPlacementYawChange);
+	livePlacementYawChange.current = onItemPlacementYawChange;
+	const cancelPlacementRotation = useCallback(() => {
+		const contact = placementRotationContact.current;
+		const rotation = contact?.gesture;
+		if (!contact || !rotation) return;
+		contact.gesture = undefined;
+		livePlacementYawChange.current(rotation.initialYawRadians);
+	}, []);
+
+	useEffect(() => {
+		const outsidePointer = (event: PointerEvent) => {
+			if (event.target instanceof Node && planSvgRef.current?.contains(event.target)) return;
+			cancelPlacementRotation();
+		};
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === "Escape") cancelPlacementRotation();
+		};
+		const onBlur = (event: Event) => {
+			if (event.target === window && !hostEnabledRef.current) cancelPlacementRotation();
+		};
+		const onVisibility = () => {
+			if (document.hidden && !hostEnabledRef.current) cancelPlacementRotation();
+		};
+		window.addEventListener("pointerdown", outsidePointer, true);
+		window.addEventListener("keydown", onKey);
+		window.addEventListener("blur", onBlur);
+		document.addEventListener("visibilitychange", onVisibility);
+		return () => {
+			window.removeEventListener("pointerdown", outsidePointer, true);
+			window.removeEventListener("keydown", onKey);
+			window.removeEventListener("blur", onBlur);
+			document.removeEventListener("visibilitychange", onVisibility);
+			if (!hostEnabledRef.current) cancelPlacementRotation();
+		};
+	}, [cancelPlacementRotation]);
 
 	useLayoutEffect(() => {
 		if (hostGateDisposed.current) {
@@ -689,15 +744,18 @@ export function PlanProjection({
 				0,
 				(header?.getBoundingClientRect().bottom ?? bounds.top) - bounds.top,
 			);
-			const bottom = Math.max(
+			const visibleBottom = Math.min(bounds.bottom, shell?.getBoundingClientRect().bottom ?? bounds.bottom);
+			const measuredBottom = Math.max(
 				0,
-				bounds.bottom - (dock?.getBoundingClientRect().top ?? bounds.bottom),
+				visibleBottom - (dock?.getBoundingClientRect().top ?? visibleBottom),
 			);
-			setCanvasInsets((previous) =>
-				previous.top === top && previous.bottom === bottom
-					? previous
-					: { top, bottom },
-			);
+			setCanvasInsets((previous) => {
+				// The opening sheet temporarily replaces the dock and autofocuses its input.
+				const bottom = !dock && isInteractionLocked && shell?.getAttribute("data-editor-host") === "telegram"
+					? previous.bottom
+					: measuredBottom;
+				return previous.top === top && previous.bottom === bottom ? previous : { top, bottom };
+			});
 			const obstacles = [
 				...(inspectorSelectors.length
 					? (shell?.querySelectorAll(inspectorSelectors.join(",")) ?? [])
@@ -744,7 +802,7 @@ export function PlanProjection({
 		) ?? [])
 			observer.observe(target);
 		return () => observer.disconnect();
-	}, [selectedWallId, selectedItemId, activeTool]);
+	}, [selectedWallId, selectedItemId, activeTool, isInteractionLocked]);
 
 	useEffect(() => {
 		if (activeTool !== "wall") {
@@ -755,9 +813,8 @@ export function PlanProjection({
 		}
 		if (activeTool !== "item") {
 			setHasPlacementRotationContact(false);
-			placementRotationContacts.current.clear();
-			setItemPoint(undefined);
-			itemPointRef.current = undefined;
+			placementRotationContact.current = undefined;
+			updateItemPoint(undefined);
 			itemPlacementDragRef.current = undefined;
 		}
 		if (activeTool !== "select" || !isWallMoveMode) {
@@ -790,6 +847,7 @@ export function PlanProjection({
 		isWallMoveMode,
 		isWallSplitMode,
 		isWallVertexMoveMode,
+		updateItemPoint,
 	]);
 
 	useEffect(() => () => clearItemDragCommit(), [clearItemDragCommit]);
@@ -969,6 +1027,22 @@ export function PlanProjection({
 					y) /
 					drawingScale,
 		};
+	};
+	const placementPointerPointFor = (event: ReactPointerEvent<SVGSVGElement>) => {
+		const point = projectPointFor(event);
+		return floorItemWallSnap ? point : snappedPoint(point);
+	};
+	const itemMovePointFor = (point: { readonly xMm: number; readonly zMm: number }, assetInstanceId?: string) => {
+		const fallback = snappedPoint(point);
+		if (!floorItemWallSnap || assetInstanceId === undefined) return fallback;
+		const asset = project.assetInstances.find((item) => item.assetInstanceId === assetInstanceId);
+		if (!asset || !isFloorEditorAsset(asset)) return fallback;
+		return floorItemWallSnap({
+			target: point,
+			fallback,
+			assetInstanceId,
+			footprint: asset,
+		});
 	};
 	const wallMoveAxisFor = (wallSegmentId: string): WallMoveAxis | undefined => {
 		const wall = project.level.wallSegments.find(
@@ -1199,6 +1273,36 @@ export function PlanProjection({
 		xMm: item.xMm,
 		zMm: item.zMm,
 	});
+	const rotationCentreInCanvas = (item: ItemPlacementPoint): PointerPosition => {
+		const { x, y } = pointFor(item.xMm, item.zMm);
+		const current = viewportRef.current;
+		return { x: current.panX + x * current.zoom, y: current.panY + y * current.zoom };
+	};
+	const beginSelectedItemRotation = (item: EditorFloorAsset, event: ReactPointerEvent<SVGSVGElement>) => {
+		const exact = exactFloorYaw || ("yawMilliDeg" in item && item.yawMilliDeg !== undefined);
+		const previous = itemRotationRef.current;
+		const centre = rotationCentreInCanvas(item);
+		const relative = plainLabels || exact ? {
+			centre,
+			gesture: beginRotationDomeGesture({
+				assetInstanceId: item.assetInstanceId,
+				pointerId: event.pointerId,
+				yawRadians: previous?.assetInstanceId === item.assetInstanceId ? previous.yawRadians : yawRadiansForEditorFloorAsset(item),
+				point: canvasPointFor(event),
+				centre,
+				exact,
+			}),
+		} : undefined;
+		const next = {
+			assetInstanceId: item.assetInstanceId,
+			pointerId: event.pointerId,
+			relative,
+			yawRadians: relative?.gesture.yawRadians ?? yawForPointer(projectPointFor(event), rotationGizmoCenterFor(item)),
+		};
+		itemRotationRef.current = next;
+		markHostDraftContact(event.pointerId);
+		setItemRotation(next);
+	};
 	const wallDraftSegments = project.level.wallSegments.flatMap((wall) => {
 		const start = vertices.find(
 			(vertex) => vertex.vertexId === wall.startVertexId,
@@ -1288,31 +1392,28 @@ export function PlanProjection({
 		) {
 			return undefined;
 		}
-		const roomId = findRoomForFloorItem(project, {
-			depthMm: itemDraft.depthMm,
-			yawRadians: itemDraft.yawRadians,
-			widthMm: itemDraft.widthMm,
-			xMm: itemPoint.xMm,
-			zMm: itemPoint.zMm,
-		});
+		const { color, depthMm, heightMm, label, widthMm } = itemDraft;
+		const dimensions = { color, depthMm, heightMm, label, widthMm };
+		const footprint = { depthMm, widthMm, ...floorYawFieldsForRadians(itemDraft.yawRadians, exactFloorYaw) };
+		const point = itemPointIsExact
+			? itemPoint
+			: (floorItemWallSnap?.({ target: itemPoint, fallback: snappedPoint(itemPoint), footprint }) ?? itemPoint);
+		const candidate = { ...dimensions, ...footprint, ...point };
+		const roomId = findRoomForFloorItem(project, candidate);
 		if (!roomId) {
 			return {
-				...itemDraft,
-				...itemPoint,
+				...candidate,
 				isValid: false,
 				reasonCode: "OUTSIDE_ROOM_HOST",
 				tier: "invalid" as const,
 			};
 		}
 		const assessment = assessParametricFloorItemPlacement(project, {
-			...itemDraft,
+			...candidate,
 			roomId,
-			xMm: itemPoint.xMm,
-			zMm: itemPoint.zMm,
 		});
 		return {
-			...itemDraft,
-			...itemPoint,
+			...candidate,
 			isValid: assessment.kind !== "invalid",
 			tier: assessment.kind,
 			...(assessment.kind === "invalid"
@@ -1322,7 +1423,33 @@ export function PlanProjection({
 				? { warnings: assessment.warnings }
 				: {}),
 		};
-	}, [activeTool, itemDraft, itemPoint, project]);
+	}, [activeTool, exactFloorYaw, floorItemWallSnap, itemDraft, itemPoint, itemPointIsExact, project]);
+	const placementXMm = itemPlacementPreview?.xMm;
+	const placementZMm = itemPlacementPreview?.zMm;
+	useEffect(() => {
+		if (activeTool !== "item") return;
+		onItemPlacementPointChange?.(placementXMm === undefined || placementZMm === undefined
+			? undefined
+			: { xMm: placementXMm, zMm: placementZMm });
+	}, [activeTool, onItemPlacementPointChange, placementXMm, placementZMm]);
+
+	const applyPlacementDistance = (side: ItemWallDistance["side"], valueMm: number) => {
+		if (readOnly || isConfirmingItemPlacement || hasPlacementRotationContact || !derivedPlan || !itemPlacementPreview || !itemDraft || project.schemaVersion !== 1) return false;
+		const candidate = itemWallDistancePositionFor(derivedPlan.rooms, itemPlacementPreview, side, valueMm);
+		if (!candidate) return false;
+		const assessed = assessParametricFloorItemPlacement(project, {
+			color: itemDraft.color,
+			depthMm: itemDraft.depthMm,
+			heightMm: itemDraft.heightMm,
+			label: itemDraft.label,
+			widthMm: itemDraft.widthMm,
+			...floorYawFieldsForRadians(itemDraft.yawRadians, exactFloorYaw),
+			...candidate,
+		});
+		if (assessed.kind === "invalid") return false;
+		updateItemPoint({ xMm: candidate.xMm, zMm: candidate.zMm }, true);
+		return true;
+	};
 	const itemPlacementCollisionTargets = useMemo(() => {
 		if (
 			!itemPlacementPreview ||
@@ -1358,8 +1485,7 @@ export function PlanProjection({
 	const clearItemPlacementPreview = () => {
 		clearLongPressPan();
 		itemPlacementDragRef.current = undefined;
-		itemPointRef.current = undefined;
-		setItemPoint(undefined);
+		updateItemPoint(undefined);
 	};
 	const cancelItemPlacement = () => {
 		itemPlacementConfirmationIdRef.current += 1;
@@ -1372,7 +1498,8 @@ export function PlanProjection({
 		if (
 			!itemPlacementPreview?.isValid ||
 			isConfirmingItemPlacement ||
-			placementRotationContacts.current.size > 0
+			placementRotationContact.current !== undefined ||
+			gesture.current?.kind === "pinch"
 		)
 			return;
 		const point = {
@@ -1466,6 +1593,32 @@ export function PlanProjection({
 		}
 	};
 
+	const cancelPlacementForPinch = () => {
+		const move = itemPlacementDragRef.current;
+		if (move) {
+			itemPlacementDragRef.current = undefined;
+			updateItemPoint(move.before, move.beforeExact);
+		}
+		cancelPlacementRotation();
+		placementRotationContact.current = undefined;
+	};
+
+	const beginPinch = (first: PointerPosition | undefined, second: PointerPosition | undefined) => {
+		if (!first || !second) return;
+		// Camera contacts remain valid as the camera changes its own projection.
+		for (const [pointerId, contact] of hostContacts.current) {
+			if (pointers.current.has(pointerId) && contact.kind === "draft") {
+				hostContacts.current.set(pointerId, { ...contact, kind: "camera" });
+			}
+		}
+		gesture.current = {
+			centre: centre(first, second),
+			distance: distance(first, second),
+			kind: "pinch",
+			viewport: viewportRef.current,
+		};
+	};
+
 	const onPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
 		if (hostEnabledRef.current) {
 			const projection = hostProjectionKey();
@@ -1484,13 +1637,6 @@ export function PlanProjection({
 		}
 		const canvasPoint = canvasPointFor(event);
 		pointers.current.set(event.pointerId, canvasPoint);
-		if (placementRotationContacts.current.size > 0) {
-			placementRotationContacts.current.add(event.pointerId);
-			pendingCanvasSelectionRef.current = undefined;
-			clearLongPressPan();
-			event.preventDefault();
-			return;
-		}
 		if (isInteractionLocked) {
 			event.preventDefault();
 			return;
@@ -1506,14 +1652,7 @@ export function PlanProjection({
 			pendingCanvasSelectionRef.current = undefined;
 			cancelItemDragForMultiTouch();
 			itemDragCancelledPointerIds.current.add(event.pointerId);
-			if (activePointers[0] && activePointers[1]) {
-				gesture.current = {
-					centre: centre(activePointers[0], activePointers[1]),
-					distance: distance(activePointers[0], activePointers[1]),
-					kind: "pinch",
-					viewport: viewportRef.current,
-				};
-			}
+			beginPinch(activePointers[0], activePointers[1]);
 			return;
 		}
 		if (hasMultipleContacts) {
@@ -1522,7 +1661,12 @@ export function PlanProjection({
 			splitGrabRef.current = undefined;
 			pendingCanvasSelectionRef.current = undefined;
 			clearLongPressPan();
-			itemPlacementDragRef.current = undefined;
+			cancelPlacementForPinch();
+			if (itemRotationRef.current && !retainedHostItemTransform()) {
+				itemRotationRef.current = undefined;
+				setItemRotation(undefined);
+			}
+			if (activeTool === "item") setHasPlacementRotationContact(true);
 			if (wallMoveDraftRef.current) {
 				clearWallMoveDraft();
 				onWallMoveModeChange(false);
@@ -1545,14 +1689,7 @@ export function PlanProjection({
 				wallDraftRef.current = undefined;
 				setWallDraft(undefined);
 			}
-			if (activePointers[0] && activePointers[1]) {
-				gesture.current = {
-					centre: centre(activePointers[0], activePointers[1]),
-					distance: distance(activePointers[0], activePointers[1]),
-					kind: "pinch",
-					viewport: viewportRef.current,
-				};
-			}
+			beginPinch(activePointers[0], activePointers[1]);
 			return;
 		}
 		if (
@@ -1567,9 +1704,24 @@ export function PlanProjection({
 		) {
 			return;
 		}
-		const wallSegmentId = (event.target as Element)
+		const hitWallId = (event.target as Element)
 			.closest("[data-wall-id]")
 			?.getAttribute("data-wall-id");
+		const wallSegmentId = activeTool === "select" && hitWallId
+			? nearestWallAtPoint({
+				x: (canvasPoint.x - viewportRef.current.panX) / viewportRef.current.zoom,
+				y: (canvasPoint.y - viewportRef.current.panY) / viewportRef.current.zoom,
+			}, project.level.wallSegments.flatMap(wall => {
+				const start = vertices.find(vertex => vertex.vertexId === wall.startVertexId);
+				const end = vertices.find(vertex => vertex.vertexId === wall.endVertexId);
+				return start && end ? [{
+					wallSegmentId: wall.wallSegmentId,
+					start: pointFor(start.xMm, start.zMm),
+					end: pointFor(end.xMm, end.zMm),
+					targetWidth: Math.max(MINIMUM_TOUCH_TARGET_PX / viewportRef.current.zoom, wall.thicknessMm * drawingScale),
+				}] : [];
+			}), hitWallId) ?? hitWallId
+			: hitWallId;
 		const wallVertexId = (event.target as Element)
 			.closest("[data-wall-vertex-id]")
 			?.getAttribute("data-wall-vertex-id");
@@ -1751,19 +1903,8 @@ export function PlanProjection({
 					candidate.assetInstanceId === rotationAssetInstanceId &&
 					isFloorEditorAsset(candidate),
 			);
-			if (!item) return;
-			const yawRadians = yawForPointer(
-				projectPointFor(event),
-				rotationGizmoCenterFor(item),
-			);
-			const rotation = {
-				assetInstanceId: rotationAssetInstanceId,
-				pointerId: event.pointerId,
-				yawRadians,
-			};
-			itemRotationRef.current = rotation;
-			markHostDraftContact(event.pointerId);
-			setItemRotation(rotation);
+			if (!item || ("locked" in item && item.locked)) return;
+			beginSelectedItemRotation(item, event);
 			return;
 		}
 		if (
@@ -1785,18 +1926,8 @@ export function PlanProjection({
 					candidate.assetInstanceId === pointerAssetInstanceId &&
 					isFloorEditorAsset(candidate),
 			);
-			if (!item) return;
-			const rotation = {
-				assetInstanceId: pointerAssetInstanceId,
-				pointerId: event.pointerId,
-				yawRadians: yawForPointer(
-					projectPointFor(event),
-					rotationGizmoCenterFor(item),
-				),
-			};
-			itemRotationRef.current = rotation;
-			markHostDraftContact(event.pointerId);
-			setItemRotation(rotation);
+			if (!item || ("locked" in item && item.locked)) return;
+			beginSelectedItemRotation(item, event);
 			return;
 		}
 		if (
@@ -1820,18 +1951,7 @@ export function PlanProjection({
 			hostRetainedItemDrag.current = retained;
 			// A hit on an item always belongs to that item.  The old long-press
 			// fallback could steal unrotated item drags and pan the whole canvas.
-			setItemDrag({
-				assetInstanceId,
-				end: point,
-				moved: false,
-				pointerOrigin: canvasPoint,
-				pointerToItemOffset: {
-					xMm: pointerPoint.xMm - point.xMm,
-					zMm: pointerPoint.zMm - point.zMm,
-				},
-				start: point,
-			});
-			itemDragRef.current = {
+			const contact = {
 				assetInstanceId,
 				end: point,
 				moved: false,
@@ -1842,6 +1962,10 @@ export function PlanProjection({
 				},
 				start: point,
 			};
+			// Selection opens its inspector on contact. Only movement beyond the
+			// gesture tolerance becomes a new edit visible to navigation and history.
+			itemDragRef.current = contact;
+			setItemDrag(hostEnabledRef.current ? retained : contact);
 			itemDragCancelledByMultiTouch.current = false;
 			itemDragCancelledPointerIds.current.clear();
 			itemDragSawMultiTouchRef.current = false;
@@ -1902,10 +2026,27 @@ export function PlanProjection({
 			gesture.current = undefined;
 			clearLongPressPan();
 			event.preventDefault();
-			const point = snappedPoint(projectPointFor(event));
-			itemPointRef.current = point;
-			setItemPoint(point);
-			itemPlacementDragRef.current = { pointerId: event.pointerId };
+			if ((event.target as Element).closest("[data-placement-rotation-handle]") && itemPlacementPreview) {
+				const centre = rotationCentreInCanvas(itemPlacementPreview);
+				placementRotationContact.current = {
+					centre,
+					gesture: beginRotationDomeGesture({
+						assetInstanceId: "placement",
+						pointerId: event.pointerId,
+						yawRadians: yawRadiansFor(itemPlacementPreview),
+						point: canvasPoint,
+						centre,
+						exact: exactFloorYaw,
+					}),
+					pointerId: event.pointerId,
+				};
+				markHostDraftContact(event.pointerId);
+				setHasPlacementRotationContact(true);
+				return;
+			}
+			const point = placementPointerPointFor(event);
+			itemPlacementDragRef.current = { pointerId: event.pointerId, before: itemPointRef.current, beforeExact: itemPointIsExactRef.current };
+			updateItemPoint(point);
 			markHostDraftContact(event.pointerId);
 			return;
 		}
@@ -1922,10 +2063,6 @@ export function PlanProjection({
 
 	const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
 		if (!isHostContactCurrent(event.pointerId)) { releaseHostContact(event.pointerId); return; }
-		if (placementRotationContacts.current.has(event.pointerId)) {
-			event.preventDefault();
-			return;
-		}
 		if (!pointers.current.has(event.pointerId)) {
 			return;
 		}
@@ -1992,6 +2129,14 @@ export function PlanProjection({
 						maximumViewportZoom,
 					),
 				);
+			}
+			return;
+		}
+		const placementRotation = placementRotationContact.current;
+		if (placementRotation?.pointerId === event.pointerId) {
+			if (placementRotation.gesture) {
+				placementRotation.gesture = moveRotationDomeGesture(placementRotation.gesture, canvasPoint, placementRotation.centre);
+				onItemPlacementYawChange(placementRotation.gesture.yawRadians);
 			}
 			return;
 		}
@@ -2119,9 +2264,12 @@ export function PlanProjection({
 					isFloorEditorAsset(candidate),
 			);
 			if (!item) return;
+			const relative = activeItemRotation.relative;
+			const nextGesture = relative ? moveRotationDomeGesture(relative.gesture, canvasPoint, relative.centre) : undefined;
 			const rotation = {
 				...activeItemRotation,
-				yawRadians: yawForPointer(
+				relative: relative && nextGesture ? { centre: relative.centre, gesture: nextGesture } : undefined,
+				yawRadians: nextGesture?.yawRadians ?? yawForPointer(
 					projectPointFor(event),
 					rotationGizmoCenterFor(item),
 				),
@@ -2179,14 +2327,13 @@ export function PlanProjection({
 				return;
 			}
 			clearLongPressPan();
+			const point = projectPointFor(event);
 			const nextItemDrag = {
 				...activeItemDrag,
-				end: snappedPoint({
-					xMm:
-						projectPointFor(event).xMm - activeItemDrag.pointerToItemOffset.xMm,
-					zMm:
-						projectPointFor(event).zMm - activeItemDrag.pointerToItemOffset.zMm,
-				}),
+				end: itemMovePointFor({
+					xMm: point.xMm - activeItemDrag.pointerToItemOffset.xMm,
+					zMm: point.zMm - activeItemDrag.pointerToItemOffset.zMm,
+				}, activeItemDrag.assetInstanceId),
 				moved:
 					activeItemDrag.moved ||
 					distance(activeItemDrag.pointerOrigin, canvasPoint) > 6,
@@ -2201,9 +2348,8 @@ export function PlanProjection({
 			activeItemPlacementDrag?.pointerId === event.pointerId &&
 			activePointers.length === 1
 		) {
-			const point = snappedPoint(projectPointFor(event));
-			itemPointRef.current = point;
-			setItemPoint(point);
+			const point = placementPointerPointFor(event);
+			updateItemPoint(point);
 			return;
 		}
 		const activeWallDraft = wallDraftRef.current;
@@ -2249,9 +2395,9 @@ export function PlanProjection({
 
 	const onPointerUp = async (event: ReactPointerEvent<SVGSVGElement>) => {
 		if (!isHostContactCurrent(event.pointerId)) { releaseHostContact(event.pointerId); return; }
+		if (activeTool === "item" && finishPlacementContact(event.pointerId)) return;
 		if (finishRetainedHostCameraContact(event.pointerId)) return;
 		hostContacts.current.delete(event.pointerId);
-		if (releasePlacementRotationContact(event.pointerId)) return;
 		clearLongPressPan();
 		if (splitGrabRef.current?.pointerId === event.pointerId)
 			splitGrabRef.current = undefined;
@@ -2340,12 +2486,10 @@ export function PlanProjection({
 			itemRotationRef.current = undefined;
 			setItemRotation(undefined);
 			pointers.current.delete(event.pointerId);
-			if (!readOnly) {
+			if (!readOnly && (!activeItemRotation.relative || rotationDomeGestureHasChanged(activeItemRotation.relative.gesture))) {
 				const rotation = {
 					assetInstanceId: activeItemRotation.assetInstanceId,
-					yawRadians: yawRadiansFor({
-						yawStep: rotationStepForYawRadians(activeItemRotation.yawRadians),
-					}),
+					yawRadians: yawRadiansFor(floorYawFieldsForRadians(activeItemRotation.yawRadians, activeItemRotation.relative?.gesture.exact ?? false)),
 				};
 				setSubmittedItemTransform({ kind: "rotation", ...rotation });
 				void persistItemRotation(rotation);
@@ -2392,14 +2536,11 @@ export function PlanProjection({
 			wasItemDragCancelled
 		) {
 			const cancelledByMultiTouch = itemDragCancelledByMultiTouch.current;
-			const end = snappedPoint({
-				xMm:
-					projectPointFor(event).xMm -
-					(activeItemDrag?.pointerToItemOffset.xMm ?? 0),
-				zMm:
-					projectPointFor(event).zMm -
-					(activeItemDrag?.pointerToItemOffset.zMm ?? 0),
-			});
+			const point = projectPointFor(event);
+			const end = itemMovePointFor({
+				xMm: point.xMm - (activeItemDrag?.pointerToItemOffset.xMm ?? 0),
+				zMm: point.zMm - (activeItemDrag?.pointerToItemOffset.zMm ?? 0),
+			}, activeItemDrag?.assetInstanceId);
 			const canvasPoint = canvasPointFor(event);
 			const wasSinglePointer =
 				pointers.current.size === 1 && gesture.current?.kind !== "pinch";
@@ -2584,12 +2725,41 @@ export function PlanProjection({
 			itemDragSawMultiTouchRef.current = false;
 		}
 	};
+	function finishPlacementContact(pointerId: number): boolean {
+		const rotation = placementRotationContact.current;
+		const pinch = gesture.current?.kind === "pinch";
+		if (rotation?.pointerId !== pointerId && !pinch) return false;
+		placementRotationContact.current = undefined;
+		releaseHostContact(pointerId);
+		if (pointers.current.size === 0) {
+			activeTouchCount.current = 0;
+			touchContacts.current.clear();
+			setHasPlacementRotationContact(false);
+		}
+		return true;
+	}
 
 	const onPointerCancel = (event: ReactPointerEvent<SVGSVGElement>) => {
 		if (!isHostContactCurrent(event.pointerId)) { releaseHostContact(event.pointerId); return; }
+		if (itemRotationRef.current?.pointerId === event.pointerId) {
+			itemRotationRef.current = undefined;
+			setItemRotation(undefined);
+			releaseHostContact(event.pointerId);
+			return;
+		}
+		if (activeTool === "item") {
+			if (placementRotationContact.current?.pointerId === event.pointerId) cancelPlacementRotation();
+			if (finishPlacementContact(event.pointerId)) return;
+			const move = itemPlacementDragRef.current;
+			if (move?.pointerId === event.pointerId) {
+				itemPlacementDragRef.current = undefined;
+				updateItemPoint(move.before, move.beforeExact);
+				releaseHostContact(event.pointerId);
+				return;
+			}
+		}
 		if (finishRetainedHostCameraContact(event.pointerId)) return;
 		hostContacts.current.delete(event.pointerId);
-		if (releasePlacementRotationContact(event.pointerId)) return;
 		clearLongPressPan();
 		clearItemDragCommit();
 		if (event.pointerType === "touch") {
@@ -2607,8 +2777,7 @@ export function PlanProjection({
 		}
 		itemDragCancelledByMultiTouch.current = false;
 		itemDragSawMultiTouchRef.current = false;
-		setItemPoint(undefined);
-		itemPointRef.current = undefined;
+		updateItemPoint(undefined);
 		itemPlacementDragRef.current = undefined;
 		pendingCanvasSelectionRef.current = undefined;
 		setDoorOpeningDrag(undefined);
@@ -2634,7 +2803,6 @@ export function PlanProjection({
 	};
 
 	const onTouchStart = (event: React.TouchEvent<SVGSVGElement>) => {
-		if (placementRotationContacts.current.size > 0) return;
 		if (event.touches.length < 2) {
 			return;
 		}
@@ -2677,7 +2845,7 @@ export function PlanProjection({
 			return;
 		}
 		pendingCanvasSelectionRef.current = undefined;
-		itemPlacementDragRef.current = undefined;
+		cancelPlacementForPinch();
 		if (itemDragRef.current || itemDragPointerIdRef.current !== undefined) {
 			cancelItemDragForMultiTouch();
 		} else {
@@ -2723,15 +2891,8 @@ export function PlanProjection({
 
 	const onTouchEnd = (event: React.TouchEvent<SVGSVGElement>) => {
 		if (
-			event.touches.length === 0 &&
-			placementRotationContacts.current.size > 0
-		) {
-			resetDirectManipulationContacts();
-			return;
-		}
-		if (
 			event.touches.length > 0 ||
-			(activeTouchCount.current < 2 && gesture.current?.kind !== "pinch")
+			(activeTouchCount.current < 2 && gesture.current?.kind !== "pinch" && !placementRotationContact.current)
 		) {
 			return;
 		}
@@ -2742,9 +2903,19 @@ export function PlanProjection({
 		activeTouchCount.current = 0;
 		pointers.current.clear();
 		gesture.current = undefined;
+		placementRotationContact.current = undefined;
+		setHasPlacementRotationContact(false);
 	};
 
 	function invalidateHostContacts(): void {
+		if (itemDragRef.current && !itemDragRef.current.moved) {
+			// Revoking an armed tap discards only that contact. A previous,
+			// interrupted move remains available at its last actual world pose.
+			itemDragRef.current = hostRetainedItemDrag.current;
+			setItemDrag(hostRetainedItemDrag.current);
+			hostRetainedItemDrag.current = undefined;
+			itemDragPointerIdRef.current = undefined;
+		}
 		hostGateRef.current.invalidateContacts();
 		if (hostEnabledRef.current && !hostGateDisposed.current) renderHostEpoch(hostGateRef.current.capture());
 		for (const id of hostContacts.current.keys()) revokedHostContacts.current.add(id);
@@ -2756,7 +2927,7 @@ export function PlanProjection({
 		splitGrabRef.current = undefined;
 		itemPlacementDragRef.current = undefined;
 		pendingCanvasSelectionRef.current = undefined;
-		placementRotationContacts.current.clear();
+		placementRotationContact.current = undefined;
 		setHasPlacementRotationContact(false);
 	}
 	function cancelHostDraft(): void {
@@ -2784,7 +2955,7 @@ export function PlanProjection({
 		let registered = true;
 		const unregister = registerTransientBoundary({
 			inspect: () => registered ? {
-				hasDraft: hostDraftState.current || !!(wallDraftRef.current || wallMoveDraftRef.current || wallSplitDraftRef.current || wallVertexMoveDraftRef.current || itemDragRef.current || itemRotationRef.current || doorOpeningDragRef.current || itemPointRef.current),
+				hasDraft: hostDraftState.current || !!(wallDraftRef.current || wallMoveDraftRef.current || wallSplitDraftRef.current || wallVertexMoveDraftRef.current || itemDragRef.current?.moved || hostRetainedItemDrag.current || itemRotationRef.current || doorOpeningDragRef.current || itemPointRef.current),
 				hasPendingCommand: hostGateRef.current.hasPending(),
 			} : { hasDraft: false, hasPendingCommand: false },
 			suspend: () => { if (!registered) return; hostGateRef.current.suspend(); hostActions.current.invalidateHostContacts(); },
@@ -2896,6 +3067,28 @@ export function PlanProjection({
 		},
 		obstacles: annotationObstacles,
 	});
+	const transformItemId = itemDrag?.moved ? itemDrag.assetInstanceId : itemRotation?.assetInstanceId;
+	const transformItem = transformItemId ? project.assetInstances.find(
+		(item) => item.assetInstanceId === transformItemId,
+	) : undefined;
+	const transformFootprint = transformItem && isFloorEditorAsset(transformItem) ? {
+		...transformItem,
+		...(itemDrag?.moved ? itemDrag.end : {}),
+		yawStep: undefined,
+		yawRadians: itemRotation?.yawRadians ?? yawRadiansForEditorFloorAsset(transformItem),
+		continuousYaw: true as const,
+	} : undefined;
+	const wallDistanceFootprint = itemPlacementPreview ?? transformFootprint;
+	const wallDistances = showItemWallDistances && !readOnly && derivedPlan && wallDistanceFootprint
+		? itemWallDistancesFor(derivedPlan.rooms, wallDistanceFootprint)
+		: [];
+	const wallDistanceBounds = {
+		x: 8,
+		y: canvasInsets.top + 16,
+		width: canvasSize.canvasWidth - 16,
+		height: canvasSize.canvasHeight - canvasInsets.top - canvasInsets.bottom - 24,
+	};
+	const leftPlacementStepRadians = exactFloorYaw ? Math.PI / 180 : -Math.PI / 4;
 	const transform = `translate(${viewport.panX} ${viewport.panY}) scale(${viewport.zoom})`;
 	const visualGridStep = visualGridStepMm();
 	const retainedHostTransform = retainedHostItemTransform();
@@ -2915,7 +3108,11 @@ export function PlanProjection({
 					// capture loss cancels contacts, otherwise a ready split survives.
 					if (
 						doorOpeningDragRef.current?.pointerId === event.pointerId ||
-						splitGrabRef.current?.pointerId === event.pointerId
+						splitGrabRef.current?.pointerId === event.pointerId ||
+						itemPlacementDragRef.current?.pointerId === event.pointerId ||
+						placementRotationContact.current?.pointerId === event.pointerId ||
+						itemRotationRef.current?.pointerId === event.pointerId ||
+						(gesture.current?.kind === "pinch" && pointers.current.has(event.pointerId))
 					)
 						onPointerCancel(event);
 				}}
@@ -2936,7 +3133,7 @@ export function PlanProjection({
 						),
 					);
 				}}
-				role="img"
+				role={keyboardItemMovement ? "group" : "img"}
 				ref={planSvgRef}
 				viewBox={`0 0 ${canvasSize.canvasWidth} ${canvasSize.canvasHeight}`}
 			>
@@ -3105,7 +3302,8 @@ export function PlanProjection({
 													offsetMm: pendingDoorOpeningMove.offsetMm,
 												}
 											: openingMovePreview?.openingId === opening.openingId
-												? { ...opening, offsetMm: openingMovePreview.offsetMm }
+												? { ...opening, offsetMm: openingMovePreview.offsetMm,
+													...(opening.kind === "Door" && openingMovePreview.swingSide ? { swingSide: openingMovePreview.swingSide } : {}) }
 												: opening;
 								const interval = wallOpeningIntervalMm(renderedOpening);
 								const pointAt = (offsetMm: number) =>
@@ -3206,7 +3404,13 @@ export function PlanProjection({
 									d={wallHitPath(startPoint, endPoint, wallHitTarget)}
 									fill="rgba(0, 0, 0, 0.001)"
 								/>
-								{openingCreationSegment ? (
+								{openingCreationSegment && showOpeningTemplates && openingCreationPreview?.kind ? (
+									<g data-testid="opening-creation-preview" className={styles.openingSymbolPreview} pointerEvents="none">
+										<OpeningPlanSymbol {...openingCreationSegment} kind={openingCreationPreview.kind}
+											swingSide={openingCreationPreview.swingSide} thickness={wall.thicknessMm * drawingScale}
+											divided={openingCreationPreview.widthMm >= DIVIDED_WINDOW_MIN_WIDTH_MM} />
+									</g>
+								) : openingCreationSegment ? (
 									<line
 										className={styles.openingCreationPreview}
 										data-testid="opening-creation-preview"
@@ -3263,6 +3467,15 @@ export function PlanProjection({
 												key={opening.openingId}
 												pointerEvents="none"
 											>
+												{showOpeningTemplates ? (
+													<g className={styles.openingSymbol} data-selected={opening.openingId === selectedOpeningId} data-collision={hasOpeningPlacementCollision}
+														pointerEvents={!readOnly && activeTool === "select" ? "stroke" : "none"}
+														data-door-opening-handle={opening.openingId} data-door-opening-wall={wall.wallSegmentId}>
+														<OpeningPlanSymbol start={openingStart} end={openingEnd} kind={opening.kind}
+															swingSide={opening.swingSide} thickness={wall.thicknessMm * drawingScale}
+															divided={opening.widthMm >= DIVIDED_WINDOW_MIN_WIDTH_MM} />
+													</g>
+												) : <>
 												<line
 													className={styles.doorOpeningCutout}
 													strokeWidth={Math.max(
@@ -3320,7 +3533,8 @@ export function PlanProjection({
 														y1={openingStart.y}
 														y2={openingEnd.y}
 													/>
-												)}{" "}
+												)}
+												</>}
 												{!readOnly && activeTool === "select" ? (
 													<g>
 														{/* biome-ignore lint/a11y/useSemanticElements: SVG handle must stay in plan coordinates; arrow keys provide keyboard movement. */}
@@ -3358,6 +3572,7 @@ export function PlanProjection({
 															cx={(openingStart.x + openingEnd.x) / 2}
 															cy={(openingStart.y + openingEnd.y) / 2}
 															r={5 / viewport.zoom}
+															data-idle={showOpeningTemplates && opening.openingId !== selectedOpeningId && !hasOpeningPlacementCollision}
 															className={`${styles.openingMoveDot} ${hasOpeningPlacementCollision ? styles.openingMoveDotInvalid : ""}`}
 															pointerEvents="none"
 														/>
@@ -3493,23 +3708,13 @@ export function PlanProjection({
 											/>
 										) : null}
 										<PlacementRotationControl
-											onContactChange={(pointerId, active) => {
-												if (hostEnabledRef.current) {
-													if (active) hostPlacementRotationEpoch.current = { pointerId, epoch: hostGateRef.current.capture(), projection: hostProjectionKey(), base: liveProjectRef.current };
-													else if (hostPlacementRotationEpoch.current?.pointerId === pointerId) hostPlacementRotationEpoch.current = undefined;
-												}
-												if (active) {
-													placementRotationContacts.current.add(pointerId);
-													setHasPlacementRotationContact(true);
-													clearLongPressPan();
-													gesture.current = undefined;
-												} else releasePlacementRotationContact(pointerId);
-											}}
 											x={center.x}
 											y={center.y}
 											zoom={viewport.zoom}
-											yawRadians={itemPlacementPreview.yawRadians}
+											yawRadians={yawRadiansFor(itemPlacementPreview)}
 											disabled={readOnly || isConfirmingItemPlacement}
+											exact={exactFloorYaw}
+											showHandle={plainLabels}
 											onChange={onItemPlacementYawChange}
 										/>
 										<g
@@ -3551,7 +3756,7 @@ export function PlanProjection({
 													x={81}
 													y={(actionHeight - actionGap * 2) / 2}
 												>
-													Подтвердить ✓
+													{plainLabels ? "Подтвердить" : "Подтвердить ✓"}
 												</text>
 											</g>
 											{/* biome-ignore lint/a11y/useSemanticElements: the SVG coordinate system needs positioned touch controls. */}
@@ -3618,10 +3823,9 @@ export function PlanProjection({
 							rotationGizmoCenter.xMm,
 							rotationGizmoCenter.zMm,
 						);
-						const gizmoRadius = Math.max(
-							24,
-							(Math.max(item.widthMm, item.depthMm) * drawingScale) / 2 + 18,
-						);
+						const gizmoRadius = plainLabels
+							? Math.max(36 / viewport.zoom, (Math.hypot(item.widthMm, item.depthMm) * drawingScale) / 2 + 24 / viewport.zoom)
+							: Math.max(24, (Math.max(item.widthMm, item.depthMm) * drawingScale) / 2 + 18);
 						const gizmoHitWidth = Math.min(32, gizmoRadius);
 						const renderedYawRadians =
 							itemRotation?.assetInstanceId === item.assetInstanceId
@@ -3634,6 +3838,8 @@ export function PlanProjection({
 						const renderedYawDegrees = -(renderedYawRadians * 180) / Math.PI;
 						const rotationBlocked = !!retainedHostTransform && (retainedHostTransform.kind !== "rotation" || retainedHostTransform.assetInstanceId !== item.assetInstanceId);
 						const moveBlocked = !!retainedHostTransform && (retainedHostTransform.kind !== "move" || retainedHostTransform.assetInstanceId !== item.assetInstanceId);
+						const keyboardSelectable = keyboardItemMovement && activeTool === "select" && !isInteractionLocked && !isWallMoveMode && !isWallSplitMode && !isWallVertexMoveMode;
+
 						const selectionFrameInset = 4 / viewport.zoom;
 						const selectionHandleRadius = 5 / viewport.zoom;
 						const selectionFrame = {
@@ -3653,6 +3859,30 @@ export function PlanProjection({
 										data-preview-collision={
 											hasPlacementCollision ? "item" : undefined
 										}
+										{...(keyboardSelectable ? {
+											role: "button",
+											"aria-label": `Выбрать предмет «${item.label}»`,
+											"aria-pressed": selected,
+											"aria-keyshortcuts": "Enter Space ArrowLeft ArrowRight ArrowUp ArrowDown",
+											tabIndex: 0,
+											onKeyDown: (event: React.KeyboardEvent<SVGRectElement>) => {
+												if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+												if (event.key === "Enter" || event.key === " ") {
+													event.preventDefault();
+													onSelectItem(item.assetInstanceId);
+													return;
+												}
+												const step = itemArrowSteps[event.key];
+												if (!selected || !step) return;
+												event.preventDefault();
+												if (readOnly || retainedHostTransform || itemDrag || itemRotation || ("locked" in item && item.locked)) return;
+												void persistItemMove({
+													assetInstanceId: item.assetInstanceId,
+													xMm: item.xMm + step.xMm,
+													zMm: item.zMm + step.zMm,
+												});
+											},
+										} : {})}
 										data-testid="schematic-item"
 										aria-disabled={moveBlocked || undefined}
 										style={moveBlocked ? { cursor: "not-allowed" } : undefined}
@@ -3730,7 +3960,7 @@ export function PlanProjection({
 										))}
 									</g>
 								) : null}
-								{selected ? (
+								{selected && (!plainLabels || (!readOnly && !("locked" in item && item.locked))) ? (
 									<g
 										className={`${styles.rotationGizmo} rotationGizmo`}
 										data-item-id={item.assetInstanceId}
@@ -3775,7 +4005,7 @@ export function PlanProjection({
 											}
 											data-rotation-handle={item.assetInstanceId}
 											pointerEvents="all"
-											r={12}
+											r={plainLabels ? 6 / viewport.zoom : 12}
 										/>
 									</g>
 								) : null}
@@ -4066,7 +4296,20 @@ export function PlanProjection({
 						: null}
 				</g>
 				<DrawingDimensions layouts={dimensionLayouts} />
+				{wallDistances.length > 0 ? (
+					<ItemWallDistanceLines
+						distances={wallDistances}
+						projectPoint={dimensionScreenPoint}
+						bounds={wallDistanceBounds}
+						obstacles={dimensionLayouts.flatMap((layout) => layout.kind === "placed" ? [layout.labelBounds] : [])}
+					/>
+				) : null}
 			</svg>
+			{wallDistances.length > 0 && !itemPlacementPreview ? (
+				<div className={styles.itemWallDistancePanel} style={{ top: canvasInsets.top + 8 }}>
+					<ItemWallDistanceValues distances={wallDistances} />
+				</div>
+			) : null}
 			{activeTool === "item" && itemDraft ? (
 				<aside
 					aria-label="Размещение предмета"
@@ -4075,12 +4318,29 @@ export function PlanProjection({
 					data-testid="item-placement-action-dock"
 				>
 					<span aria-hidden="true" className={styles.itemPlacementDockHandle} />
-					<strong
+					{plainLabels ? (
+						<SheetHeader
+							title={<span data-testid="item-placement-identity">{itemDraft.label}</span>}
+							closeLabel="Закрыть размещение предмета"
+							closeDisabled={isConfirmingItemPlacement || hasPlacementRotationContact}
+							onClose={onCloseItemPlacement ?? cancelItemPlacement}
+							protectEditorDraft={onCloseItemPlacement !== undefined}
+						/>
+					) : <strong
 						className={styles.itemPlacementIdentity}
 						data-testid="item-placement-identity"
 					>
 						{itemDraft.label}
-					</strong>
+					</strong>}
+					{itemPlacementControls}
+					{showItemWallDistances && itemPlacementPreview ? (
+						<ItemWallDistanceFields
+							distances={wallDistances}
+							disabled={readOnly || isConfirmingItemPlacement || hasPlacementRotationContact}
+							onApply={applyPlacementDistance}
+							skipBlurCommit={skipBlurCommit}
+						/>
+					) : null}
 					{itemPlacementPreview &&
 					(itemPlacementPreview.tier !== "valid" ||
 						isConfirmingItemPlacement) ? (
@@ -4095,33 +4355,47 @@ export function PlanProjection({
 							})}
 						</p>
 					) : null}
-					<div className={styles.placementRotationActions}>
+					<div
+						className={plainLabels ? rotationStyles.row : styles.placementRotationActions}
+						data-rotation-target={plainLabels ? "placement" : undefined}
+					>
 						<button
-							aria-label="Повернуть размещаемый предмет влево на 45°"
+							aria-label={exactFloorYaw ? "Повернуть размещаемый предмет влево на 1°" : "Повернуть размещаемый предмет влево на 45°"}
+							className={plainLabels ? rotationStyles.step : undefined}
 							disabled={
 								readOnly ||
 								isConfirmingItemPlacement ||
 								hasPlacementRotationContact
 							}
 							onClick={() =>
-								onItemPlacementYawChange(itemDraft.yawRadians - Math.PI / 4)
+								onItemPlacementYawChange(itemDraft.yawRadians + leftPlacementStepRadians)
 							}
 							type="button"
 						>
 							↶
 						</button>
-						<output data-testid="item-placement-angle">
+						{exactFloorYaw ? (
+							<FloorRotationAngleField
+								ariaLabel="Угол размещаемого предмета, градусы"
+								className={plainLabels ? rotationStyles.angle : undefined}
+								yawRadians={itemDraft.yawRadians}
+								disabled={readOnly || isConfirmingItemPlacement || hasPlacementRotationContact}
+								onApply={onItemPlacementYawChange}
+								skipBlurCommit={skipBlurCommit}
+							/>
+						) : <output className={plainLabels ? rotationStyles.value : undefined} data-testid="item-placement-angle">
 							{degreesForYawRadians(itemDraft.yawRadians)}°
-						</output>
+						</output>}
 						<button
-							aria-label="Повернуть размещаемый предмет вправо на 45°"
+							aria-label={exactFloorYaw ? "Повернуть размещаемый предмет вправо на 1°" : "Повернуть размещаемый предмет вправо на 45°"}
+							className={plainLabels ? rotationStyles.step : undefined}
 							disabled={
 								readOnly ||
 								isConfirmingItemPlacement ||
 								hasPlacementRotationContact
 							}
 							onClick={() =>
-								onItemPlacementYawChange(itemDraft.yawRadians + Math.PI / 4)
+								onItemPlacementYawChange(itemDraft.yawRadians - leftPlacementStepRadians)
 							}
 							type="button"
 						>
@@ -4129,16 +4403,16 @@ export function PlanProjection({
 						</button>
 					</div>
 					<div className={styles.itemPlacementDockActions}>
-						<button
+						<button data-editor-action="cancel"
 							aria-label="Отменить размещение предмета"
 							className={styles.itemPlacementCancel}
 							data-testid="item-placement-cancel"
 							onClick={cancelItemPlacement}
 							type="button"
 						>
-							Отмена
+							{plainLabels ? "Отменить" : "Отмена"}
 						</button>
-						<button
+						<button data-editor-action="confirm"
 							aria-disabled={
 								!itemPlacementPreview?.isValid ||
 								isConfirmingItemPlacement ||
@@ -4155,7 +4429,7 @@ export function PlanProjection({
 							onClick={confirmItemPlacement}
 							type="button"
 						>
-							{isConfirmingItemPlacement ? "Сохраняем…" : "Поставить"}
+							{isConfirmingItemPlacement ? "Сохраняем…" : plainLabels ? "Подтвердить" : "Поставить"}
 						</button>
 					</div>
 				</aside>
@@ -4231,19 +4505,19 @@ export function PlanProjection({
 				>
 					<strong>Черновик переноса стены</strong>
 					<div>
-						<button
+						<button data-editor-action="confirm"
 							disabled={isConfirmingWallMove}
 							onClick={() => void confirmWallMoveDraft()}
 							type="button"
 						>
-							Подтвердить перенос
+							{plainLabels ? "Подтвердить" : "Подтвердить перенос"}
 						</button>
-						<button
+						<button data-editor-action="cancel"
 							disabled={isConfirmingWallMove}
 							onClick={cancelWallMoveDraft}
 							type="button"
 						>
-							Отменить перенос
+							{plainLabels ? "Отменить" : "Отменить перенос"}
 						</button>
 					</div>
 				</aside>
@@ -4257,19 +4531,19 @@ export function PlanProjection({
 				>
 					<strong>Черновик переноса вершины</strong>
 					<div>
-						<button
+						<button data-editor-action="confirm"
 							disabled={isConfirmingWallVertexMove}
 							onClick={() => void confirmWallVertexMoveDraft()}
 							type="button"
 						>
-							Подтвердить перенос вершины
+							{plainLabels ? "Подтвердить" : "Подтвердить перенос вершины"}
 						</button>
-						<button
+						<button data-editor-action="cancel"
 							disabled={isConfirmingWallVertexMove}
 							onClick={cancelWallVertexMoveDraft}
 							type="button"
 						>
-							Отменить перенос вершины
+							{plainLabels ? "Отменить" : "Отменить перенос вершины"}
 						</button>
 					</div>
 				</aside>
@@ -4286,19 +4560,19 @@ export function PlanProjection({
 						<span role="alert">Выберите точку внутри стены.</span>
 					) : null}
 					<div>
-						<button
+						<button data-editor-action="confirm"
 							disabled={isConfirmingWallSplit || splitUnavailable}
 							onClick={() => void confirmWallSplitDraft()}
 							type="button"
 						>
-							Подтвердить разделение
+							{plainLabels ? "Подтвердить" : "Подтвердить разделение"}
 						</button>
-						<button
+						<button data-editor-action="cancel"
 							disabled={isConfirmingWallSplit}
 							onClick={cancelWallSplitDraft}
 							type="button"
 						>
-							Отменить разделение
+							{plainLabels ? "Отменить" : "Отменить разделение"}
 						</button>
 					</div>
 				</aside>
@@ -4346,11 +4620,12 @@ export function PlanProjection({
 						</>
 					) : null}
 					<div>
-						<button
+						<button data-editor-action="confirm"
 							disabled={isResolvingWallSplitHostConflict}
 							onClick={() => void resolveWallSplitHostConflict()}
 							type="button"
 						>
+							{plainLabels ? "Подтвердить" : <>
 							Разделить стену и удалить{" "}
 							{wallSplitHostConflict.openingIds.length > 0 ? (
 								<>
@@ -4372,13 +4647,14 @@ export function PlanProjection({
 										: "настенных предмета"}
 								</>
 							) : null}
+							</>}
 						</button>
-						<button
+						<button data-editor-action="cancel"
 							disabled={isResolvingWallSplitHostConflict}
 							onClick={cancelWallSplitDraft}
 							type="button"
 						>
-							Отмена
+							{plainLabels ? "Отменить" : "Отмена"}
 						</button>
 					</div>
 				</aside>
@@ -4406,19 +4682,19 @@ export function PlanProjection({
 						</span>
 					) : null}
 					<div>
-						<button
+						<button data-editor-action="confirm"
 							disabled={!wallDraftIsConfirmable}
 							onClick={() => void confirmWallDraft()}
 							type="button"
 						>
-							{isConfirmingWallDraft ? "Добавляем стену…" : "Подтвердить стену"}
+							{isConfirmingWallDraft ? "Добавляем стену…" : plainLabels ? "Подтвердить" : "Подтвердить стену"}
 						</button>
-						<button
+						<button data-editor-action="cancel"
 							disabled={isConfirmingWallDraft}
 							onClick={clearWallDraft}
 							type="button"
 						>
-							Отменить стену
+							{plainLabels ? "Отменить" : "Отменить стену"}
 						</button>
 					</div>
 				</aside>

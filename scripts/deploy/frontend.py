@@ -3,6 +3,7 @@
 import argparse
 import fcntl
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -10,14 +11,31 @@ from pathlib import Path
 import re
 import subprocess
 import signal
+import socket
 import tarfile
 import tempfile
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-CONTROLS = {"/index.html", "/release-manifest.json", "/release-set.json", "/sw.js", "/manifest.webmanifest"}
+CONTROLS = {
+    "/index.html", "/release-manifest.json", "/release-set.json", "/sw.js", "/manifest.webmanifest",
+    "/legal/privacy-policy.html", "/legal/license-agreement.html", "/legal/analytics-consent.html",
+}
 ORIGINS = {"web": "https://www.domiknote.ru", "telegram": "https://domiknote.ru"}
+# Historical release pools and immutable catalog versions keep their exact bytes.
+# These URLs must remain closed even when an older release is retained.
+WITHDRAWN_CATALOG_FILES = {
+    "armchair-kursi-sofa.glb": "b4a730f48ae1d8ec04c94ef99534002d381afa258144464b4df8892889f34eed",
+    "armchair-kursi-sofa.png": "8509df74641cd762851eff7ed493c1c931efd986752fe13d83ce9508ec311ec4",
+    "wooden-cabinet.glb": "9dd295594623edf797cee3d4da1818802d723b404df51687d6ca1796f51b4608",
+    "wooden-cabinet.png": "bded617fc7d3464f9102883d9da1d06ea76b0d76a230ae77feeeb78e9b8e83da",
+    "zen-dining-chair.glb": "289c4d597eb5f38e7260afad2499d6e07a174261d613e8db28f260d40a0149e0",
+    "zen-dining-chair.png": "11d2e14bea78f4e5961f5e02c3d24b80a3c4b4899ed55ac77d92d10af36e4e47",
+}
+WITHDRAWN_CATALOG_PATHS = {"/catalog/" + name for name in WITHDRAWN_CATALOG_FILES} | {
+    "/catalog-api/v1/resources/sha256/" + digest for digest in WITHDRAWN_CATALOG_FILES.values()
+}
 MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES = 4096, 128 * 1024 * 1024, 1024 * 1024 * 1024
 
 
@@ -157,20 +175,69 @@ def extract_release(archive_path, destination):
     return inventory
 
 
+def aggregate_stats_location(path):
+    """Forward only an empty signal with freshly generated transport headers."""
+    lines = [
+        f"    location = {path} {{",
+        '        if ($request_method != POST) { return 405; }',
+        '        if ($http_x_interiors_stats != "1") { return 403; }',
+        '        if ($http_origin !~ "^(https://domiknote[.]ru|null)?$") { return 403; }',
+        '        if ($http_transfer_encoding != "") { return 400; }',
+        '        client_max_body_size 64;',
+        '        client_body_buffer_size 1k;',
+        '        proxy_pass_request_headers off;',
+        '        proxy_set_header Host localhost;',
+        '        proxy_set_header Connection close;',
+        '        proxy_next_upstream off;',
+        '        proxy_connect_timeout 2s;',
+        '        proxy_read_timeout 5s;',
+        '        proxy_redirect off;',
+        '        proxy_hide_header Set-Cookie;',
+        '        proxy_hide_header Cache-Control;',
+    ]
+    lines.extend([
+        '        if ($content_length !~ "^0?$") { return 400; }',
+        '        proxy_pass_request_body off;',
+        '        proxy_set_header Content-Length 0;',
+    ])
+    lines.extend([
+        f"        proxy_pass http://unix:/run/interiors-analytics/collect.sock:{path};",
+        "    }",
+    ])
+    return lines
+
+
 def nginx_site(root, paths):
     """Preserve the accepted HTTPS, ACME, read-only catalog and exact-path policy."""
     root = str(root)
     require(re.fullmatch(r"/[A-Za-z0-9_./-]+", root), "Unsafe frontend root")
     lines = ["server {", "    listen 80;", "    listen [::]:80;", "    server_name domiknote.ru www.domiknote.ru;", "    location ^~ /.well-known/acme-challenge/ {", "        root /var/lib/letsencrypt;", "        default_type text/plain;", "        try_files $uri =404;", "    }", "    location / { return 301 https://$host$request_uri; }", "}"]
     for target, origin in ORIGINS.items():
-        lines.extend(["server {", "    listen 443 ssl;", "    listen [::]:443 ssl;", "    ssl_certificate /etc/letsencrypt/live/interiors-domiknote/fullchain.pem;", "    ssl_certificate_key /etc/letsencrypt/live/interiors-domiknote/privkey.pem;", "    ssl_protocols TLSv1.2 TLSv1.3;", "    server_name " + origin.split("//")[1] + ";", "    access_log off;", "    error_log /dev/null crit;", "    if ($request_method !~ ^(GET|HEAD)$) { return 405; }", "    if ($invalid_frontend_path) { return 404; }", "    add_header X-Content-Type-Options nosniff always;", "    add_header Referrer-Policy no-referrer always;", "    add_header Cache-Control no-store always;", "    include /etc/nginx/snippets/interiors-catalog-readonly.conf;"])
-        for path in ["/"] + sorted(paths[target]):
+        lines.extend(["server {", "    listen 443 ssl;", "    listen [::]:443 ssl;", "    ssl_certificate /etc/letsencrypt/live/interiors-domiknote/fullchain.pem;", "    ssl_certificate_key /etc/letsencrypt/live/interiors-domiknote/privkey.pem;", "    ssl_protocols TLSv1.2 TLSv1.3;", "    server_name " + origin.split("//")[1] + ";", "    access_log off;", "    error_log /dev/null crit;"])
+        if target == "telegram":
+            # The complete original request target excludes query strings and URI aliases on writes.
+            lines.extend([
+                '    set $frontend_method_path "$request_method:$request_uri";',
+                '    if ($frontend_method_path !~ "^(GET:|HEAD:|POST:/stats/tma-(open|repeat)-v2$)") { return 405; }',
+            ])
+        else:
+            lines.append("    if ($request_method !~ ^(GET|HEAD)$) { return 405; }")
+        lines.extend(["    if ($invalid_frontend_path) { return 404; }", "    add_header X-Content-Type-Options nosniff always;", "    add_header Referrer-Policy no-referrer always;", "    add_header Cache-Control no-store always;", "    include /etc/nginx/snippets/interiors-catalog-readonly.conf;"])
+        if target == "telegram":
+            for path in ("/stats/tma-open-v2", "/stats/tma-repeat-v2"):
+                lines.extend(aggregate_stats_location(path))
+        for path in sorted(WITHDRAWN_CATALOG_PATHS):
+            lines.append("    location = " + path + " { return 410; }")
+        for path in ["/"] + sorted(paths[target] - WITHDRAWN_CATALOG_PATHS):
             if path != "/":
                 safe_path(path[1:])
             control = path == "/" or path in CONTROLS
             location_root = root + ("/current/" if control else "/retained/") + target
             cache = "no-store" if control else "public, max-age=31536000, immutable"
-            lines.extend(["    location = " + path + " {", "        root " + location_root + ";", "        try_files " + ("/index.html" if path == "/" else path) + " =404;", "        etag " + ("off" if control else "on") + ";", "        if_modified_since " + ("off" if control else "exact") + ";", "        add_header X-Content-Type-Options nosniff always;", "        add_header Referrer-Policy no-referrer always;", '        add_header Cache-Control "' + cache + '" always;', "    }"])
+            lines.extend(["    location = " + path + " {", "        root " + location_root + ";", "        try_files " + ("/index.html" if path == "/" else path) + " =404;", "        etag " + ("off" if control else "on") + ";", "        if_modified_since " + ("off" if control else "exact") + ";", "        add_header X-Content-Type-Options nosniff always;", "        add_header Referrer-Policy no-referrer always;", '        add_header Cache-Control "' + cache + '" always;'])
+            if target == "telegram" and path in {"/", "/index.html"}:
+                lines.append("        add_header Content-Security-Policy \"frame-src 'none'\" always;")
+            lines.append("    }")
         lines.extend(["    location / { return 404; }", "}"])
     return ("\n".join(lines) + "\n").encode()
 
@@ -204,6 +271,20 @@ def run_command(arguments):
     subprocess.run(arguments, check=True, timeout=60)
 
 
+def verify_collector_ready(socket_path="/run/interiors-analytics/collect.sock"):
+    """Check compatibility on the private socket without creating a count or sending a report."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        client.settimeout(4)
+        try:
+            client.connect(socket_path)
+            client.sendall(b"GET /health/aggregate-v2 HTTP/1.0\r\nHost: localhost\r\n\r\n")
+            with http.client.HTTPResponse(client) as response:
+                response.begin()
+                require(response.status == 204, "Install and configure the aggregate-v2 collector before release")
+        except (OSError, http.client.HTTPException) as error:
+            raise ValueError("The aggregate-v2 collector is unavailable on its private socket") from error
+
+
 def activate_release(archive, root, site, command=run_command, health=None, expected_commit=None, ready=None,
                      catalog_receipt=None):
     root, site = Path(root).absolute(), Path(site).absolute()
@@ -218,6 +299,7 @@ def activate_release(archive, root, site, command=run_command, health=None, expe
             staging = Path(work) / "release"
             inventory = extract_release(archive, staging)
             require(expected_commit is None or inventory["commit"] == expected_commit, "Archive source commit mismatch")
+            verify_collector_ready()
             retained = root / "retained"
             require(not retained.is_symlink(), "Linked retained pool")
             paths = {}

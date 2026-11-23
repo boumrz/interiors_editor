@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createHash} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {rspack} from '@rspack/core';
 import {sealTelegramRelease,telegramPublicConfiguration,TelegramReleasePlugin} from './telegram-release-build.mjs';
+
+test('the GitHub production Telegram build enables exact floor rotation', () => {
+  const workflow = readFileSync(new URL('../../../.github/workflows/verify.yml', import.meta.url), 'utf8');
+  const telegramBuild = workflow
+    .split(/\n(?= {6}- )/)
+    .find(step => step.includes('--config rspack.telegram.config.mjs'));
+  assert.ok(telegramBuild, 'Expected the production Telegram build step');
+  assert.match(telegramBuild, /^ +INTERIORS_EXACT_FLOOR_YAW: ['"]1['"]$/m);
+});
 const entry='/telegram.1234abcd.js';
 const template=`<html><script src="${entry}"></script><script id="telegram-loaded-release" type="application/json">__TELEGRAM_RELEASE_CAPSULE__</script><script id="telegram-deployment" type="application/json">__TELEGRAM_DEPLOYMENT__</script>__TELEGRAM_FALLBACK_LINKS__</html>`;
 const assets=new Map([[entry,Buffer.from('entry')],['/lazy.a.js',Buffer.from([1,2,3])]]);

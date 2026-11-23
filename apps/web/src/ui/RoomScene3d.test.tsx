@@ -28,6 +28,37 @@ const scene: RectangularRoomWebGlScene = {
 };
 
 describe("RoomScene3d", () => {
+	it("provides the scene material controls for a selected wall item", () => {
+		const markup = renderToStaticMarkup(
+			<RoomScene3d
+				scene={{
+					...scene, items: [{
+						assetAnchor: "wall", assetInstanceId: "wall-sconce",
+						centerXM: 1, centerYM: 1.6, centerZM: 1,
+						depthM: 0.2, heightM: 0.2, widthM: 0.3,
+					}],
+				}}
+				selectedItemId="wall-sconce"
+				selectedItemControls={<button type="button">Цвет подсветки</button>}
+			/>,
+		);
+		expect(markup).toContain("Цвет подсветки");
+		expect(markup).not.toContain('data-testid="three-dimensional-rotation-gizmo"');
+	});
+
+	it("restores a chosen placement pose when opening the 3D draft", () => {
+		const markup = renderToStaticMarkup(
+			<RoomScene3d
+				scene={scene}
+				itemPlacementDraft={{ color: "#123456", depthMm: 500, heightMm: 700, label: "Стул", widthMm: 500 }}
+				initialItemPlacementPoint={{ xM: 1.5, zM: 1.5 }}
+				assessItemPlacement={() => true}
+			/>,
+		);
+		expect(markup).toContain('data-x-m="1.500"');
+		expect(markup).toContain('data-placement-valid="true"');
+	});
+
 	it("reports a verified GLB as visible only after its local runtime has decoded", () => {
 		expect(
 			customGlbPresentationFor({
@@ -142,6 +173,16 @@ describe("RoomScene3d", () => {
 		expect(markup).not.toContain("Коснитесь пола");
 	});
 
+	it.each([true, false])("uses the shared plain placement actions only when requested (%s)", plainLabels => {
+		const markup = renderToStaticMarkup(<RoomScene3d
+			plainLabels={plainLabels}
+			itemPlacementDraft={{ color: "#123456", depthMm: 500, heightMm: 700, label: "Стул", widthMm: 500 }}
+			scene={scene}
+		/>);
+		expect(markup).toContain(`>${plainLabels ? "Подтвердить" : "Поставить"}</button>`);
+		expect(markup).toContain(`>${plainLabels ? "Отменить" : "Отмена"}</button>`);
+	});
+
 	it("offers the shared draft angle and rotation steps before choosing a floor point", () => {
 		const markup = renderToStaticMarkup(
 			<RoomScene3d
@@ -165,6 +206,18 @@ describe("RoomScene3d", () => {
 		expect(markup).not.toContain('data-testid="three-dimensional-rotation-dome"');
 	});
 
+	it("offers a numeric exact angle in the 3D placement controls", () => {
+		const markup = renderToStaticMarkup(
+			<RoomScene3d
+				exactFloorYaw
+				itemPlacementDraft={{ color: "#123456", depthMm: 500, heightMm: 700, label: "Стул", widthMm: 500, yawRadians: 37.5 * Math.PI / 180 }}
+				onItemPlacementYawChange={() => undefined}
+				scene={scene}
+			/>,
+		);
+		expect(markup).toContain('inputMode="decimal"');
+		expect(markup).toMatch(/value="37[.,]5"/);
+	});
 	it("uses the same Russian item-count form as the plan for a furnished scene", () => {
 		const markup = renderToStaticMarkup(
 			<RoomScene3d

@@ -272,7 +272,7 @@ describe("addWallSegment", () => {
 	});
 
 	it.each([1, 100])(
-		"rejects an exact contact %i mm from an endpoint of a 100-mm Wall",
+		"retains an exact contact %i mm from an endpoint of a 100-mm Wall",
 		(contactXMm) => {
 			expect(
 				addWallSegment(
@@ -297,11 +297,14 @@ describe("addWallSegment", () => {
 					},
 					ids("v-start", "v-contact", "v-end", "split", "new-1", "new-2"),
 				),
-			).toEqual({ kind: "rejected", reasonCode: "TOO_SHORT_WALL" });
+			).toEqual(expect.objectContaining({ kind: "accepted", graph: expect.objectContaining({
+				wallSegments: expect.arrayContaining([{ wallSegmentId: "horizontal", startVertexId: "a", endVertexId: "v-contact", thicknessMm: 100 }]),
+				vertices: expect.arrayContaining([{ vertexId: "v-contact", xMm: contactXMm, zMm: 0 }]),
+			}) }));
 		},
 	);
 
-	it("rejects a candidate contact that leaves a piece equal to Wall thickness", () => {
+	it("retains a candidate contact piece equal to Wall thickness", () => {
 		expect(
 			addWallSegment(
 				{
@@ -323,9 +326,11 @@ describe("addWallSegment", () => {
 					start: { xMm: 500, zMm: -100 },
 					thicknessMm: 100,
 				},
-				idsThatMustNotAllocate(),
+				ids("v-start", "v-contact", "v-end", "split", "new-1", "new-2"),
 			),
-		).toEqual({ kind: "rejected", reasonCode: "TOO_SHORT_WALL" });
+		).toEqual(expect.objectContaining({ kind: "accepted", graph: expect.objectContaining({
+			wallSegments: expect.arrayContaining([{ wallSegmentId: "new-1", startVertexId: "v-start", endVertexId: "v-contact", thicknessMm: 100 }]),
+		}) }));
 	});
 
 	it("accepts the adjacent exact contact once every resulting piece exceeds Wall thickness", () => {

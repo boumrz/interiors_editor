@@ -24,7 +24,11 @@ import type {
 type StartupState = { readonly kind: "checking" } | ReleaseStartupOutcome;
 
 export type EditorAppProps = {
+	readonly onOpenSettings?: (restoreFocus?: HTMLElement) => void;
 	readonly diagnosticDetails?: ReactNode;
+	readonly projectsSupplement?: ReactNode;
+	readonly localGreyboxCatalog?: boolean;
+	readonly exactFloorYaw?: boolean;
 	readonly readonlyContent?: ReactNode;
 	readonly readonlyDetails?: ReactNode;
 	readonly readonlyRecoveryDetails?: ReactNode;
@@ -91,6 +95,10 @@ export function ReleaseRecoveryScreen({
 
 export function EditorApp({
 	diagnosticDetails,
+	projectsSupplement,
+	onOpenSettings,
+	localGreyboxCatalog,
+	exactFloorYaw,
 	readonlyContent,
 	readonlyDetails,
 	readonlyRecoveryDetails,
@@ -144,19 +152,24 @@ export function EditorApp({
 			? startup.kind === "read-only/exportable"
 			: !writableSourceAdmitted;
 	if (readOnly) {
-		return (
-			readonlyContent ?? (
+		return (<>
+			{onOpenSettings && <button type="button" onClick={(event) => onOpenSettings(event.currentTarget)}>Настройки</button>}
+			{readonlyContent ?? (
 				<ReleaseRecoveryScreen
 					recovery={
 						startup.kind === "read-only/exportable" ? startup.recovery : {}
 					}
 				/>
-			)
-		);
+			)}
+		</>);
 	}
 	return (
 		<AppShell
 			diagnosticDetails={diagnosticDetails}
+			projectsSupplement={projectsSupplement}
+			onOpenSettings={onOpenSettings}
+			localGreyboxCatalog={localGreyboxCatalog}
+			exactFloorYaw={exactFloorYaw}
 			readonlyDetails={readonlyDetails}
 			readonlyRecoveryDetails={readonlyRecoveryDetails}
 			readonlyStorageSources={readonlyStorageSources}

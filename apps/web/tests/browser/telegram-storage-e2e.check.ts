@@ -3,6 +3,112 @@ import type {} from "./telegram-storage-harness";
 
 const scopeA = `tma-v1-${"a".repeat(64)}`;
 
+test("AD-35: v2 remains writable in B, C upgrades and revokes prior handles, and B can resume on v3", async ({ page }) => {
+	await page.goto("/");
+	await page.evaluate(() => {
+		window.__telegramScopeHarness.create("old", "a");
+		window.__telegramScopeHarness.create("compatible", "a", "supported", "compatible");
+		window.__telegramScopeHarness.create("exact", "a", "supported", "exact");
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("old", "attempt"))).toMatchObject({ kind: "reserved" });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.genericMarker("compatible", "readwrite", "preserve"))).toMatchObject({ kind: "completed" });
+	const initial = await page.evaluate(() => window.__telegramScopeHarness.schema("a"));
+	expect(initial.version).toBe(2);
+	expect(await page.evaluate(() => window.__telegramScopeHarness.storageVersion("compatible"))).toBe(2);
+	const metadata = await page.evaluate(() => window.__telegramScopeHarness.records("a"));
+
+	expect(await page.evaluate(() => window.__telegramScopeHarness.genericMarker("exact", "readonly"))).toMatchObject({ kind: "completed", result: { row: { value: "preserve" } } });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.schema("a"))).toEqual({ ...initial, version: 3 });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.storageVersion("exact"))).toBe(3);
+	expect(await page.evaluate(() => window.__telegramScopeHarness.records("a"))).toEqual(metadata);
+	for (const name of ["old", "compatible"]) {
+		expect(await page.evaluate(name => window.__telegramScopeHarness.reserve(name, "attempt"), name)).toMatchObject({ kind: "failed", message: "Telegram session is closed" });
+	}
+	await page.evaluate(() => {
+		window.__telegramScopeHarness.create("old-reopened", "a");
+		window.__telegramScopeHarness.create("rollback", "a", "supported", "compatible");
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("old-reopened", "attempt"))).toMatchObject({ kind: "failed" });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.genericMarker("rollback", "readonly"))).toMatchObject({ kind: "completed", result: { row: { value: "preserve" } } });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("rollback", "attempt"))).toEqual({ kind: "reserved", id: `tma-v1:${scopeA}:attempt:2` });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.storageVersion("rollback"))).toBe(3);
+	expect(await page.evaluate(() => window.__telegramScopeHarness.schema("a"))).toEqual({ ...initial, version: 3 });
+});
+
+test("AD-35: a blocked upgrade cannot publish or upgrade after the old connection closes", async ({ page }) => {
+	await page.goto("/");
+	await page.evaluate(() => window.__telegramScopeHarness.create("old", "a"));
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("old", "attempt"))).toMatchObject({ kind: "reserved" });
+	const previous = await page.evaluate(() => window.__telegramScopeHarness.records("a"));
+	await page.evaluate(async () => {
+		await window.__telegramScopeHarness.holdNativeConnection("a");
+		window.__telegramScopeHarness.create("exact", "a", "supported", "exact");
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("exact", "attempt"))).toMatchObject({ kind: "failed", message: "Telegram storage upgrade is blocked" });
+	await page.evaluate(async () => {
+		window.__telegramScopeHarness.releaseNativeConnection("a");
+		await window.__telegramScopeHarness.settleOpens();
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.schema("a"))).toMatchObject({ version: 2 });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.records("a"))).toEqual(previous);
+});
+
+test("AD-35: the v3 rollback open never creates a database when the previous database disappears", async ({ page }) => {
+	await page.goto("/");
+	await page.evaluate(() => window.__telegramScopeHarness.create("exact", "a", "supported", "exact"));
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("exact", "attempt"))).toMatchObject({ kind: "reserved" });
+	await page.evaluate(async () => {
+		await window.__telegramScopeHarness.close("exact");
+		window.__telegramScopeHarness.create("rollback", "a", "delete-before-rollback-open", "compatible");
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("rollback", "attempt"))).toMatchObject({ kind: "failed" });
+	await page.evaluate(() => window.__telegramScopeHarness.settleOpens());
+	expect(await page.evaluate(() => indexedDB.databases())).toEqual([]);
+});
+
+test("AD-35: refusing a stale metadata upgrade preserves v2 and unknown v4 refuses all access", async ({ page }) => {
+	await page.goto("/");
+	await page.evaluate(() => {
+		window.__telegramScopeHarness.create("old", "a");
+		window.__telegramScopeHarness.create("exact", "a", "supported", "exact");
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("old", "attempt"))).toMatchObject({ kind: "reserved" });
+	const healthy = await page.evaluate(() => window.__telegramScopeHarness.records("a"));
+	await page.evaluate(() => window.__telegramScopeHarness.edit("a", { key: "counter", lastReserved: "corrupt" }));
+	const corrupt = await page.evaluate(() => window.__telegramScopeHarness.records("a"));
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("exact", "attempt"))).toMatchObject({ kind: "failed" });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.schema("a"))).toMatchObject({ version: 2 });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.records("a"))).toEqual(corrupt);
+
+	await page.evaluate(async healthy => {
+		await window.__telegramScopeHarness.close("exact");
+		await window.__telegramScopeHarness.replaceMetadata("a", healthy);
+		await window.__telegramScopeHarness.upgrade("a", 4);
+		window.__telegramScopeHarness.create("compatible", "a", "supported", "compatible");
+		window.__telegramScopeHarness.create("exact", "a", "supported", "exact");
+	}, healthy);
+	for (const name of ["compatible", "exact"]) {
+		expect(await page.evaluate(name => window.__telegramScopeHarness.reserve(name, "lease"), name)).toMatchObject({ kind: "failed" });
+	}
+	expect(await page.evaluate(() => window.__telegramScopeHarness.readDirectory("a", true))).toEqual({ kind: "denied", revoked: true });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.schema("a"))).toMatchObject({ version: 4 });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.records("a"))).toEqual(healthy);
+});
+
+test("AD-35: opted-in readonly source lists native v3 inventory without changing records", async ({ page }) => {
+	await page.goto("/");
+	await page.evaluate(() => window.__telegramProjectHarness.create("published", "a", "owner"));
+	const published = await page.evaluate(() => window.__telegramProjectHarness.createProject("published", "Ready for rollback"));
+	expect(published.kind).toBe("durable");
+	const before = await page.evaluate(() => window.__telegramScopeHarness.rows("a", "revisions"));
+	const expected = { kind: "read", directory: { kind: "populated", projects: [{ name: "Ready for rollback" }] } };
+	expect(await page.evaluate(() => window.__telegramScopeHarness.readDirectory("a", true))).toMatchObject(expected);
+	await page.evaluate(() => window.__telegramScopeHarness.upgrade("a"));
+	expect(await page.evaluate(() => window.__telegramScopeHarness.readDirectory("a", false))).toEqual({ kind: "denied", revoked: true });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.readDirectory("a", true))).toMatchObject(expected);
+	expect(await page.evaluate(() => window.__telegramScopeHarness.rows("a", "revisions"))).toEqual(before);
+});
+
 test("TMA-STORAGE-27: generic transactions return their committed result and abort successful writes on callback failure", async ({ page }) => {
 	await page.goto("/");
 	await page.evaluate(() => window.__telegramScopeHarness.create("generic", "a"));

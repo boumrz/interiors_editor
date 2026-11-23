@@ -8,7 +8,10 @@ Push в `main` запускает `.github/workflows/deploy.yml`. GitHub Actions
 текущую публикацию каталога и действующий backend.
 
 Каждый выпуск проверяет ввод дробного угла и его сохранение при восстановлении
-резервной копии. Production-сборка использует `INTERIORS_EXACT_FLOOR_YAW=1`
+резервной копии. Проверки перед публикацией также охватывают подписанный запуск
+и доставку модулей для уже открытого клиента. Полный набор сценариев интерфейса
+остаётся в отдельном workflow `.github/workflows/telegram-quality.yml`.
+Production-сборка использует `INTERIORS_EXACT_FLOOR_YAW=1`
 по AD-35. Она выполняется на GitHub runner с закреплёнными Node `24.19.0`
 и pnpm `11.20.0`. Переменные `INTERIORS_TELEGRAM_BOT_ID`,
 `INTERIORS_TELEGRAM_ENVIRONMENT`, `INTERIORS_TELEGRAM_LINK` и

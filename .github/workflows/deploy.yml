@@ -61,10 +61,10 @@ jobs:
         working-directory: apps/web
         env:
           INTERIORS_EXACT_FLOOR_YAW: '1'
-        run: pnpm exec node scripts/run-telegram-entry.mjs --grep 'TMA-'
+        run: pnpm exec node scripts/run-telegram-entry.mjs --grep 'TMA-(ENTRY-[0-9]{2}|ITEM-FLUSH-01):'
       - name: Verify the scoped Telegram editor and exact project transfer
         working-directory: apps/web
-        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-'
+        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-(EXACT-YAW|EXACT-TRANSFER|UI-PLAN-RING):'
       - name: Build the configured Telegram production target
         working-directory: apps/web
         env:

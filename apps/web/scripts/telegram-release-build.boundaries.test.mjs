@@ -17,8 +17,15 @@ test('main validates and packages the exact Telegram target', () => {
     .find(step => step.includes('--config rspack.telegram.config.mjs'));
   assert.ok(telegramBuild, 'Expected the production Telegram build step');
   assert.match(telegramBuild, /^ +INTERIORS_EXACT_FLOOR_YAW: ['"]1['"]$/m);
-  assert.match(productionWorkflow, /run-telegram-entry\.mjs/);
-  assert.match(productionWorkflow, /run-telegram-runtime-ui\.mjs --grep 'TMA-'/);
+  const signedProof = productionWorkflow
+    .split(/\n(?= {6}- )/)
+    .find(step => step.includes('run-telegram-entry.mjs'));
+  assert.ok(signedProof, 'Expected the signed Telegram release proof');
+  assert.match(signedProof, /^ +INTERIORS_EXACT_FLOOR_YAW: ['"]1['"]$/m);
+  assert.ok(signedProof.includes("--grep 'TMA-(ENTRY-[0-9]{2}|ITEM-FLUSH-01):'"));
+  assert.ok(productionWorkflow.includes(
+    "run-telegram-runtime-ui.mjs --grep 'TMA-(EXACT-YAW|EXACT-TRANSFER|UI-PLAN-RING):'",
+  ));
   const legalProof = productionWorkflow
     .split(/\n(?= {6}- )/)
     .filter(step => step.includes('scripts/legal-document-delivery.test.mjs'));

@@ -57,7 +57,9 @@ and the first production workflow run supply implementation evidence.
 ## Verification
 
 - Run the focused deployment tests and GitHub Actions workflow validation.
-- Run signed Telegram entry checks with `INTERIORS_EXACT_FLOOR_YAW=1` and
-  scoped editor checks with the existing `TMA-` case filter.
+- Run the signed Telegram launch, retained-release and exact wall placement
+  checks with `INTERIORS_EXACT_FLOOR_YAW=1`. The scoped editor checks cover
+  exact rotation, the rotation handle and transfer. The existing Telegram
+  quality workflow retains the wider visual scenarios.
 - Compare the active Telegram build and receipt to the successful push run.
   Compare the Web inventory and catalog publication to the before snapshot.

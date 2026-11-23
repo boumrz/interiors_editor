@@ -148,7 +148,7 @@ test("the ordinary build computes the form digest and supports independent early
 });
 test("the ordinary packaging job uses default daily totals without retired fixture overrides", async () => {
 	const workflow = await readFile(
-		new URL("../../../.github/workflows/verify.yml", import.meta.url),
+		new URL("../../../.github/workflows/deploy.yml", import.meta.url),
 		"utf8",
 	);
 	const job = workflow

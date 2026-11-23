@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import signal
 import socket
@@ -37,6 +38,8 @@ WITHDRAWN_CATALOG_PATHS = {"/catalog/" + name for name in WITHDRAWN_CATALOG_FILE
     "/catalog-api/v1/resources/sha256/" + digest for digest in WITHDRAWN_CATALOG_FILES.values()
 }
 MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES = 4096, 128 * 1024 * 1024, 1024 * 1024 * 1024
+FRONTEND_ROOT = Path("/opt/interiors-editor/frontend")
+FRONTEND_SITE = Path("/etc/nginx/sites-available/interiors-editor.conf")
 
 
 def require(condition, message):
@@ -105,11 +108,18 @@ def validate_target(directory, target, rows):
 
 
 def package_release(web, telegram, output, commit):
+    return _package_release({"web": Path(web), "telegram": Path(telegram)}, output, commit)
+
+
+def package_telegram_release(telegram, output, commit):
+    return _package_release({"telegram": Path(telegram)}, output, commit)
+
+
+def _package_release(directories, output, commit):
     require(re.fullmatch(r"[a-f0-9]{40}", commit), "Expected full Git commit SHA")
-    directories = {"web": Path(web), "telegram": Path(telegram)}
     rows = {target: file_rows(directory) for target, directory in directories.items()}
     builds = {target: validate_target(directory, target, rows[target]) for target, directory in directories.items()}
-    inventory = {"schemaVersion": 1, "commit": commit, "release": builds["web"] + "--" + builds["telegram"], "targets": rows}
+    inventory = {"schemaVersion": 1, "commit": commit, "release": "--".join(builds.values()), "targets": rows}
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(output, "w:gz") as archive:
@@ -129,6 +139,14 @@ def package_release(web, telegram, output, commit):
 
 
 def extract_release(archive_path, destination):
+    return _extract_release(archive_path, destination, ("web", "telegram"))
+
+
+def extract_telegram_release(archive_path, destination):
+    return _extract_release(archive_path, destination, ("telegram",))
+
+
+def _extract_release(archive_path, destination, targets):
     """Inspect every header before writing anything; never use extractall()."""
     destination = Path(destination)
     require(not destination.exists(), "Extraction target already exists")
@@ -138,20 +156,23 @@ def extract_release(archive_path, destination):
         for member in archive:
             safe_path(member.name)
             require(member.isfile() and member.name not in members, "Archive contains link, special file or duplicate")
-            require(member.name == "inventory.json" or member.name.split("/", 1)[0] in ("web", "telegram"), "Unknown archive target")
+            require(member.name == "inventory.json" or member.name.split("/", 1)[0] in targets, "Unknown archive target")
             total += member.size
             require(0 <= member.size <= MAX_FILE_BYTES and total <= MAX_TOTAL_BYTES and len(members) < MAX_FILES, "Archive exceeds deployment limits")
             members[member.name] = member
         require("inventory.json" in members and members["inventory.json"].size <= 4 * 1024 * 1024, "Missing or excessive inventory")
         inventory = json.loads(archive.extractfile(members["inventory.json"]).read())
-        require(set(inventory) == {"schemaVersion", "commit", "release", "targets"} and inventory["schemaVersion"] == 1, "Unknown inventory schema")
+        require(isinstance(inventory, dict) and set(inventory) == {"schemaVersion", "commit", "release", "targets"}
+                and type(inventory["schemaVersion"]) is int and inventory["schemaVersion"] == 1, "Unknown inventory schema")
         require(isinstance(inventory["commit"], str) and re.fullmatch(r"[a-f0-9]{40}", inventory["commit"]), "Invalid source commit")
-        require(set(inventory["targets"]) == {"web", "telegram"}, "Missing separate build targets")
+        require(isinstance(inventory["targets"], dict) and set(inventory["targets"]) == set(targets),
+                "Archive targets do not match the deployment scope")
         expected = {"inventory.json"}
         for target, rows in inventory["targets"].items():
             require(isinstance(rows, list) and rows, "Empty inventory target")
             for row in rows:
-                require(set(row) == {"path", "byteLength", "sha256"} and isinstance(row["path"], str) and row["path"].startswith("/"), "Invalid descriptor")
+                require(isinstance(row, dict) and set(row) == {"path", "byteLength", "sha256"}
+                        and isinstance(row["path"], str) and row["path"].startswith("/"), "Invalid descriptor")
                 name = target + "/" + safe_path(row["path"][1:])
                 require(name not in expected and name in members, "Duplicate or missing inventory file")
                 require(type(row["byteLength"]) is int and row["byteLength"] == members[name].size, "Inventory length mismatch")
@@ -170,8 +191,8 @@ def extract_release(archive_path, destination):
                 path.chmod(0o644)
         (destination / "inventory.json").write_bytes(json_bytes(inventory))
         (destination / "inventory.json").chmod(0o644)
-    builds = {target: validate_target(destination / target, target, rows) for target, rows in inventory["targets"].items()}
-    require(inventory["release"] == builds["web"] + "--" + builds["telegram"], "Release identity mismatch")
+    builds = [validate_target(destination / target, target, inventory["targets"][target]) for target in targets]
+    require(inventory["release"] == "--".join(builds), "Release identity mismatch")
     return inventory
 
 
@@ -242,6 +263,16 @@ def nginx_site(root, paths):
     return ("\n".join(lines) + "\n").encode()
 
 
+def telegram_nginx_site(root, paths, current):
+    """Replace only the final Telegram block of the installed managed site."""
+    block = b"\nserver {\n"
+    web, separator, telegram = current.rpartition(block)
+    require(separator and b"\n    server_name www.domiknote.ru;\n" in web
+            and b"\n    server_name domiknote.ru;\n" in telegram, "Unexpected installed frontend site")
+    replacement = nginx_site(root, {"web": set(), "telegram": paths}).rpartition(block)[2]
+    return web + separator + replacement
+
+
 def atomic_bytes(path, data, mode=0o644):
     descriptor, temporary = tempfile.mkstemp(prefix="." + path.name + ".", dir=path.parent)
     try:
@@ -285,8 +316,70 @@ def verify_collector_ready(socket_path="/run/interiors-analytics/collect.sock"):
             raise ValueError("The aggregate-v2 collector is unavailable on its private socket") from error
 
 
+def _carry_active_web(root, previous, staging, telegram):
+    active = root / previous
+    inventory_path = active / "inventory.json"
+    require(not active.is_symlink() and not inventory_path.is_symlink() and inventory_path.is_file()
+            and inventory_path.stat().st_size <= 4 * 1024 * 1024, "Missing installed release inventory")
+    installed = json.loads(inventory_path.read_bytes())
+    web_source = active / "web"
+    web_rows = file_rows(web_source)
+    web_build = validate_target(web_source, "web", web_rows)
+    require(isinstance(installed, dict) and installed.get("release") == previous.name
+            and re.fullmatch(web_build + r"--[a-f0-9]{16}", previous.name)
+            and isinstance(installed.get("targets"), dict) and installed["targets"].get("web") == web_rows,
+            "Published Web files differ from their inventory")
+    shutil.copytree(web_source, staging / "web")
+    require(file_rows(staging / "web") == web_rows, "Published Web files changed while copying")
+    inventory = {
+        **telegram, "release": web_build + "--" + telegram["release"],
+        "targets": {"web": web_rows, **telegram["targets"]},
+    }
+    atomic_bytes(staging / "inventory.json", json_bytes(inventory))
+    return inventory
+
+
+def _telegram_previous_release(root, previous, release):
+    """Keep the prior rollback pointer when publishing the same pair again."""
+    if previous.name != release:
+        return str(previous)
+    web_build = release.split("--", 1)[0]
+    journal = root / "last-deployment.json"
+    try:
+        if journal.is_symlink() or not journal.is_file() or journal.stat().st_size > 4 * 1024 * 1024:
+            return str(previous)
+        record = json.loads(journal.read_bytes())
+    except (OSError, ValueError):
+        return str(previous)
+    if not isinstance(record, dict) or record.get("deployed") is not True or record.get("release") != release:
+        return str(previous)
+    for candidate in (record.get("previous"), record.get("rollbackRelease")):
+        if (isinstance(candidate, str) and candidate != str(previous)
+                and re.fullmatch("releases/" + web_build + r"--[a-f0-9]{16}", candidate)):
+            directory = root / candidate
+            if directory.is_dir() and not directory.is_symlink():
+                return candidate
+    return str(previous)
+
+
+def activate_telegram_release(archive, commit, root=FRONTEND_ROOT, site=FRONTEND_SITE, *,
+                              command=run_command, health=None, ready=None):
+    require(isinstance(commit, str) and re.fullmatch(r"[a-f0-9]{40}", commit), "Expected full source commit SHA")
+    root = Path(root).absolute()
+    require(root.is_dir() and not root.is_symlink(), "Existing frontend root required")
+    # Keep the same lock order as a complete project deployment.
+    with (root / ".project-deploy.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _activate_release(archive, root, site, command, health, commit, ready, None, telegram_only=True)
+
+
 def activate_release(archive, root, site, command=run_command, health=None, expected_commit=None, ready=None,
                      catalog_receipt=None):
+    return _activate_release(archive, root, site, command, health, expected_commit, ready, catalog_receipt)
+
+
+def _activate_release(archive, root, site, command, health, expected_commit, ready, catalog_receipt,
+                      *, telegram_only=False):
     root, site = Path(root).absolute(), Path(site).absolute()
     require(root.is_dir() and not root.is_symlink(), "Existing frontend root required")
     require(site.is_file() and not site.is_symlink(), "Expected existing Nginx site file")
@@ -297,14 +390,19 @@ def activate_release(archive, root, site, command=run_command, health=None, expe
         require(not previous.is_absolute() and previous.parts[0] == "releases" and len(previous.parts) == 2 and ".." not in previous.parts, "Unsafe current pointer")
         with tempfile.TemporaryDirectory(prefix=".staging-", dir=root) as work:
             staging = Path(work) / "release"
-            inventory = extract_release(archive, staging)
+            extract = extract_telegram_release if telegram_only else extract_release
+            inventory = extract(archive, staging)
             require(expected_commit is None or inventory["commit"] == expected_commit, "Archive source commit mismatch")
+            if telegram_only:
+                inventory = _carry_active_web(root, previous, staging, inventory)
+            targets = {"telegram": inventory["targets"]["telegram"]} if telegram_only else inventory["targets"]
+            public_inventory = {**inventory, "targets": targets}
             verify_collector_ready()
             retained = root / "retained"
             require(not retained.is_symlink(), "Linked retained pool")
             paths = {}
             # Check every collision before adding any new file or changing controls.
-            for target, rows in inventory["targets"].items():
+            for target, rows in targets.items():
                 pool = retained / target
                 if pool.exists():
                     old = file_rows(pool)
@@ -319,6 +417,9 @@ def activate_release(archive, root, site, command=run_command, health=None, expe
                     existing = pool / path[1:]
                     require(not existing.exists() or (existing.is_file() and not existing.is_symlink() and sha(existing.read_bytes()) == row["sha256"]), "Immutable retained URL collision: " + target + path)
                     paths[target].add(path)
+            old_config = site.read_bytes()
+            new_config = (telegram_nginx_site(root, paths["telegram"], old_config)
+                          if telegram_only else nginx_site(root, paths))
             release = root / "releases" / inventory["release"]
             public_directory(release.parent)
             require(not release.parent.is_symlink() and not release.is_symlink(), "Linked release storage")
@@ -327,7 +428,7 @@ def activate_release(archive, root, site, command=run_command, health=None, expe
                     require(file_rows(release / target) == rows, "Existing release identity has different files")
             else:
                 os.replace(staging, release)
-            for target, rows in inventory["targets"].items():
+            for target, rows in targets.items():
                 for row in rows:
                     if row["path"] in CONTROLS:
                         continue
@@ -335,8 +436,6 @@ def activate_release(archive, root, site, command=run_command, health=None, expe
                     public_directory(path.parent)
                     if not path.exists():
                         atomic_bytes(path, (release / target / row["path"][1:]).read_bytes())
-            old_config = site.read_bytes()
-            new_config = nginx_site(root, paths)
             config_changed = False
             switched = False
             try:
@@ -345,17 +444,21 @@ def activate_release(archive, root, site, command=run_command, health=None, expe
                 command(["nginx", "-t"])
                 # New allowlisted immutable URLs are live before the new shell.
                 command(["systemctl", "reload", "nginx"])
-                (ready or wait_for_assets)(inventory)
+                (ready or wait_for_assets)(public_inventory)
                 atomic_link(root / "current", "releases/" + inventory["release"])
                 switched = True
                 if health is not None:
-                    health(inventory)
+                    health(public_inventory)
                 else:
-                    smoke_release(inventory, expected_catalog_digest=(
+                    smoke_release(public_inventory, expected_catalog_digest=(
                         catalog_receipt["publicationSha256"] if catalog_receipt is not None else None))
                 receipt = {"deployed": True, "commit": inventory["commit"], "release": inventory["release"], "previous": str(previous), "backendChanged": False, "retainedAssetsDeleted": False}
                 if catalog_receipt is not None:
                     receipt.update(catalog=catalog_receipt, backendChanged=catalog_receipt["changed"])
+                if telegram_only:
+                    web_build, telegram_build = inventory["release"].split("--")
+                    receipt.update(target="telegram", webBuildId=web_build, telegramBuildId=telegram_build,
+                                   previous=_telegram_previous_release(root, previous, inventory["release"]))
                 atomic_bytes(root / "last-deployment.json", json_bytes(receipt))
             except BaseException:
                 if switched:
@@ -430,12 +533,30 @@ def receipt_catalog_digest(inventory, receipt):
     return digest
 
 
-def smoke_release(inventory, timeout_seconds=180, expected_catalog_digest=None):
+def telegram_smoke_inventory(inventory, receipt):
+    require(isinstance(receipt, dict) and receipt.get("deployed") is True and receipt.get("target") == "telegram"
+            and receipt.get("commit") == inventory["commit"] and receipt.get("telegramBuildId") == inventory["release"]
+            and receipt.get("backendChanged") is False and receipt.get("retainedAssetsDeleted") is False,
+            "Telegram deployment receipt does not match this release")
+    web_build = receipt.get("webBuildId")
+    require(isinstance(web_build, str) and re.fullmatch(r"[a-f0-9]{16}", web_build)
+            and receipt.get("release") == web_build + "--" + inventory["release"],
+            "Telegram deployment receipt has an invalid paired release")
+    return {**inventory, "release": receipt["release"]}
+
+
+def smoke_release(inventory, timeout_seconds=None, expected_catalog_digest=None):
+    telegram_only = inventory["targets"].keys() == {"telegram"}
+    if timeout_seconds is None:
+        timeout_seconds = 360 if telegram_only else 180
+    # Telegram's signed release includes large GLBs. Keep an overall deadline
+    # while allowing slower HTTPS transfers a larger per-file share of it.
+    request_timeout = 60 if telegram_only else 15
     deadline = time.monotonic() + timeout_seconds
     def probe(origin, path, method="GET", headers=None):
         remaining = deadline - time.monotonic()
         require(remaining > 0, "Public health-check deadline exceeded")
-        return request(origin, path, method, headers, timeout=min(15, remaining))
+        return request(origin, path, method, headers, timeout=min(request_timeout, remaining))
     checks = 0
     for target, rows in inventory["targets"].items():
         origin = ORIGINS[target]
@@ -477,28 +598,46 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     package = commands.add_parser("package")
-    for option in ("web", "telegram", "output", "commit"):
-        package.add_argument("--" + option, required=True)
-    activate = commands.add_parser("activate")
-    activate.add_argument("--archive", required=True)
-    activate.add_argument("--commit", required=True)
-    activate.add_argument("--root", default="/opt/interiors-editor/frontend")
-    activate.add_argument("--site", default="/etc/nginx/sites-available/interiors-editor.conf")
-    smoke = commands.add_parser("smoke")
-    smoke.add_argument("--archive", required=True)
-    smoke.add_argument("--receipt", type=Path)
+    package.add_argument("--web", required=True)
+    for command in (package, commands.add_parser("package-telegram")):
+        for option in ("telegram", "output", "commit"):
+            command.add_argument("--" + option, required=True)
+    for name in ("activate", "activate-telegram"):
+        activate = commands.add_parser(name)
+        activate.add_argument("--archive", required=True)
+        activate.add_argument("--commit", required=True)
+        activate.add_argument("--root", default=FRONTEND_ROOT, type=Path)
+        activate.add_argument("--site", default=FRONTEND_SITE, type=Path)
+    for name in ("smoke", "smoke-telegram"):
+        smoke = commands.add_parser(name)
+        smoke.add_argument("--archive", required=True)
+        smoke.add_argument("--receipt", type=Path, required=name == "smoke-telegram")
     arguments = parser.parse_args()
     if arguments.command == "package":
         result = package_release(arguments.web, arguments.telegram, arguments.output, arguments.commit)
         print(json.dumps({"packaged": True, "commit": result["commit"], "release": result["release"]}))
-    elif arguments.command == "activate":
+    elif arguments.command == "package-telegram":
+        result = package_telegram_release(arguments.telegram, arguments.output, arguments.commit)
+        print(json.dumps({"packaged": True, "target": "telegram", "commit": result["commit"], "release": result["release"]}))
+    elif arguments.command in ("activate", "activate-telegram"):
         require(os.geteuid() == 0, "Activation requires the pre-provisioned privileged deployment service")
         require(re.fullmatch(r"[a-f0-9]{40}", arguments.commit), "Expected full source commit SHA")
         def interrupted(signum, _frame):
             raise InterruptedError("Deployment interrupted by signal " + str(signum))
         signal.signal(signal.SIGTERM, interrupted)
         signal.signal(signal.SIGINT, interrupted)
-        print(json.dumps(activate_release(arguments.archive, arguments.root, arguments.site, expected_commit=arguments.commit)))
+        if arguments.command == "activate-telegram":
+            receipt = activate_telegram_release(arguments.archive, arguments.commit, arguments.root, arguments.site)
+        else:
+            receipt = activate_release(arguments.archive, arguments.root, arguments.site, expected_commit=arguments.commit)
+        print(json.dumps(receipt))
+    elif arguments.command == "smoke-telegram":
+        with tempfile.TemporaryDirectory(prefix="interiors-telegram-smoke-") as temporary:
+            inventory = extract_telegram_release(arguments.archive, Path(temporary) / "release")
+            receipt = json.loads(arguments.receipt.read_bytes())
+            result = smoke_release(telegram_smoke_inventory(inventory, receipt))
+            print(json.dumps({**result, "target": "telegram", "commit": inventory["commit"],
+                              "telegramBuildId": inventory["release"]}))
     else:
         with tempfile.TemporaryDirectory(prefix="interiors-deploy-smoke-") as temporary:
             result = extract_release(arguments.archive, Path(temporary) / "release")

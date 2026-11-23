@@ -5,13 +5,45 @@ import {readFileSync} from 'node:fs';
 import {rspack} from '@rspack/core';
 import {sealTelegramRelease,telegramPublicConfiguration,TelegramReleasePlugin} from './telegram-release-build.mjs';
 
-test('the GitHub production Telegram build enables exact floor rotation', () => {
-  const workflow = readFileSync(new URL('../../../.github/workflows/verify.yml', import.meta.url), 'utf8');
-  const telegramBuild = workflow
+const productionWorkflow = readFileSync(
+  new URL('../../../.github/workflows/deploy.yml', import.meta.url),
+  'utf8',
+);
+
+test('main validates and packages the exact Telegram target', () => {
+  assert.match(productionWorkflow, /^on:\n  push:\n    branches: \[main\]$/m);
+  const telegramBuild = productionWorkflow
     .split(/\n(?= {6}- )/)
     .find(step => step.includes('--config rspack.telegram.config.mjs'));
   assert.ok(telegramBuild, 'Expected the production Telegram build step');
   assert.match(telegramBuild, /^ +INTERIORS_EXACT_FLOOR_YAW: ['"]1['"]$/m);
+  assert.match(productionWorkflow, /run-telegram-entry\.mjs/);
+  assert.match(productionWorkflow, /run-telegram-runtime-ui\.mjs --grep 'TMA-'/);
+  const legalProof = productionWorkflow
+    .split(/\n(?= {6}- )/)
+    .filter(step => step.includes('scripts/legal-document-delivery.test.mjs'));
+  assert.equal(legalProof.length, 1);
+  assert.match(legalProof[0], /--test-name-pattern '\^Telegram publishes the unmodified legal editions'/);
+  assert.match(productionWorkflow, /frontend\.py package-telegram\s+--telegram /);
+  assert.doesNotMatch(productionWorkflow, /\.github\/workflows\/(verify|telegram-quality)\.yml|gradlew|(?:pnpm |npm )run (?:build|test:e2e)\b|run-browser-[\w-]+\.mjs/);
+});
+
+test('production delivers only the commit-bound Telegram archive after the freshness check', () => {
+  assert.match(productionWorkflow, /^concurrency:\n  group: interiors-production\n  cancel-in-progress: false$/m);
+  assert.match(productionWorkflow, /^    environment:\n      name: production$/m);
+  const artifacts = [...productionWorkflow.matchAll(/^ +name: ((?:telegram|frontend|catalog)-\$\{\{ github\.sha \}\})$/gm)];
+  assert.deepEqual(artifacts.map(match => match[1]), [
+    'telegram-${{ github.sha }}',
+    'telegram-${{ github.sha }}',
+  ]);
+  const freshnessCheck = productionWorkflow.indexOf('git/ref/heads/main');
+  const send = productionWorkflow.indexOf('"deploy-telegram $GITHUB_SHA $digest $size"');
+  const smoke = productionWorkflow.indexOf('frontend.py smoke-telegram');
+  assert.ok(freshnessCheck >= 0 && freshnessCheck < send && send < smoke);
+  assert.match(productionWorkflow, /test "\$current" = "\$GITHUB_SHA"/);
+  assert.match(productionWorkflow, /StrictHostKeyChecking=yes/);
+  assert.match(productionWorkflow, /--receipt "\$RUNNER_TEMP\/interiors-release\/deployment-receipt\.json"/);
+  assert.doesNotMatch(productionWorkflow, /frontend\.tar\.gz|catalog\.tar\.gz|project\.tar\b/);
 });
 const entry='/telegram.1234abcd.js';
 const template=`<html><script src="${entry}"></script><script id="telegram-loaded-release" type="application/json">__TELEGRAM_RELEASE_CAPSULE__</script><script id="telegram-deployment" type="application/json">__TELEGRAM_DEPLOYMENT__</script>__TELEGRAM_FALLBACK_LINKS__</html>`;

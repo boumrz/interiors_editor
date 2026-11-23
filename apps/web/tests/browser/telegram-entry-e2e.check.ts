@@ -411,9 +411,10 @@ test("TMA-ITEM-FLUSH-01: a cabinet can be placed at an exact inner wall face bet
 	await expect(page.getByTestId("item-placement-preview")).toHaveAttribute("data-placement-valid", "true");
 	const leftDistance = page.getByRole("textbox", { name: "Слева, мм", exact: true });
 	await expect(leftDistance).toHaveValue("0");
-	await page.getByRole("button", { name: "Повернуть размещаемый предмет вправо на 45°", exact: true }).click();
+	const rotationStep = process.env.INTERIORS_EXACT_FLOOR_YAW === "1" ? 1 : 45;
+	await page.getByRole("button", { name: `Повернуть размещаемый предмет вправо на ${rotationStep}°`, exact: true }).click();
 	await expect(leftDistance).not.toHaveValue("0");
-	await page.getByRole("button", { name: "Повернуть размещаемый предмет влево на 45°", exact: true }).click();
+	await page.getByRole("button", { name: `Повернуть размещаемый предмет влево на ${rotationStep}°`, exact: true }).click();
 	await expect(leftDistance).toHaveValue("0");
 	expect(await semanticRows(page)).toEqual(before);
 	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();

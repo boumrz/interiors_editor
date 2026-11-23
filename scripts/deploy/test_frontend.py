@@ -39,14 +39,15 @@ class DeploymentTests(unittest.TestCase):
         self.seal_telegram()
         self.archive = self.base / "frontend.tar.gz"
 
-    def seal_telegram(self):
+    def seal_telegram(self, entry="telegram.123.js"):
         rows = []
         for path in sorted(self.telegram.rglob("*")):
             if path.is_dir() or path.name == "release-set.json":
                 continue
             data = path.read_bytes()
             rows.append({"path": "/" + path.relative_to(self.telegram).as_posix(), "byteLength": len(data), "sha256": hashlib.sha256(data).hexdigest()})
-        (self.telegram / "release-set.json").write_text(json.dumps({"version": 1, "deliveryTarget": "telegram", "appBuildId": "b" * 16, "entryPath": "/telegram.123.js", "assets": rows}))
+        build = json.loads((self.telegram / "release-manifest.json").read_bytes())["appBuildId"]
+        (self.telegram / "release-set.json").write_text(json.dumps({"version": 1, "deliveryTarget": "telegram", "appBuildId": build, "entryPath": "/" + entry, "assets": rows}))
 
     def package(self):
         return frontend.package_release(self.web, self.telegram, self.archive, "c" * 40)
@@ -58,6 +59,203 @@ class DeploymentTests(unittest.TestCase):
         site = self.base / "site.conf"
         site.write_bytes(b"original config\n")
         return root, site
+
+    def telegram_update(self):
+        root, site = self.server()
+        old = self.package()
+        frontend.activate_release(
+            self.archive, root, site, command=lambda _: None,
+            health=lambda _: None, ready=lambda _: None,
+        )
+        (self.telegram / "release-manifest.json").write_text(json.dumps({"appBuildId": "d" * 16}))
+        (self.telegram / "index.html").write_bytes(b"new Telegram page")
+        (self.telegram / "telegram.123.js").rename(self.telegram / "telegram.456.js")
+        self.seal_telegram("telegram.456.js")
+        partial = self.base / "telegram.tar.gz"
+        incoming = frontend.package_telegram_release(self.telegram, partial, "e" * 40)
+        return root, site, old, partial, incoming
+
+    def test_telegram_package_cli_seals_only_the_telegram_build(self):
+        output = self.base / "telegram.tar.gz"
+        arguments = [str(MODULE), "package-telegram", "--telegram", str(self.telegram),
+                     "--output", str(output), "--commit", "e" * 40]
+        with patch.object(sys, "argv", arguments), patch.object(sys, "stdout", io.StringIO()) as stdout:
+            frontend.main()
+        self.assertEqual(json.loads(stdout.getvalue()), {
+            "packaged": True, "target": "telegram", "commit": "e" * 40, "release": "b" * 16,
+        })
+        with tarfile.open(output) as archive:
+            self.assertEqual(set(archive.getnames()), {"inventory.json", *(
+                "telegram/" + file.name for file in self.telegram.iterdir()
+            )})
+        destination = self.base / "telegram-extracted"
+        sealed = frontend.extract_telegram_release(output, destination)
+        self.assertEqual(sealed["commit"], "e" * 40)
+        self.assertEqual(sealed["targets"], {"telegram": frontend.file_rows(self.telegram)})
+        self.assertFalse((destination / "web").exists())
+        with self.assertRaises(ValueError):
+            frontend.extract_release(output, self.base / "invalid-full-release")
+
+    def test_telegram_archive_rejects_full_target_and_bad_member_digest(self):
+        self.package()
+        with self.assertRaises(ValueError):
+            frontend.extract_telegram_release(self.archive, self.base / "forbidden-full-release")
+        archive = self.base / "telegram.tar.gz"
+        frontend.package_telegram_release(self.telegram, archive, "e" * 40)
+        for extra, replace in (("web/index.html", None), (None, "telegram/index.html")):
+            malformed = self.base / ("forbidden-web.tar.gz" if extra else "bad-digest.tar.gz")
+            with tarfile.open(archive) as source, tarfile.open(malformed, "w:gz") as output:
+                for member in source:
+                    data = source.extractfile(member).read()
+                    output.addfile(member, io.BytesIO(b"x" * len(data) if member.name == replace else data))
+                if extra:
+                    extra_member = tarfile.TarInfo(extra)
+                    output.addfile(extra_member, io.BytesIO(b""))
+            with self.subTest(extra=extra, replace=replace), self.assertRaises(ValueError):
+                frontend.extract_telegram_release(malformed, self.base / malformed.stem)
+
+    def test_telegram_activation_preserves_active_web_assets_and_nginx_block(self):
+        root, site, old, archive, incoming = self.telegram_update()
+        web_files = frontend.file_rows(root / "current/web")
+        (self.web / "index.html").write_bytes(b"unpublished Web")
+        stale_asset = root / "retained/web/staged-only.js"
+        stale_asset.write_bytes(b"staged by another deployment")
+        retained_web = frontend.file_rows(root / "retained/web")
+        old_config = site.read_bytes().replace(b"    server_name www.domiknote.ru;\n",
+                                               b"    server_name www.domiknote.ru;\n    # keep the existing Web block\n")
+        site.write_bytes(old_config)
+        observed = []
+
+        def observe(phase, inventory):
+            self.assertEqual(inventory["targets"], incoming["targets"])
+            active = root / "current"
+            self.assertEqual(frontend.file_rows(active / "web"), web_files)
+            self.assertEqual(active.readlink().name, old["release"] if phase == "ready" else "a" * 16 + "--" + "d" * 16)
+            for lock_name in (".project-deploy.lock", ".deploy.lock"):
+                with (root / lock_name).open("a") as lock:
+                    with self.assertRaises(BlockingIOError):
+                        frontend.fcntl.flock(lock, frontend.fcntl.LOCK_EX | frontend.fcntl.LOCK_NB)
+            observed.append(phase)
+
+        receipt = frontend.activate_telegram_release(
+            archive, incoming["commit"], root=root, site=site, command=lambda _: None,
+            ready=lambda inventory: observe("ready", inventory),
+            health=lambda inventory: observe("health", inventory),
+        )
+        self.assertEqual(observed, ["ready", "health"])
+        self.assertEqual(receipt, {
+            "deployed": True, "target": "telegram", "commit": incoming["commit"],
+            "release": "a" * 16 + "--" + "d" * 16, "previous": "releases/" + old["release"],
+            "webBuildId": "a" * 16, "telegramBuildId": "d" * 16,
+            "backendChanged": False, "retainedAssetsDeleted": False,
+        })
+        self.assertEqual(json.loads((root / "last-deployment.json").read_bytes()), receipt)
+        self.assertEqual(frontend.file_rows(root / "retained/web"), retained_web)
+        self.assertEqual(site.read_bytes().rpartition(b"\nserver {\n")[0],
+                         old_config.rpartition(b"\nserver {\n")[0])
+        self.assertNotIn(b"staged-only.js", site.read_bytes())
+        self.assertIn(b"/telegram.123.js", site.read_bytes())
+        self.assertIn(b"/telegram.456.js", site.read_bytes())
+        self.assertEqual(json.loads((root / "current/inventory.json").read_bytes())["targets"],
+                         {"web": web_files, **incoming["targets"]})
+
+    def test_telegram_activation_rolls_back_controls_on_failed_health(self):
+        root, site, old, archive, incoming = self.telegram_update()
+        last_receipt = (root / "last-deployment.json").read_bytes()
+        previous_config = site.read_bytes()
+        with self.assertRaisesRegex(ValueError, "source commit"):
+            frontend.activate_telegram_release(archive, "f" * 40, root=root, site=site,
+                                                command=lambda _: self.fail("nginx changed"))
+        self.assertEqual(site.read_bytes(), previous_config)
+        commands = []
+        def failed_health(payload):
+            self.assertEqual(payload["targets"], incoming["targets"])
+            raise RuntimeError("public Telegram failed")
+        with self.assertRaisesRegex(RuntimeError, "public Telegram failed"):
+            frontend.activate_telegram_release(
+                archive, incoming["commit"], root=root, site=site, command=commands.append,
+                health=failed_health, ready=lambda _: None,
+            )
+        self.assertEqual((root / "current").readlink().name, old["release"])
+        self.assertEqual((root / "last-deployment.json").read_bytes(), last_receipt)
+        self.assertEqual(site.read_bytes().rpartition(b"\nserver {\n")[0],
+                         previous_config.rpartition(b"\nserver {\n")[0])
+        self.assertTrue((root / "retained/telegram/telegram.456.js").is_file())
+        self.assertIn(b"/telegram.456.js", site.read_bytes())
+        self.assertEqual(len(commands), 4)
+
+    def test_telegram_activation_refuses_web_files_that_depart_from_the_active_inventory(self):
+        root, site, old, archive, incoming = self.telegram_update()
+        (root / "current/web/sw.js").write_bytes(b"not the published worker")
+        before = site.read_bytes()
+        with self.assertRaisesRegex(ValueError, "Published Web files differ"):
+            frontend.activate_telegram_release(
+                archive, incoming["commit"], root=root, site=site,
+                command=lambda _: self.fail("nginx changed"),
+            )
+        self.assertEqual((root / "current").readlink().name, old["release"])
+        self.assertEqual(site.read_bytes(), before)
+        self.assertFalse((root / "retained/telegram/telegram.456.js").exists())
+
+    def test_replaying_the_same_telegram_build_preserves_the_previous_release(self):
+        root, site, old, archive, incoming = self.telegram_update()
+        options = {"root": root, "site": site, "command": lambda _: None,
+                   "health": lambda _: None, "ready": lambda _: None}
+        first = frontend.activate_telegram_release(archive, incoming["commit"], **options)
+        retry = frontend.activate_telegram_release(archive, incoming["commit"], **options)
+        self.assertEqual(retry["previous"], "releases/" + old["release"])
+        (root / "last-deployment.json").write_bytes(
+            frontend.json_bytes({**first, "previous": "releases/" + first["release"],
+                                 "rollbackRelease": "releases/" + old["release"]})
+        )
+        recovered = frontend.activate_telegram_release(archive, incoming["commit"], **options)
+        self.assertEqual(recovered["previous"], "releases/" + old["release"])
+
+    def test_telegram_activation_cli_calls_the_scoped_activation_entry(self):
+        archive = self.base / "telegram.tar.gz"
+        commit = "e" * 40
+        site = self.base / "site.conf"
+        args = [str(MODULE), "activate-telegram", "--archive", str(archive), "--commit", commit,
+                "--root", str(self.base), "--site", str(site)]
+        with patch.object(sys, "argv", args), patch.object(frontend.os, "geteuid", return_value=0), patch.object(
+            frontend.signal, "signal"
+        ) as signals, patch.object(
+            frontend, "activate_telegram_release", return_value={"deployed": True, "target": "telegram"}
+        ) as activate, patch.object(sys, "stdout", io.StringIO()) as stdout:
+            frontend.main()
+        activate.assert_called_once_with(str(archive), commit, self.base, site)
+        self.assertEqual({call.args[0] for call in signals.call_args_list},
+                         {frontend.signal.SIGINT, frontend.signal.SIGTERM})
+        self.assertEqual(json.loads(stdout.getvalue()), {"deployed": True, "target": "telegram"})
+
+    def test_telegram_smoke_requires_scoped_receipt_and_probes_only_telegram(self):
+        root, site, _, archive, incoming = self.telegram_update()
+        receipt = frontend.activate_telegram_release(
+            archive, incoming["commit"], root=root, site=site,
+            command=lambda _: None, health=lambda _: None, ready=lambda _: None,
+        )
+        receipt_path = self.base / "received.json"
+        args = [str(MODULE), "smoke-telegram", "--archive", str(archive), "--receipt", str(receipt_path)]
+        for field, value in (("target", "web"), ("commit", "f" * 40), ("telegramBuildId", "f" * 16),
+                             ("webBuildId", "f" * 16), ("backendChanged", True), ("retainedAssetsDeleted", True)):
+            receipt_path.write_text(json.dumps({**receipt, field: value}))
+            with self.subTest(field=field), patch.object(sys, "argv", args), patch.object(
+                frontend, "request", side_effect=AssertionError("request before receipt validation")
+            ), self.assertRaisesRegex(ValueError, "receipt"):
+                frontend.main()
+        receipt_path.write_text(json.dumps(receipt))
+        def telegram_request(origin, *args, **kwargs):
+            self.assertEqual(origin, frontend.ORIGINS["telegram"])
+            self.assertGreaterEqual(kwargs["timeout"], 45)
+            return self.public_response(origin, *args, **kwargs)
+        with patch.object(sys, "argv", args), patch.object(frontend, "request", side_effect=telegram_request), patch.object(
+            sys, "stdout", io.StringIO()
+        ) as stdout:
+            frontend.main()
+        self.assertEqual(json.loads(stdout.getvalue()), {
+            "passed": True, "target": "telegram", "commit": incoming["commit"], "release": receipt["release"],
+            "telegramBuildId": receipt["telegramBuildId"], "checks": 2 * len(incoming["targets"]["telegram"]) + 14,
+        })
 
     def test_telegram_entry_blocks_old_sdk_and_all_collection_by_default(self):
         site = frontend.nginx_site(self.base, {"web": {"/index.html"}, "telegram": {"/index.html", "/telegram.123.js"}}).decode()

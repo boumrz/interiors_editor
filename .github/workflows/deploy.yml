@@ -1,4 +1,4 @@
-name: Deploy InteriorsEditor
+name: Deploy Telegram Mini App
 
 on:
   push:
@@ -8,16 +8,19 @@ on:
 permissions:
   contents: read
 
+env:
+  CI: 'true'
+
 # Keep one whole publication in flight, including verification and rollback.
 concurrency:
   group: interiors-production
   cancel-in-progress: false
 
 jobs:
-  repository:
-    name: Repository and deployment contract
+  telegram:
+    name: Verify and package Telegram Mini App
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -28,22 +31,67 @@ jobs:
           package-manager-cache: false
       - run: node --test scripts/check-repository.test.mjs
       - run: node scripts/check-repository.mjs
-      - run: python3 -m unittest discover -s scripts/deploy -p 'test_*.py' -v
-      - run: python3 -m unittest discover -s scripts/analytics -p 'test_*.py' -v
-
-  verify:
-    name: Web and catalog regression
-    uses: ./.github/workflows/verify.yml
-    with:
-      package_release: true
-
-  telegram:
-    name: Telegram regression
-    uses: ./.github/workflows/telegram-quality.yml
+      - name: Verify archive validation and the restricted receiver
+        run: >-
+          python3 -m unittest -v
+          scripts.deploy.test_frontend scripts.deploy.test_receiver scripts.deploy.test_configure_github
+      - name: Install the pinned package manager
+        run: npm install --global pnpm@11.20.0
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chrome for the TMA proofs
+        working-directory: apps/web
+        run: pnpm exec playwright install --with-deps chrome
+      - name: Type-check the Telegram entry and editor
+        working-directory: apps/web
+        run: pnpm exec tsc --noEmit -p tsconfig.telegram.json
+      - name: Verify Telegram release and delivery contracts
+        working-directory: apps/web
+        run: >-
+          pnpm exec node --test
+          scripts/telegram-release-build.test.mjs scripts/telegram-release-build.boundaries.test.mjs
+          scripts/telegram-preview-server.test.mjs scripts/telegram-sdk-delivery.test.mjs
+          scripts/telegram-sdk-delivery-build.test.mjs scripts/build-telegram-analytics.test.mjs
+      - name: Verify Telegram legal document delivery
+        working-directory: apps/web
+        run: >-
+          pnpm exec node --test --test-name-pattern '^Telegram publishes the unmodified legal editions'
+          scripts/legal-document-delivery.test.mjs
+      - name: Verify the signed Telegram entry with exact floor rotation
+        working-directory: apps/web
+        env:
+          INTERIORS_EXACT_FLOOR_YAW: '1'
+        run: pnpm exec node scripts/run-telegram-entry.mjs --grep 'TMA-'
+      - name: Verify the scoped Telegram editor and exact project transfer
+        working-directory: apps/web
+        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-'
+      - name: Build the configured Telegram production target
+        working-directory: apps/web
+        env:
+          INTERIORS_TELEGRAM_BOT_ID: '9112733311'
+          INTERIORS_TELEGRAM_ENVIRONMENT: production
+          INTERIORS_TELEGRAM_LINK: https://t.me/InteriorsEditorBot?startapp
+          INTERIORS_WEB_URL: https://www.domiknote.ru/
+          INTERIORS_EXACT_FLOOR_YAW: '1'
+          INTERIORS_TELEGRAM_OUTPUT: ${{ runner.temp }}/interiors-release/dist-telegram
+        run: pnpm exec rspack build --mode production --config rspack.telegram.config.mjs
+      - name: Seal the Telegram deployment archive
+        run: >-
+          python3 scripts/deploy/frontend.py package-telegram
+          --telegram "$RUNNER_TEMP/interiors-release/dist-telegram"
+          --output "$RUNNER_TEMP/interiors-release/telegram.tar.gz" --commit "$GITHUB_SHA"
+      - name: Preserve the exact Telegram deployment candidate
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: telegram-${{ github.sha }}
+          path: ${{ runner.temp }}/interiors-release/telegram.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
 
   deploy:
-    name: Publish to the Netherlands VPS
-    needs: [repository, verify, telegram]
+    name: Publish Telegram Mini App
+    needs: telegram
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -56,11 +104,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: frontend-${{ github.sha }}
-          path: ${{ runner.temp }}/interiors-release
-      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
-        with:
-          name: catalog-${{ github.sha }}
+          name: telegram-${{ github.sha }}
           path: ${{ runner.temp }}/interiors-release
       - name: Refuse publication of a superseded main commit
         env:
@@ -84,23 +128,22 @@ jobs:
           printf '%s\n' "$DEPLOY_PRIVATE_KEY" > "$ssh_dir/key"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
           chmod 600 "$ssh_dir/key" "$ssh_dir/known_hosts"
-          archive="$RUNNER_TEMP/interiors-release/project.tar"
-          tar --format=ustar -cf "$archive" -C "$RUNNER_TEMP/interiors-release" frontend.tar.gz catalog.tar.gz
+          archive="$RUNNER_TEMP/interiors-release/telegram.tar.gz"
           digest=$(sha256sum "$archive" | cut -d ' ' -f 1)
           size=$(wc -c < "$archive" | tr -d ' ')
           ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile="$ssh_dir/known_hosts" -o ConnectTimeout=20 \
             -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -i "$ssh_dir/key" \
-            root@147.45.133.75 "deploy $GITHUB_SHA $digest $size" < "$archive" \
+            root@147.45.133.75 "deploy-telegram $GITHUB_SHA $digest $size" < "$archive" \
             > "$RUNNER_TEMP/interiors-release/deployment-receipt.json"
       - name: Verify public HTTPS delivery from the GitHub runner
         run: >-
-          python3 scripts/deploy/frontend.py smoke
-          --archive "$RUNNER_TEMP/interiors-release/frontend.tar.gz"
+          python3 scripts/deploy/frontend.py smoke-telegram
+          --archive "$RUNNER_TEMP/interiors-release/telegram.tar.gz"
           --receipt "$RUNNER_TEMP/interiors-release/deployment-receipt.json"
       - name: Record the published commit
         env:
           COMMIT_SHA: ${{ github.sha }}
         shell: bash
         run: |
-          printf 'Published catalog service, [Telegram](https://domiknote.ru/) and [Web/PWA](https://www.domiknote.ru/) at `%s`.\n' "$COMMIT_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Published [Telegram Mini App](https://domiknote.ru/) at `%s`.\n' "$COMMIT_SHA" >> "$GITHUB_STEP_SUMMARY"

@@ -17,12 +17,14 @@ test('main validates and packages the exact Telegram target', () => {
     .find(step => step.includes('--config rspack.telegram.config.mjs'));
   assert.ok(telegramBuild, 'Expected the production Telegram build step');
   assert.match(telegramBuild, /^ +INTERIORS_EXACT_FLOOR_YAW: ['"]1['"]$/m);
+  assert.match(telegramBuild, /^ +INTERIORS_DOOR_HINGE_AUTHORING: ['"]1['"]$/m);
   const signedProof = productionWorkflow
     .split(/\n(?= {6}- )/)
     .find(step => step.includes('run-telegram-entry.mjs'));
   assert.ok(signedProof, 'Expected the signed Telegram release proof');
   assert.match(signedProof, /^ +INTERIORS_EXACT_FLOOR_YAW: ['"]1['"]$/m);
-  for (const name of ['ENTRY-[0-9]{2}', 'ITEM-FLUSH-01', 'CAMERA-FRAMING', 'OPENINGS']) {
+  assert.match(signedProof, /^ +INTERIORS_DOOR_HINGE_AUTHORING: ['"]1['"]$/m);
+  for (const name of ['ENTRY-[0-9]{2}', 'ITEM-FLUSH-01', 'CAMERA-FRAMING', 'OPENINGS', 'DOOR-HINGE']) {
     assert.ok(signedProof.includes(name), `Signed release proof omits ${name}`);
   }
   const runtimeProof = productionWorkflow.split("\n").find(line => line.includes('run-telegram-runtime-ui.mjs'));

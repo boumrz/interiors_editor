@@ -173,6 +173,26 @@
 	z-index: 2;
 }
 
+.rotationEditor {
+	bottom: calc(80px + var(--editor-safe-area-bottom, 0px));
+	inset-inline: 12px;
+	pointer-events: none;
+	position: absolute;
+	z-index: 6;
+}
+
+.rotationEditor:focus-within,
+.rotationEditor:has([data-angle-draft]) {
+	bottom: max(12px, var(--editor-safe-area-bottom, 0px));
+}
+
+.rotationEditor > fieldset {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--editor-host-radius, 12px);
+	padding: 8px;
+}
+
 .rotationGizmo {
 	fill: none;
 	/* A visible hemisphere communicates rotation before the first contact.

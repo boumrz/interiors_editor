@@ -1,4 +1,4 @@
-import { degreesForYawRadians } from "./rotation-angle";
+import { degreesForYawRadians, steppedYawRadians } from "./rotation-angle";
 import styles from "./AppShell.module.css";
 
 /** The canvas arbitrates pointer gestures. The SVG exposes the track and keyboard control. */
@@ -9,6 +9,7 @@ export function PlacementRotationControl({
 	yawRadians,
 	disabled,
 	exact,
+	snapToStep,
 	showHandle,
 	onChange,
 }: {
@@ -18,6 +19,7 @@ export function PlacementRotationControl({
 	readonly yawRadians: number;
 	readonly disabled: boolean;
 	readonly exact: boolean;
+	readonly snapToStep: boolean;
 	readonly showHandle: boolean;
 	readonly onChange: (yaw: number) => void;
 }) {
@@ -95,10 +97,7 @@ export function PlacementRotationControl({
 						onChange(
 							event.key === "Home"
 								? 0
-								: yawRadians +
-										((["ArrowRight", "ArrowUp"].includes(event.key) ? 1 : -1) *
-											Math.PI) /
-											(exact ? 180 : 4),
+								: steppedYawRadians(yawRadians, ["ArrowRight", "ArrowUp"].includes(event.key) ? 1 : -1, snapToStep),
 						);
 					}
 				}}

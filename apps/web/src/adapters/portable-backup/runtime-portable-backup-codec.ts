@@ -4,7 +4,7 @@ import { alphaBackupFeasibilityLimits } from '../../application/backup-feasibili
 import { parsePpjA1JsonBytes } from '../../domain/ppj-a1-lossless-json';
 import { containsLoneSurrogate, decodeRuntimeV1Utf16, encodeRuntimeV1Utf16, scanRuntimeV1Json, type RuntimeV1Node } from './runtime-v1-raw-scanner';
 import { decodeRuntimeV1LegacyProject, decodeRegisteredRuntimeV1Project, encodeRegisteredRuntimeProject,
-  isRegisteredRuntimeV1SchemaId, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, type RuntimeV1Project } from './runtime-v1-wire';
+  isRegisteredRuntimeV1SchemaId, RUNTIME_V1_DOOR_HINGE_SCHEMA_ID, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, type RuntimeV1Project } from './runtime-v1-wire';
 import { readPpjA1ZipCentralDirectory } from './ppj-a1-zip-central-directory';
 import type { PpjA1ArchiveEntry } from './ppj-a1-canonical-project-member-ingress';
 
@@ -40,7 +40,7 @@ export type RuntimePpjValidationHandoff = {
 };
 export type RuntimePortableEncodeInput = { readonly project: unknown; readonly createdAt: string; readonly resources: readonly RuntimePortableResource[] };
 export type RuntimePortableEncodeResult<TDomainReason extends string = string> = { readonly kind: 'encoded'; readonly bytes: Uint8Array; readonly mimeType: 'application/zip'; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason>;
-export type RuntimePortableDecodeResult<TDomainReason extends string = string> = { readonly kind: 'decoded'; readonly schema: 'runtime-v1-wire' | 'runtime-v1-floor-yaw' | 'runtime-v1-legacy'; readonly decodedProject: RuntimeV1Project; readonly projectBytes: Uint8Array; readonly resources: readonly RuntimePortableResource[]; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason> | RuntimePpjValidationHandoff;
+export type RuntimePortableDecodeResult<TDomainReason extends string = string> = { readonly kind: 'decoded'; readonly schema: 'runtime-v1-wire' | 'runtime-v1-floor-yaw' | 'runtime-v1-door-hinge' | 'runtime-v1-legacy'; readonly decodedProject: RuntimeV1Project; readonly projectBytes: Uint8Array; readonly resources: readonly RuntimePortableResource[]; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason> | RuntimePpjValidationHandoff;
 type ObjectNode = Extract<RuntimeV1Node, { readonly kind: 'object' }>;
 type ManifestEntry = { readonly byteLength: number; readonly path: string; readonly mediaType: string; readonly sha256: string };
 type ResourceMapping = { readonly path: string; readonly resourceHash: string };
@@ -172,7 +172,9 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
       if (validation.kind === 'rejected') return { kind: 'project-validation-rejected', reasonCode: validation.reasonCode };
       const resources = await this.readProjectResources(project, manifest, paths, signal);
       checkCancelled(signal);
-      const schema = wireSchema === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID ? 'runtime-v1-floor-yaw' : knownWire ? 'runtime-v1-wire' : 'runtime-v1-legacy';
+      const schema = wireSchema === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID
+        ? 'runtime-v1-door-hinge'
+        : wireSchema === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID ? 'runtime-v1-floor-yaw' : knownWire ? 'runtime-v1-wire' : 'runtime-v1-legacy';
       return { kind: 'decoded', schema, decodedProject: project, projectBytes: bytes, resources,
         metadata: { sourceProjectId: manifest.sourceProjectId, createdAt: manifest.createdAt, projectSchemaId: manifest.projectSchemaId, projectSchemaVersion: manifest.projectSchemaVersion } };
     } catch (error) { return rejected(error); }

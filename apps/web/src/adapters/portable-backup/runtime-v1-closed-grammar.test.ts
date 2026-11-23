@@ -60,6 +60,35 @@ describe('closed V1 field contract', () => {
     expect(decodeRegisteredRuntimeV1Project(newWithoutAngle, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID)).toEqual({ kind: 'rejected', reasonCode: 'BACKUP_SCHEMA_UNREADABLE' });
   });
 
+  it('registers an end hinge including an exact floor angle and leaves old selectors closed', () => {
+    const fixture = source();
+    const endHinge = { ...fixture.level.openings[0], hingeEnd: 'end' };
+    const { yawRadians: _yawRadians, yawStep: _yawStep, ...floor } = fixture.assetInstances[0];
+    const hingeSchema = 'interiors.project/runtime-v1-door-hinge';
+    const rejected = { kind: 'rejected', reasonCode: 'BACKUP_SCHEMA_UNREADABLE' };
+    const ordinary = { ...fixture.level.openings[0], openingId: 'ordinary-door' };
+    const project = { ...fixture, level: { ...fixture.level, openings: [endHinge, ordinary] }, assetInstances: [{ ...floor, yawMilliDeg: 31250 }] };
+    const encoded = encodeRegisteredRuntimeProject(project);
+    if (encoded.kind !== 'encoded') throw new Error('End-hinged door must encode');
+    expect(encoded.projectSchemaId).toBe(hingeSchema);
+    expect(decodeRegisteredRuntimeV1Project(encoded.bytes, hingeSchema)).toMatchObject({ kind: 'decoded', project });
+    expect(decodeRegisteredRuntimeV1Project(encoded.bytes, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID)).toEqual(rejected);
+    expect(encodeRuntimeV1Project(project)).toEqual(rejected);
+    expect(decodeRegisteredRuntimeV1Project(utf8(JSON.stringify({ projectSchemaId: hingeSchema, ...fixture })), hingeSchema)).toEqual(rejected);
+    for (const opening of [
+      { ...endHinge, kind: 'Window', swingSide: undefined },
+      { ...endHinge, hingeEnd: 'start' },
+      { ...endHinge, hingeEnd: undefined },
+      { ...endHinge, hingeEnd: null },
+    ]) {
+      const malformed = { ...project, level: { ...project.level, openings: [endHinge, { ...opening, openingId: 'malformed' }] } };
+      expect(encodeRegisteredRuntimeProject(malformed)).toEqual(rejected);
+      const raw = JSON.stringify({ projectSchemaId: hingeSchema, ...malformed },
+        (_key, value: unknown) => value === undefined ? { undefined: true } : value);
+      expect(decodeRegisteredRuntimeV1Project(utf8(raw), hingeSchema)).toEqual(rejected);
+    }
+  });
+
   it('rejects noncanonical range, undefined wrappers, mixed authorities and wall yaw in the precise member', () => {
     const fixture = source();
     const { yawRadians: _yawRadians, yawStep: _yawStep, ...floor } = fixture.assetInstances[0];

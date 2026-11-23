@@ -1755,7 +1755,9 @@ test("TMA-OPENINGS: create, flip and reopen a door beside a framed window in Pla
 	await page.getByTestId("wall-segment").first().click();
 	await page.getByRole("button", { name: "Добавить проём" }).click();
 	const dialog = page.getByTestId("opening-creation-draft");
-	await dialog.getByRole("button", { name: "Влево" }).click();
+	const direction = (sheet: Locator) => sheet.getByRole("group", { name: /^(Направление открывания|Открывание)$/ });
+	await direction(dialog).getByRole("button", { pressed: false }).click();
+	const positiveLabel = await direction(dialog).getByRole("button", { pressed: true }).textContent();
 	const previewLeaf = page.getByTestId("opening-creation-preview").getByTestId("door-leaf");
 	expect(Number(await previewLeaf.getAttribute("y2"))).toBeGreaterThan(0);
 	await dialog.getByRole("button", { name: "Добавить", exact: true }).click();
@@ -1764,8 +1766,8 @@ test("TMA-OPENINGS: create, flip and reopen a door beside a framed window in Pla
 	await door.getByTestId("opening-move-handle").click();
 	await page.getByRole("button", { name: "Параметры", exact: true }).click();
 	const edit = page.getByTestId("opening-draft");
-	await expect(edit.getByRole("button", { name: "Влево" })).toHaveAttribute("aria-pressed", "true");
-	await edit.getByRole("button", { name: "Вправо" }).click();
+	await expect(direction(edit).getByRole("button", { pressed: true })).toHaveText(positiveLabel ?? "");
+	await direction(edit).getByRole("button", { pressed: false }).click();
 	expect(Number(await door.getByTestId("door-leaf").getAttribute("y2"))).toBeLessThan(0);
 	await edit.getByRole("button", { name: "Сохранить проём" }).click();
 	await expect(edit).toBeHidden();
@@ -1774,7 +1776,7 @@ test("TMA-OPENINGS: create, flip and reopen a door beside a framed window in Pla
 	await page.getByTestId("wall-segment").last().click();
 	await page.getByRole("button", { name: "Добавить проём" }).click();
 	await dialog.getByRole("button", { name: "Окно", exact: true }).click();
-	await expect(dialog.getByRole("group", { name: "Направление открывания" })).toHaveCount(0);
+	await expect(direction(dialog)).toHaveCount(0);
 	await expect(page.getByTestId("window-frame")).toBeVisible();
 	await dialog.getByRole("button", { name: "Добавить", exact: true }).click();
 	await expect(page.getByTestId("window-opening").getByTestId("window-opening-pane")).toHaveCount(2);
@@ -1795,6 +1797,67 @@ test("TMA-OPENINGS: create, flip and reopen a door beside a framed window in Pla
 	await page.getByRole("button", { name: "3D", exact: true }).click();
 	await expect(page.getByTestId("three-dimensional-canvas")).toBeVisible();
 	await page.screenshot({ path: info.outputPath("opening-templates-3d.png") });
+});
+
+test("TMA-DOOR-HINGE: the signed author chooses both door settings and restores the exact jamb", async ({ page }) => {
+	await signed(page);
+	const environment = await page.request.get("/__entry-proof/environment").then(response => response.json());
+	test.skip(environment.doorHingeAuthoring !== true, "The bridge keeps its existing door editor");
+	await page.goto("/");
+	const project = "Проверка петель";
+	await createRoom(page, project);
+	await page.getByTestId("wall-segment").first().click();
+	await page.getByRole("button", { name: "Добавить проём" }).click();
+	const sheet = page.getByTestId("opening-creation-draft");
+	const hinge = sheet.getByRole("group", { name: "Петли", exact: true });
+	const direction = sheet.getByRole("group", { name: "Открывание", exact: true });
+	const preview = page.getByTestId("opening-creation-preview").getByTestId("door-leaf");
+	const before = await semanticRows(page);
+	const poses = new Set<string>();
+	for (const hingeName of ["Слева", "Справа"]) {
+		await hinge.getByRole("button", { name: hingeName, exact: true }).click();
+		for (const directionName of ["Внутрь", "Наружу"]) {
+			await direction.getByRole("button", { name: directionName, exact: true }).click();
+			await expect(hinge.getByRole("button", { pressed: true })).toHaveText(hingeName);
+			await expect(direction.getByRole("button", { pressed: true })).toHaveText(directionName);
+			const [x, y] = await Promise.all([preview.getAttribute("x1"), preview.getAttribute("y2")]);
+			expect(Number(x) > 0).toBe(hingeName === "Справа");
+			expect(Math.abs(Number(y))).toBeGreaterThan(0);
+			poses.add(`${x},${y}`);
+		}
+	}
+	expect(poses.size).toBe(4);
+	expect(await semanticRows(page)).toEqual(before);
+	await sheet.getByRole("button", { name: "Добавить", exact: true }).click();
+	await expect(sheet).toHaveCount(0);
+	const saved = await semanticRows(page);
+	expect(saved.revisions).toHaveLength(before.revisions.length + 1);
+	expect(saved.revisions).toContainEqual(expect.objectContaining({
+		candidate: expect.objectContaining({ project: expect.objectContaining({
+			level: expect.objectContaining({ openings: [expect.objectContaining({ hingeEnd: "end" })] }),
+		}) }),
+	}));
+	expect(await page.evaluate(async () => (await indexedDB.databases())
+		.filter(({ name }) => name?.startsWith("interiors-editor-projects:tma-v1-"))
+		.map(({ version }) => version))).toEqual([4]);
+
+	const reopen = page.getByRole("button", { name: `Открыть ${project}`, exact: true });
+	await page.getByRole("button", { name: "Назад", exact: true }).click();
+	await reopen.click();
+	const durable = page.getByTestId("door-opening");
+	expect(Number(await durable.getByTestId("door-leaf").getAttribute("x1"))).toBeGreaterThan(0);
+	await durable.getByTestId("opening-move-handle").click();
+	await page.getByRole("button", { name: "Параметры", exact: true }).click();
+	const edit = page.getByTestId("opening-draft");
+	await expect(edit.getByRole("group", { name: "Петли" }).getByRole("button", { pressed: true })).toHaveText("Справа");
+	await expect(edit.getByRole("group", { name: "Открывание" }).getByRole("button", { pressed: true })).toHaveText("Наружу");
+	await edit.getByRole("button", { name: "Слева", exact: true }).click();
+	await edit.getByRole("button", { name: "Сохранить проём", exact: true }).click();
+	await expect(edit).toHaveCount(0);
+	await expect(durable.getByTestId("door-leaf")).toHaveAttribute("x1", "0");
+	await page.reload();
+	await reopen.click();
+	await expect(durable.getByTestId("door-leaf")).toHaveAttribute("x1", "0");
 });
 
 test("TMA-SCENE-PALETTE: opening the color chooser preserves the placement draft, camera and equal-sized scene actions", async ({
@@ -1898,12 +1961,13 @@ test("TMA-SCENE-PALETTE: opening the color chooser preserves the placement draft
 					const header = await boundsOf(page.getByTestId("editor-top-bar"));
 					const deckBox = await boundsOf(deck);
 					const canvas = await boundsOf(scene);
-					return Math.max(
-						Math.abs(canvas.y - header.y - header.height),
-						Math.abs(canvas.y + canvas.height - deckBox.y),
+					return Math.min(
+						header.y + header.height - canvas.y,
+						deckBox.y - header.y - header.height,
+						canvas.y + canvas.height - deckBox.y - deckBox.height,
 					);
 				})
-				.toBeLessThan(1.1);
+				.toBeGreaterThanOrEqual(0);
 		await page.evaluate(
 			() =>
 				new Promise<void>((r) =>
@@ -2071,4 +2135,98 @@ test("TMA-LEGAL: first-use documents, independent settings and preserved older p
 	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toHaveCount(0);
 	await settings.click();
 	await expect(panel.getByRole("link")).toHaveCount(3);
+});
+
+test("TMA-CAMERA-FRAMING: placement and selection preserve the rendered camera", async ({ page }) => {
+	await signed(page);
+	await page.setViewportSize({ width: 390, height: 740 });
+	await page.addInitScript(() => {
+		const matrices: Record<string, number[]> = {};
+		const names = new WeakMap<WebGLUniformLocation, string>();
+		const prototype = WebGL2RenderingContext.prototype;
+		const locate = prototype.getUniformLocation;
+		const update = prototype.uniformMatrix4fv;
+		prototype.getUniformLocation = function (program, name) {
+			const location = locate.call(this, program, name);
+			if (location && (name === "viewMatrix" || name === "projectionMatrix")) names.set(location, name);
+			return location;
+		};
+		prototype.uniformMatrix4fv = function (location, transpose, values, offset = 0, length = 0) {
+			const name = location && names.get(location);
+		if (name) {
+			const matrix = Array.from(values).slice(offset, offset + 16);
+			// Ignore the orthographic shadow-camera projection.
+			if (name === "viewMatrix" || matrix[15] === 0) matrices[name] = matrix;
+			}
+			return update.call(this, location, transpose, values, offset, length);
+		};
+		Reflect.set(window, "cameraFramingAudit", matrices);
+	});
+	await page.goto("/");
+	await createRoom(page, "Постоянный ракурс");
+	const button = (name: string) => page.getByRole("button", { name, exact: true });
+	await button("3D").click();
+	const canvas = page.getByTestId("three-dimensional-canvas");
+	const read = () => canvas.evaluate((element: HTMLCanvasElement) => {
+		const { x, y, width, height } = element.getBoundingClientRect();
+		return {
+			viewport: [x, y, width, height],
+			buffer: [element.width, element.height],
+			camera: document.querySelector('[data-testid="three-dimensional-camera"]')?.textContent?.trim(),
+			matrices: Reflect.get(window, "cameraFramingAudit") as Record<string, number[]>,
+		};
+	});
+	await expect.poll(async () => (await read()).matrices.projectionMatrix?.length).toBe(16);
+	await expect.poll(async () => (await read()).matrices.viewMatrix?.length).toBe(16);
+	await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+	const overview = await read();
+	const bounds = await canvas.boundingBox();
+	if (!bounds) throw new Error("Missing 3D canvas");
+	const itemPoint = { x: bounds.x + bounds.width * 0.59, y: bounds.y + bounds.height * 0.49 };
+	const selection = page.getByTestId("three-dimensional-item-selection-frame");
+	await button("Предметы интерьера").click();
+	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стол / }).click();
+	await expect(page.getByTestId("three-dimensional-item-placement-menu")).toBeVisible();
+	await expect.poll(read, { message: "Opening placement keeps the same viewport and projection" }).toEqual(overview);
+	expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), itemPoint))
+		.toBe("three-dimensional-canvas");
+	await page.touchscreen.tap(itemPoint.x, itemPoint.y);
+	const confirm = button("Подтвердить размещение предмета");
+	await expect(confirm).toBeEnabled();
+	await expect.poll(read).toEqual(overview);
+	await confirm.click();
+	await expect(page.getByTestId("three-dimensional-item-placement-menu")).toBeHidden();
+	await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Сохранено");
+	await expect.poll(read).toEqual(overview);
+	await page.touchscreen.tap(itemPoint.x, itemPoint.y);
+	await expect(selection).toBeVisible();
+	await expect.poll(read).toEqual(overview);
+	const savedRows = await semanticRows(page);
+	const emptyPoint = { x: bounds.x + bounds.width * 0.12, y: bounds.y + bounds.height * 0.45 };
+	expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), emptyPoint))
+		.toBe("three-dimensional-canvas");
+	await page.touchscreen.tap(emptyPoint.x, emptyPoint.y);
+	await expect(selection).toBeHidden();
+	await expect.poll(read).toEqual(overview);
+	expect(await semanticRows(page)).toEqual(savedRows);
+	await button("План 2D").click();
+	await page.getByTestId("schematic-item").click();
+	await button("3D").click();
+	await expect(selection).toBeVisible();
+	await expect.poll(read).toEqual(overview);
+	expect(await semanticRows(page)).toEqual(savedRows);
+
+	const orbitStart = { x: bounds.x + bounds.width * 0.19, y: bounds.y + bounds.height * 0.32 };
+	await page.mouse.move(orbitStart.x, orbitStart.y);
+	await page.mouse.down();
+	await page.mouse.move(orbitStart.x + 36, orbitStart.y + 10, { steps: 5 });
+	await page.mouse.up();
+	await expect.poll(async () => (await read()).camera).not.toBe(overview.camera);
+	const orbited = await read();
+	await page.setViewportSize({ width: 430, height: 740 });
+	await expect.poll(async () => (await read()).buffer[0]).toBeGreaterThan(orbited.buffer[0]);
+	const resized = await read();
+	expect(resized.matrices.projectionMatrix).not.toEqual(orbited.matrices.projectionMatrix);
+	expect(resized.matrices.viewMatrix).toEqual(orbited.matrices.viewMatrix);
+	expect(resized.camera).toBe(orbited.camera);
 });

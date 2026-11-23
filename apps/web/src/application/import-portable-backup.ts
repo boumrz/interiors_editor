@@ -482,7 +482,7 @@ function decodeCanonicalProject(bytes: Uint8Array): Project | undefined {
 	try {
 		const raw = decodeUtf8(bytes);
 		const parsed: unknown = JSON.parse(raw);
-		if (!isStructurallyValidProjectV1(parsed) || hasExactFloorYaw(parsed)) return undefined;
+		if (!isStructurallyValidProjectV1(parsed) || hasExactFloorYaw(parsed) || hasDoorHinge(parsed)) return undefined;
 		return raw === serializeProjectCanonically(parsed) ? parsed : undefined;
 	} catch {
 		return undefined;
@@ -491,16 +491,22 @@ function decodeCanonicalProject(bytes: Uint8Array): Project | undefined {
 
 /** Wire wrappers carry values that a raw JSON.parse cannot preserve. */
 function decodeRegisteredProjectMember(member: { readonly format: string; readonly project: unknown }): Project | undefined {
-	if (member.format !== "runtime-v1-wire" && member.format !== "runtime-v1-floor-yaw" && member.format !== "runtime-v1-legacy") return undefined;
+	if (member.format !== "runtime-v1-wire" && member.format !== "runtime-v1-floor-yaw" && member.format !== "runtime-v1-door-hinge" && member.format !== "runtime-v1-legacy") return undefined;
 	try {
 		const project = member.project;
-		if (!isStructurallyValidProjectV1(project) || hasExactFloorYaw(project) !== (member.format === "runtime-v1-floor-yaw")) return undefined;
+		if (!isStructurallyValidProjectV1(project)) return undefined;
+		if (hasDoorHinge(project) !== (member.format === "runtime-v1-door-hinge")) return undefined;
+		if (member.format !== "runtime-v1-door-hinge" && hasExactFloorYaw(project) !== (member.format === "runtime-v1-floor-yaw")) return undefined;
 		return copyProject(project);
 	} catch { return undefined; }
 }
 
 function hasExactFloorYaw(project: Project): boolean {
 	return project.assetInstances.some((item) => Object.hasOwn(item, "yawMilliDeg"));
+}
+
+function hasDoorHinge(project: Project): boolean {
+	return project.level.openings.some((opening) => opening.hingeEnd === "end");
 }
 
 function decodeUtf8(bytes: Uint8Array): string {

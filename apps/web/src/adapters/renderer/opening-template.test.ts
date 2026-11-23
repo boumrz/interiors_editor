@@ -90,6 +90,19 @@ it.each([
 	},
 );
 
+it.each(["left", "right"] as const)("mirrors the %s leaf and spindle to the end jamb", (swingSide) => {
+	const horizontalEnd = { ...end, zMm: start.zMm };
+	const fromStart = openingTemplateFor({ ...door, swingSide }, start, horizontalEnd, 80, -200, 900);
+	const fromEnd = openingTemplateFor({ ...door, swingSide, hingeEnd: "end" }, start, horizontalEnd, 80, -200, 900);
+	for (const role of ["leaf", "hardware"] as const) {
+		const original = fromStart.find(part => part.role === role);
+		const mirrored = fromEnd.find(part => part.role === role);
+		expect(mirrored?.box.centerXM).toBeCloseTo(2.8 - (original?.box.centerXM ?? 0));
+		expect(mirrored?.box.centerZM).toBeCloseTo(original?.box.centerZM ?? 0);
+	}
+	expect(fromEnd.filter(part => part.role === "frame")).toEqual(fromStart.filter(part => part.role === "frame"));
+});
+
 it.each([
 	[899, 1],
 	[900, 2],

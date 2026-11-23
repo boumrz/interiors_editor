@@ -450,6 +450,79 @@ test("TMA-ROTATION-SPACING: rotation controls have symmetric touch targets and a
 	}
 });
 
+test("TMA-ROTATION-EXPLICIT: angle drafts and snap mode work across plan, 3D and the keyboard", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, "Режим вращения");
+	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
+	await clickRectangularRoomPoint(page, { x: 0.45, y: 0.5 });
+	const placement = page.getByTestId("item-placement-action-dock");
+	const angle = placement.getByRole("textbox", { name: "Угол размещаемого предмета, градусы" });
+	const apply = page.getByRole("button", { name: "Применить угол", exact: true });
+	const cancel = page.getByRole("button", { name: "Отменить ввод угла", exact: true });
+	const before = await rows(page, "a");
+	await angle.fill("37,5");
+	await placement.getByRole("heading").click();
+	await expect(angle).toHaveValue("37,5");
+	await expect(apply).toBeVisible();
+	await cancel.click();
+	await expect(angle).toHaveValue("0");
+	await angle.fill("37,5");
+	await apply.click();
+	await expect(angle).toHaveValue("37.5");
+	const snap = page.getByRole("checkbox", { name: "Шаг 45°", exact: true });
+	await snap.check();
+	await expect(angle).toHaveValue("37.5");
+	await placement.getByRole("button", { name: "Повернуть размещаемый предмет влево на 45°", exact: true }).click();
+	await expect(angle).toHaveValue("45");
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await expect(snap).toBeChecked();
+	const sceneAngle = page.getByRole("textbox", { name: "Поворот предмета в 3D, градусы" });
+	await expect(sceneAngle).toHaveValue("45");
+	await sceneAngle.fill("270");
+	await page.evaluate(() => {
+		const style = document.documentElement.style;
+		style.setProperty("--editor-viewport-height", "420px");
+		style.setProperty("--editor-keyboard-inset", "240px");
+	});
+	for (const control of [sceneAngle, apply, cancel]) {
+		await expect(control).toBeInViewport();
+		const box = await control.boundingBox();
+		expect(box && box.y + box.height).toBeLessThanOrEqual(420);
+	}
+	await apply.click();
+	await expect(sceneAngle).toHaveValue("270");
+	expect(await rows(page, "a")).toEqual(before);
+	await page.evaluate(() => {
+		const style = document.documentElement.style;
+		style.removeProperty("--editor-viewport-height");
+		style.removeProperty("--editor-keyboard-inset");
+	});
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	await page.getByRole("button", { name: "План 2D", exact: true }).click();
+	await page.getByTestId("schematic-item").click();
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	const placed = await rows(page, "a");
+	await sceneAngle.fill("брак");
+	await apply.click();
+	await expect(page.getByRole("alert")).toContainText("Укажите угол");
+	await sceneAngle.fill("271,125");
+	await page.evaluate(() => {
+		const style = document.documentElement.style;
+		style.setProperty("--editor-viewport-height", "390px");
+		style.setProperty("--editor-keyboard-inset", "270px");
+	});
+	for (const control of [sceneAngle, apply, cancel]) {
+		await expect(control).toBeInViewport();
+		const box = await control.boundingBox();
+		expect(box && box.y + box.height).toBeLessThanOrEqual(390);
+	}
+	await cancel.click();
+	await expect(sceneAngle).toHaveValue("270");
+	expect(await rows(page, "a")).toEqual(placed);
+});
+
 test("TMA-EXACT-TRANSFER: Undo, Redo and a compatible runtime preserve exact yaw and pinned GLB bytes", async ({ page }) => {
 	test.setTimeout(60_000);
 	const preserved = await browser(page);
@@ -513,6 +586,50 @@ test("TMA-EXACT-TRANSFER: Undo, Redo and a compatible runtime preserve exact yaw
 	await expect(page.getByTestId("three-dimensional-custom-glb-status")).toHaveText("rendered:1");
 	expect(await rows(page, "a")).toEqual(sourceRows);
 	expect(await browser(page)).toEqual(preserved);
+});
+
+test("TMA-DOOR-HINGE-TRANSFER: rollback keeps the saved hinge and v3 refuses its archive until a v4 upgrade", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible"));
+	await createRoom(page, "Петли и копия");
+	const oldRows = await rows(page, "a");
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring"));
+	await open(page, "Петли и копия");
+	expect(await rows(page, "a")).toEqual(oldRows);
+	await page.getByTestId("wall-segment").first().click();
+	await page.getByRole("button", { name: "Добавить проём", exact: true }).click();
+	const opening = page.getByTestId("opening-creation-draft");
+	await opening.getByRole("group", { name: "Петли" }).getByRole("button", { name: "Справа", exact: true }).click();
+	await opening.getByRole("button", { name: "Добавить", exact: true }).click();
+	await expect(opening).toHaveCount(0);
+	const placed = (await currentProject(page)).level.openings;
+	expect(placed).toEqual([expect.objectContaining({ hingeEnd: "end" })]);
+	const currentRows = await rows(page, "a");
+
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible"));
+	await open(page, "Петли и копия");
+	expect((await currentProject(page)).level.openings).toEqual(placed);
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("button", { name: "Экспортировать проект", exact: true }).click();
+	await page.getByRole("button", { name: "Передать файл", exact: true }).click();
+	await expect(page.getByText(/Проверьте файл вне приложения/)).toBeVisible();
+	const file = await page.evaluate(() => window.__telegramRuntimeUi.sharedFile(0));
+	const entries = unzipSync(Uint8Array.from(file.bytes));
+	const manifest = JSON.parse(new TextDecoder().decode(entries["manifest.json"]));
+	expect(manifest).toMatchObject({ projectSchemaId: "interiors.project/runtime-v1-door-hinge", projectSchemaVersion: 1 });
+
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "exact", "compatible"));
+	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+	const targetBefore = await rows(page, "b");
+	await page.evaluate(() => window.__telegramRuntimeUi.reselectSharedFile(0));
+	await expect(page.getByText(/backup создан более новой версией/)).toBeVisible();
+	expect(await rows(page, "b")).toEqual(targetBefore);
+
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "exact", "authoring"));
+	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+	await page.evaluate(() => window.__telegramRuntimeUi.reselectSharedFile(0));
+	await saved(page);
+	expect((await currentProject(page)).level.openings).toEqual(placed);
+	expect(await rows(page, "a")).toEqual(currentRows);
 });
 
 test("TMA-UI-GUIDES-01: placement distances use the rotated footprint and remain a draft", async ({ page }) => {
@@ -1355,13 +1472,81 @@ test("TMA-UI-32: a one-mm retained wall remains touch-selectable and independent
 	const inspector = page.getByTestId("selected-wall-inspector");
 	await inspector.getByRole("button", { name: "Удалить стену", exact: true }).click();
 	await expect(inspector).toHaveCount(0);
-	await page.getByRole("alert", { name: "Последствия удаления стены", exact: true }).getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await page.getByRole("dialog", { name: "Удалить стену", exact: true }).getByRole("button", { name: "Удалить стену", exact: true }).click();
 	await expect.poll(async () => (await currentProject(page)).level.wallSegments.length).toBe(4);
 	await saved(page);
 	const deleted = await currentProject(page);
 	expect(deleted.level.wallSegments).toHaveLength(4);
 	expect(deleted.level.rooms).toEqual(source.level.rooms);
 	expect(deleted.level.vertices.some(vertex => vertex.vertexId === tailEnd?.vertexId)).toBe(false);
+});
+
+test("TMA-WALL-CONTINUITY: legacy inline edges share a fill, selection and one undoable deletion", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await createRoom(page, "Цельная стена");
+	const source = await currentProject(page);
+	const top = source.level.wallSegments.find(wall => [wall.startVertexId, wall.endVertexId].every(id =>
+		source.level.vertices.find(vertex => vertex.vertexId === id)?.zMm === 0));
+	if (!top) throw new Error("Expected top wall");
+	await page.evaluate(wallId => window.__telegramRuntimeUi.splitWall(wallId, { xMm: 2000, zMm: 0 }), top.wallSegmentId);
+	await saved(page);
+	const split = await currentProject(page);
+	const segments = split.level.wallSegments.filter(wall => [wall.startVertexId, wall.endVertexId].every(id =>
+		split.level.vertices.find(vertex => vertex.vertexId === id)?.zMm === 0));
+	expect(segments).toHaveLength(2);
+	await expect(page.getByTestId("continuous-wall-fill")).toHaveCount(1);
+	for (const wall of segments) {
+		await page.locator(`[data-testid="wall-segment"][data-wall-id="${wall.wallSegmentId}"]`).click();
+		for (const part of segments) {
+			await expect(page.locator(`[data-testid="wall-body"][data-wall-id="${part.wallSegmentId}"]`)).toHaveAttribute("data-selected", "true");
+		}
+	}
+	const before = await rows(page, "a");
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	await page.getByTestId("selected-wall-inspector").getByRole("button", { name: "Удалить стену", exact: true }).click();
+	await page.getByRole("dialog", { name: "Удалить стену", exact: true }).getByRole("button", { name: "Удалить стену", exact: true }).click();
+	await saved(page);
+	const current = await currentProject(page);
+	expect(current.level.wallSegments).toHaveLength(3);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
+	await page.getByRole("group", { name: "История изменений" }).getByRole("button", { name: /^Отменить действие/ }).click();
+	await expect(page.getByTestId("continuous-wall-fill")).toHaveCount(1);
+});
+
+test("TMA-WALL-CONSEQUENCES: room merge describes human choices and closes without publishing", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await createRoom(page, "Объединение помещений");
+	const source = await currentProject(page);
+	const [start, end] = source.level.wallSegments.flatMap(wall => {
+		const a = source.level.vertices.find(vertex => vertex.vertexId === wall.startVertexId);
+		const b = source.level.vertices.find(vertex => vertex.vertexId === wall.endVertexId);
+		return a && b && a.zMm === b.zMm ? [{ xMm: (a.xMm + b.xMm) / 2, zMm: a.zMm }] : [];
+	});
+	if (!start || !end) throw new Error("Expected rectangle boundaries");
+	await page.evaluate(({ start, end }) => window.__telegramRuntimeUi.addWall({ start, end, thicknessMm: 100 }), { start, end });
+	await saved(page);
+	const project = await currentProject(page);
+	const before = await rows(page, "a");
+	await page.locator('[data-testid="wall-segment"][data-wall-kind="interior"]').click();
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	await page.getByTestId("selected-wall-inspector").getByRole("button", { name: "Удалить стену", exact: true }).click();
+	const sheet = page.getByRole("dialog", { name: "Удалить стену", exact: true });
+	await expect(sheet).toBeVisible();
+	await expect(sheet.getByRole("heading", { name: "Удалить стену", exact: true })).toBeVisible();
+	await expect(sheet.getByText(/объединятся/i)).toBeVisible();
+	for (const room of project.level.rooms) await expect(sheet).not.toContainText(room.roomId);
+	await expect(sheet.getByTestId("wall-deletion-metadata-0")).toHaveAccessibleName(/Другое/);
+	await expect(sheet.getByTestId("wall-deletion-metadata-1")).toHaveAccessibleName(/Другое/);
+	await sheet.getByRole("button", { name: "Закрыть удаление стены", exact: true }).click();
+	await expect(sheet).toHaveCount(0);
+	expect(await rows(page, "a")).toEqual(before);
+	await page.getByTestId("selected-wall-inspector").getByRole("button", { name: "Удалить стену", exact: true }).click();
+	const merge = sheet.getByRole("button", { name: "Объединить помещения", exact: true });
+	await expect(merge).toBeDisabled();
+	await sheet.getByTestId("wall-deletion-metadata-1").click();
+	await merge.click();
+	await expect.poll(async () => (await currentProject(page)).level.rooms.length).toBe(1);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
 });
 
 test("TMA-UI-33: cancelling the plain wall-move confirmation preserves the durable Project", async ({ page }) => {

@@ -32,6 +32,7 @@ export interface AddDoorOpeningInput {
 	readonly heightMm: number;
 	readonly sillMm: number;
 	readonly swingSide?: "left" | "right";
+	readonly hingeEnd?: "end";
 }
 
 /** Windows share the canonical host/interval contract, but have no hinge state. */
@@ -50,6 +51,7 @@ export interface UpdateWallOpeningInput {
 	readonly offsetMm?: number;
 	readonly sillMm?: number;
 	readonly swingSide?: "left" | "right";
+	readonly hingeEnd?: "end" | null;
 	readonly widthMm?: number;
 }
 
@@ -109,7 +111,8 @@ export function assessDoorOpeningPlacement(
 	state: WallOpeningState,
 	input: AddDoorOpeningInput,
 ): WallOpeningPlacementAssessment {
-	if (!hasValidDimensions(input)) {
+	if (!hasValidDimensions(input) || !hasValidSwingSide(input.swingSide) ||
+		(input.hingeEnd !== undefined && input.hingeEnd !== "end")) {
 		return rejectAdd("INVALID_DIMENSION");
 	}
 
@@ -153,7 +156,7 @@ export function assessWindowOpeningPlacement(
 	state: WallOpeningState,
 	input: AddWindowOpeningInput,
 ): WallOpeningPlacementAssessment {
-	if (!hasValidDimensions(input)) {
+	if (!hasValidDimensions(input) || Object.hasOwn(input, "hingeEnd")) {
 		return rejectAdd("INVALID_DIMENSION");
 	}
 
@@ -202,11 +205,13 @@ export function addDoorOpening(
 	const assessment = assessDoorOpeningPlacement(state, input);
 	if (assessment.kind === "rejected") return assessment;
 
+	const { hingeEnd, ...dimensions } = input;
 	const opening: DoorOpening = {
-		...input,
+		...dimensions,
 		kind: "Door",
 		openingId: ids.next(),
 		swingSide: input.swingSide ?? "right",
+		...(hingeEnd === "end" ? { hingeEnd } : {}),
 	};
 	return { kind: "accepted", openings: [...state.openings, opening] };
 }
@@ -273,28 +278,29 @@ export function updateWallOpening(
 	if (!opening) {
 		return { kind: "rejected", reasonCode: "OPENING_NOT_FOUND" };
 	}
-	if (opening.kind === "Window" && input.swingSide !== undefined) {
+	if (
+		(opening.kind === "Window" && (input.swingSide !== undefined || input.hingeEnd !== undefined)) ||
+		(input.hingeEnd !== undefined && input.hingeEnd !== null && input.hingeEnd !== "end")
+	) {
 		return rejectAdd("INVALID_DIMENSION");
 	}
-	const moved: WallOpening =
-		opening.kind === "Door"
-			? {
-					...opening,
-					...(input.offsetMm === undefined ? {} : { offsetMm: input.offsetMm }),
-					...(input.widthMm === undefined ? {} : { widthMm: input.widthMm }),
-					...(input.heightMm === undefined ? {} : { heightMm: input.heightMm }),
-					...(input.sillMm === undefined ? {} : { sillMm: input.sillMm }),
-					...(input.swingSide === undefined
-						? {}
-						: { swingSide: input.swingSide }),
-				}
-			: {
-					...opening,
-					...(input.offsetMm === undefined ? {} : { offsetMm: input.offsetMm }),
-					...(input.widthMm === undefined ? {} : { widthMm: input.widthMm }),
-					...(input.heightMm === undefined ? {} : { heightMm: input.heightMm }),
-					...(input.sillMm === undefined ? {} : { sillMm: input.sillMm }),
-				};
+	const dimensions = {
+		...(input.offsetMm === undefined ? {} : { offsetMm: input.offsetMm }),
+		...(input.widthMm === undefined ? {} : { widthMm: input.widthMm }),
+		...(input.heightMm === undefined ? {} : { heightMm: input.heightMm }),
+		...(input.sillMm === undefined ? {} : { sillMm: input.sillMm }),
+	};
+	let moved: WallOpening = { ...opening, ...dimensions };
+	if (opening.kind === "Door") {
+		const { hingeEnd, ...door } = opening;
+		const nextHinge = input.hingeEnd === undefined ? hingeEnd : input.hingeEnd;
+		moved = {
+			...door,
+			...dimensions,
+			...(input.swingSide === undefined ? {} : { swingSide: input.swingSide }),
+			...(nextHinge === "end" ? { hingeEnd: nextHinge } : {}),
+		};
+	}
 	if (!hasValidDimensions(moved) || !hasValidSwingSide(moved.swingSide)) {
 		return rejectAdd("INVALID_DIMENSION");
 	}

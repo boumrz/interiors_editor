@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@rstest/core";
+import { reverseDoorOpeningOrientation } from "./door-opening-orientation";
 
 import {
 	addDoorOpening,
@@ -462,6 +463,30 @@ describe("wall-hosted door openings", () => {
 				}),
 			],
 		});
+	});
+
+	it("preserves the physical jamb across two reversals and retains legacy wall-local behavior", () => {
+		const source = opening();
+		expect(reverseDoorOpeningOrientation(source, false)).toEqual({ ...source, swingSide: "left" });
+		const reversed = reverseDoorOpeningOrientation(source, true);
+		expect(reversed).toEqual({ ...source, hingeEnd: "end", swingSide: "left" });
+		expect(reverseDoorOpeningOrientation(reversed, true)).toEqual(source);
+	});
+
+	it("preserves a selected end hinge on move and omits it when reset to the start", () => {
+		const source = opening({ openingId: "door-1", hingeEnd: "end" });
+		const state = { openings: [source], wallHosts: wallHosts() };
+		expect(moveWallOpening(state, { openingId: "door-1", offsetMm: 2100 })).toEqual({
+			kind: "accepted",
+			openings: [{ ...source, offsetMm: 2100 }],
+		});
+		const result = updateWallOpening(state, { openingId: "door-1", hingeEnd: null });
+		expect(result.kind).toBe("accepted");
+		if (result.kind === "accepted") {
+			expect(result.openings[0]).not.toHaveProperty("hingeEnd");
+			expect(result.openings[0]).toMatchObject({ openingId: "door-1", swingSide: "right" });
+		}
+		expect(source.hingeEnd).toBe("end");
 	});
 
 	it("keeps the 800 mm minimum and wall-length maximum when an existing door is resized", () => {

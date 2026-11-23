@@ -2772,10 +2772,11 @@ export class ProjectController {
 		}
 	}
 
-	/** Product route: deletes exactly the selected segment, even when it closes a room face. */
+	/** Deletes the selected edge or its confirmed uninterrupted run. */
 	public async deleteGeneralWall(input: {
 		readonly previewRevisionId: string;
 		readonly wallSegmentId: string;
+		readonly wallRunSegmentIds?: readonly string[];
 	}): Promise<
 		| GeneralWallProjectMutationUseCaseResult
 		| WriterLeaseLostResult
@@ -2858,6 +2859,7 @@ export class ProjectController {
 		readonly roomIds: readonly string[];
 		readonly roomMetadataResolutions?: readonly DeleteGeneralWallRoomMetadataResolution[];
 		readonly wallSegmentId: string;
+		readonly wallRunSegmentIds?: readonly string[];
 	}): Promise<
 		| GeneralWallProjectMutationUseCaseResult
 		| WriterLeaseLostResult
@@ -2897,7 +2899,7 @@ export class ProjectController {
 		}
 	}
 
-	/** Product route: changes only the selected segment width and re-derives its rooms. */
+	/** Changes the selected wall width and re-derives its rooms. */
 	public async changeGeneralWallThickness(
 		input: ChangeGeneralWallThicknessInput,
 	): Promise<
@@ -2965,7 +2967,7 @@ export class ProjectController {
 		}
 	}
 
-	/** Product route: moves one selected straight wall parallel to itself. */
+	/** Moves the selected straight wall parallel to itself. */
 	public async moveGeneralWall(
 		input: MoveGeneralWallInput,
 	): Promise<

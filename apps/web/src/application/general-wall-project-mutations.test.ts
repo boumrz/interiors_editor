@@ -174,6 +174,78 @@ function dependencies(
 }
 
 describe("general wall Project use cases", () => {
+	it("revalidates wall run membership before a width no-op or a single publication", async () => {
+		const base = baseCandidate();
+		const split = splitGeneralWall(
+			base.project,
+			{ positionMm: 2050, wallSegmentId: "wall-1" },
+			ids("legacy-joint", "wall-1-tail"),
+			base.project.updatedAt,
+		);
+		if (split.kind !== "accepted") throw new Error("Expected a saved wall run");
+		const deps = dependencies(ids("revision-2"));
+		const published: import("./ports").DurablePublicationCandidate[] = [];
+		const useCase = new ChangeGeneralWallThicknessUseCase({
+			...deps,
+			repository: {
+				...deps.repository,
+				publishNextRevision: async (candidate) => {
+					published.push(candidate);
+					return { kind: "durable" as const };
+				},
+			},
+		});
+		const source = { ...base, project: split.project };
+		const selection = {
+			wallSegmentId: "wall-1-tail",
+			wallRunSegmentIds: ["wall-1", "wall-1-tail"],
+		};
+		const onStatus = () => undefined;
+		await expect(
+			useCase.execute(
+				source,
+				{
+					...selection,
+					thicknessMm: 100,
+					wallRunSegmentIds: ["wall-1-tail"],
+				},
+				onStatus,
+			),
+		).resolves.toEqual({
+			kind: "rejected",
+			reasonCode: "WALL_RUN_SELECTION_STALE",
+		});
+		await expect(
+			useCase.execute(
+				source,
+				{
+					...selection,
+					thicknessMm: 100,
+				},
+				onStatus,
+			),
+		).resolves.toEqual({ kind: "unchanged" });
+		expect(published).toHaveLength(0);
+		await expect(
+			useCase.execute(
+				source,
+				{
+					...selection,
+					thicknessMm: 200,
+				},
+				onStatus,
+			),
+		).resolves.toMatchObject({ kind: "durable", revisionId: "revision-2" });
+		expect(published).toHaveLength(1);
+		expect(
+			published[0]?.project.level.wallSegments
+				.filter((wall) =>
+					selection.wallRunSegmentIds.includes(wall.wallSegmentId),
+				)
+				.map((wall) => wall.thicknessMm),
+		).toEqual([200, 200]);
+	});
+
 	it("publishes a selected wall-thickness change through the normal durable boundary", async () => {
 		const published: import("./ports").DurablePublicationCandidate[] = [];
 		const statuses: string[] = [];
@@ -709,6 +781,66 @@ describe("general wall Project use cases", () => {
 				(wall) => wall.wallSegmentId,
 			),
 		).not.toContain("wall-1");
+	});
+
+	it("revalidates a displayed wall run and publishes its confirmed deletion once", async () => {
+		const base = baseCandidate();
+		const split = splitGeneralWall(
+			base.project,
+			{ positionMm: 2050, wallSegmentId: "wall-1" },
+			ids("legacy-joint", "wall-1-tail"),
+			base.project.updatedAt,
+		);
+		if (split.kind !== "accepted") throw new Error("Expected a saved wall run");
+		const deps = dependencies(ids("revision-2"));
+		const published: import("./ports").DurablePublicationCandidate[] = [];
+		const useCase = new DeleteGeneralWallFromProjectUseCase({
+			...deps,
+			repository: {
+				...deps.repository,
+				publishNextRevision: async (candidate) => {
+					published.push(candidate);
+					return { kind: "durable" as const };
+				},
+			},
+		});
+		const source = { ...base, project: split.project };
+		const confirmation = {
+			itemIds: [],
+			openingIds: [],
+			roomIds: ["room-1"],
+			wallSegmentId: "wall-1-tail",
+		};
+		await expect(
+			useCase.execute(
+				source,
+				{
+					...confirmation,
+					wallRunSegmentIds: ["wall-1-tail"],
+				},
+				() => undefined,
+			),
+		).resolves.toMatchObject({
+			kind: "rejected",
+			reasonCode: "WALL_DELETION_CONFLICT_STALE",
+		});
+		expect(published).toHaveLength(0);
+		await expect(
+			useCase.execute(
+				source,
+				{
+					...confirmation,
+					wallRunSegmentIds: ["wall-1", "wall-1-tail"],
+				},
+				() => undefined,
+			),
+		).resolves.toMatchObject({ kind: "durable", revisionId: "revision-2" });
+		expect(published).toHaveLength(1);
+		expect(
+			published[0]?.project.level.wallSegments.map(
+				(wall) => wall.wallSegmentId,
+			),
+		).toEqual(["wall-2", "wall-3", "wall-4"]);
 	});
 
 	it("rejects selected-Wall deletion when its previewed Durable Revision is stale", async () => {

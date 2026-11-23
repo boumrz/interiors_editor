@@ -73,6 +73,7 @@ import {
 
 
 declare const __INTERIORS_EXACT_FLOOR_YAW__: boolean;
+declare const __INTERIORS_DOOR_HINGE_AUTHORING__: boolean;
 declare const __INTERIORS_RETURN_STUDY__: {
 	readonly digest: string;
 	readonly active: boolean;
@@ -919,6 +920,7 @@ function AdmittedEditor({
 		<EditorApp
 			localGreyboxCatalog
 			exactFloorYaw={runtime.exactFloorYaw}
+			doorHingeAuthoring={runtime.doorHingeAuthoring}
 			onOpenSettings={openSettings}
 			hostNavigation={navigation}
 			hostLifecycle={hostEnvironment?.lifecycle}
@@ -1084,6 +1086,7 @@ export function mountTelegramBrowserEditor(
 					locks: navigator.locks,
 					secureContext: isSecureContext,
 					acceptExactFloorYawStorage: true,
+					acceptDoorHingeStorage: true,
 				},
 				checksum: browserChecksum,
 				binaryChecksum: browserBinaryChecksum,
@@ -1110,6 +1113,9 @@ export function mountTelegramBrowserEditor(
 				context: {
 					databaseMode: typeof __INTERIORS_EXACT_FLOOR_YAW__ !== "undefined" && __INTERIORS_EXACT_FLOOR_YAW__
 						? "exact"
+						: "compatible",
+					doorHingeMode: typeof __INTERIORS_DOOR_HINGE_AUTHORING__ !== "undefined" && __INTERIORS_DOOR_HINGE_AUTHORING__
+						? "authoring"
 						: "compatible",
 					indexedDb: indexedDB,
 					locks: navigator.locks,

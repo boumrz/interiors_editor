@@ -29,6 +29,7 @@ export type EditorAppProps = {
 	readonly projectsSupplement?: ReactNode;
 	readonly localGreyboxCatalog?: boolean;
 	readonly exactFloorYaw?: boolean;
+	readonly doorHingeAuthoring?: boolean;
 	readonly readonlyContent?: ReactNode;
 	readonly readonlyDetails?: ReactNode;
 	readonly readonlyRecoveryDetails?: ReactNode;
@@ -99,6 +100,7 @@ export function EditorApp({
 	onOpenSettings,
 	localGreyboxCatalog,
 	exactFloorYaw,
+	doorHingeAuthoring,
 	readonlyContent,
 	readonlyDetails,
 	readonlyRecoveryDetails,
@@ -170,6 +172,7 @@ export function EditorApp({
 			onOpenSettings={onOpenSettings}
 			localGreyboxCatalog={localGreyboxCatalog}
 			exactFloorYaw={exactFloorYaw}
+			doorHingeAuthoring={doorHingeAuthoring}
 			readonlyDetails={readonlyDetails}
 			readonlyRecoveryDetails={readonlyRecoveryDetails}
 			readonlyStorageSources={readonlyStorageSources}

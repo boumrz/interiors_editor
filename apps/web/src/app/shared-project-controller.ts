@@ -90,6 +90,7 @@ export interface SharedProjectControllerDependencies {
 	readonly clock: ClockPort;
 	readonly ids: IdPort;
 	readonly storageEstimate: StorageEstimatePort;
+	readonly preserveDoorHinges?: () => Promise<boolean>;
 	readonly portable: {
 		readonly feasibility?: BackupFeasibilityPolicyPort;
 		/** Explicit registered object formatter; the browser keeps its existing default. */
@@ -138,6 +139,7 @@ export function createSharedProjectController(
 		checksum,
 		clock,
 		ids,
+		preserveDoorHinges: dependencies.preserveDoorHinges,
 		repository: publicationRepository,
 		serializer: canonicalProjectSerializer,
 	};

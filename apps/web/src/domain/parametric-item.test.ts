@@ -9,6 +9,7 @@ import {
 	deleteParametricFloorItem,
 	findParametricFloorItemCollisionTargets,
 	findRoomForFloorItem,
+	floorItemFootprintIntersectsDoorSwing,
 	floorItemFootprintIntersectsWall,
 	moveParametricFloorItem,
 	recolorParametricFloorItem,
@@ -21,6 +22,23 @@ import {
 import { isFloorSchematicAssetInstance } from "./project";
 import { configureRectangularRoom } from "./rectangular-room";
 import { createRectangularRoomLoop } from "./rectangular-room-loop";
+
+it.each([["left", 1], ["right", -1]] as const)(
+	"places the %s clearance sector on the selected jamb of the same wall",
+	(swingSide, sign) => {
+		const start = { xMm: 0, zMm: 0 };
+		const end = { xMm: 3000, zMm: 0 };
+		const door = { kind: "Door", offsetMm: 1450, widthMm: 900, swingSide } as const;
+		const footprint = { xMm: 1100, zMm: 650 * sign, widthMm: 50, depthMm: 50, yawRadians: 0 };
+		const oppositeJamb = { ...footprint, xMm: 1800 };
+		const endHinge = { ...door, hingeEnd: "end" } as const;
+		expect(floorItemFootprintIntersectsDoorSwing(footprint, door, start, end)).toBe(true);
+		expect(floorItemFootprintIntersectsDoorSwing(footprint, endHinge, start, end)).toBe(false);
+		expect(floorItemFootprintIntersectsDoorSwing(oppositeJamb, door, start, end)).toBe(false);
+		expect(floorItemFootprintIntersectsDoorSwing(oppositeJamb, endHinge, start, end)).toBe(true);
+		expect(floorItemFootprintIntersectsDoorSwing({ ...oppositeJamb, zMm: -footprint.zMm }, endHinge, start, end)).toBe(false);
+	},
+);
 
 function ids(...values: string[]) {
 	let index = 0;

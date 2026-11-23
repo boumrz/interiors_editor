@@ -24,6 +24,7 @@ import {
 	splitGeneralWall,
 	splitGeneralWallWithHostResolution,
 	splitGeneralWallWithOpeningResolution,
+	uninterruptedWallRun,
 } from "./general-wall-project";
 import { createInitialProject } from "./initial-project";
 import { createParametricFloorItem } from "./parametric-item";
@@ -3854,6 +3855,403 @@ describe("general Project wall mutations", () => {
 		]);
 	});
 
+	it("finds the same straight run when tapping any constituent segment of a saved wall", () => {
+		const split = splitGeneralWall(
+			starterProject(),
+			{ positionMm: 2050, wallSegmentId: "wall-1" },
+			ids("inline-vertex", "wall-1-tail"),
+			"2026-08-23T04:55:00.000Z",
+		);
+		if (split.kind !== "accepted") throw new Error("Expected split wall");
+		const source = split.project;
+		const before = JSON.stringify(source);
+		const expected = {
+			startVertexId: "v-1",
+			endVertexId: "v-2",
+			wallSegmentIds: ["wall-1", "wall-1-tail"],
+		};
+		expect(uninterruptedWallRun(source, "wall-1")).toEqual(expected);
+		expect(uninterruptedWallRun(source, "wall-1-tail")).toEqual(expected);
+		expect(uninterruptedWallRun(source, "wall-2")?.wallSegmentIds).toEqual([
+			"wall-2",
+		]);
+		expect(JSON.stringify(source)).toBe(before);
+	});
+
+	it("widens and moves the full uninterrupted run with its attached room and door", () => {
+		const split = splitGeneralWall(
+			projectWithDoor(),
+			{ positionMm: 1000, wallSegmentId: "wall-1" },
+			ids("legacy-joint", "wall-1-tail"),
+			"2026-08-23T04:55:00.000Z",
+		);
+		if (split.kind !== "accepted") throw new Error("Expected a saved run");
+		const source = split.project;
+		const selection = {
+			wallSegmentId: "wall-1-tail",
+			wallRunSegmentIds: ["wall-1", "wall-1-tail"],
+		};
+		const updatedAt = "2026-08-23T04:56:00.000Z";
+		const widened = changeGeneralWallThickness(
+			source,
+			{
+				...selection,
+				thicknessMm: 200,
+			},
+			updatedAt,
+		);
+		if (widened.kind !== "accepted") throw new Error("Expected widened run");
+		expect(widened.project.level.wallSegments).toEqual(
+			source.level.wallSegments.map((wall) =>
+				selection.wallRunSegmentIds.includes(wall.wallSegmentId)
+					? { ...wall, thicknessMm: 200 }
+					: wall,
+			),
+		);
+		const moved = moveGeneralWall(
+			widened.project,
+			{ ...selection, positionMm: 300 },
+			updatedAt,
+		);
+		if (moved.kind !== "accepted") throw new Error("Expected moved run");
+		expect(moved.project.level.vertices).toEqual(
+			source.level.vertices.map((vertex) =>
+				["v-1", "legacy-joint", "v-2"].includes(vertex.vertexId)
+					? { ...vertex, zMm: 300 }
+					: vertex,
+			),
+		);
+		expect(moved.project.level.wallSegments).toEqual(
+			widened.project.level.wallSegments,
+		);
+		expect(moved.project.level.openings).toEqual(source.level.openings);
+		expect(moved.project.level.rooms).toEqual([
+			expect.objectContaining({ heightMm: 2600, roomId: "room-1" }),
+		]);
+	});
+
+	it("rejects widening the whole run when a part other than the selected wall hits an Opening", () => {
+		const timestamp = "2026-08-23T04:57:00.000Z";
+		const added = addGeneralWallToProject(
+			projectWithDoor(),
+			{
+				start: { xMm: 2050, zMm: -1100 },
+				end: { xMm: 2050, zMm: -100 },
+				thicknessMm: 100,
+			},
+			ids("guard-start", "guard-end", "guard-wall"),
+			timestamp,
+		);
+		if (added.kind !== "accepted")
+			throw new Error("Expected a safe guard wall");
+		const split = splitGeneralWall(
+			added.project,
+			{ positionMm: -600, wallSegmentId: "guard-wall" },
+			ids("guard-joint", "guard-tail"),
+			timestamp,
+		);
+		if (split.kind !== "accepted")
+			throw new Error("Expected a saved guard run");
+		const selection = {
+			wallSegmentId: "guard-wall",
+			wallRunSegmentIds: ["guard-wall", "guard-tail"],
+		};
+		const before = JSON.stringify(split.project);
+		expect(
+			changeGeneralWallThickness(
+				split.project,
+				{
+					...selection,
+					thicknessMm: 200,
+				},
+				timestamp,
+			),
+		).toEqual({
+			affected: { kind: "opening", openingId: "door-1" },
+			kind: "rejected",
+			reasonCode: "WALL_DOOR_OPENING_COLLISION",
+		});
+		expect(JSON.stringify(split.project)).toBe(before);
+
+		const host = splitGeneralWall(
+			split.project,
+			{ positionMm: 1000, wallSegmentId: "wall-1" },
+			ids("host-joint", "host-tail"),
+			timestamp,
+		);
+		if (host.kind !== "accepted")
+			throw new Error("Expected split Opening host");
+		expect(
+			changeGeneralWallThickness(
+				host.project,
+				{
+					wallSegmentId: "wall-1",
+					wallRunSegmentIds: ["wall-1", "host-tail"],
+					thicknessMm: 200,
+				},
+				timestamp,
+			),
+		).toEqual({
+			affected: { kind: "opening", openingId: "door-1" },
+			kind: "rejected",
+			reasonCode: "WALL_DOOR_OPENING_COLLISION",
+		});
+	});
+
+	it("translates an uninterrupted diagonal and rejects stale membership without touching its neighbours", () => {
+		const timestamp = "2026-08-23T04:58:00.000Z";
+		const added = addGeneralWallToProject(
+			starterProject(),
+			{
+				start: { xMm: 5000, zMm: 5000 },
+				end: { xMm: 7000, zMm: 7000 },
+				thicknessMm: 100,
+			},
+			ids("diagonal-start", "diagonal-end", "diagonal-first"),
+			timestamp,
+		);
+		if (added.kind !== "accepted")
+			throw new Error("Expected a detached diagonal wall");
+		const split = splitGeneralWall(
+			added.project,
+			{ pointMm: { xMm: 6000, zMm: 6000 }, wallSegmentId: "diagonal-first" },
+			ids("diagonal-joint", "diagonal-tail"),
+			timestamp,
+		);
+		if (split.kind !== "accepted")
+			throw new Error("Expected a saved diagonal run");
+		const input = {
+			wallSegmentId: "diagonal-tail",
+			translationMm: { xMm: 100, zMm: -100 },
+			wallRunSegmentIds: ["diagonal-first", "diagonal-tail"],
+		};
+		expect(
+			moveGeneralWall(
+				split.project,
+				{
+					...input,
+					wallRunSegmentIds: ["diagonal-tail"],
+				},
+				timestamp,
+			),
+		).toEqual({ kind: "rejected", reasonCode: "WALL_RUN_SELECTION_STALE" });
+		const moved = moveGeneralWall(split.project, input, timestamp);
+		if (moved.kind !== "accepted") throw new Error("Expected moved diagonal");
+		expect(moved.project.level.vertices).toEqual(
+			split.project.level.vertices.map((vertex) =>
+				vertex.vertexId.startsWith("diagonal")
+					? { ...vertex, xMm: vertex.xMm + 100, zMm: vertex.zMm - 100 }
+					: vertex,
+			),
+		);
+		expect(moved.project.level.wallSegments).toEqual(
+			split.project.level.wallSegments,
+		);
+	});
+
+	it("keeps a true T junction fixed when the chosen run cannot move in parallel", () => {
+		const timestamp = "2026-08-23T04:59:00.000Z";
+		const divided = addGeneralWallToProject(
+			starterProject(),
+			{
+				start: { xMm: 2050, zMm: 0 },
+				end: { xMm: 2050, zMm: 3100 },
+				thicknessMm: 100,
+			},
+			ids(
+				"divider-bottom",
+				"divider-top",
+				"bottom-tail",
+				"top-tail",
+				"divider",
+				"room-right",
+			),
+			timestamp,
+		);
+		if (divided.kind !== "accepted")
+			throw new Error("Expected a saved T junction");
+		const split = splitGeneralWall(
+			divided.project,
+			{ positionMm: 1000, wallSegmentId: "wall-1" },
+			ids("inline-join", "legacy-tail"),
+			timestamp,
+		);
+		if (split.kind !== "accepted")
+			throw new Error("Expected an inline joint before the T junction");
+		const before = JSON.stringify(split.project);
+		expect(
+			moveGeneralWall(
+				split.project,
+				{
+					wallSegmentId: "legacy-tail",
+					wallRunSegmentIds: ["wall-1", "legacy-tail"],
+					positionMm: 250,
+				},
+				timestamp,
+			),
+		).toEqual({ kind: "rejected", reasonCode: "WALL_NOT_MOVABLE" });
+		expect(JSON.stringify(split.project)).toBe(before);
+	});
+
+	it("preserves the physical hinge on wall reversal when four door orientations are writable", () => {
+		const source = projectWithDoor();
+		const input = { wallSegmentId: "wall-1" };
+		const updatedAt = "2026-08-23T04:56:00.000Z";
+		const reversed = reverseGeneralWall(source, input, updatedAt, true);
+		if (reversed.kind !== "accepted") throw new Error("Expected reversed wall");
+		expect(reversed.project.level.openings[0]).toMatchObject({
+			hingeEnd: "end",
+			swingSide: "left",
+		});
+		const restored = reverseGeneralWall(
+			reversed.project,
+			input,
+			updatedAt,
+			true,
+		);
+		if (restored.kind !== "accepted") throw new Error("Expected restored wall");
+		expect(restored.project.level.openings[0]).not.toHaveProperty("hingeEnd");
+		expect(restored.project.level.openings[0]).toMatchObject({
+			offsetMm: 2050,
+			swingSide: "right",
+		});
+	});
+
+	it("keeps the run bounded by an exact T junction and by a thickness change", () => {
+		const divided = addGeneralWallToProject(
+			starterProject(),
+			{
+				start: { xMm: 2050, zMm: 0 },
+				end: { xMm: 2050, zMm: 3100 },
+				thicknessMm: 100,
+			},
+			ids(
+				"divider-bottom",
+				"divider-top",
+				"bottom-tail",
+				"top-tail",
+				"divider",
+				"room-right",
+			),
+			"2026-08-23T04:55:00.000Z",
+		);
+		if (divided.kind !== "accepted") throw new Error("Expected a divider");
+		expect(
+			uninterruptedWallRun(divided.project, "wall-1")?.wallSegmentIds,
+		).toEqual(["wall-1"]);
+		expect(
+			uninterruptedWallRun(divided.project, "bottom-tail")?.wallSegmentIds,
+		).toEqual(["bottom-tail"]);
+		const split = splitGeneralWall(
+			starterProject(),
+			{ positionMm: 2050, wallSegmentId: "wall-1" },
+			ids("thickness-join", "wall-1-tail"),
+			"2026-08-23T04:55:00.000Z",
+		);
+		if (split.kind !== "accepted") throw new Error("Expected a split wall");
+		const source = {
+			...split.project,
+			level: {
+				...split.project.level,
+				wallSegments: split.project.level.wallSegments.map((wall) =>
+					wall.wallSegmentId === "wall-1-tail"
+						? { ...wall, thicknessMm: 120 }
+						: wall,
+				),
+			},
+		};
+		expect(uninterruptedWallRun(source, "wall-1")?.wallSegmentIds).toEqual([
+			"wall-1",
+		]);
+	});
+
+	it("previews hosted resources on every part of the run and deletes the confirmed run as one candidate", () => {
+		const split = splitGeneralWall(
+			starterProject(),
+			{ positionMm: 2050, wallSegmentId: "wall-1" },
+			ids("inline-vertex", "wall-1-tail"),
+			"2026-08-23T04:55:00.000Z",
+		);
+		if (split.kind !== "accepted") throw new Error("Expected a split wall");
+		const withDoor = addDoorOpeningToProject(
+			split.project,
+			{
+				heightMm: 2100,
+				offsetMm: 900,
+				sillMm: 0,
+				wallSegmentId: "wall-1-tail",
+				widthMm: 900,
+			},
+			ids("tail-door"),
+			"2026-08-23T04:56:00.000Z",
+		);
+		if (withDoor.kind !== "accepted") throw new Error("Expected a door");
+		const withItem = createParametricWallItem(
+			withDoor.project,
+			{
+				color: "#416b91",
+				depthMm: 50,
+				elevationMm: 1300,
+				heightMm: 600,
+				label: "Панель",
+				offsetMm: 900,
+				side: "right",
+				wallSegmentId: "wall-1",
+				widthMm: 400,
+			},
+			ids("head-panel"),
+			"2026-08-23T04:57:00.000Z",
+		);
+		if (withItem.kind !== "accepted") throw new Error("Expected a wall item");
+		const source = withItem.project;
+		const before = JSON.stringify(source);
+		const input = {
+			wallSegmentId: "wall-1",
+			wallRunSegmentIds: ["wall-1", "wall-1-tail"],
+		};
+		expect(previewWallDeletionConflict(source, input)).toMatchObject({
+			kind: "conflict",
+			itemIds: ["head-panel"],
+			openingIds: ["tail-door"],
+			roomIds: ["room-1"],
+		});
+		const confirmation = {
+			...input,
+			itemIds: ["head-panel"],
+			openingIds: ["tail-door"],
+			roomIds: ["room-1"],
+		};
+		const updatedAt = "2026-08-23T04:58:00.000Z";
+		expect(
+			deleteGeneralWallWithConsequenceResolution(
+				source,
+				{
+					...confirmation,
+					wallRunSegmentIds: ["wall-1"],
+				},
+				updatedAt,
+			),
+		).toMatchObject({
+			kind: "rejected",
+			reasonCode: "WALL_DELETION_CONFLICT_STALE",
+		});
+		const deleted = deleteGeneralWallWithConsequenceResolution(
+			source,
+			confirmation,
+			updatedAt,
+		);
+		expect(deleted).toMatchObject({
+			kind: "accepted",
+			project: { assetInstances: [], level: { openings: [], rooms: [] } },
+		});
+		if (deleted.kind !== "accepted")
+			throw new Error("Expected confirmed deletion");
+		expect(
+			deleted.project.level.wallSegments.map((wall) => wall.wallSegmentId),
+		).toEqual(["wall-2", "wall-3", "wall-4"]);
+		expect(JSON.stringify(source)).toBe(before);
+	});
+
 	it("keeps a corner Vertex intact when an inline merge is not topologically safe", () => {
 		const source = starterProject();
 		const before = JSON.stringify(source);
@@ -6150,6 +6548,46 @@ describe("general Project wall mutations", () => {
 				wallSegmentId: "wall-1",
 			}),
 		]);
+		const reversedTail = reverseGeneralWall(
+			withPanel.project,
+			{ wallSegmentId: "bottom-tail" },
+			"2026-08-27T11:14:00.000Z",
+		);
+		if (reversedTail.kind !== "accepted")
+			throw new Error("Expected reversed tail host");
+		const rehosted = deleteGeneralWallWithConsequenceResolution(
+			reversedTail.project,
+			{
+				itemIds: [],
+				openingIds: [],
+				roomIds: ["room-1", "room-right"],
+				roomMetadataResolutions: [
+					{
+						retainedRoomId: "room-1",
+						targetFaceKey: "0:4100:0:3100:100:100:100:100",
+					},
+				],
+				wallSegmentId: "divider",
+			},
+			"2026-08-27T11:15:00.000Z",
+			true,
+		);
+		expect(rehosted).toMatchObject({
+			kind: "accepted",
+			project: {
+				level: {
+					openings: [
+						{
+							hingeEnd: "end",
+							offsetMm: 3450,
+							openingId: "tail-door",
+							swingSide: "right",
+							wallSegmentId: "wall-1",
+						},
+					],
+				},
+			},
+		});
 	});
 
 	it("keeps an exact rotated floor Item when its Room is merged into the chosen predecessor", () => {

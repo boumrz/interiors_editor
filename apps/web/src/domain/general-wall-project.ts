@@ -5,7 +5,7 @@ import {
 } from "./add-wall-segment";
 import {
 	type DeleteWallSegmentResult,
-	deleteWallSegment,
+	deleteWallSegments,
 } from "./delete-wall-segment";
 import {
 	type DerivedOrthogonalFace,
@@ -13,6 +13,7 @@ import {
 	type PlanGraph,
 } from "./derive-plan-faces";
 import { resolveOrthogonalPlanFaces } from "./derived-orthogonal-plan-faces";
+import { reverseDoorOpeningOrientation } from "./door-opening-orientation";
 import { projectOpeningsRemainValid } from "./door-opening-project";
 import {
 	findRoomForFloorItem,
@@ -32,6 +33,14 @@ import {
 	type WallSegment,
 } from "./project";
 import { wallOpeningIntervalMm } from "./wall-opening";
+import {
+	otherEndpoint,
+	type UninterruptedWallRun,
+	uninterruptedWallRunForGraph,
+	verticesAreCollinear,
+} from "./wall-runs";
+
+export type { UninterruptedWallRun } from "./wall-runs";
 
 const DEFAULT_ROOM_HEIGHT_MM = 2600;
 const MAX_EDITABLE_WALL_THICKNESS_MM = 1000;
@@ -126,6 +135,7 @@ export type GeneralWallProjectMutationReason =
 	| "WALL_ITEM_COLLISION"
 	| "WALL_NOT_MOVABLE"
 	| "WALL_POSITION_UNCHANGED"
+	| "WALL_RUN_SELECTION_STALE"
 	| "WALL_SPLIT_CONFLICT_STALE"
 	| "WALL_SPLIT_POINT_INVALID"
 	| "VERTEX_NOT_FOUND"
@@ -133,9 +143,15 @@ export type GeneralWallProjectMutationReason =
 	| "VERTEX_NOT_MOVABLE"
 	| "VERTEX_POSITION_UNCHANGED";
 
-export interface ChangeGeneralWallThicknessInput {
-	readonly thicknessMm: number;
+interface GeneralWallSelectionInput {
 	readonly wallSegmentId: string;
+	/** Ordered complete run shown for the selected wall. */
+	readonly wallRunSegmentIds?: readonly string[];
+}
+
+export interface ChangeGeneralWallThicknessInput
+	extends GeneralWallSelectionInput {
+	readonly thicknessMm: number;
 }
 
 /** Reverses the canonical local direction of one stable WallSegment. */
@@ -150,22 +166,22 @@ export interface WallTranslationMm {
 }
 
 /**
- * Moves one straight segment parallel to itself, preserving its endpoint IDs.
+ * Moves a straight wall parallel to itself, preserving all its vertex IDs.
  * Cardinal walls use their single normal coordinate; a 45-degree wall uses an
  * equally exact two-axis normal translation so no user-facing coordinate form
  * is required.
  */
-export type MoveGeneralWallInput =
-	| {
-			readonly positionMm: number;
-			readonly translationMm?: never;
-			readonly wallSegmentId: string;
-	  }
-	| {
-			readonly positionMm?: never;
-			readonly translationMm: WallTranslationMm;
-			readonly wallSegmentId: string;
-	  };
+export type MoveGeneralWallInput = GeneralWallSelectionInput &
+	(
+		| {
+				readonly positionMm: number;
+				readonly translationMm?: never;
+		  }
+		| {
+				readonly positionMm?: never;
+				readonly translationMm: WallTranslationMm;
+		  }
+	);
 
 /** Moves one existing graph Vertex; all attached alpha wall directions stay cardinal. */
 export interface MoveGeneralVertexInput {
@@ -302,6 +318,39 @@ export type WallDeletionOpeningConflictPreview =
 			readonly openingIds: readonly string[];
 			readonly wallSegmentId: string;
 	  };
+
+export type DeleteGeneralWallInput = GeneralWallSelectionInput;
+
+/** The displayed wall stops at every corner, branch and thickness transition. */
+export function uninterruptedWallRun(
+	source: Project,
+	wallSegmentId: string,
+): UninterruptedWallRun | undefined {
+	return uninterruptedWallRunForGraph(source.level, wallSegmentId);
+}
+
+function confirmedWallRun(
+	source: Project,
+	input: GeneralWallSelectionInput,
+): UninterruptedWallRun | undefined {
+	const confirmedIds = input.wallRunSegmentIds;
+	if (confirmedIds === undefined) return undefined;
+	const run = uninterruptedWallRun(source, input.wallSegmentId);
+	return run &&
+		run.wallSegmentIds.length === confirmedIds.length &&
+		confirmedIds.every((id, index) => run.wallSegmentIds[index] === id)
+		? run
+		: undefined;
+}
+
+function selectedWallSegmentIds(
+	source: Project,
+	input: GeneralWallSelectionInput,
+): readonly string[] | undefined {
+	return input.wallRunSegmentIds === undefined
+		? [input.wallSegmentId]
+		: confirmedWallRun(source, input)?.wallSegmentIds;
+}
 
 /**
  * The complete, allocation-free consequence preview for deleting a wall.
@@ -625,14 +674,15 @@ export function addGeneralWallToProjectWithHostResolution(
 }
 
 /**
- * Deletes exactly one selected segment, including a room-closing exterior
- * segment. Rooms are derived again from the surviving graph; dependent items
+ * Deletes a segment or the displayed confirmed run, including an exterior
+ * wall. Rooms are derived from the surviving graph; dependent items
  * make the deletion reject rather than becoming orphaned silently.
  */
 export function deleteGeneralWallFromProject(
 	source: Project,
-	input: { readonly wallSegmentId: string },
+	input: DeleteGeneralWallInput,
 	updatedAt: string,
+	preserveDoorHinges = false,
 ): GeneralWallProjectMutationResult {
 	const preview = previewWallDeletionConflict(source, input);
 	if (
@@ -641,30 +691,39 @@ export function deleteGeneralWallFromProject(
 	) {
 		return reject("WALL_DELETION_CONFLICT");
 	}
-	return deleteGeneralWallCandidate(source, input, updatedAt);
+	return deleteGeneralWallCandidate(
+		source,
+		input,
+		updatedAt,
+		preserveDoorHinges,
+	);
 }
 
 function deleteGeneralWallCandidate(
 	source: Project,
-	input: { readonly wallSegmentId: string },
+	input: DeleteGeneralWallInput,
 	updatedAt: string,
+	preserveDoorHinges: boolean,
 ): GeneralWallProjectMutationResult {
 	const sourceProject = inspectSourceProject(source);
 	if (sourceProject.kind === "rejected") {
 		return sourceProject;
 	}
-	if (hasWallItemHostedBy(source.assetInstances, input.wallSegmentId)) {
+	const wallSegmentIds = selectedWallSegmentIds(source, input);
+	if (!wallSegmentIds) return reject("WALL_DELETION_CONFLICT_STALE");
+	if (hasWallItemHostedBy(source.assetInstances, wallSegmentIds)) {
 		return reject("ITEM_HOST_UNRESOLVABLE");
 	}
 
-	const deleted = deleteWallSegment(graphOf(source), input.wallSegmentId);
+	const deleted = deleteWallSegments(graphOf(source), wallSegmentIds);
 	if (deleted.kind === "rejected") {
 		return deleted;
 	}
 	const rehostedSource = rehostWallResourcesAfterDeletionNormalization(
 		source,
 		deleted.graph,
-		input.wallSegmentId,
+		new Set(wallSegmentIds),
+		preserveDoorHinges,
 	);
 	if (rehostedSource.kind === "rejected") return rehostedSource;
 	const targetFaces = facesForGraph(deleted.graph);
@@ -706,10 +765,11 @@ function deleteGeneralWallCandidate(
  */
 export function previewOpeningConflictForWallDeletion(
 	source: Project,
-	input: { readonly wallSegmentId: string },
+	input: DeleteGeneralWallInput,
 ): WallDeletionOpeningConflictPreview {
+	const wallSegmentIds = selectedWallSegmentIds(source, input) ?? [];
 	const openingIds = source.level.openings
-		.filter((opening) => opening.wallSegmentId === input.wallSegmentId)
+		.filter((opening) => wallSegmentIds.includes(opening.wallSegmentId))
 		.map((opening) => opening.openingId)
 		.sort();
 	return openingIds.length === 0
@@ -724,17 +784,18 @@ export function previewOpeningConflictForWallDeletion(
  */
 export function previewWallDeletionConflict(
 	source: Project,
-	input: { readonly wallSegmentId: string },
+	input: DeleteGeneralWallInput,
 ): WallDeletionConflictPreview {
+	const wallSegmentIds = selectedWallSegmentIds(source, input) ?? [];
 	const openingIds = source.level.openings
-		.filter((opening) => opening.wallSegmentId === input.wallSegmentId)
+		.filter((opening) => wallSegmentIds.includes(opening.wallSegmentId))
 		.map((opening) => opening.openingId)
 		.sort();
-	const itemIds = orphanedItemIdsAfterWallDeletion(source, input.wallSegmentId);
-	const roomIds = affectedRoomIdsAfterWallDeletion(source, input.wallSegmentId);
+	const itemIds = orphanedItemIdsAfterWallDeletion(source, wallSegmentIds);
+	const roomIds = affectedRoomIdsAfterWallDeletion(source, wallSegmentIds);
 	const roomMetadataConflicts = roomMetadataConflictsAfterWallDeletion(
 		source,
-		input.wallSegmentId,
+		wallSegmentIds,
 	);
 	return openingIds.length === 0 &&
 		itemIds.length === 0 &&
@@ -759,11 +820,11 @@ export function previewWallDeletionConflict(
  */
 export function deleteGeneralWallWithOpeningResolution(
 	source: Project,
-	input: {
+	input: DeleteGeneralWallInput & {
 		readonly openingIds: readonly string[];
-		readonly wallSegmentId: string;
 	},
 	updatedAt: string,
+	preserveDoorHinges = false,
 ): GeneralWallProjectMutationResult {
 	const preview = previewOpeningConflictForWallDeletion(source, input);
 	if (
@@ -777,14 +838,15 @@ export function deleteGeneralWallWithOpeningResolution(
 		level: {
 			...source.level,
 			openings: source.level.openings.filter(
-				(opening) => opening.wallSegmentId !== input.wallSegmentId,
+				(opening) => !input.openingIds.includes(opening.openingId),
 			),
 		},
 	};
 	return deleteGeneralWallCandidate(
 		candidate,
-		{ wallSegmentId: input.wallSegmentId },
+		input,
 		updatedAt,
+		preserveDoorHinges,
 	);
 }
 
@@ -795,14 +857,14 @@ export function deleteGeneralWallWithOpeningResolution(
  */
 export function deleteGeneralWallWithConsequenceResolution(
 	source: Project,
-	input: {
+	input: DeleteGeneralWallInput & {
 		readonly itemIds: readonly string[];
 		readonly openingIds: readonly string[];
 		readonly roomIds: readonly string[];
 		readonly roomMetadataResolutions?: readonly DeleteGeneralWallRoomMetadataResolution[];
-		readonly wallSegmentId: string;
 	},
 	updatedAt: string,
+	preserveDoorHinges = false,
 ): GeneralWallProjectMutationResult {
 	const preview = previewWallDeletionConflict(source, input);
 	if (
@@ -836,8 +898,9 @@ export function deleteGeneralWallWithConsequenceResolution(
 	};
 	const deleted = deleteGeneralWallCandidate(
 		candidate,
-		{ wallSegmentId: input.wallSegmentId },
+		input,
 		updatedAt,
+		preserveDoorHinges,
 	);
 	return deleted.kind === "rejected" || roomMetadataConflicts.length === 0
 		? deleted
@@ -850,7 +913,7 @@ export function deleteGeneralWallWithConsequenceResolution(
 }
 
 /**
- * Changes the body width of one existing canonical segment without moving its
+ * Changes the body width of the selected wall without moving its
  * centerline or turning wall height into an editable wall property. The rooms
  * remain derived faces: their identity, height and centerline fingerprint are
  * retained while their usable insets are recomputed from the edited graph.
@@ -877,11 +940,14 @@ export function changeGeneralWallThickness(
 	) {
 		return reject("WALL_NOT_FOUND");
 	}
+	const segmentIds = selectedWallSegmentIds(source, input);
+	if (!segmentIds) return reject("WALL_RUN_SELECTION_STALE");
+	const affectedWallIds = new Set(segmentIds);
 
 	const graph: PlanGraph = {
 		...graphOf(source),
 		wallSegments: source.level.wallSegments.map((wall) =>
-			wall.wallSegmentId === input.wallSegmentId
+			affectedWallIds.has(wall.wallSegmentId)
 				? { ...wall, thicknessMm: input.thicknessMm }
 				: wall,
 		),
@@ -921,15 +987,27 @@ export function changeGeneralWallThickness(
 	if (wallItemCollision) {
 		return wallItemCollision;
 	}
-	const intersectedOpening = openingIntersectedByWallHostedByAnotherWall(
-		accepted.project,
-		input.wallSegmentId,
-	);
-	if (intersectedOpening) {
-		return reject("WALL_DOOR_OPENING_COLLISION", {
-			kind: "opening",
-			openingId: intersectedOpening.openingId,
-		});
+	const checksStationaryWalls =
+		input.wallRunSegmentIds !== undefined &&
+		accepted.project.level.openings.some((opening) =>
+			affectedWallIds.has(opening.wallSegmentId),
+		);
+	for (const wall of graph.wallSegments) {
+		const affected = affectedWallIds.has(wall.wallSegmentId);
+		// A wider run can collide with another wall's Opening. An Opening in
+		// the run also grows thicker, so it may collide with a stationary wall.
+		if (!affected && !checksStationaryWalls) continue;
+		const intersectedOpening = openingIntersectedByWallHostedByAnotherWall(
+			accepted.project,
+			wall.wallSegmentId,
+			affected ? undefined : affectedWallIds,
+		);
+		if (intersectedOpening) {
+			return reject("WALL_DOOR_OPENING_COLLISION", {
+				kind: "opening",
+				openingId: intersectedOpening.openingId,
+			});
+		}
 	}
 	return !projectOpeningsRemainValid(accepted.project)
 		? reject("OPENING_HOST_UNRESOLVABLE")
@@ -946,6 +1024,7 @@ export function reverseGeneralWall(
 	source: Project,
 	input: ReverseGeneralWallInput,
 	updatedAt: string,
+	preserveDoorHinges = false,
 ): GeneralWallProjectMutationResult {
 	const sourceProject = inspectSourceProject(source);
 	if (sourceProject.kind === "rejected") {
@@ -1011,7 +1090,12 @@ export function reverseGeneralWall(
 		level: {
 			...source.level,
 			openings: source.level.openings.map((opening) =>
-				reverseWallOpening(opening, wall.wallSegmentId, lengthMm),
+				reverseWallOpening(
+					opening,
+					wall.wallSegmentId,
+					lengthMm,
+					preserveDoorHinges,
+				),
 			),
 		},
 	};
@@ -1324,11 +1408,9 @@ export function splitGeneralWallWithOpeningResolution(
 }
 
 /**
- * Repositions a selected straight Wall in exact millimetres. Its two endpoint
- * vertices move together along the normal, which keeps every perpendicular
- * adjacent wall connected. A collinear neighbour would require a multi-wall
- * topology operation, so this narrow command rejects it instead of silently
- * bending the graph.
+ * Repositions the selected straight Wall in exact millimetres. All vertices
+ * along the confirmed run move along its normal. Only walls outside the run
+ * count as neighbours of its endpoints.
  */
 export function moveGeneralWall(
 	source: Project,
@@ -1345,11 +1427,31 @@ export function moveGeneralWall(
 	if (!wall) {
 		return reject("WALL_NOT_FOUND");
 	}
+	const run = confirmedWallRun(source, input);
+	if (!run && input.wallRunSegmentIds !== undefined) {
+		return reject("WALL_RUN_SELECTION_STALE");
+	}
+	const movedWallIds = new Set(run?.wallSegmentIds ?? [wall.wallSegmentId]);
+	const movedVertexIds = new Set<string>();
+	const neighbouringWalls: WallSegment[] = [];
+	for (const segment of source.level.wallSegments) {
+		if (movedWallIds.has(segment.wallSegmentId)) {
+			movedVertexIds.add(segment.startVertexId);
+			movedVertexIds.add(segment.endVertexId);
+		} else {
+			neighbouringWalls.push(segment);
+		}
+	}
+	const boundary = {
+		...wall,
+		startVertexId: run?.startVertexId ?? wall.startVertexId,
+		endVertexId: run?.endVertexId ?? wall.endVertexId,
+	};
 	const verticesById = new Map(
 		source.level.vertices.map((vertex) => [vertex.vertexId, vertex]),
 	);
-	const start = verticesById.get(wall.startVertexId);
-	const end = verticesById.get(wall.endVertexId);
+	const start = verticesById.get(boundary.startVertexId);
+	const end = verticesById.get(boundary.endVertexId);
 	if (!start || !end) {
 		return reject("INVALID_SOURCE_PROJECT");
 	}
@@ -1378,16 +1480,16 @@ export function moveGeneralWall(
 				: translation.xMm !== translation.zMm) ||
 			!bothTranslatedEndpointsStayInBounds(start, end, translation) ||
 			hasCollinearDiagonalNeighborAtEitherEndpoint(
-				source.level.wallSegments,
+				neighbouringWalls,
 				verticesById,
-				wall,
+				boundary,
 			)
 		) {
 			return reject("WALL_NOT_MOVABLE");
 		}
 		const graph: PlanGraph = {
 			vertices: source.level.vertices.map((vertex) =>
-				vertex.vertexId === start.vertexId || vertex.vertexId === end.vertexId
+				movedVertexIds.has(vertex.vertexId)
 					? {
 							...vertex,
 							xMm: vertex.xMm + translation.xMm,
@@ -1421,9 +1523,9 @@ export function moveGeneralWall(
 	}
 	if (
 		hasCollinearNeighborAtEitherEndpoint(
-			source.level.wallSegments,
+			neighbouringWalls,
 			verticesById,
-			wall,
+			boundary,
 			vertical,
 		)
 	) {
@@ -1431,7 +1533,7 @@ export function moveGeneralWall(
 	}
 	const graph: PlanGraph = {
 		vertices: source.level.vertices.map((vertex) =>
-			vertex.vertexId === start.vertexId || vertex.vertexId === end.vertexId
+			movedVertexIds.has(vertex.vertexId)
 				? vertical
 					? { ...vertex, xMm: input.positionMm }
 					: { ...vertex, zMm: input.positionMm }
@@ -1717,15 +1819,6 @@ function graphOf(project: Project): PlanGraph {
 	};
 }
 
-function otherEndpoint(
-	wall: WallSegment,
-	vertexId: string,
-): string | undefined {
-	if (wall.startVertexId === vertexId) return wall.endVertexId;
-	if (wall.endVertexId === vertexId) return wall.startVertexId;
-	return undefined;
-}
-
 /**
  * A Door's missing legacy swingSide projects as right. Reversal writes the
  * opposite explicit value so the physical opening direction is retained even
@@ -1735,6 +1828,7 @@ function reverseWallOpening(
 	opening: WallOpening,
 	wallSegmentId: string,
 	lengthMm: number,
+	preserveDoorHinges: boolean,
 ): WallOpening {
 	if (opening.wallSegmentId !== wallSegmentId) {
 		return opening;
@@ -1742,11 +1836,9 @@ function reverseWallOpening(
 	if (opening.kind === "Window") {
 		return { ...opening, offsetMm: lengthMm - opening.offsetMm };
 	}
-	const sourceSwingSide = opening.swingSide ?? "right";
 	return {
-		...opening,
+		...reverseDoorOpeningOrientation(opening, preserveDoorHinges),
 		offsetMm: lengthMm - opening.offsetMm,
-		swingSide: sourceSwingSide === "right" ? "left" : "right",
 	};
 }
 
@@ -1821,6 +1913,7 @@ function rehostOpeningBetweenHosts(
 	sourceWall: WallSegment,
 	targetWall: WallSegment,
 	verticesById: ReadonlyMap<string, Vertex>,
+	preserveDoorHinges: boolean,
 ): WallOpening | undefined {
 	const transformed = wallLocalHostTransform(
 		sourceWall,
@@ -1836,11 +1929,9 @@ function rehostOpeningBetweenHosts(
 			wallSegmentId: targetWall.wallSegmentId,
 		};
 	}
-	const sourceSwingSide = opening.swingSide ?? "right";
 	return {
-		...opening,
+		...reverseDoorOpeningOrientation(opening, preserveDoorHinges),
 		offsetMm: transformed.offsetMm,
-		swingSide: sourceSwingSide === "right" ? "left" : "right",
 		wallSegmentId: targetWall.wallSegmentId,
 	};
 }
@@ -1880,14 +1971,15 @@ function wallLocalHostTransform(
 function rehostWallResourcesAfterDeletionNormalization(
 	source: Project,
 	targetGraph: PlanGraph,
-	removedWallSegmentId: string,
+	removedWallSegmentIds: ReadonlySet<string>,
+	preserveDoorHinges: boolean,
 ): GeneralWallProjectMutationResult {
 	const verticesById = new Map(
 		source.level.vertices.map((vertex) => [vertex.vertexId, vertex]),
 	);
 	const replacementBySourceWallId = new Map<string, WallSegment>();
 	for (const sourceWall of source.level.wallSegments) {
-		if (sourceWall.wallSegmentId === removedWallSegmentId) continue;
+		if (removedWallSegmentIds.has(sourceWall.wallSegmentId)) continue;
 		const sourceStart = verticesById.get(sourceWall.startVertexId);
 		const sourceEnd = verticesById.get(sourceWall.endVertexId);
 		if (!sourceStart || !sourceEnd) {
@@ -1945,6 +2037,7 @@ function rehostWallResourcesAfterDeletionNormalization(
 						sourceWall,
 						targetWall,
 						verticesById,
+						preserveDoorHinges,
 					)
 				: undefined;
 		if (!rehosted) return reject("OPENING_HOST_UNRESOLVABLE");
@@ -1958,21 +2051,6 @@ function rehostWallResourcesAfterDeletionNormalization(
 			level: { ...source.level, openings },
 		},
 	};
-}
-
-function verticesAreCollinear(
-	first: Vertex,
-	joined: Vertex,
-	second: Vertex,
-): boolean {
-	const firstX = BigInt(first.xMm - joined.xMm);
-	const firstZ = BigInt(first.zMm - joined.zMm);
-	const secondX = BigInt(second.xMm - joined.xMm);
-	const secondZ = BigInt(second.zMm - joined.zMm);
-	return (
-		firstX * secondZ === firstZ * secondX &&
-		firstX * secondX + firstZ * secondZ < 0n
-	);
 }
 
 function splitWallGraph(
@@ -2447,24 +2525,34 @@ function incidentWallSegmentsRemainAlphaConstrained(
 	);
 }
 
-function wallSegmentsRemainUsable(graph: PlanGraph, source: PlanGraph): boolean {
+function wallSegmentsRemainUsable(
+	graph: PlanGraph,
+	source: PlanGraph,
+): boolean {
 	const verticesById = new Map(
 		graph.vertices.map((vertex) => [vertex.vertexId, vertex]),
 	);
-	const sourceVertices = new Map(source.vertices.map((vertex) => [vertex.vertexId, vertex]));
-	const sourceWalls = new Map(source.wallSegments.map((wall) => [wall.wallSegmentId, wall]));
+	const sourceVertices = new Map(
+		source.vertices.map((vertex) => [vertex.vertexId, vertex]),
+	);
+	const sourceWalls = new Map(
+		source.wallSegments.map((wall) => [wall.wallSegmentId, wall]),
+	);
 	return graph.wallSegments.every((wall) => {
 		const start = verticesById.get(wall.startVertexId);
 		const end = verticesById.get(wall.endVertexId);
 		if (!start || !end) return false;
-		const lengthSquared = (end.xMm - start.xMm) ** 2 + (end.zMm - start.zMm) ** 2;
+		const lengthSquared =
+			(end.xMm - start.xMm) ** 2 + (end.zMm - start.zMm) ** 2;
 		if (lengthSquared > wall.thicknessMm ** 2) return true;
 		const previous = sourceWalls.get(wall.wallSegmentId);
 		if (!previous) return false;
 		const previousStart = sourceVertices.get(previous.startVertexId);
 		const previousEnd = sourceVertices.get(previous.endVertexId);
 		if (!previousStart || !previousEnd) return false;
-		const previousLengthSquared = (previousEnd.xMm - previousStart.xMm) ** 2 + (previousEnd.zMm - previousStart.zMm) ** 2;
+		const previousLengthSquared =
+			(previousEnd.xMm - previousStart.xMm) ** 2 +
+			(previousEnd.zMm - previousStart.zMm) ** 2;
 		// A retained contact fragment may stay or improve. Explicit edits cannot
 		// create a short wall or make an existing short fragment less usable.
 		return (
@@ -2550,6 +2638,7 @@ function firstFloorItemIntersectedByProjectWall(
 function openingIntersectedByWallHostedByAnotherWall(
 	project: Project,
 	wallSegmentId: string,
+	openingHostFilter?: ReadonlySet<string>,
 ): WallOpening | undefined {
 	const wall = project.level.wallSegments.find(
 		(candidate) => candidate.wallSegmentId === wallSegmentId,
@@ -2573,6 +2662,7 @@ function openingIntersectedByWallHostedByAnotherWall(
 		},
 		project,
 		wallSegmentId,
+		openingHostFilter,
 	);
 }
 
@@ -2950,13 +3040,13 @@ function planDeletedFaces(
 
 function orphanedItemIdsAfterWallDeletion(
 	source: Project,
-	wallSegmentId: string,
+	wallSegmentIds: readonly string[],
 ): readonly string[] {
 	const sourceProject = inspectSourceProject(source);
 	if (sourceProject.kind === "rejected") {
 		return [];
 	}
-	const deleted = deleteWallSegment(graphOf(source), wallSegmentId);
+	const deleted = deleteWallSegments(graphOf(source), wallSegmentIds);
 	if (deleted.kind === "rejected") {
 		return [];
 	}
@@ -2988,7 +3078,7 @@ function orphanedItemIdsAfterWallDeletion(
 			.filter(
 				(item) =>
 					isWallSchematicAssetInstance(item) &&
-					item.wallSegmentId === wallSegmentId,
+					wallSegmentIds.includes(item.wallSegmentId),
 			)
 			.map((item) => item.assetInstanceId),
 	].sort();
@@ -2996,13 +3086,13 @@ function orphanedItemIdsAfterWallDeletion(
 
 function affectedRoomIdsAfterWallDeletion(
 	source: Project,
-	wallSegmentId: string,
+	wallSegmentIds: readonly string[],
 ): readonly string[] {
 	const sourceProject = inspectSourceProject(source);
 	if (sourceProject.kind === "rejected") {
 		return [];
 	}
-	const deleted = deleteWallSegment(graphOf(source), wallSegmentId);
+	const deleted = deleteWallSegments(graphOf(source), wallSegmentIds);
 	if (deleted.kind === "rejected") {
 		return [];
 	}
@@ -3033,13 +3123,13 @@ function affectedRoomIdsAfterWallDeletion(
 
 function roomMetadataConflictsAfterWallDeletion(
 	source: Project,
-	wallSegmentId: string,
+	wallSegmentIds: readonly string[],
 ): readonly RoomMetadataMergeConflict[] {
 	const sourceProject = inspectSourceProject(source);
 	if (sourceProject.kind === "rejected") {
 		return [];
 	}
-	const deleted = deleteWallSegment(graphOf(source), wallSegmentId);
+	const deleted = deleteWallSegments(graphOf(source), wallSegmentIds);
 	if (deleted.kind === "rejected") {
 		return [];
 	}
@@ -3576,12 +3666,12 @@ function floorItemsHaveExactlyOneLineageTarget(
 
 function hasWallItemHostedBy(
 	items: readonly SchematicAssetInstance[],
-	wallSegmentId: string,
+	wallSegmentIds: readonly string[],
 ): boolean {
 	return items.some(
 		(item) =>
 			isWallSchematicAssetInstance(item) &&
-			item.wallSegmentId === wallSegmentId,
+			wallSegmentIds.includes(item.wallSegmentId),
 	);
 }
 
@@ -3654,6 +3744,7 @@ function firstOpeningIntersectedByWall(
 	input: AddWallSegmentInput,
 	project: Project,
 	excludedHostWallSegmentId?: string,
+	openingHostFilter?: ReadonlySet<string>,
 ): WallOpening | undefined {
 	const candidate = doubledWallBounds(input);
 	if (!candidate) {
@@ -3666,7 +3757,11 @@ function firstOpeningIntersectedByWall(
 		project.level.wallSegments.map((wall) => [wall.wallSegmentId, wall]),
 	);
 	return project.level.openings.find((opening) => {
-		if (opening.wallSegmentId === excludedHostWallSegmentId) return false;
+		if (
+			opening.wallSegmentId === excludedHostWallSegmentId ||
+			(openingHostFilter && !openingHostFilter.has(opening.wallSegmentId))
+		)
+			return false;
 		const wall = wallsById.get(opening.wallSegmentId);
 		const start = wall ? verticesById.get(wall.startVertexId) : undefined;
 		const end = wall ? verticesById.get(wall.endVertexId) : undefined;

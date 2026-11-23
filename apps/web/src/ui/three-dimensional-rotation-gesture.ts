@@ -12,6 +12,7 @@ interface Point {
 export interface RotationDomeGesture {
 	readonly assetInstanceId: string;
 	readonly exact: boolean;
+	readonly snapToStep: boolean;
 	readonly pointerId: number;
 	readonly initialYawRadians: number;
 	readonly initialPointerAngle: number;
@@ -22,6 +23,7 @@ export interface RotationDomeGesture {
 export function beginRotationDomeGesture(input: {
 	readonly assetInstanceId: string;
 	readonly exact?: boolean;
+	readonly snapToStep?: boolean;
 	readonly pointerId: number;
 	readonly yawRadians: number;
 	readonly point: Point;
@@ -31,6 +33,7 @@ export function beginRotationDomeGesture(input: {
 	return {
 		assetInstanceId: input.assetInstanceId,
 		exact: input.exact ?? false,
+		snapToStep: input.snapToStep ?? !input.exact,
 		pointerId: input.pointerId,
 		initialYawRadians: yawRadians,
 		initialPointerAngle: angleFor(input.point, input.centre),
@@ -50,9 +53,9 @@ export function moveRotationDomeGesture(
 	const yawRadians = gesture.initialYawRadians - (angle - gesture.initialPointerAngle);
 	return {
 		...gesture,
-		yawRadians: gesture.exact
-			? normalizeYawRadians(yawRadians)
-			: yawRadiansFor(floorYawFieldsForRadians(yawRadians, false)),
+		yawRadians: gesture.snapToStep
+			? yawRadiansFor(floorYawFieldsForRadians(yawRadians, false))
+			: normalizeYawRadians(yawRadians),
 	};
 }
 

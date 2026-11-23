@@ -8,10 +8,14 @@ import { decideTelegramWriterLease } from "./telegram-writer-lease";
 
 const telegramProtocol: ScopedProjectProtocol = {
 	async assertNewRevisionIdentity(transaction, candidate) {
-		if (transaction.db.version !== 3 && candidate.project.assetInstances.some(
+		const version = transaction.db.version;
+		if (version !== 3 && version !== 4 && candidate.project.assetInstances.some(
 			(item) => item.anchorClass === "floor" && "yawMilliDeg" in item && item.yawMilliDeg !== undefined,
 		)) {
 			throw new Error("Exact floor yaw requires current Telegram storage");
+		}
+		if (version !== 4 && candidate.project.level.openings.some((opening) => opening.hingeEnd === "end")) {
+			throw new Error("Door hinges require current Telegram storage");
 		}
 	},
 	operationIdPrefix: (scope, kind) => `tma-v1:${scope}:${kind}:`,

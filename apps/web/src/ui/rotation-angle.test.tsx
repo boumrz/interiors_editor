@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@rstest/core";
 
-import { degreesForYawRadians, preciseYawRadiansFromDegrees, yawRadiansFromDegrees } from "./rotation-angle";
+import { degreesForYawRadians, preciseYawRadiansFromDegrees, steppedYawRadians, yawRadiansFromDegrees } from "./rotation-angle";
 
 describe("rotation angle input", () => {
 	it("converts exact CAD angles to the durable continuous yaw", () => {
@@ -30,5 +30,14 @@ describe("rotation angle input", () => {
 		for (const text of ["-", "0x2d", "1e2", "37,5.0", "37,5001", "37."]) {
 			expect(preciseYawRadiansFromDegrees(text)).toBeUndefined();
 		}
+	});
+
+	it("steps to the adjacent absolute slot and wraps in either direction", () => {
+		const angle = 37.5 * Math.PI / 180;
+		expect(degreesForYawRadians(steppedYawRadians(angle, 1, true))).toBe("45");
+		expect(degreesForYawRadians(steppedYawRadians(angle, -1, true))).toBe("0");
+		expect(degreesForYawRadians(steppedYawRadians(0, -1, true))).toBe("315");
+		expect(degreesForYawRadians(steppedYawRadians(7 * Math.PI / 4, 1, true))).toBe("0");
+		expect(degreesForYawRadians(steppedYawRadians(angle, 1, false))).toBe("38.5");
 	});
 });

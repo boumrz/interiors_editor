@@ -151,7 +151,12 @@ async function dispose() {
 	activeScope = undefined;
 	if (prior) await prior.dispose();
 }
-function fresh(value: Scope, advanceClock = true, databaseMode?: "compatible" | "exact") {
+function fresh(
+	value: Scope,
+	advanceClock = true,
+	databaseMode?: "compatible" | "exact",
+	doorHingeMode?: "compatible" | "authoring",
+) {
 	if (advanceClock) epoch += 4_000;
 	originalSet.call(localStorage, clockKey, String(epoch));
 	const portable = createRegisteredRuntimePortablePorts({
@@ -162,6 +167,7 @@ function fresh(value: Scope, advanceClock = true, databaseMode?: "compatible" | 
 		scope: scope(value),
 		context: {
 			databaseMode,
+			doorHingeMode,
 			indexedDb: indexedDB,
 			locks: navigator.locks,
 			secureContext: isSecureContext,
@@ -203,6 +209,7 @@ function render() {
 		catalogGateway,
 		localGreyboxCatalog,
 		exactFloorYaw: current.exactFloorYaw,
+		doorHingeAuthoring: current.doorHingeAuthoring,
 		readReleaseStartupInput: current.readReleaseStartupInput,
 		drawingDimensionPreferences: current.drawingDimensions,
 		sourceRecovery: current.sourceRecovery,
@@ -295,8 +302,8 @@ const fixture = {
 	async mountConcurrentNavigable(value: Scope) {
 		await dispose(); navigable = true; runtime = fresh(value, false); activeScope = value; render();
 	},
-	async mountNavigable(value: Scope, useLocalGreyboxCatalog = false, databaseMode?: "compatible" | "exact") {
-		await dispose(); localGreyboxCatalog = useLocalGreyboxCatalog; navigable = true; runtime = fresh(value, true, databaseMode); activeScope = value; render();
+	async mountNavigable(value: Scope, useLocalGreyboxCatalog = false, databaseMode?: "compatible" | "exact", doorHingeMode?: "compatible" | "authoring") {
+		await dispose(); localGreyboxCatalog = useLocalGreyboxCatalog; navigable = true; runtime = fresh(value, true, databaseMode, doorHingeMode); activeScope = value; render();
 	},
 	hostBack() { for (const listener of [...hostBackListeners]) listener(); },
 	hostBackSubscribed: () => hostBackListeners.size > 0,
@@ -440,6 +447,11 @@ const fixture = {
 		if (!runtime) throw new Error("No active runtime");
 		const result = await runtime.controller.addGeneralWall(input);
 		if (result.kind !== "durable") throw new Error(`Wall was not saved: ${result.kind}`);
+	},
+	async splitWall(wallSegmentId: string, pointMm: { xMm: number; zMm: number }) {
+		if (!runtime) throw new Error("No active runtime");
+		const result = await runtime.controller.splitGeneralWall({ wallSegmentId, pointMm });
+		if (result.kind !== "durable") throw new Error(`Wall split was not saved: ${result.kind}`);
 	},
 	async scopedRaw(value: Scope) {
 		return originalGet.call(

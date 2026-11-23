@@ -14,7 +14,8 @@ const scopedStores = {
 	library: "resourceHash",
 } as const;
 
-type TelegramScopeDatabaseVersion = 2 | 3;
+type TelegramScopeDatabaseVersion = 2 | 3 | 4;
+export type TelegramDoorHingeMode = "compatible" | "authoring";
 
 export interface TelegramScopeAccess {
 	readonly scope: string;
@@ -46,6 +47,7 @@ export class TelegramScopeStore {
 	private readonly secureContext: boolean;
 	private readonly databaseName: string;
 	private readonly databaseMode: "legacy" | "compatible" | "exact";
+	private readonly doorHingeMode: TelegramDoorHingeMode | undefined;
 	private database: Promise<IDBDatabase> | undefined;
 	private disposed = false;
 
@@ -56,6 +58,7 @@ export class TelegramScopeStore {
 			readonly locks?: Pick<LockManager, "request">;
 			readonly secureContext: boolean;
 			readonly databaseMode?: "compatible" | "exact";
+			readonly doorHingeMode?: TelegramDoorHingeMode;
 		},
 	) {
 		this.indexedDb = dependencies.indexedDb;
@@ -63,6 +66,7 @@ export class TelegramScopeStore {
 		this.secureContext = dependencies.secureContext;
 		this.databaseName = `interiors-editor-projects:${session.scope}`;
 		this.databaseMode = dependencies.databaseMode ?? "legacy";
+		this.doorHingeMode = dependencies.doorHingeMode;
 	}
 
 	public reserveId(kind: "attempt" | "lease"): Promise<string> {
@@ -94,7 +98,7 @@ export class TelegramScopeStore {
 				assertActive();
 				const result = await operation({
 					scope: this.session.scope,
-					databaseVersion: database.version === 3 ? 3 : 2,
+					databaseVersion: database.version === 4 ? 4 : database.version === 3 ? 3 : 2,
 					signal: this.session.signal,
 					reserveId: (kind) => {
 						assertActive();
@@ -206,20 +210,7 @@ export class TelegramScopeStore {
 		if (this.disposed)
 			return Promise.reject(new Error("Telegram session is closed"));
 		if (this.database) return this.database;
-		const preferredVersion = this.databaseMode === "exact" ? 3 : 2;
-		const opening = this.openVersion(preferredVersion, true)
-			.catch((error: unknown) => {
-				if (
-					this.databaseMode !== "compatible" ||
-					this.session.signal.aborted ||
-					!(error instanceof DOMException) ||
-					error.name !== "VersionError"
-				) {
-					throw error;
-				}
-				// Rollback can reopen a database already upgraded by an exact writer.
-				return this.openVersion(3, false);
-			})
+		const opening = this.openAdmittedVersion()
 			.then((database) => {
 				database.onversionchange = () => {
 					void this.session.revoke();
@@ -233,6 +224,33 @@ export class TelegramScopeStore {
 			if (this.database === opening) this.database = undefined;
 		});
 		return opening;
+	}
+
+	private async openAdmittedVersion(): Promise<IDBDatabase> {
+		const preferredVersion =
+			this.doorHingeMode === "authoring" ? 4 : this.databaseMode === "exact" ? 3 : 2;
+		const backups: TelegramScopeDatabaseVersion[] = [];
+		if (preferredVersion === 2 && this.databaseMode === "compatible") backups.push(3);
+		if (this.doorHingeMode === "compatible") backups.push(4);
+		try {
+			return await this.openVersion(preferredVersion, true);
+		} catch (error) {
+			let failure = error;
+			for (const version of backups) {
+				if (
+					this.session.signal.aborted ||
+					!(failure instanceof DOMException) ||
+					failure.name !== "VersionError"
+				) throw failure;
+				try {
+					// A rollback reader can only reopen a version already published.
+					return await this.openVersion(version, false);
+				} catch (fallbackError) {
+					failure = fallbackError;
+				}
+			}
+			throw failure;
+		}
 	}
 
 	private openVersion(
@@ -259,12 +277,12 @@ export class TelegramScopeStore {
 				once: true,
 			});
 			request.onupgradeneeded = (event) => {
-				if (failed || this.disposed || !allowUpgrade || event.oldVersion > 2) {
+				if (failed || this.disposed || !allowUpgrade || event.oldVersion > 3) {
 					request.transaction?.abort();
 					return;
 				}
 				upgradeStarted = true;
-				if (event.oldVersion === 2) {
+				if (event.oldVersion === 2 || event.oldVersion === 3) {
 					const transaction = request.transaction;
 					if (!transaction || !hasScopeSchema(request.result, transaction)) {
 						transaction?.abort();

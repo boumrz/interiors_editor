@@ -6,6 +6,7 @@ import {
 	type ChangeGeneralWallThicknessInput,
 	changeGeneralWallThickness,
 	type DeleteGeneralVertexInput,
+	type DeleteGeneralWallInput,
 	type DeleteGeneralWallRoomMetadataResolution,
 	deleteGeneralVertex,
 	deleteGeneralWallFromProject,
@@ -70,6 +71,7 @@ interface GeneralWallProjectMutationDependencies {
 	readonly checksum: ChecksumPort;
 	readonly clock: ClockPort;
 	readonly ids: IdPort;
+	readonly preserveDoorHinges?: () => Promise<boolean>;
 	readonly repository: ProjectRepositoryPort<
 		import("./ports").PublicationFailureReason
 	> &
@@ -124,7 +126,7 @@ export class AddGeneralWallToProjectUseCase {
 	}
 }
 
-/** Persists deletion of exactly the selected canonical segment, including a face-closing segment. */
+/** Publishes the complete confirmed wall target in one Revision. */
 export class DeleteGeneralWallFromProjectUseCase {
 	public constructor(
 		private readonly dependencies: GeneralWallProjectMutationDependencies,
@@ -132,16 +134,16 @@ export class DeleteGeneralWallFromProjectUseCase {
 
 	public async execute(
 		base: PublicationCandidate,
-		input: {
+		input: DeleteGeneralWallInput & {
 			readonly itemIds?: readonly string[];
 			readonly openingIds?: readonly string[];
 			readonly roomIds?: readonly string[];
 			readonly roomMetadataResolutions?: readonly DeleteGeneralWallRoomMetadataResolution[];
-			readonly wallSegmentId: string;
 		},
 		onStatus: (status: GeneralWallProjectMutationStatus) => void,
 	): Promise<GeneralWallProjectMutationUseCaseResult> {
 		const preview = previewWallDeletionConflict(base.project, input);
+		const preserveDoorHinges = await this.dependencies.preserveDoorHinges?.();
 		const updated =
 			preview.kind === "conflict" &&
 			(input.itemIds === undefined ||
@@ -162,22 +164,27 @@ export class DeleteGeneralWallFromProjectUseCase {
 								roomIds: input.roomIds,
 								roomMetadataResolutions: input.roomMetadataResolutions,
 								wallSegmentId: input.wallSegmentId,
+								wallRunSegmentIds: input.wallRunSegmentIds,
 							},
 							this.dependencies.clock.now(),
+							preserveDoorHinges,
 						)
 					: input.openingIds === undefined
 						? deleteGeneralWallFromProject(
 								base.project,
 								input,
 								this.dependencies.clock.now(),
+								preserveDoorHinges,
 							)
 						: deleteGeneralWallWithOpeningResolution(
 								base.project,
 								{
 									openingIds: input.openingIds,
 									wallSegmentId: input.wallSegmentId,
+									wallRunSegmentIds: input.wallRunSegmentIds,
 								},
 								this.dependencies.clock.now(),
+								preserveDoorHinges,
 							);
 		return publishWallMutation(
 			updated,
@@ -202,7 +209,8 @@ export class ChangeGeneralWallThicknessUseCase {
 		const selected = base.project.level.wallSegments.find(
 			(wall) => wall.wallSegmentId === input.wallSegmentId,
 		);
-		if (selected?.thicknessMm === input.thicknessMm) {
+		const isUnchanged = selected?.thicknessMm === input.thicknessMm;
+		if (isUnchanged && input.wallRunSegmentIds === undefined) {
 			return { kind: "unchanged" };
 		}
 		const updated = changeGeneralWallThickness(
@@ -210,6 +218,9 @@ export class ChangeGeneralWallThicknessUseCase {
 			input,
 			this.dependencies.clock.now(),
 		);
+		if (isUnchanged && updated.kind === "accepted") {
+			return { kind: "unchanged" };
+		}
 		return publishWallMutation(
 			updated,
 			this.dependencies,
@@ -230,8 +241,14 @@ export class ReverseGeneralWallUseCase {
 		input: ReverseGeneralWallInput,
 		onStatus: (status: GeneralWallProjectMutationStatus) => void,
 	): Promise<GeneralWallProjectMutationUseCaseResult> {
+		const preserveDoorHinges = await this.dependencies.preserveDoorHinges?.();
 		return publishWallMutation(
-			reverseGeneralWall(base.project, input, this.dependencies.clock.now()),
+			reverseGeneralWall(
+				base.project,
+				input,
+				this.dependencies.clock.now(),
+				preserveDoorHinges,
+			),
 			this.dependencies,
 			onStatus,
 			base.revision.revisionId,
@@ -239,7 +256,7 @@ export class ReverseGeneralWallUseCase {
 	}
 }
 
-/** Publishes an exact parallel move of one selected canonical wall segment. */
+/** Publishes an exact parallel move of the selected straight wall. */
 export class MoveGeneralWallUseCase {
 	public constructor(
 		private readonly dependencies: GeneralWallProjectMutationDependencies,

@@ -1,4 +1,5 @@
 import type { DoorWallOpening } from "../domain/project";
+import { doorOpeningOrientation } from "../domain/door-opening-orientation";
 import styles from "./AppShell.module.css";
 
 interface PlanPoint {
@@ -9,6 +10,7 @@ interface PlanPoint {
 export function OpeningPlanSymbol({
 	kind,
 	swingSide,
+	hingeEnd,
 	start,
 	end,
 	thickness,
@@ -16,6 +18,7 @@ export function OpeningPlanSymbol({
 }: {
 	readonly kind: "Door" | "Window";
 	readonly swingSide?: DoorWallOpening["swingSide"];
+	readonly hingeEnd?: DoorWallOpening["hingeEnd"] | null;
 	readonly start: PlanPoint;
 	readonly end: PlanPoint;
 	readonly thickness: number;
@@ -25,7 +28,11 @@ export function OpeningPlanSymbol({
 	const dy = end.y - start.y;
 	const width = Math.hypot(dx, dy);
 	const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-	const leafTip = swingSide === "left" ? width : -width;
+	const { hingeAtEnd, swingSign } = doorOpeningOrientation({ swingSide, hingeEnd });
+	const pivot = hingeAtEnd ? width : 0;
+	const freeEnd = width - pivot;
+	const leafTip = swingSign * width;
+	const arcSweep = hingeAtEnd === (swingSign === -1) ? 1 : 0;
 	const paneOffset = thickness * 0.19;
 	return (
 		<g transform={`translate(${start.x} ${start.y}) rotate(${angle})`}>
@@ -41,8 +48,8 @@ export function OpeningPlanSymbol({
 				<>
 					<line
 						data-testid="door-leaf"
-						x1={0}
-						x2={0}
+						x1={pivot}
+						x2={pivot}
 						y1={0}
 						y2={leafTip}
 						strokeWidth={1.8}
@@ -50,7 +57,7 @@ export function OpeningPlanSymbol({
 					/>
 					<path
 						data-testid="door-swing"
-						d={`M${width} 0 A${width} ${width} 0 0 ${swingSide === "left" ? 1 : 0} 0 ${leafTip}`}
+						d={`M${freeEnd} 0 A${width} ${width} 0 0 ${arcSweep} ${pivot} ${leafTip}`}
 						fill="none"
 						strokeWidth={1}
 						strokeDasharray="3 3"

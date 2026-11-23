@@ -535,6 +535,7 @@ const harness = {
 			| "close-on-open"
 			| "close-after-lock" = "supported",
 		databaseMode?: "compatible" | "exact",
+		doorHingeMode?: "compatible" | "authoring",
 	) {
 		if (stores.has(name)) throw new Error("Duplicate test store");
 		let blockNextOpen = capability === "blocked-open";
@@ -614,6 +615,7 @@ const harness = {
 								: navigator.locks,
 				secureContext: capability !== "insecure" && isSecureContext,
 				...(databaseMode ? { databaseMode } : {}),
+				...(doorHingeMode ? { doorHingeMode } : {}),
 			}),
 		);
 	},

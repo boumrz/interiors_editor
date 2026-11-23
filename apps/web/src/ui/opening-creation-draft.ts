@@ -12,6 +12,7 @@ export interface OpeningCreationDraft {
 	readonly heightMm: string;
 	readonly kind: OpeningCreationKind;
 	readonly swingSide?: "left" | "right";
+	readonly hingeEnd?: "end" | null;
 	readonly offsetMm: string;
 	readonly sillMm: string;
 	readonly wallSegmentId: string;
@@ -33,6 +34,7 @@ export type OpeningCreationDraftValidation =
 				readonly heightMm: number;
 				readonly kind: OpeningCreationKind;
 				readonly swingSide?: "left" | "right";
+				readonly hingeEnd?: "end";
 				readonly offsetMm: number;
 				readonly sillMm: number;
 				readonly wallSegmentId: string;
@@ -142,6 +144,7 @@ export function validateOpeningCreationDraft(
 		heightMm,
 		kind: draft.kind,
 		...(draft.kind === "Door" && draft.swingSide ? { swingSide: draft.swingSide } : {}),
+		...(draft.kind === "Door" && draft.hingeEnd ? { hingeEnd: draft.hingeEnd } : {}),
 		sillMm,
 		wallSegmentId: draft.wallSegmentId,
 		widthMm,

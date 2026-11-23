@@ -1,4 +1,6 @@
+import type { PlanGraph } from "../../domain/derive-plan-faces";
 import type { Vertex, WallSegment } from "../../domain/project";
+import { uninterruptedWallRuns } from "../../domain/wall-runs";
 
 export interface WallBodyPoint {
 	readonly xMm: number;
@@ -11,6 +13,31 @@ export interface WallBodyProjection {
 	readonly lengthMm: number;
 	readonly polygonMm: readonly WallBodyPoint[];
 	readonly outlinesMm: readonly (readonly [WallBodyPoint, WallBodyPoint])[];
+}
+
+export interface WallFillRunProjection {
+	readonly wallSegmentIds: readonly string[];
+	readonly polygonsMm: readonly (readonly WallBodyPoint[])[];
+}
+
+/** Each output is one compound SVG fill; outlines and hit regions stay per edge. */
+export function wallFillRunsForProjection(
+	graph: PlanGraph,
+	bodies: readonly WallBodyProjection[],
+): readonly WallFillRunProjection[] {
+	const polygonsById = new Map(
+		bodies.map((body) => [body.wallSegmentId, body.polygonMm]),
+	);
+	return uninterruptedWallRuns(graph).flatMap(({ wallSegmentIds }) => {
+		if (wallSegmentIds.length < 2) return [];
+		const polygonsMm = wallSegmentIds.flatMap((id) => {
+			const polygon = polygonsById.get(id);
+			return polygon ? [polygon] : [];
+		});
+		return polygonsMm.length === wallSegmentIds.length
+			? [{ wallSegmentIds, polygonsMm }]
+			: [];
+	});
 }
 interface Ray {
 	readonly wallSegmentId: string;

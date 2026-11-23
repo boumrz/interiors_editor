@@ -1,6 +1,7 @@
 import { TelegramProjectRepository } from "../adapters/persistence/telegram-project-repository";
 import {
 	TelegramScopeStore,
+	type TelegramDoorHingeMode,
 	type TelegramScopeAccess,
 } from "../adapters/persistence/telegram-scope-store";
 import {
@@ -41,6 +42,7 @@ export interface TelegramRuntimeDependencies {
 	readonly context: {
 		readonly indexedDb: Pick<IDBFactory, "open">;
 		readonly databaseMode?: "compatible" | "exact";
+		readonly doorHingeMode?: TelegramDoorHingeMode;
 		readonly locks: Pick<LockManager, "request">;
 		readonly secureContext: boolean;
 		readonly crypto: Pick<Crypto, "getRandomValues"> &
@@ -70,6 +72,7 @@ export interface TelegramRuntime {
 	readonly controller: ProjectController;
 	readonly drawingDimensions: DrawingDimensionPreferenceStore;
 	readonly exactFloorYaw?: boolean;
+	readonly doorHingeAuthoring?: boolean;
 	readonly sourceRecovery: ProjectSourceRecoveryPort;
 	readonly releaseStartup: {
 		handshake(input: ReleaseStartupInput): Promise<ReleaseStartupOutcome>;
@@ -200,14 +203,20 @@ export function createTelegramRuntime(
 	});
 	const shared = createSharedProjectController({
 		...ports,
+		...(context.doorHingeMode ? {
+			preserveDoorHinges: () => storage.run(async (access) => access.databaseVersion === 4),
+		} : {}),
 		portable: {
 			...ports.portable,
 			decoder: {
 				async decode(archive, signal) {
 					const result = await decoder.decode(archive, signal);
-					if (result.kind !== "accepted" || result.projectMember?.format !== "runtime-v1-floor-yaw") return result;
+					if (result.kind !== "accepted") return result;
+					const format = result.projectMember?.format;
+					if (format !== "runtime-v1-floor-yaw" && format !== "runtime-v1-door-hinge") return result;
 					try {
-						const permitted = await storage.run(async (access) => access.databaseVersion === 3);
+						const requiredVersion = format === "runtime-v1-door-hinge" ? 4 : 3;
+						const permitted = await storage.run(async (access) => access.databaseVersion >= requiredVersion);
 						if (signal?.aborted) return { kind: "rejected", reasonCode: "BACKUP_CANCELLED" };
 						return permitted ? result : { kind: "rejected", reasonCode: "PORTABLE_BACKUP_FUTURE_SCHEMA" };
 					} catch {
@@ -296,6 +305,7 @@ export function createTelegramRuntime(
 		session,
 		controller,
 		exactFloorYaw: context.databaseMode === "exact",
+		doorHingeAuthoring: context.doorHingeMode === "authoring",
 		drawingDimensions: {
 			read() {
 				if (!active()) throw new Error("Telegram runtime is not admitted");

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@rstest/core";
 import {
-	wallBodiesForProjection,
 	clipWallBodyToInterval,
+	wallBodiesForProjection,
+	wallFillRunsForProjection,
 } from "./wall-body-projection";
 
 const graph = (
@@ -18,6 +19,48 @@ const graph = (
 });
 
 describe("physical wall body projection shared by plan and 3D", () => {
+	it("paints a straight run as one fill and stops at branches, corners and width changes", () => {
+		const source = graph(
+			[
+				[0, 0],
+				[1000, 0],
+				[2000, 0],
+				[3000, 0],
+				[2000, 1000],
+				[3000, 1000],
+				[0, 2000],
+				[1000, 2000],
+				[2000, 2000],
+			],
+			[
+				[1, 2],
+				[1, 0],
+				[2, 3],
+				[2, 4],
+				[3, 5],
+				[6, 7, 100],
+				[7, 8, 120],
+			],
+		);
+		const bodies = wallBodiesForProjection(source);
+		const fills = wallFillRunsForProjection(source, bodies);
+		expect(fills).toEqual([
+			{
+				wallSegmentIds: ["w1", "w0"],
+				polygonsMm: [bodies[1]?.polygonMm, bodies[0]?.polygonMm],
+			},
+		]);
+		expect(bodies.map((body) => body.wallSegmentId)).toEqual([
+			"w0",
+			"w1",
+			"w2",
+			"w3",
+			"w4",
+			"w5",
+			"w6",
+		]);
+	});
+
 	it("keeps joined ends free of cap lines and bounds an acute miter without losing unequal-width corners", () => {
 		const triangle = wallBodiesForProjection(
 			graph(

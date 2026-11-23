@@ -98,6 +98,7 @@ preview.server.on("request", (request, response) => {
 							baseApplicationPath,
 							nextApplicationPath,
 							exactFloorYaw: environment.INTERIORS_EXACT_FLOOR_YAW === "1",
+							doorHingeAuthoring: environment.INTERIORS_DOOR_HINGE_AUTHORING === "1",
 							served,
 						}),
 					);

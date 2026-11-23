@@ -1,4 +1,5 @@
 import type { Vertex, WallOpening } from "../../domain/project";
+import { doorOpeningOrientation } from "../../domain/door-opening-orientation";
 import type { SceneBox } from "./rectangular-room-projection";
 
 export const OPENING_FINISH = {
@@ -63,12 +64,13 @@ export function openingTemplateFor(
 	add("frame", w / 2, h - frame / 2, 0, clear, frame, depth);
 	if (opening.kind === "Door") {
 		const leafDepth = Math.min(38, frame);
-		const sign = opening.swingSide === "left" ? 1 : -1;
+		const { hingeAtEnd, swingSign } = doorOpeningOrientation(opening);
+		const pivot = hingeAtEnd ? w - frame - leafDepth / 2 : frame + leafDepth / 2;
 		add(
 			"leaf",
-			frame + leafDepth / 2,
+			pivot,
 			(h - frame) / 2,
-			(sign * clear) / 2,
+			(swingSign * clear) / 2,
 			leafDepth,
 			h - frame,
 			clear,
@@ -76,17 +78,16 @@ export function openingTemplateFor(
 		// A pair of levers joined through the leaf makes the latch edge visible
 		// from either side. Very low legacy openings retain their plain leaf.
 		if (h >= 300) {
-			const pivot = frame + leafDepth / 2;
 			const handleHeight = Math.min(1000, (h - frame) * 0.6);
 			const stand = leafDepth / 2 + 37;
 			const latch = clear - 67;
-			add("hardware", pivot, handleHeight, sign * latch, 2 * stand, 20, 20);
+			add("hardware", pivot, handleHeight, swingSign * latch, 2 * stand, 20, 20);
 			for (const face of [-1, 1]) {
 				add(
 					"hardware",
 					pivot + face * stand,
 					handleHeight,
-					sign * (latch - 50),
+					swingSign * (latch - 50),
 					16,
 					20,
 					100,

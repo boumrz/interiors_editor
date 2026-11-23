@@ -206,6 +206,36 @@ describe("registered runtime portable ports", () => {
 		});
 	});
 
+	it("binds an end-hinged door to its archive format and checks exact feasibility", async () => {
+		const base = project();
+		const source: Project = {
+			...base,
+			level: {
+				...base.level,
+				openings: [{
+					kind: "Door", openingId: "door", wallSegmentId: base.level.wallSegments[0].wallSegmentId,
+					offsetMm: 1200, widthMm: 900, heightMm: 2100, sillMm: 0,
+					swingSide: "left", hingeEnd: "end",
+				}],
+			},
+		};
+		const ports = createRegisteredRuntimePortablePorts({ binaryChecksum: checksum });
+		const encoded = await ports.writer.encode({ project: source, createdAt: instant, resources: [] });
+		if (encoded.kind !== "encoded") throw new Error("Hinged project must export");
+		const entries = unzipSync(encoded.bytes);
+		const selector = { projectSchemaId: "interiors.project/runtime-v1-door-hinge" };
+		const decoder = new TextDecoder();
+		expect(JSON.parse(decoder.decode(entries["manifest.json"]))).toMatchObject({ ...selector, projectSchemaVersion: 1 });
+		expect(JSON.parse(decoder.decode(entries["project/project.json"]))).toMatchObject(selector);
+		expect(await ports.decoder.decode(encoded.bytes)).toMatchObject({
+			kind: "accepted", projectMember: { format: "runtime-v1-door-hinge", project: source },
+		});
+		expect(await ports.smoke.verify(source, [])).toBe(true);
+		expect(await ports.feasibility.assess(await candidate(source), {
+			binaryChecksum: checksum, resources: { read: async () => undefined },
+		})).toEqual({ kind: "accepted" });
+	});
+
 	it("roundtrips the exact wire object and bytes without the internal serializer", async () => {
 		const base = project();
 		const source: Project = {

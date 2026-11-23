@@ -1468,7 +1468,7 @@
 		right: 9px;
 	}
 
-	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions label:last-child::after {
+	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions label[data-angle-unit]::after {
 		content: "°";
 	}
 

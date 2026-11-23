@@ -35,3 +35,10 @@ export function degreesForYawRadians(yawRadians: number | undefined): string {
 export function normalizeYawRadians(yawRadians: number): number {
 	return ((yawRadians % FULL_TURN_RADIANS) + FULL_TURN_RADIANS) % FULL_TURN_RADIANS;
 }
+
+export function steppedYawRadians(yawRadians: number, direction: 1 | -1, snapToStep: boolean): number {
+	if (!snapToStep) return normalizeYawRadians(yawRadians + direction * Math.PI / 180);
+	const slot = Number(degreesForYawRadians(yawRadians)) / 45;
+	const next = direction === 1 ? Math.floor(slot) + 1 : Math.ceil(slot) - 1;
+	return normalizeYawRadians(next * Math.PI / 4);
+}

@@ -1,5 +1,6 @@
 import type { AddWallSegmentInput } from "./add-wall-segment";
 import { resolveOrthogonalPlanFaces } from "./derived-orthogonal-plan-faces";
+import { doorOpeningOrientation } from "./door-opening-orientation";
 import {
 	alphaParametricItemColorVariantFor,
 	type ItemColorVariantId,
@@ -819,7 +820,7 @@ function floorItemDoorSwingCollisions(
 
 export function floorItemFootprintIntersectsDoorSwing(
 	footprint: FloorItemFootprint,
-	opening: Pick<WallOpening, "kind" | "offsetMm" | "swingSide" | "widthMm">,
+	opening: Pick<WallOpening, "kind" | "offsetMm" | "swingSide" | "hingeEnd" | "widthMm">,
 	start: PlanPoint,
 	end: PlanPoint,
 ): boolean {
@@ -836,22 +837,23 @@ export function floorItemFootprintIntersectsDoorSwing(
 	if (!Number.isFinite(lengthMm) || lengthMm <= 0) return false;
 	const interval = wallOpeningIntervalMm(opening);
 	if (interval.startMm < 0 || interval.endMm > lengthMm) return false;
-	const direction = {
+	const hostDirection = {
 		xMm: (end.xMm - start.xMm) / lengthMm,
 		zMm: (end.zMm - start.zMm) / lengthMm,
 	};
+	const { hingeAtEnd, swingSign } = doorOpeningOrientation(opening);
+	const hingeOffset = hingeAtEnd ? interval.endMm : interval.startMm;
+	const direction = hingeAtEnd
+		? { xMm: -hostDirection.xMm, zMm: -hostDirection.zMm }
+		: hostDirection;
 	const pivot = {
-		xMm: start.xMm + direction.xMm * interval.startMm,
-		zMm: start.zMm + direction.zMm * interval.startMm,
+		xMm: start.xMm + hostDirection.xMm * hingeOffset,
+		zMm: start.zMm + hostDirection.zMm * hingeOffset,
 	};
-	const leftNormal = { xMm: -direction.zMm, zMm: direction.xMm };
-	const normal =
-		opening.swingSide === "left"
-			? leftNormal
-			: {
-					xMm: -leftNormal.xMm,
-					zMm: -leftNormal.zMm,
-				};
+	const normal = {
+		xMm: -hostDirection.zMm * swingSign,
+		zMm: hostDirection.xMm * swingSign,
+	};
 	const corners = floorItemFootprintCorners(footprint);
 	return (
 		corners.some((point) =>

@@ -332,7 +332,7 @@ function isOpening(
 				"sillMm",
 				"kind",
 			],
-			["swingSide"],
+			["swingSide", "hingeEnd"],
 		)
 	) {
 		return false;
@@ -348,10 +348,11 @@ function isOpening(
 		opening.kind !== undefined &&
 		(opening.kind === "Door" || opening.kind === "Window") &&
 		(opening.kind === "Window"
-			? opening.swingSide === undefined
-			: opening.swingSide === undefined ||
+			? opening.swingSide === undefined && !Object.hasOwn(opening, "hingeEnd")
+			: (opening.swingSide === undefined ||
 				opening.swingSide === "left" ||
-				opening.swingSide === "right")
+				opening.swingSide === "right") &&
+				(!Object.hasOwn(opening, "hingeEnd") || opening.hingeEnd === "end"))
 	);
 }
 

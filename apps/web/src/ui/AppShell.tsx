@@ -3,6 +3,7 @@ import type { ReleaseRecoveryRecord } from "../app/release-startup";
 import { LegacyStartupRecoveryNotice } from "./legacy-startup-recovery";
 import type { EditorNavigationProtection } from "./editor-host-boundary";
 import {
+	Fragment,
 	type FormEvent,
  type ReactNode,
 	type KeyboardEvent,
@@ -33,6 +34,7 @@ import type {
 import type { ImportPortableBackupStatus } from "../application/import-portable-backup";
 import type { AddWallSegmentInput } from "../domain/add-wall-segment";
 import { wallOpeningHostsForProject } from "../domain/door-opening-project";
+import { resolveOrthogonalPlanFaces } from "../domain/derived-orthogonal-plan-faces";
 import {
 	type AddGeneralWallHostResolutionInput,
 	type GeneralWallProjectMutationAffectedReference,
@@ -40,6 +42,7 @@ import {
 	type MoveGeneralWallInput,
 	previewWallAddHostConflict,
 	previewWallDeletionConflict,
+	uninterruptedWallRun,
 	previewWallSplitHostConflict,
 	type SplitGeneralWallHostResolutionInput,
 	type SplitGeneralWallInput,
@@ -120,6 +123,7 @@ import { ItemWallDistanceFields } from "./ItemWallDistances";
 import { itemWallDistancePositionFor, itemWallDistancesFor } from "./item-wall-distances";
 import { EditorModalSheet } from "./EditorModalSheet";
 import { SheetHeader } from "./SheetHeader";
+import { EditorConsequenceSheet } from "./EditorConsequenceSheet";
 import sheetStyles from "./SheetHeader.module.css";
 import { createFloorItemWallSnap } from "./floor-item-wall-snap";
 import { itemCountCopy } from "./item-count-copy";
@@ -157,6 +161,7 @@ import { TelegramItemColor } from "./telegram-item-color";
 import { roomTypeLabels } from "./room-type-labels";
 import { moveDoorOpeningInProject } from "../domain/door-opening-project";
 import { degreesForYawRadians, preciseYawRadiansFromDegrees, yawRadiansFromDegrees } from "./rotation-angle";
+import { RotationAngleActions, RotationModeToggle } from "./FloorRotationAngleField";
 import { SaveFailureNotice } from "./SaveFailureNotice";
 import {
 	isWallMoveGestureSupported,
@@ -212,6 +217,7 @@ interface AppShellProps {
 	readonly catalogGateway?: CatalogGatewayPort;
 	readonly localGreyboxCatalog?: boolean;
 	readonly exactFloorYaw?: boolean;
+	readonly doorHingeAuthoring?: boolean;
 	readonly projectsSupplement?: ReactNode;
 	readonly onOpenSettings?: (restoreFocus?: HTMLElement) => void;
 	readonly controller: ProjectController;
@@ -229,6 +235,7 @@ interface DimensionFields {
 
 interface OpeningDraftFields {
 	readonly swingSide?: "left" | "right";
+	readonly hingeEnd?: "end" | null;
 	readonly baseRevisionId: string;
 	readonly isMove?: boolean;
 	readonly heightMm: string;
@@ -253,6 +260,7 @@ interface WallDeletionConflict {
 	}[];
 	readonly roomIds: readonly string[];
 	readonly wallSegmentId: string;
+	readonly wallRunSegmentIds?: readonly string[];
 }
 
 interface VertexDeletionCandidate {
@@ -1501,6 +1509,7 @@ export function AppShell({
 	catalogGateway,
 	localGreyboxCatalog = false,
 	exactFloorYaw = false,
+	doorHingeAuthoring = false,
 	projectsSupplement,
 	onOpenSettings,
 	controller,
@@ -1714,6 +1723,8 @@ export function AppShell({
 	const [isResolvingWallAddHostConflict, setIsResolvingWallAddHostConflict] =
 		useState(false);
 	const [viewMode, setViewMode] = useState<ViewMode>("plan");
+	const [rotationStepMode, setRotationStepMode] = useState(false);
+	const onRotationStepModeChange = hostNavigation && exactFloorYaw ? setRotationStepMode : undefined;
 	const [dimensionVisibility, setDimensionVisibility] = useState(
 		defaultDrawingDimensionVisibility,
 	);
@@ -2507,6 +2518,12 @@ export function AppShell({
 	const selectedWall = project?.level.wallSegments.find(
 		(wall) => wall.wallSegmentId === selectedWallId,
 	);
+	const selectedWallRun = hostNavigation && project?.schemaVersion === 1 && selectedWall
+		? uninterruptedWallRun(project, selectedWall.wallSegmentId)
+		: undefined;
+	const wallRunSegmentIds = selectedWallRun && selectedWallRun.wallSegmentIds.length > 1
+		? selectedWallRun.wallSegmentIds
+		: undefined;
 	const openingCreationDraftValidation =
 		project?.schemaVersion === 1 && openingCreationDraft
 			? validateOpeningCreationDraft(project, openingCreationDraft)
@@ -2533,6 +2550,23 @@ export function AppShell({
 	const selectedOpening = project?.level.openings.find(
 		(opening) => opening.openingId === selectedOpeningId,
 	);
+	const doorDraftWallId = openingCreationDraft?.kind === "Door"
+		? openingCreationDraft.wallSegmentId
+		: openingDraft?.kind === "Door" ? selectedOpening?.wallSegmentId : undefined;
+	const doorInsideSide = useMemo(() => {
+		if (!doorHingeAuthoring || project?.schemaVersion !== 1 || !doorDraftWallId) return undefined;
+		const wall = project.level.wallSegments.find(candidate => candidate.wallSegmentId === doorDraftWallId);
+		if (!wall) return undefined;
+		const start = project.level.vertices.find(vertex => vertex.vertexId === wall.startVertexId);
+		const end = project.level.vertices.find(vertex => vertex.vertexId === wall.endVertexId);
+		const plan = resolveOrthogonalPlanFaces(project);
+		const exterior = plan.kind === "accepted"
+			? plan.plan.walls.find(candidate => candidate.wallSegmentId === doorDraftWallId)?.exteriorNormal
+			: undefined;
+		if (!start || !end || !exterior) return undefined;
+		return (end.xMm - start.xMm) * exterior.z - (end.zMm - start.zMm) * exterior.x > 0
+			? "right" as const : "left" as const;
+	}, [doorDraftWallId, doorHingeAuthoring, project]);
 	const isWallOpeningDockContext =
 		viewMode === "plan" &&
 		activeTool === "select" &&
@@ -2588,7 +2622,8 @@ export function AppShell({
 						{ readonly anchorClass: "wall" }
 					> =>
 						item.anchorClass === "wall" &&
-						item.wallSegmentId === selectedWall.wallSegmentId,
+						(item.wallSegmentId === selectedWall.wallSegmentId ||
+							wallRunSegmentIds?.includes(item.wallSegmentId) === true),
 				)
 			: [];
 	const selectedWallItemWarningsById = new Map<
@@ -2613,7 +2648,12 @@ export function AppShell({
 		project?.schemaVersion === 1 && selectedWall
 			? isWallMoveGestureSupported(
 					selectedWall.wallSegmentId,
-					project.level.wallSegments,
+					wallRunSegmentIds && selectedWallRun
+						? [
+							...project.level.wallSegments.filter(wall => !wallRunSegmentIds.includes(wall.wallSegmentId)),
+							{ ...selectedWall, startVertexId: selectedWallRun.startVertexId, endVertexId: selectedWallRun.endVertexId },
+						]
+						: project.level.wallSegments,
 					project.level.vertices,
 				)
 			: false;
@@ -2631,7 +2671,8 @@ export function AppShell({
 	const selectedWallOpenings =
 		project?.schemaVersion === 1 && selectedWall
 			? project.level.openings.filter(
-					(opening) => opening.wallSegmentId === selectedWall.wallSegmentId,
+					(opening) => opening.wallSegmentId === selectedWall.wallSegmentId ||
+						wallRunSegmentIds?.includes(opening.wallSegmentId) === true,
 				)
 			: [];
 	const removableSelectedWallVertexIds = useMemo(() => {
@@ -2890,6 +2931,7 @@ export function AppShell({
 	const hasRawSelectedItemDraft = !!selectedItem && !!selectedItemFields && (
 		selectedItemFields.widthMm !== String(selectedItem.widthMm) || selectedItemFields.depthMm !== String(selectedItem.depthMm) || selectedItemFields.heightMm !== String(selectedItem.heightMm) || selectedItemFields.label !== selectedItem.label || selectedItemFields.color !== selectedItem.color || selectedItemAngleRaw !== degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem))
 	);
+	const hasRawSelectedItemAngle = !!selectedItem && selectedItemAngleRaw !== degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem));
 	const hasRawRoomPropertyDraft = isRoomDirectoryOpen && !!roomPropertyFields && !!selectedRoomProperty && (
 		roomPropertyFields.heightMm !== selectedRoomProperty.fields.heightMm || roomPropertyFields.type !== selectedRoomProperty.fields.type || roomPropertyFields.name !== selectedRoomProperty.fields.name
 	);
@@ -3897,6 +3939,13 @@ export function AppShell({
 				),
 			);
 		}
+	};
+
+	const cancelSelectedItemAngle = () => {
+		if (!selectedItem) return;
+		setSelectedItemAngleRaw(degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)));
+		setDimensionError(undefined);
+		document.activeElement instanceof HTMLInputElement && document.activeElement.blur();
 	};
 
 	const activateWallTool = async () => {
@@ -5264,11 +5313,13 @@ export function AppShell({
 			project?.schemaVersion === 1
 				? previewWallDeletionConflict(project, {
 						wallSegmentId: selectedWall.wallSegmentId,
+						wallRunSegmentIds,
 					})
 				: undefined;
 		if (conflictPreview?.kind === "conflict") {
 			setWallDeletionConflict({
 				...conflictPreview,
+				wallRunSegmentIds,
 				previewRevisionId: state.revisionId,
 				requiresResolution: true,
 				retainedRoomIdByTargetFaceKey: {},
@@ -5285,6 +5336,7 @@ export function AppShell({
 			roomIds: [],
 			roomMetadataConflicts: [],
 			wallSegmentId: selectedWall.wallSegmentId,
+			wallRunSegmentIds,
 		});
 	};
 
@@ -5345,10 +5397,12 @@ export function AppShell({
 						readonly targetFaceKey: string;
 					}[],
 					wallSegmentId: wallDeletionConflict.wallSegmentId,
+					wallRunSegmentIds: wallDeletionConflict.wallRunSegmentIds,
 				})
 			: await controller.deleteGeneralWall({
 					previewRevisionId: wallDeletionConflict.previewRevisionId,
 					wallSegmentId: wallDeletionConflict.wallSegmentId,
+					wallRunSegmentIds: wallDeletionConflict.wallRunSegmentIds,
 				});
 		if (result.kind === "rejected") {
 			setDimensionError(errorCopy(result.reasonCode));
@@ -5590,6 +5644,7 @@ export function AppShell({
 
 	const addDoorToWall = async (input: {
 		readonly swingSide?: "left" | "right";
+		readonly hingeEnd?: "end";
 		readonly heightMm: number;
 		readonly offsetMm: number;
 		readonly sillMm: number;
@@ -5743,6 +5798,8 @@ export function AppShell({
 		setOpeningDraft({
 			baseRevisionId: latest.revisionId,
 			isMove: true,
+			...(opening.kind === "Door" && opening.swingSide ? { swingSide: opening.swingSide } : {}),
+			...(opening.kind === "Door" && opening.hingeEnd ? { hingeEnd: opening.hingeEnd } : {}),
 			heightMm: String(opening.heightMm),
 			kind: opening.kind,
 			offsetMm: String(input.offsetMm),
@@ -5755,6 +5812,7 @@ export function AppShell({
 
 	const updateSelectedDoorOpening = async (input: {
 		readonly swingSide?: "left" | "right";
+		readonly hingeEnd?: "end" | null;
 		readonly heightMm?: number;
 		readonly offsetMm?: number;
 		readonly openingId: string;
@@ -5772,7 +5830,9 @@ export function AppShell({
 			input.widthMm === undefined &&
 			input.heightMm === undefined &&
 			input.sillMm === undefined &&
-			input.offsetMm === undefined
+			input.offsetMm === undefined &&
+			input.swingSide === undefined &&
+			input.hingeEnd === undefined
 		) {
 			setDimensionError("Укажите хотя бы одно значение проёма для изменения.");
 			return;
@@ -5819,6 +5879,7 @@ export function AppShell({
 		setOpeningDraft({
 			baseRevisionId: state.revisionId,
 			...(opening.kind === "Door" && opening.swingSide ? { swingSide: opening.swingSide } : {}),
+			...(opening.kind === "Door" && opening.hingeEnd ? { hingeEnd: opening.hingeEnd } : {}),
 			heightMm: String(opening.heightMm),
 			kind: opening.kind,
 			offsetMm: String(opening.offsetMm),
@@ -5860,6 +5921,7 @@ export function AppShell({
 		}
 		await updateSelectedDoorOpening({
 			...(openingDraft.swingSide ? { swingSide: openingDraft.swingSide } : {}),
+			...(openingDraft.hingeEnd !== undefined ? { hingeEnd: openingDraft.hingeEnd } : {}),
 			heightMm,
 			offsetMm,
 			openingId: openingDraft.openingId,
@@ -6272,7 +6334,18 @@ export function AppShell({
 		if (hasTelegramEditorSheet) requestEditorBack(false, close);
 		else close();
 	};
-	hostBackHandler.current = () => requestEditorBack();
+	hostBackHandler.current = () => {
+		if (hostNavigation && !isWorking) {
+			if (wallDeletionConflict) return cancelWallDeletionConflict();
+			if (wallAddHostConflict) return cancelWallAddHostConflict();
+			if (vertexDeletionCandidate && !isDeletingVertex) {
+				setDimensionError(undefined);
+				setVertexDeletionCandidate(undefined);
+				return;
+			}
+		}
+		requestEditorBack();
+	};
 	const hostBackGuard = leaveFocus ? <EditorLeaveGuard focus={leaveFocus} fallback={editorHeaderMenuRef.current} onContinue={continueEditorDraft} onDiscard={() => {
 		if (hasPendingEditorCommand() || controller.snapshot().kind === "persist-failed") return;
 		const exitCopy = confirmedWriterExit.current;
@@ -7079,6 +7152,8 @@ export function AppShell({
 						onCloseItemPlacement={localGreyboxCatalog ? () => requestEditorBack(false, cancelItemPlacement) : undefined}
 						skipBlurCommit={consumeSkippedNumericBlurCommit}
 						exactFloorYaw={exactFloorYaw || (selectedItem !== undefined && "yawMilliDeg" in selectedItem)}
+						rotationStepMode={rotationStepMode}
+						onRotationStepModeChange={onRotationStepModeChange}
 						registerTransientBoundary={fullTransientNavigationProtection ? registerTransientBoundary : undefined}
 						assessItemPlacement={(point) => {
 							if (
@@ -7191,6 +7266,8 @@ export function AppShell({
 						onCloseItemPlacement={localGreyboxCatalog ? () => requestEditorBack(false, cancelItemPlacement) : undefined}
 						skipBlurCommit={consumeSkippedNumericBlurCommit}
 						exactFloorYaw={exactFloorYaw}
+						rotationStepMode={rotationStepMode}
+						onRotationStepModeChange={onRotationStepModeChange}
 						initialItemPlacementPoint={localGreyboxCatalog ? retainedPlacementPoint.current : undefined}
 						onItemPlacementPointChange={localGreyboxCatalog ? (point: { xMm: number; zMm: number } | undefined) => {
 							retainedPlacementPoint.current = point;
@@ -7209,10 +7286,11 @@ export function AppShell({
 						showOpeningTemplates={hostNavigation !== undefined}
 						selectedOpeningId={selectedOpeningId}
 						openingMovePreview={
-							openingDraft && (openingDraft.isMove || openingDraft.swingSide)
+							openingDraft && (openingDraft.isMove || openingDraft.swingSide || openingDraft.hingeEnd !== undefined)
 								? {
 										openingId: openingDraft.openingId,
 										swingSide: openingDraft.swingSide,
+										hingeEnd: openingDraft.hingeEnd,
 										offsetMm: Number(openingDraft.offsetMm),
 									}
 								: undefined
@@ -7252,6 +7330,7 @@ export function AppShell({
 						project={project}
 						selectedItemId={selectedItemId}
 						selectedWallId={selectedWallId}
+						selectedWallRun={wallRunSegmentIds ? selectedWallRun : undefined}
 						wallThicknessMm={wallThicknessMm}
 						setViewport={(update) => setViewport(update)}
 						viewport={viewport}
@@ -8007,10 +8086,10 @@ export function AppShell({
 								</label>
 							</div>
 							{hostNavigation && openingCreationDraft.kind === "Door" && (
-								<DoorSwingPicker value={openingCreationDraft.swingSide} disabled={isWorking || isEditorReadOnly}
-									onChange={swingSide => {
+								<DoorSwingPicker value={openingCreationDraft.swingSide} hingeEnd={openingCreationDraft.hingeEnd} showHingeOptions={doorHingeAuthoring} insideSide={doorInsideSide} disabled={isWorking || isEditorReadOnly}
+									onChange={(swingSide, hingeEnd) => {
 										setDimensionError(undefined);
-										setOpeningCreationDraft({ ...openingCreationDraft, swingSide });
+										setOpeningCreationDraft({ ...openingCreationDraft, swingSide, hingeEnd: hingeEnd ?? undefined });
 									}} />
 							)}
 							{openingCreationDraftError ? (
@@ -8159,10 +8238,10 @@ export function AppShell({
 								</label>
 							</div>
 							{hostNavigation && openingDraft.kind === "Door" && (
-								<DoorSwingPicker value={openingDraft.swingSide} disabled={isWorking || isEditorReadOnly}
-									onChange={swingSide => {
+								<DoorSwingPicker value={openingDraft.swingSide} hingeEnd={openingDraft.hingeEnd} showHingeOptions={doorHingeAuthoring} insideSide={doorInsideSide} disabled={isWorking || isEditorReadOnly}
+									onChange={(swingSide, hingeEnd) => {
 										setDimensionError(undefined);
-										setOpeningDraft({ ...openingDraft, swingSide });
+										setOpeningDraft({ ...openingDraft, swingSide, hingeEnd });
 									}} />
 							)}
 							{dimensionError ? (
@@ -8190,7 +8269,23 @@ export function AppShell({
 					</EditorModalSheet>
 				) : null}
 
-				{viewMode === "plan" && vertexDeletionCandidate ? (
+				{viewMode === "plan" && vertexDeletionCandidate && hostNavigation ? (
+					<EditorConsequenceSheet
+						title="Удалить вершину"
+						closeLabel="Закрыть удаление вершины"
+						confirmLabel="Удалить вершину"
+						testId="vertex-deletion-draft"
+						busy={isDeletingVertex || isWorking}
+						blocked={isMutationBlocked || isEditorReadOnly || state.kind === "recovery-needed"}
+						error={dimensionError}
+						onCancel={() => { setDimensionError(undefined); setVertexDeletionCandidate(undefined); }}
+						onConfirm={() => void confirmVertexDeletion()}
+						restoreFocus={() => selectionPropertiesTriggerRef.current}
+					>
+						<p>Две прямые части стены станут одним участком.</p>
+						{vertexDeletionAffectedWallItemIds.length > 0 ? <p>Настенные предметы останутся на своих местах.</p> : null}
+					</EditorConsequenceSheet>
+				) : viewMode === "plan" && vertexDeletionCandidate ? (
 					<aside
 						aria-label="Последствия удаления вершины"
 						aria-live="assertive"
@@ -8254,7 +8349,29 @@ export function AppShell({
 					</aside>
 				) : null}
 
-				{viewMode === "plan" && wallAddHostConflict ? (
+				{viewMode === "plan" && wallAddHostConflict && hostNavigation ? (
+					<EditorConsequenceSheet
+						title="Добавить стену"
+						closeLabel="Закрыть добавление стены"
+						confirmLabel="Добавить и удалить"
+						testId="wall-add-host-conflict-preview"
+						busy={isResolvingWallAddHostConflict || isWorking}
+						blocked={isEditorReadOnly}
+						error={dimensionError}
+						onCancel={cancelWallAddHostConflict}
+						onConfirm={() => void resolveWallAddHostConflict()}
+					>
+						<p>Новая стена пересекает существующую. Следующие объекты на месте стыка будут удалены.</p>
+						<ul>
+							{wallAddHostConflict.openingIds.map(openingId => (
+								<li key={openingId}>{project?.level.openings.find(opening => opening.openingId === openingId)?.kind === "Window" ? "Окно" : "Дверной проём"}</li>
+							))}
+							{wallAddHostConflict.itemIds.map(itemId => (
+								<li key={itemId}>{project?.assetInstances.find(item => item.assetInstanceId === itemId)?.label ?? "Настенный предмет"}</li>
+							))}
+						</ul>
+					</EditorConsequenceSheet>
+				) : viewMode === "plan" && wallAddHostConflict ? (
 					<aside
 						aria-label="Последствия добавления стены"
 						aria-live="assertive"
@@ -8357,7 +8474,69 @@ export function AppShell({
 					</aside>
 				) : null}
 
-				{viewMode === "plan" && wallDeletionConflict ? (
+				{viewMode === "plan" && wallDeletionConflict && hostNavigation ? (
+					<EditorConsequenceSheet
+						title="Удалить стену"
+						closeLabel="Закрыть удаление стены"
+						confirmLabel={wallDeletionConflict.roomMetadataConflicts.length ? "Объединить помещения" : "Удалить стену"}
+						testId="opening-conflict-preview"
+						busy={isWorking}
+						blocked={isEditorReadOnly || wallDeletionConflict.roomMetadataConflicts.some(conflict =>
+							!wallDeletionConflict.retainedRoomIdByTargetFaceKey[conflict.targetFaceKey])}
+						error={dimensionError}
+						onCancel={cancelWallDeletionConflict}
+						onConfirm={() => void confirmWallDeletionConflict()}
+						restoreFocus={() => selectionPropertiesTriggerRef.current}
+					>
+						{!wallDeletionConflict.requiresResolution ? <p>Выбранная стена будет удалена.</p> : null}
+						{wallDeletionConflict.roomMetadataConflicts.map(conflict => {
+							const choices = conflict.retainedRoomIds.map(roomId => {
+								const room = project?.schemaVersion === 1 ? project.level.rooms.find(candidate => candidate.roomId === roomId) : undefined;
+								return { roomId, room, label: roomTypeLabels[room?.type ?? "other"] };
+							});
+							return (
+								<Fragment key={conflict.targetFaceKey}>
+									<p>Объединятся помещения {choices.map(choice => `«${choice.label}»`).join(" и ")}.</p>
+									<fieldset className={sheetStyles.consequenceChoices}>
+										<legend>Какие тип и высоту сохранить?</legend>
+										{choices.map(({ roomId, room, label }, index) => (
+											<button
+												type="button"
+												aria-pressed={wallDeletionConflict.retainedRoomIdByTargetFaceKey[conflict.targetFaceKey] === roomId}
+												data-testid={`wall-deletion-metadata-${index}`}
+												disabled={isWorking || isEditorReadOnly}
+												key={roomId}
+												onClick={() => chooseWallDeletionRoomMetadata(conflict.targetFaceKey, roomId)}
+											>
+												{label}{choices.filter(choice => choice.label === label).length > 1 ? ` · вариант ${index + 1}` : ""}
+												{room ? <small>{formatLengthMm(room.heightMm)}</small> : null}
+											</button>
+										))}
+									</fieldset>
+								</Fragment>
+							);
+						})}
+						{wallDeletionConflict.roomIds.length > 0 && wallDeletionConflict.roomMetadataConflicts.length === 0 ? (
+							<p>Будут изменены контуры помещений {wallDeletionConflict.roomIds.map(roomId => {
+								const room = project?.schemaVersion === 1 ? project.level.rooms.find(candidate => candidate.roomId === roomId) : undefined;
+								return `«${roomTypeLabels[room?.type ?? "other"]}»`;
+							}).join(", ")}.</p>
+						) : null}
+						{wallDeletionConflict.openingIds.length + wallDeletionConflict.itemIds.length > 0 ? (
+							<>
+								<p>Вместе со стеной будут удалены следующие объекты.</p>
+								<ul>
+									{wallDeletionConflict.openingIds.map(openingId => (
+										<li key={openingId}>{project?.level.openings.find(opening => opening.openingId === openingId)?.kind === "Window" ? "Окно" : "Дверной проём"}</li>
+									))}
+									{wallDeletionConflict.itemIds.map(itemId => (
+										<li key={itemId}>{project?.assetInstances.find(item => item.assetInstanceId === itemId)?.label ?? "Предмет"}</li>
+									))}
+								</ul>
+							</>
+						) : null}
+					</EditorConsequenceSheet>
+				) : viewMode === "plan" && wallDeletionConflict ? (
 					<aside
 						aria-label="Последствия удаления стены"
 						aria-live="assertive"
@@ -8784,7 +8963,8 @@ export function AppShell({
 									value={selectedItemFields.heightMm}
 								/>
 							</label>
-							<label>
+							<div className={styles.selectedAngleEditor}>
+							<label data-angle-unit>
 								<span>Поворот</span>
 								<input
 									aria-label="Угол поворота выбранного предмета, градусы"
@@ -8797,10 +8977,10 @@ export function AppShell({
 										state.kind === "recovery-needed"
 									}
 									inputMode="decimal"
-									data-editor-blur-commit=""
+									data-editor-blur-commit={onRotationStepModeChange ? undefined : ""}
 
 							onBlur={(event) => {
-										if (!consumeSkippedNumericBlurCommit(event.currentTarget)) {
+										if (!onRotationStepModeChange && !consumeSkippedNumericBlurCommit(event.currentTarget)) {
 											void commitSelectedItemAngle();
 										}
 									}}
@@ -8808,6 +8988,18 @@ export function AppShell({
 										setSelectedItemAngleRaw(event.target.value)
 									}
 									onKeyDown={(event) => {
+										if (onRotationStepModeChange) {
+											if (event.key === "Enter") {
+												event.preventDefault();
+												void commitSelectedItemAngle();
+												event.currentTarget.blur();
+											} else if (event.key === "Escape" && hasRawSelectedItemAngle) {
+												event.preventDefault();
+												event.stopPropagation();
+												cancelSelectedItemAngle();
+											}
+											return;
+										}
 										if (
 											cancelNumericDraftOnEscape(
 												event,
@@ -8821,7 +9013,16 @@ export function AppShell({
 									value={selectedItemAngleRaw}
 								/>
 							</label>
+							{onRotationStepModeChange && hasRawSelectedItemAngle ? (
+								<RotationAngleActions disabled={isMutationBlocked || isEditorReadOnly || selectedItemLocked}
+									onApply={() => void commitSelectedItemAngle()} onCancel={cancelSelectedItemAngle} />
+							) : null}
+							</div>
 						</div>
+						{onRotationStepModeChange && isSelectionInspectorExpanded ? (
+							<RotationModeToggle checked={rotationStepMode} disabled={isMutationBlocked || isEditorReadOnly || selectedItemLocked}
+								onChange={onRotationStepModeChange} />
+						) : null}
 
 						{localGreyboxCatalog || selectedItemHasNoDeclaredColorVariant ? null : (
 							<fieldset className={styles.quickPalette}>

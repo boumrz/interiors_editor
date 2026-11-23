@@ -165,12 +165,15 @@ export interface DoorWallOpening extends WallOpeningBase {
 	 * are read as `right` for backwards-compatible projection.
 	 */
 	readonly swingSide?: "left" | "right";
+	/** The hinge is at the interval's start unless this selects its end. */
+	readonly hingeEnd?: "end";
 }
 
 export interface WindowWallOpening extends WallOpeningBase {
 	readonly kind: "Window";
 	/** Windows have no hinge or open/close state in Alpha. */
 	readonly swingSide?: never;
+	readonly hingeEnd?: never;
 }
 
 export type WallOpening = DoorWallOpening | WindowWallOpening;

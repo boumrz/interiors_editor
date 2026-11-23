@@ -5,13 +5,14 @@ import { containsLoneSurrogate, decodeRuntimeV1Utf16, encodeRuntimeV1Utf16, RUNT
 
 export const RUNTIME_V1_SCHEMA_ID = 'interiors.project/runtime-v1-wire' as const;
 export const RUNTIME_V1_FLOOR_YAW_SCHEMA_ID = 'interiors.project/runtime-v1-floor-yaw' as const;
-export type RegisteredRuntimeV1SchemaId = typeof RUNTIME_V1_SCHEMA_ID | typeof RUNTIME_V1_FLOOR_YAW_SCHEMA_ID;
+export const RUNTIME_V1_DOOR_HINGE_SCHEMA_ID = 'interiors.project/runtime-v1-door-hinge' as const;
+export type RegisteredRuntimeV1SchemaId = typeof RUNTIME_V1_SCHEMA_ID | typeof RUNTIME_V1_FLOOR_YAW_SCHEMA_ID | typeof RUNTIME_V1_DOOR_HINGE_SCHEMA_ID;
 export type RegisteredRuntimeV1EncodeResult =
   | (Extract<RuntimeV1EncodeResult, { readonly kind: 'encoded' }> & { readonly projectSchemaId: RegisteredRuntimeV1SchemaId })
   | RuntimeV1Rejection;
 
 export function isRegisteredRuntimeV1SchemaId(id: string): id is RegisteredRuntimeV1SchemaId {
-  return id === RUNTIME_V1_SCHEMA_ID || id === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID;
+  return id === RUNTIME_V1_SCHEMA_ID || id === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID || id === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID;
 }
 export type RuntimeV1VariantValue = ItemColorVariantId | readonly [RuntimeV1VariantValue];
 type ExactItem<T> = T extends SchematicAssetInstance ? Omit<T, 'colorVariantId'> & { readonly colorVariantId?: RuntimeV1VariantValue } : never;
@@ -125,7 +126,8 @@ class Decoder {
   }
   decode(node: RuntimeV1Node): RuntimeV1Project {
     const string = this.string;
-    const allowsPreciseYaw = this.schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID;
+    const allowsDoorHinge = this.schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID;
+    const allowsPreciseYaw = this.schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID || allowsDoorHinge;
     const floorOrientation: Record<string, Read> = { elevationMm: number(0, 0), yawRadians: finite, yawStep: number(0, 7) };
     if (allowsPreciseYaw) floorOrientation.yawMilliDeg = number(0, 359999);
     const vertex: Read = n => this.record(n, { vertexId: string, xMm: number(-100000, 100000), zMm: number(-100000, 100000) });
@@ -134,8 +136,10 @@ class Decoder {
       { name: string, type: oneOf('bathroom', 'bedroom', 'hallway', 'kitchen', 'living-room', 'office', 'other', 'storage') });
     const opening: Read = n => {
       const result = this.record(n, { openingId: string, wallSegmentId: string, offsetMm: number(0, 100000),
-        widthMm: number(1, 100000), heightMm: number(1, 10000), sillMm: number(0, 10000), kind: oneOf('Door', 'Window') }, { swingSide: oneOf('left', 'right') });
+        widthMm: number(1, 100000), heightMm: number(1, 10000), sillMm: number(0, 10000), kind: oneOf('Door', 'Window') },
+      { swingSide: oneOf('left', 'right'), ...(allowsDoorHinge ? { hingeEnd: oneOf('end') } : {}) });
       if (result.kind === 'Window' && result.swingSide !== undefined) return unreadable();
+      if (Object.hasOwn(result, 'hingeEnd') && (result.kind !== 'Door' || result.hingeEnd !== 'end')) return unreadable();
       return result;
     };
     const item: Read = n => {
@@ -176,7 +180,8 @@ class Decoder {
     delete value.projectSchemaId;
     // Closed validated wire shape, deliberately not a claim of domain Project validity.
     const project = value as RuntimeV1Project;
-    if (allowsPreciseYaw && !project.assetInstances.some(item => Object.hasOwn(item, 'yawMilliDeg'))) return unreadable();
+    if (this.schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID && !project.assetInstances.some(item => Object.hasOwn(item, 'yawMilliDeg'))) return unreadable();
+    if (allowsDoorHinge && !project.level.openings.some(opening => opening.hingeEnd === 'end')) return unreadable();
     references(project);
     return project;
   }
@@ -236,10 +241,12 @@ export function encodeRuntimeV1Project(project: unknown): RuntimeV1EncodeResult 
   return encodeMember(project, RUNTIME_V1_SCHEMA_ID);
 }
 
-/** Choose the precise-angle member only for snapshots that actually carry that field. */
+/** Choose the most specific registered member represented by the snapshot. */
 export function encodeRegisteredRuntimeProject(project: unknown): RegisteredRuntimeV1EncodeResult {
   try {
-    const projectSchemaId = hasExactYawField(project) ? RUNTIME_V1_FLOOR_YAW_SCHEMA_ID : RUNTIME_V1_SCHEMA_ID;
+    const projectSchemaId = hasDoorHingeField(project)
+      ? RUNTIME_V1_DOOR_HINGE_SCHEMA_ID
+      : hasExactYawField(project) ? RUNTIME_V1_FLOOR_YAW_SCHEMA_ID : RUNTIME_V1_SCHEMA_ID;
     const encoded = encodeMember(project, projectSchemaId);
     return encoded.kind === 'encoded' ? { ...encoded, projectSchemaId } : encoded;
   } catch {
@@ -249,11 +256,21 @@ export function encodeRegisteredRuntimeProject(project: unknown): RegisteredRunt
 
 function hasExactYawField(project: unknown): boolean {
   if (typeof project !== 'object' || project === null) return false;
-  const items: unknown = Object.getOwnPropertyDescriptor(project, 'assetInstances')?.value;
-  if (!Array.isArray(items) || items.length > RUNTIME_V1_LIMITS.elementsPerArray) return false;
-  for (let index = 0; index < items.length; index++) {
-    const item: unknown = Object.getOwnPropertyDescriptor(items, index)?.value;
-    if (typeof item === 'object' && item !== null && Object.hasOwn(item, 'yawMilliDeg')) return true;
+  return arrayMemberHasField(Object.getOwnPropertyDescriptor(project, 'assetInstances')?.value, 'yawMilliDeg');
+}
+
+function hasDoorHingeField(project: unknown): boolean {
+  if (typeof project !== 'object' || project === null) return false;
+  const level: unknown = Object.getOwnPropertyDescriptor(project, 'level')?.value;
+  return typeof level === 'object' && level !== null &&
+    arrayMemberHasField(Object.getOwnPropertyDescriptor(level, 'openings')?.value, 'hingeEnd');
+}
+
+function arrayMemberHasField(entries: unknown, field: string): boolean {
+  if (!Array.isArray(entries) || entries.length > RUNTIME_V1_LIMITS.elementsPerArray) return false;
+  for (let index = 0; index < entries.length; index++) {
+    const entry: unknown = Object.getOwnPropertyDescriptor(entries, index)?.value;
+    if (typeof entry === 'object' && entry !== null && Object.hasOwn(entry, field)) return true;
   }
   return false;
 }
@@ -287,8 +304,9 @@ function encodeMember(project: unknown, schemaId: RegisteredRuntimeV1SchemaId): 
       if (Array.isArray(value) ? value.length > RUNTIME_V1_LIMITS.elementsPerArray : keys.length > RUNTIME_V1_LIMITS.membersPerObject) throw new RuntimeV1Fault('BACKUP_PROJECT_LIMIT');
       for (const key of keys) {
         if (typeof key !== 'string') return unreadable();
-        const preciseYawKey = key === 'yawMilliDeg' && schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID;
-        if (!Array.isArray(value) && (key.length > 32 || !sourceKeys.has(key) && !preciseYawKey)) return unreadable();
+        const preciseYawKey = key === 'yawMilliDeg' && schemaId !== RUNTIME_V1_SCHEMA_ID;
+        const doorHingeKey = key === 'hingeEnd' && schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID;
+        if (!Array.isArray(value) && (key.length > 32 || !sourceKeys.has(key) && !preciseYawKey && !doorHingeKey)) return unreadable();
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (!descriptor || !Object.hasOwn(descriptor, 'value') || (!descriptor.enumerable && !(Array.isArray(value) && key === 'length'))) return unreadable();
       }

@@ -29,6 +29,19 @@ it.each([
 		);
 	},
 );
+it.each([
+	["left", 30, 0], ["right", -30, 1],
+] as const)("draws the end hinge on the %s side of the same opening", (swingSide, leafTip, sweep) => {
+	const diagram = renderToStaticMarkup(
+		<svg role="img" aria-label="Проём">
+			<OpeningPlanSymbol kind="Door" swingSide={swingSide} hingeEnd="end"
+				start={{ x: 10, y: 20 }} end={{ x: 10, y: 50 }} thickness={3} />
+		</svg>,
+	);
+	expect(diagram).toContain(`data-testid="door-leaf" x1="30" x2="30" y1="0" y2="${leafTip}"`);
+	expect(diagram).toContain(`M0 0 A30 30 0 0 ${sweep} 30 ${leafTip}`);
+});
+
 it("draws the window frame with two pane rails and a central mullion", () => {
 	const diagram = renderToStaticMarkup(
 		<svg role="img" aria-label="Проём">
@@ -58,4 +71,13 @@ it("labels the two swing directions and exposes the stored selection", () => {
 	expect(markup).toMatch(
 		/<button[^>]*aria-pressed="false"[^>]*disabled=""[^>]*>Вправо<\/button>/,
 	);
+});
+
+it("selects the saved hinge and room-relative opening in separate groups", () => {
+	const markup = renderToStaticMarkup(
+		<DoorSwingPicker value="left" hingeEnd="end" insideSide="right" showHingeOptions disabled={false} onChange={() => undefined} />,
+	);
+	expect(markup.match(/aria-pressed=/g)).toHaveLength(4);
+	expect(markup).toMatch(/<button[^>]*aria-pressed="true"[^>]*>Справа<\/button>/);
+	expect(markup).toMatch(/<button[^>]*aria-pressed="true"[^>]*>Наружу<\/button>/);
 });

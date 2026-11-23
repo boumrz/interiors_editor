@@ -10,6 +10,7 @@ import type {
 	SplitGeneralWallHostResolutionInput,
 	SplitGeneralWallInput,
 } from "../domain/general-wall-project";
+import type { UninterruptedWallRun } from "../domain/wall-runs";
 import {
 	type ParametricFloorItemPlacementWarning,
 	yawRadiansFor,
@@ -223,6 +224,9 @@ export function visualGridStepMm(): number {
 export interface PlanProjectionProps {
 	readonly plainLabels?: boolean;
 	readonly exactFloorYaw?: boolean;
+	readonly rotationStepMode?: boolean;
+	readonly onRotationStepModeChange?: (checked: boolean) => void;
+	readonly selectedWallRun?: UninterruptedWallRun;
 	readonly initialItemPlacementPoint?: ItemPlacementPoint;
 	readonly onItemPlacementPointChange?: (point: ItemPlacementPoint | undefined) => void;
 	readonly skipBlurCommit?: (target: HTMLInputElement) => boolean;
@@ -242,6 +246,7 @@ export interface PlanProjectionProps {
 	readonly movableWallVertexIds: readonly string[];
 	readonly openingMovePreview?: {
 		readonly swingSide?: "left" | "right";
+		readonly hingeEnd?: "end" | null;
 		readonly openingId: string;
 		readonly offsetMm: number;
 	};
@@ -249,6 +254,7 @@ export interface PlanProjectionProps {
 		| {
 				readonly kind?: "Door" | "Window";
 				readonly swingSide?: "left" | "right";
+				readonly hingeEnd?: "end" | null;
 				readonly offsetMm: number;
 				readonly wallSegmentId: string;
 				readonly widthMm: number;
@@ -345,6 +351,7 @@ export type WallMoveDraft =
 			readonly pointerOrigin: PointerPosition;
 			readonly positionMm: number;
 			readonly wallSegmentId: string;
+			readonly wallRunSegmentIds?: readonly string[];
 	  }
 	| {
 			readonly kind: "diagonal-falling" | "diagonal-rising";
@@ -354,6 +361,7 @@ export type WallMoveDraft =
 			readonly pointerOrigin: PointerPosition;
 			readonly translationMm: { readonly xMm: number; readonly zMm: number };
 			readonly wallSegmentId: string;
+			readonly wallRunSegmentIds?: readonly string[];
 	  };
 
 export type WallMoveAxis =

@@ -22,10 +22,15 @@ test('main validates and packages the exact Telegram target', () => {
     .find(step => step.includes('run-telegram-entry.mjs'));
   assert.ok(signedProof, 'Expected the signed Telegram release proof');
   assert.match(signedProof, /^ +INTERIORS_EXACT_FLOOR_YAW: ['"]1['"]$/m);
-  assert.ok(signedProof.includes("--grep 'TMA-(ENTRY-[0-9]{2}|ITEM-FLUSH-01):'"));
-  assert.ok(productionWorkflow.includes(
-    "run-telegram-runtime-ui.mjs --grep 'TMA-(EXACT-YAW|EXACT-TRANSFER|UI-PLAN-RING):'",
-  ));
+  for (const name of ['ENTRY-[0-9]{2}', 'ITEM-FLUSH-01', 'CAMERA-FRAMING', 'OPENINGS']) {
+    assert.ok(signedProof.includes(name), `Signed release proof omits ${name}`);
+  }
+  const runtimeProof = productionWorkflow.split("\n").find(line => line.includes('run-telegram-runtime-ui.mjs'));
+  assert.ok(runtimeProof);
+  for (const name of ['EXACT-YAW', 'EXACT-TRANSFER', 'ROTATION-EXPLICIT', 'WALL-CONTINUITY', 'WALL-CONSEQUENCES', 'DOOR-HINGE-TRANSFER']) {
+    assert.ok(runtimeProof.includes(name), `Runtime release proof omits ${name}`);
+  }
+  assert.ok(productionWorkflow.includes("run-telegram-storage-mutation.mjs --grep 'TMA-DOOR-HINGE-STORAGE:'"));
   const legalProof = productionWorkflow
     .split(/\n(?= {6}- )/)
     .filter(step => step.includes('scripts/legal-document-delivery.test.mjs'));

@@ -12,7 +12,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { wallBodiesForProjection } from "../adapters/renderer/wall-body-projection";
+import { wallBodiesForProjection, wallFillRunsForProjection } from "../adapters/renderer/wall-body-projection";
 import { roomTypeLabels } from "./room-type-labels";
 import { wallItemPlanFootprintForProjection } from "../adapters/renderer/rectangular-room-projection";
 import { moveDoorOpeningInProject } from "../domain/door-opening-project";
@@ -35,14 +35,15 @@ import { wallOpeningIntervalMm } from "../domain/wall-opening";
 import styles from "./AppShell.module.css";
 import rotationStyles from "./FloorRotationControls.module.css";
 import { PlacementRotationControl } from "./PlacementRotationControl";
-import { FloorRotationAngleField } from "./FloorRotationAngleField";
+import { FloorRotationAngleField, RotationModeToggle } from "./FloorRotationAngleField";
+import { EditorConsequenceSheet } from "./EditorConsequenceSheet";
 import {
 	beginRotationDomeGesture,
 	moveRotationDomeGesture,
 	rotationDomeGestureHasChanged,
 	type RotationDomeGesture,
 } from "./three-dimensional-rotation-gesture";
-import { degreesForYawRadians } from "./rotation-angle";
+import { degreesForYawRadians, steppedYawRadians } from "./rotation-angle";
 import { DrawingDimensions } from "./DrawingDimensions";
 import { ItemWallDistanceFields, ItemWallDistanceLines, ItemWallDistanceValues } from "./ItemWallDistances";
 import { itemWallDistancePositionFor, itemWallDistancesFor, type ItemWallDistance } from "./item-wall-distances";
@@ -123,6 +124,9 @@ const itemArrowSteps: Readonly<Partial<Record<string, { xMm: number; zMm: number
 export function PlanProjection({
 	plainLabels = false,
 	exactFloorYaw = false,
+	rotationStepMode = false,
+	onRotationStepModeChange,
+	selectedWallRun,
 	initialItemPlacementPoint,
 	onItemPlacementPointChange,
 	skipBlurCommit,
@@ -870,12 +874,17 @@ export function PlanProjection({
 	});
 
 	const vertices = project.level.vertices;
+	const selectedWallRunIds = selectedWallRun?.wallSegmentIds;
+	const wallBodies = useMemo(() => wallBodiesForProjection(project.level), [project.level]);
 	const wallBodiesById = new Map(
-		wallBodiesForProjection(project.level).map((body) => [
+		wallBodies.map((body) => [
 			body.wallSegmentId,
 			body,
 		]),
 	);
+	const wallFillRuns = useMemo(() => plainLabels ? wallFillRunsForProjection(project.level, wallBodies) : [],
+		[plainLabels, project.level, wallBodies]);
+	const wallsWithSharedFill = new Set(wallFillRuns.flatMap(run => run.wallSegmentIds));
 	const { minX, maxX, minZ, maxZ } = visiblePlanFrame(vertices, true);
 	const resolvedPlan = derivedPlanFor(project);
 	const derivedPlan =
@@ -1048,14 +1057,15 @@ export function PlanProjection({
 		const wall = project.level.wallSegments.find(
 			(candidate) => candidate.wallSegmentId === wallSegmentId,
 		);
+		const run = selectedWallRunIds?.includes(wallSegmentId) ? selectedWallRun : undefined;
 		const start = wall
 			? project.level.vertices.find(
-					(vertex) => vertex.vertexId === wall.startVertexId,
+					(vertex) => vertex.vertexId === (run?.startVertexId ?? wall.startVertexId),
 				)
 			: undefined;
 		const end = wall
 			? project.level.vertices.find(
-					(vertex) => vertex.vertexId === wall.endVertexId,
+					(vertex) => vertex.vertexId === (run?.endVertexId ?? wall.endVertexId),
 				)
 			: undefined;
 		if (!start || !end) return undefined;
@@ -1151,10 +1161,12 @@ export function PlanProjection({
 				? {
 						positionMm: candidate.positionMm,
 						wallSegmentId: candidate.wallSegmentId,
+						wallRunSegmentIds: candidate.wallRunSegmentIds,
 					}
 				: {
 						translationMm: candidate.translationMm,
 						wallSegmentId: candidate.wallSegmentId,
+						wallRunSegmentIds: candidate.wallRunSegmentIds,
 					},
 		);
 		setIsConfirmingWallMove(false);
@@ -1291,6 +1303,7 @@ export function PlanProjection({
 				point: canvasPointFor(event),
 				centre,
 				exact,
+				snapToStep: rotationStepMode || !exact,
 			}),
 		} : undefined;
 		const next = {
@@ -1818,7 +1831,7 @@ export function PlanProjection({
 			activeTool === "select" &&
 			isWallMoveMode &&
 			wallSegmentId &&
-			wallSegmentId === selectedWallId &&
+			(wallSegmentId === selectedWallId || selectedWallRunIds?.includes(wallSegmentId)) &&
 			activePointers.length === 1 &&
 			!readOnly
 		) {
@@ -1841,6 +1854,7 @@ export function PlanProjection({
 							pointerOrigin: canvasPoint,
 							positionMm: axis.positionMm,
 							wallSegmentId,
+							wallRunSegmentIds: selectedWallRunIds,
 						}
 					: {
 							kind: axis.kind,
@@ -1850,6 +1864,7 @@ export function PlanProjection({
 							pointerOrigin: canvasPoint,
 							translationMm: { xMm: 0, zMm: 0 },
 							wallSegmentId,
+							wallRunSegmentIds: selectedWallRunIds,
 						};
 			setWallMoveDraft(draft);
 			wallMoveDraftRef.current = draft;
@@ -2037,6 +2052,7 @@ export function PlanProjection({
 						point: canvasPoint,
 						centre,
 						exact: exactFloorYaw,
+						snapToStep: rotationStepMode || !exactFloorYaw,
 					}),
 					pointerId: event.pointerId,
 				};
@@ -3088,7 +3104,10 @@ export function PlanProjection({
 		width: canvasSize.canvasWidth - 16,
 		height: canvasSize.canvasHeight - canvasInsets.top - canvasInsets.bottom - 24,
 	};
-	const leftPlacementStepRadians = exactFloorYaw ? Math.PI / 180 : -Math.PI / 4;
+	const rotationStep = exactFloorYaw && !rotationStepMode ? 1 : 45;
+	const placementStep = (yaw: number, direction: 1 | -1) => exactFloorYaw
+		? steppedYawRadians(yaw, direction, rotationStepMode)
+		: yaw - direction * Math.PI / 4;
 	const transform = `translate(${viewport.panX} ${viewport.panY}) scale(${viewport.zoom})`;
 	const visualGridStep = visualGridStepMm();
 	const retainedHostTransform = retainedHostItemTransform();
@@ -3259,6 +3278,20 @@ export function PlanProjection({
 							);
 						})}
 					</g>
+					{wallFillRuns.map(run => (
+						<path
+							key={run.wallSegmentIds[0]}
+							className={styles.wallBody}
+							data-testid="continuous-wall-fill"
+							data-selected={run.wallSegmentIds.includes(selectedWallId ?? "")}
+							fill={`url(#${wallHatchId})`}
+							pointerEvents="none"
+							d={run.polygonsMm.map(polygon => polygon.map((point, index) => {
+								const screen = pointFor(point.xMm, point.zMm);
+								return `${index === 0 ? "M" : "L"}${screen.x},${screen.y}`;
+							}).join(" ") + " Z").join(" ")}
+						/>
+					))}
 					{project.level.wallSegments.map((wall) => {
 						const start = vertices.find(
 							(vertex) => vertex.vertexId === wall.startVertexId,
@@ -3272,12 +3305,13 @@ export function PlanProjection({
 						const startPoint = pointFor(start.xMm, start.zMm);
 						const endPoint = pointFor(end.xMm, end.zMm);
 						const wallBody = wallBodiesById.get(wall.wallSegmentId);
+						const hasSharedFill = wallsWithSharedFill.has(wall.wallSegmentId);
 						const wallHitTarget = Math.max(
 							MINIMUM_TOUCH_TARGET_PX / viewport.zoom,
 							wall.thicknessMm * drawingScale,
 						);
 						const isExterior = exteriorWallSegmentIds.has(wall.wallSegmentId);
-						const isSelectedWall = selectedWallId === wall.wallSegmentId;
+						const isSelectedWall = selectedWallId === wall.wallSegmentId || selectedWallRunIds?.includes(wall.wallSegmentId) === true;
 						const hasPlacementCollision = itemPlacementCollisionIds.walls.has(
 							wall.wallSegmentId,
 						);
@@ -3303,7 +3337,8 @@ export function PlanProjection({
 												}
 											: openingMovePreview?.openingId === opening.openingId
 												? { ...opening, offsetMm: openingMovePreview.offsetMm,
-													...(opening.kind === "Door" && openingMovePreview.swingSide ? { swingSide: openingMovePreview.swingSide } : {}) }
+													...(opening.kind === "Door" && openingMovePreview.swingSide ? { swingSide: openingMovePreview.swingSide } : {}),
+													...(opening.kind === "Door" && openingMovePreview.hingeEnd !== undefined ? { hingeEnd: openingMovePreview.hingeEnd ?? undefined } : {}) }
 												: opening;
 								const interval = wallOpeningIntervalMm(renderedOpening);
 								const pointAt = (offsetMm: number) =>
@@ -3351,12 +3386,12 @@ export function PlanProjection({
 								{wallBody ? (
 									<>
 										<polygon
-											className={styles.wallBody}
+											className={hasSharedFill ? undefined : styles.wallBody}
 											data-testid="wall-body"
 											data-selected={isSelectedWall}
 											data-wall-id={wall.wallSegmentId}
 											data-thickness-mm={wall.thicknessMm}
-											fill={`url(#${wallHatchId})`}
+											fill={hasSharedFill ? "none" : `url(#${wallHatchId})`}
 											points={wallBody.polygonMm
 												.map((point) => {
 													const screen = pointFor(point.xMm, point.zMm);
@@ -3407,7 +3442,7 @@ export function PlanProjection({
 								{openingCreationSegment && showOpeningTemplates && openingCreationPreview?.kind ? (
 									<g data-testid="opening-creation-preview" className={styles.openingSymbolPreview} pointerEvents="none">
 										<OpeningPlanSymbol {...openingCreationSegment} kind={openingCreationPreview.kind}
-											swingSide={openingCreationPreview.swingSide} thickness={wall.thicknessMm * drawingScale}
+												swingSide={openingCreationPreview.swingSide} hingeEnd={openingCreationPreview.hingeEnd} thickness={wall.thicknessMm * drawingScale}
 											divided={openingCreationPreview.widthMm >= DIVIDED_WINDOW_MIN_WIDTH_MM} />
 									</g>
 								) : openingCreationSegment ? (
@@ -3472,7 +3507,7 @@ export function PlanProjection({
 														pointerEvents={!readOnly && activeTool === "select" ? "stroke" : "none"}
 														data-door-opening-handle={opening.openingId} data-door-opening-wall={wall.wallSegmentId}>
 														<OpeningPlanSymbol start={openingStart} end={openingEnd} kind={opening.kind}
-															swingSide={opening.swingSide} thickness={wall.thicknessMm * drawingScale}
+																swingSide={opening.swingSide} hingeEnd={opening.hingeEnd} thickness={wall.thicknessMm * drawingScale}
 															divided={opening.widthMm >= DIVIDED_WINDOW_MIN_WIDTH_MM} />
 													</g>
 												) : <>
@@ -3714,6 +3749,7 @@ export function PlanProjection({
 											yawRadians={yawRadiansFor(itemPlacementPreview)}
 											disabled={readOnly || isConfirmingItemPlacement}
 											exact={exactFloorYaw}
+										snapToStep={rotationStepMode || !exactFloorYaw}
 											showHandle={plainLabels}
 											onChange={onItemPlacementYawChange}
 										/>
@@ -4360,7 +4396,7 @@ export function PlanProjection({
 						data-rotation-target={plainLabels ? "placement" : undefined}
 					>
 						<button
-							aria-label={exactFloorYaw ? "Повернуть размещаемый предмет влево на 1°" : "Повернуть размещаемый предмет влево на 45°"}
+							aria-label={`Повернуть размещаемый предмет влево на ${rotationStep}°`}
 							className={plainLabels ? rotationStyles.step : undefined}
 							disabled={
 								readOnly ||
@@ -4368,7 +4404,7 @@ export function PlanProjection({
 								hasPlacementRotationContact
 							}
 							onClick={() =>
-								onItemPlacementYawChange(itemDraft.yawRadians + leftPlacementStepRadians)
+								onItemPlacementYawChange(placementStep(itemDraft.yawRadians, 1))
 							}
 							type="button"
 						>
@@ -4380,6 +4416,7 @@ export function PlanProjection({
 								className={plainLabels ? rotationStyles.angle : undefined}
 								yawRadians={itemDraft.yawRadians}
 								disabled={readOnly || isConfirmingItemPlacement || hasPlacementRotationContact}
+								explicit={onRotationStepModeChange !== undefined}
 								onApply={onItemPlacementYawChange}
 								skipBlurCommit={skipBlurCommit}
 							/>
@@ -4387,7 +4424,7 @@ export function PlanProjection({
 							{degreesForYawRadians(itemDraft.yawRadians)}°
 						</output>}
 						<button
-							aria-label={exactFloorYaw ? "Повернуть размещаемый предмет вправо на 1°" : "Повернуть размещаемый предмет вправо на 45°"}
+							aria-label={`Повернуть размещаемый предмет вправо на ${rotationStep}°`}
 							className={plainLabels ? rotationStyles.step : undefined}
 							disabled={
 								readOnly ||
@@ -4395,12 +4432,13 @@ export function PlanProjection({
 								hasPlacementRotationContact
 							}
 							onClick={() =>
-								onItemPlacementYawChange(itemDraft.yawRadians - leftPlacementStepRadians)
+								onItemPlacementYawChange(placementStep(itemDraft.yawRadians, -1))
 							}
 							type="button"
 						>
 							↷
 						</button>
+						{onRotationStepModeChange ? <RotationModeToggle checked={rotationStepMode} disabled={readOnly || isConfirmingItemPlacement || hasPlacementRotationContact} onChange={onRotationStepModeChange} /> : null}
 					</div>
 					<div className={styles.itemPlacementDockActions}>
 						<button data-editor-action="cancel"
@@ -4577,7 +4615,28 @@ export function PlanProjection({
 					</div>
 				</aside>
 			) : null}
-			{wallSplitHostConflict ? (
+			{wallSplitHostConflict && plainLabels ? (
+				<EditorConsequenceSheet
+					title="Разделить стену"
+					closeLabel="Закрыть разделение стены"
+					confirmLabel="Разделить и удалить"
+					testId="wall-split-host-conflict"
+					busy={isResolvingWallSplitHostConflict}
+					blocked={readOnly}
+					onCancel={cancelWallSplitDraft}
+					onConfirm={() => void resolveWallSplitHostConflict()}
+				>
+					<p>В точке разделения находятся объекты. Они будут удалены вместе с разделением стены.</p>
+					<ul>
+						{wallSplitHostConflict.openingIds.map(id => (
+							<li key={id}>{project.level.openings.find(opening => opening.openingId === id)?.kind === "Window" ? "Окно" : "Дверной проём"}</li>
+						))}
+						{wallSplitHostConflict.itemIds.map(id => (
+							<li key={id}>{project.assetInstances.find(item => item.assetInstanceId === id)?.label ?? "Настенный предмет"}</li>
+						))}
+					</ul>
+				</EditorConsequenceSheet>
+			) : wallSplitHostConflict ? (
 				<aside
 					aria-live="polite"
 					className={styles.wallMoveDraftActions}

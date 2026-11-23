@@ -92,3 +92,66 @@
 	padding: 4px;
 	font: 650 0.8rem/1.2 var(--font-display);
 }
+
+.modeToggle {
+	align-items: center;
+	color: var(--ink);
+	cursor: pointer;
+	display: flex;
+	font: 600 .8125rem/1.2 var(--font-display);
+	gap: 8px;
+	grid-column: 1 / -1;
+	justify-self: center;
+	min-block-size: 44px;
+	padding: 0 8px;
+	pointer-events: auto;
+}
+
+.modeToggle input[type="checkbox"] {
+	accent-color: var(--editor-host-primary, var(--blue));
+	block-size: 18px;
+	inline-size: 18px;
+	margin: 0;
+}
+
+.row[data-rotation-target="placement"]:has(.modeToggle) {
+	grid-template-columns: var(--rotation-step-size) minmax(0, 1fr) var(--rotation-step-size) var(--rotation-step-size);
+	inline-size: min(100%, calc(7rem + 3 * (var(--rotation-step-size) + var(--rotation-control-gap))));
+}
+
+.row[data-rotation-target="placement"] .modeToggle {
+	flex-direction: column;
+	gap: 2px;
+	grid-column: 4;
+	grid-row: 1;
+	justify-content: center;
+	min-block-size: var(--rotation-step-size);
+	padding: 0;
+}
+
+.angleActions {
+	display: grid;
+	gap: 6px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	margin-block-start: 6px;
+}
+
+.angleActions > button {
+	background: var(--surface);
+	border: 1px solid var(--line);
+	border-radius: var(--editor-host-radius, 10px);
+	color: var(--ink);
+	cursor: pointer;
+	font: 650 1.25rem/1 var(--font-display);
+	min-block-size: 44px;
+	min-inline-size: 0;
+	padding: 0;
+}
+
+.angleActions > button:last-child {
+	background: var(--editor-host-primary-fill, var(--blue));
+	border-color: transparent;
+	color: var(--editor-host-on-primary, white);
+}
+
+.angleActions > button:disabled { opacity: .5; }

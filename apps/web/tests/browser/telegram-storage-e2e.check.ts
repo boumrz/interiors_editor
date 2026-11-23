@@ -35,6 +35,41 @@ test("AD-35: v2 remains writable in B, C upgrades and revokes prior handles, and
 	expect(await page.evaluate(() => window.__telegramScopeHarness.schema("a"))).toEqual({ ...initial, version: 3 });
 });
 
+test("TMA-DOOR-HINGE-STORAGE: the bridge stays on v3 and can reopen the exact v4 scope after activation", async ({ page }) => {
+	await page.goto("/");
+	await page.evaluate(() => {
+		window.__telegramScopeHarness.create("old", "a", "supported", "exact");
+		window.__telegramScopeHarness.create("bridge", "a", "supported", "exact", "compatible");
+		window.__telegramScopeHarness.create("author", "a", "supported", "exact", "authoring");
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("old", "attempt"))).toMatchObject({ kind: "reserved" });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.genericMarker("bridge", "readwrite", "keep me"))).toMatchObject({ kind: "completed" });
+	const previousSchema = await page.evaluate(() => window.__telegramScopeHarness.schema("a"));
+	expect(previousSchema.version).toBe(3);
+	const metadata = await page.evaluate(() => window.__telegramScopeHarness.records("a"));
+
+	expect(await page.evaluate(() => window.__telegramScopeHarness.genericMarker("author", "readonly"))).toMatchObject({
+		kind: "completed", result: { row: { value: "keep me" } },
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.schema("a"))).toEqual({ ...previousSchema, version: 4 });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.records("a"))).toEqual(metadata);
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("old", "attempt"))).toMatchObject({
+		kind: "failed", message: "Telegram session is closed",
+	});
+	await page.evaluate(() => {
+		window.__telegramScopeHarness.create("old-reopened", "a", "supported", "exact");
+		window.__telegramScopeHarness.create("rollback", "a", "supported", "exact", "compatible");
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("old-reopened", "attempt"))).toMatchObject({ kind: "failed" });
+	expect(await page.evaluate(() => window.__telegramScopeHarness.genericMarker("rollback", "readonly"))).toMatchObject({
+		kind: "completed", result: { row: { value: "keep me" } },
+	});
+	expect(await page.evaluate(() => window.__telegramScopeHarness.storageVersion("rollback"))).toBe(4);
+	expect(await page.evaluate(() => window.__telegramScopeHarness.reserve("rollback", "attempt"))).toEqual({
+		kind: "reserved", id: `tma-v1:${scopeA}:attempt:2`,
+	});
+});
+
 test("AD-35: a blocked upgrade cannot publish or upgrade after the old connection closes", async ({ page }) => {
 	await page.goto("/");
 	await page.evaluate(() => window.__telegramScopeHarness.create("old", "a"));

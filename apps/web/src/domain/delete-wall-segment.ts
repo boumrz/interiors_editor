@@ -18,25 +18,38 @@ export function deleteWallSegment(
   graph: PlanGraph,
   wallSegmentId: string
 ): DeleteWallSegmentResult {
+  return deleteWallSegments(graph, [wallSegmentId]);
+}
+
+/** Deletes all selected edges before deriving any resulting faces. */
+export function deleteWallSegments(
+  graph: PlanGraph,
+  wallSegmentIds: readonly string[]
+): DeleteWallSegmentResult {
   if (deriveBoundedOrthogonalFaces(graph).kind === 'rejected') {
     return reject('INVALID_PLAN_GRAPH');
   }
-  const target = graph.wallSegments.find((wall) => wall.wallSegmentId === wallSegmentId);
-  if (!target) {
+  const selectedIds = new Set(wallSegmentIds);
+  const targets = graph.wallSegments.filter((wall) => selectedIds.has(wall.wallSegmentId));
+  if (!targets.length || targets.length !== wallSegmentIds.length) {
     return reject('WALL_NOT_FOUND');
   }
 
-  const wallSegments = graph.wallSegments.filter((wall) => wall.wallSegmentId !== wallSegmentId);
+  const wallSegments = graph.wallSegments.filter((wall) => !selectedIds.has(wall.wallSegmentId));
   const referencedVertexIds = new Set(
     wallSegments.flatMap((wall) => [wall.startVertexId, wall.endVertexId])
   );
-  const targetVertexIds = new Set([target.startVertexId, target.endVertexId]);
+  const targetVertexIds = new Set(targets.flatMap((wall) => [wall.startVertexId, wall.endVertexId]));
   const vertices = graph.vertices.filter((vertex) =>
     !targetVertexIds.has(vertex.vertexId) || referencedVertexIds.has(vertex.vertexId)
   );
-  const next = targetTouchesRoomJunction(target, graph.wallSegments)
-    ? coalesceCollinearSegments({ vertices, wallSegments })
-    : { vertices, wallSegments };
+  const target = targets[0];
+  const remaining = { vertices, wallSegments };
+  const next = targets.length > 1
+    ? coalesceCollinearSegments(remaining, targetVertexIds)
+    : target && targetTouchesRoomJunction(target, graph.wallSegments)
+      ? coalesceCollinearSegments(remaining)
+      : remaining;
 
   if (deriveBoundedOrthogonalFaces(next).kind === 'rejected') {
     return reject('INVALID_RESULTING_PLAN_GRAPH');
@@ -55,11 +68,11 @@ function targetTouchesRoomJunction(target: { readonly startVertexId: string; rea
  * removed, restore the one straight canonical segment instead of retaining
  * obsolete degree-two vertices and artificial wall fragments.
  */
-function coalesceCollinearSegments(graph: PlanGraph): PlanGraph {
+function coalesceCollinearSegments(graph: PlanGraph, eligibleJoints?: ReadonlySet<string>): PlanGraph {
   let vertices = graph.vertices;
   let wallSegments = graph.wallSegments;
   while (true) {
-    const merged = mergeOneDegreeTwoVertex(vertices, wallSegments);
+    const merged = mergeOneDegreeTwoVertex(vertices, wallSegments, eligibleJoints);
     if (!merged) {
       return { vertices, wallSegments };
     }
@@ -70,10 +83,12 @@ function coalesceCollinearSegments(graph: PlanGraph): PlanGraph {
 
 function mergeOneDegreeTwoVertex(
   vertices: readonly Vertex[],
-  wallSegments: readonly WallSegment[]
+  wallSegments: readonly WallSegment[],
+  eligibleJoints?: ReadonlySet<string>
 ): { readonly vertices: readonly Vertex[]; readonly wallSegments: readonly WallSegment[] } | undefined {
   const verticesById = new Map(vertices.map((vertex) => [vertex.vertexId, vertex]));
   for (const vertex of vertices) {
+    if (eligibleJoints && !eligibleJoints.has(vertex.vertexId)) continue;
     const connected = wallSegments.filter((wall) =>
       wall.startVertexId === vertex.vertexId || wall.endVertexId === vertex.vertexId
     );

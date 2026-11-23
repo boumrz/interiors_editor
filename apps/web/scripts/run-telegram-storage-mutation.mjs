@@ -32,7 +32,7 @@ try {
   await once(server, 'listening');
   const address = server.address();
   if (!address || typeof address === 'string') throw new Error('No isolated test port');
-  await run(process.execPath, [resolve('node_modules/@playwright/test/cli.js'), 'test', '--config', 'playwright.telegram-storage.config.mjs', '--max-failures=1'], {
+  await run(process.execPath, [resolve('node_modules/@playwright/test/cli.js'), 'test', '--config', 'playwright.telegram-storage.config.mjs', '--max-failures=1', ...process.argv.slice(2)], {
     ...process.env,
     PLAYWRIGHT_TMA_STORAGE_BASE_URL: `http://127.0.0.1:${address.port}`,
     PLAYWRIGHT_TMA_STORAGE_OUTPUT_DIR: join(fixtureRoot, 'results')

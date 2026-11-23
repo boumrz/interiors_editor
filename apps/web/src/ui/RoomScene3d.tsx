@@ -35,9 +35,9 @@ import {
 	loadCustomGlbRuntime,
 } from "./custom-glb-runtime-loader";
 import { SheetHeader } from "./SheetHeader";
-import { FloorRotationAngleField } from "./FloorRotationAngleField";
+import { FloorRotationAngleField, RotationModeToggle } from "./FloorRotationAngleField";
 import rotationStyles from "./FloorRotationControls.module.css";
-import { degreesForYawRadians } from "./rotation-angle";
+import { degreesForYawRadians, steppedYawRadians } from "./rotation-angle";
 import { itemCountCopy } from "./item-count-copy";
 import sceneStyles from "./RoomScene3d.module.css";
 import {
@@ -83,6 +83,8 @@ interface RoomScene3dProps {
 	readonly itemPlacementControls?: ReactNode;
 	readonly selectedItemControls?: ReactNode;
 	readonly exactFloorYaw?: boolean;
+	readonly rotationStepMode?: boolean;
+	readonly onRotationStepModeChange?: (checked: boolean) => void;
 	readonly initialItemPlacementPoint?: ThreeDimensionalFloorPoint;
 	readonly onItemPlacementPointChange?: (point: ThreeDimensionalFloorPoint) => void;
 	readonly snapFloorItemPoint?: (point: ThreeDimensionalFloorPoint, assetInstanceId?: string) => ThreeDimensionalFloorPoint;
@@ -264,6 +266,8 @@ export function RoomScene3d({
 	itemPlacementControls,
 	selectedItemControls,
 	exactFloorYaw = false,
+	rotationStepMode = false,
+	onRotationStepModeChange,
 	initialItemPlacementPoint,
 	onItemPlacementPointChange,
 	snapFloorItemPoint,
@@ -295,6 +299,8 @@ export function RoomScene3d({
 	const hostEnabledRef = useRef(registerTransientBoundary !== undefined);
 	hostEnabledRef.current = registerTransientBoundary !== undefined;
 	const hostDraftState = useRef(false);
+	const [hasRawAngleDraft, setHasRawAngleDraft] = useState(false);
+	const [angleDraftEpoch, setAngleDraftEpoch] = useState(0);
 	const hostContacts = useRef(new Map<number, {
 		readonly epoch: EditorContactEpoch;
 		readonly projection: string;
@@ -379,6 +385,7 @@ export function RoomScene3d({
 	const rendererReady = state.kind === "ready";
 	const initialViewportForCurrentScene = (): ThreeDimensionalViewport => {
 		const roomViewport = initialThreeDimensionalViewportForRoom(scene);
+		if (plainLabels) return roomViewport;
 		return initialThreeDimensionalViewportForSelectedItem(
 			scene.cameraBounds,
 			selectedItemId === undefined
@@ -394,6 +401,7 @@ export function RoomScene3d({
 	cameraRef.current = camera;
 	const [cutawayMode, setCutawayMode] = useState<WebGl2CutawayMode>("auto");
 	const [canvasSize, setCanvasSize] = useState<Point>({ x: 0, y: 0 });
+	const drawingBufferSize = resizeDrawingBufferOnChangeOnly ? canvasSize : undefined;
 	const [sceneViewportInsets, setSceneViewportInsets] =
 		useState<SceneViewportInsets>({ bottom: 0, top: 0 });
 	const [placementSurface, setPlacementSurface] = useState({ headerBottom: 0, menuTop: 0 });
@@ -451,7 +459,7 @@ export function RoomScene3d({
 	>(undefined);
 	const [isConfirmingItemTransform, setIsConfirmingItemTransform] =
 		useState(false);
-	const hasTransientItemTransform = hasUndurableThreeDimensionalItemTransform({
+	const hasTransientItemTransform = hasRawAngleDraft || hasUndurableThreeDimensionalItemTransform({
 		hasItemPreview: itemPreview !== undefined,
 		hasPendingItemPreview: submittedItemPreview !== undefined,
 		hasRotation: rotation !== undefined,
@@ -469,7 +477,7 @@ export function RoomScene3d({
 	const rotationTrackPath = plainLabels
 		? "M27 100 A73 73 0 1 1 173 100 A73 73 0 1 1 27 100"
 		: "M27 100 A73 73 0 0 1 173 100";
-	hostDraftState.current = itemPreview !== undefined || submittedItemPreview !== undefined || itemPlacementDraft !== undefined || itemPlacementPoint !== undefined;
+	hostDraftState.current = hasRawAngleDraft || itemPreview !== undefined || submittedItemPreview !== undefined || itemPlacementDraft !== undefined || itemPlacementPoint !== undefined;
 	useLayoutEffect(() => {
 		if (hostGateDisposed.current) {
 			hostGateRef.current = createEditorInteractionGate();
@@ -787,6 +795,8 @@ export function RoomScene3d({
 	}, [resizeDrawingBufferOnChangeOnly]);
 
 	useLayoutEffect(() => {
+		// Telegram controls overlay one render surface across all editing states.
+		if (plainLabels) return undefined;
 		const panel = scenePanelRef.current;
 		if (!panel || typeof window === "undefined") return undefined;
 		const workspace = panel.closest('[data-testid="editor-workspace"]');
@@ -846,7 +856,7 @@ export function RoomScene3d({
 			observer.disconnect();
 			window.removeEventListener("resize", updateInsets);
 		};
-	}, [isItemPlacementActive]);
+	}, [isItemPlacementActive, plainLabels]);
 
 	useLayoutEffect(() => {
 		if (!isItemPlacementActive) return;
@@ -891,6 +901,7 @@ export function RoomScene3d({
 				height: canvasSize.y,
 				width: canvasSize.x,
 			});
+			if (plainLabels) return fitted;
 			const selectedFloorItem =
 				selectedItemId === undefined
 					? undefined
@@ -905,7 +916,7 @@ export function RoomScene3d({
 				selectedFloorItem,
 			);
 		});
-	}, [canvasSize.x, canvasSize.y, scene, selectedItemId]);
+	}, [canvasSize.x, canvasSize.y, plainLabels, scene, selectedItemId]);
 
 	useEffect(() => {
 		const controller = controllerRef.current;
@@ -930,9 +941,10 @@ export function RoomScene3d({
 		const controller = controllerRef.current;
 		if (!controller) return;
 		controller.updateScene(renderedScene);
+		if (drawingBufferSize && (drawingBufferSize.x <= 0 || drawingBufferSize.y <= 0)) return;
 		if (state.kind !== "ready") return;
 		controller.render(renderedCamera, renderedCutawayMode, renderedScene);
-	}, [renderedCamera, renderedCutawayMode, renderedScene, state.kind]);
+	}, [drawingBufferSize, renderedCamera, renderedCutawayMode, renderedScene, state.kind]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -1520,6 +1532,7 @@ export function RoomScene3d({
 			point: { x: event.clientX, y: event.clientY },
 			centre: rotationCentre(gizmoBounds),
 			exact: exactFloorYaw,
+			snapToStep: rotationStepMode || !exactFloorYaw,
 		}), target, placementKey };
 		rotationBaseSceneRef.current = scene;
 		rotationRef.current = nextRotation;
@@ -1650,6 +1663,10 @@ export function RoomScene3d({
 	function cancelHostDraft(): void {
 		if (hostGateRef.current.hasPending()) return;
 		invalidateHostContacts();
+		if (hasRawAngleDraft) {
+			setHasRawAngleDraft(false);
+			setAngleDraftEpoch(epoch => epoch + 1);
+		}
 		hostRetainedItemPreview.current = undefined;
 		setItemPreview(undefined);
 		setSubmittedItemPreview(undefined);
@@ -1845,7 +1862,10 @@ export function RoomScene3d({
 			{angleDisplay}°
 		</output>
 	);
-	const step = exactFloorYaw ? 1 : 45;
+	const step = exactFloorYaw && !rotationStepMode ? 1 : 45;
+	const rotationStepYaw = (direction: 1 | -1) => exactFloorYaw
+		? steppedYawRadians(currentRotationYaw, direction, rotationStepMode)
+		: currentRotationYaw + direction * Math.PI / 4;
 	const rotationStepClass = plainLabels ? rotationStyles.step : undefined;
 	const rotationRowClass = plainLabels
 		? rotationStyles.row
@@ -1861,7 +1881,7 @@ export function RoomScene3d({
 				aria-label={`Повернуть предмет на ${step}° против часовой стрелки`}
 				className={rotationStepClass}
 				disabled={rotationDisabled}
-				onClick={() => applyControlAngle(currentRotationYaw + step * Math.PI / 180)}
+				onClick={() => applyControlAngle(rotationStepYaw(1))}
 				type="button"
 			>
 				↶
@@ -1872,9 +1892,12 @@ export function RoomScene3d({
 				</button>
 			) : exactFloorYaw ? (
 				<FloorRotationAngleField
+					key={`${itemPlacementDraft ? placementKey : selectedItemId}:${angleDraftEpoch}`}
 					ariaLabel="Поворот предмета в 3D, градусы"
 					className={plainLabels ? rotationStyles.angle : undefined}
 					disabled={rotationDisabled}
+					explicit={onRotationStepModeChange !== undefined}
+					onDraftChange={setHasRawAngleDraft}
 					onApply={applyControlAngle}
 					skipBlurCommit={skipBlurCommit}
 					yawRadians={currentRotationYaw}
@@ -1884,11 +1907,12 @@ export function RoomScene3d({
 				aria-label={`Повернуть предмет на ${step}° по часовой стрелке`}
 				className={rotationStepClass}
 				disabled={rotationDisabled}
-				onClick={() => applyControlAngle(currentRotationYaw - step * Math.PI / 180)}
+				onClick={() => applyControlAngle(rotationStepYaw(-1))}
 				type="button"
 			>
 				↷
 			</button>
+			{onRotationStepModeChange ? <RotationModeToggle checked={rotationStepMode} disabled={rotationDisabled} onChange={onRotationStepModeChange} /> : null}
 		</fieldset>
 	);
 	return (
@@ -1899,7 +1923,7 @@ export function RoomScene3d({
 		>
 			<div
 				className={sceneStyles.sceneViewport}
-				style={{
+				style={plainLabels ? undefined : {
 					bottom: sceneViewportInsets.bottom,
 					top: sceneViewportInsets.top,
 				}}
@@ -2008,10 +2032,14 @@ export function RoomScene3d({
 								r="8"
 							/>
 						</svg>
-						{!itemPlacementDraft ? rotationControls : null}
+						{!itemPlacementDraft && !onRotationStepModeChange ? rotationControls : null}
 					</div>
 				) : null}
 			</div>
+			{onRotationStepModeChange && !itemPlacementDraft && rotationItem && gizmoOverlayPosition &&
+				rotationItem.assetAnchor !== "wall" && !readOnly && canTransformSelectedItem ? (
+				<div className={sceneStyles.rotationEditor}>{rotationControls}</div>
+			) : null}
 			{hasUserCameraView && rendererReady && !isItemPlacementActive ? (
 				<button
 					aria-label="Вернуть обзор 3D"
@@ -2053,7 +2081,9 @@ export function RoomScene3d({
 					data-testid="three-dimensional-item-placement-menu"
 					data-scene-color-dock={itemPlacementControls ? "placement" : undefined}
 					ref={placementMenuRef}
-					style={{ maxHeight: placementMenuMaxHeight }}
+					style={{ maxHeight: onRotationStepModeChange
+						? `min(${placementMenuMaxHeight}px, calc(var(--editor-viewport-height, 100dvh) - 12px - var(--editor-safe-area-bottom, 0px)))`
+						: placementMenuMaxHeight }}
 				>
 					<span
 						aria-hidden="true"

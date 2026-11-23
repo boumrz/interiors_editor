@@ -36,6 +36,7 @@ export interface TelegramReadonlyProjectSourceDependencies {
   readonly secureContext: boolean;
   readonly openTimeoutMs?: number;
   readonly acceptExactFloorYawStorage?: boolean;
+  readonly acceptDoorHingeStorage?: boolean;
  };
  readonly checksum: ChecksumPort;
  readonly binaryChecksum: BinaryChecksumPort;
@@ -242,7 +243,9 @@ class ReadonlyReader {
    request.onsuccess = () => {
     const database = request.result;
     if (settled || abandoned !== undefined || signal.aborted || absentUpgrade) { database.close(); if (!settled) fail(new ReadonlyUnavailable("Abandoned readonly database handle")); return; }
-    const supportsVersion = database.version === 2 || (database.version === 3 && this.dependencies.technical.acceptExactFloorYawStorage === true);
+    const supportsVersion = database.version === 2
+      || (database.version === 3 && this.dependencies.technical.acceptExactFloorYawStorage === true)
+      || (database.version === 4 && this.dependencies.technical.acceptDoorHingeStorage === true);
     if (!supportsVersion || !sameNames(database.objectStoreNames, Object.keys(stores))) { database.close(); void this.dispose(); fail(new ReadonlyMetadataFault("Readonly database schema is unsupported")); return; }
     this.handle = database;
     database.onversionchange = () => { void this.dispose(); database.close(); };

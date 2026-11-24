@@ -2,11 +2,15 @@
 
 ## Current phase
 
-Telegram Mini App (TMA) is the primary application. Product work, visual reviews, and release acceptance default to TMA. Run the TMA checks for TMA-only releases. Keep the already-published Web/PWA assets byte-for-byte for these deployments. Work on other surfaces requires a separate owner request.
+The mobile Telegram Mini App (TMA) on iOS and Android is the only active product scope. Allocate product planning, design, implementation, bug fixes, testing, and release work exclusively to TMA. Standalone browser, installed PWA, and other product surfaces require a separate explicit owner decision before any work is planned or performed. Run the TMA checks for current releases. Keep the already-published Web/PWA assets byte-for-byte and preserve existing user data. Changes to the shared core and legacy-file checks are in scope when needed for TMA behavior, data compatibility, or rollback.
 
 The existing Web/PWA Alpha has a historical implementation-readiness verdict of `READY` dated 2026-08-30. Telegram is deployed, with release evidence in `docs/progress/tma-editor-release-2026-11-22.md`. Epic 10 and physical client acceptance have their own assessment. Each approved scope keeps its applicable readiness gate. Browser registered-transfer ingress is disabled. Do not create new extension application code, package manifests, build configuration, tests, generated assets, deployment configuration, or implementation artifacts until the product owner approves the planning package and the BMAD implementation-readiness gate returns `READY` for the applicable scope or an explicit written waiver exists.
 
-During S0–S7 preserve the existing Web/PWA, data and checks while adding Telegram on the shared core. Prepare eventual Web/PWA retirement, but execute removal only after the owner's Telegram verification and a separate retirement decision. See `plans/telegram-mini-app-extension-spec-2026-11-04.md`.
+The S0–S7 coexistence plan records the historical Web/PWA baseline and data protection obligations. Web/PWA retirement, including preparation and removal, requires a separate owner decision. See `plans/telegram-mini-app-extension-spec-2026-11-04.md`.
+
+## Research dashboards and future roadmaps
+
+Scope research dashboards, improvement proposals and future roadmaps exclusively to the mobile Telegram Mini App on iOS and Android. Exclude desktop clients (including Telegram Desktop), desktop-specific defects and phone-to-desktop workflows from these artifacts. For mixed-platform feedback, keep the observations relevant to phone use. If the device is unspecified, distinguish a proposed mobile improvement from a defect observed on a phone. Use competitor features as references only when they inform a mobile TMA decision.
 
 ## Sources of truth
 

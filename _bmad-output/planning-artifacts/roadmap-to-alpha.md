@@ -2,7 +2,7 @@
 document_title: "InteriorsEditor — roadmap до самостоятельно полезной Alpha"
 status: draft
 created: 2026-07-26
-updated: 2026-11-22
+updated: 2026-11-23
 owner: Roman
 planning_model: evidence-gated
 calendar_commitments: none
@@ -1478,6 +1478,7 @@ owner evidence всё ещё требуют назначения и выполн
 
 ## 11. Управление roadmap
 
+- По решению владельца от 23 ноября 2026 в дальнейший roadmap включаются только задачи мобильной Telegram Mini App на iOS и Android. При отборе предложений из интервью и личных отзывов применяются [правила исследовательского дашборда и роадмапа](../../AGENTS.md#research-dashboards-and-future-roadmaps).
 - Product Owner утверждает gate и изменение scope.
 - Один Orchestrator поддерживает трассировку и назначает одного writer на
   canonical artifact/slice.

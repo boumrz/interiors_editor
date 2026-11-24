@@ -4,7 +4,7 @@ project_name: InteriorsEditor
 user_name: Roman
 status: complete
 created: 2026-07-26
-updated: 2026-11-22
+updated: 2026-11-23
 date: 2026-11-05
 optimized_for_llm: true
 sections_completed:
@@ -22,7 +22,14 @@ sources:
 
 # Project Context
 
-Telegram Mini App — основное приложение по решению владельца от 22 ноября. Для изменений TMA приёмка и тесты проводятся в Telegram-контуре. Визуальные изменения проверяются также при размере окна Telegram Desktop. При выкладке только TMA используются уже опубликованные файлы Web/PWA. [Срез шторок](implementation-artifacts/tma-sheet-visual-alignment-2026-11-22.md)
+По решению владельца от 23 ноября текущий продукт дорабатывается только для
+мобильной Telegram Mini App на iOS и Android. Планирование, UX, реализация,
+исправления, проверки и выпуски относятся к TMA. Визуальные изменения общего
+интерфейса TMA также проверяются при размере окна Telegram Desktop, когда
+затрагивают его. Самостоятельная браузерная версия, PWA и другие поверхности
+требуют отдельного решения владельца. В выпусках используются уже опубликованные
+файлы Web/PWA. Проверки совместимости прежних файлов выполняются в TMA.
+[Правило проекта](../AGENTS.md#current-phase)
 
 Обычная TMA считает общие открытия по умолчанию с возможностью отключить подсчёт до входа и в настройках. Повторные входы на устройстве учитывает только после отдельного разрешения текущей редакции. Служба получает пустые запросы и хранит два суточных итога. Индивидуальный код, облачная настройка, проект и Telegram ID в этот поток не поступают. Чтение документов, просмотр и настройки сами по себе счётчики не увеличивают. [Условия выпуска](planning-artifacts/sprint-change-proposal-2026-11-22-public-candidate.md)
 
@@ -42,8 +49,9 @@ Telegram Mini App — основное приложение по решению 
   `docs/progress/telegram-extension-2026-11-04/current-status.md`. Полные текущие
   mutation/review gates хранилищ ещё выполняются. Metadata-only evidence не
   заменяет полный AD-26 fencing/receipt protocol. Новый browser registered
-  ingress в основном entry остаётся выключенным до AD-31 implementation proof
-  и регресса прежнего Web/PWA. Физическая приёмка входит в отдельный gate
+  ingress в основном entry остаётся выключенным. Его включение требует
+  отдельного решения владельца, AD-31 implementation proof и применимых
+  проверок. Физическая приёмка входит в отдельный gate
   Epic 10. Разрешённые рабочие выпуски TMA перечислены в
   [истории публикаций](../docs/progress/tma-editor-release-2026-11-22.md).
   Для каждого следующего scope до применимого `READY` и согласованного planning
@@ -139,13 +147,11 @@ Telegram Mini App — основное приложение по решению 
   required independent reviewer и participant evidence нельзя заменить его
   self-review.
 
-## Mobile PWA
+## Исторический контур Web/PWA
 
-- Phone-first Web/PWA сохраняется в S0–S7 наряду с новым Telegram target;
-  desktop authoring не задаёт Alpha UX.
-  `NFR-15` закрыт Product Owner functional-проверкой на iPhone 15 Pro Max и
-  Samsung S24 Ultra в browser/PWA contexts. Exact-device matrix, thermal и
-  quantitative performance certification не являются Alpha gate.
+- Web/PWA зафиксирован в контракте сосуществования S0–S7. `NFR-15` закрыт
+  проверкой владельца на iPhone 15 Pro Max и Samsung S24 Ultra в browser/PWA
+  contexts. Для текущей мобильной TMA применяется отдельный `NFR-28`.
 
 ## Telegram extension — CAP-13 / FR-55–58 / AD-25–29
 
@@ -188,9 +194,10 @@ Telegram Mini App — основное приложение по решению 
   отдельного Telegram iOS/Android evidence и обоих направлений внешнего файла;
   bridge fake и NFR-15 не заменяют его. При невозможности локальной передачи
   альтернативу и privacy/retention отдельно решает владелец; upload запрещён.
-- Конечная цель владельца — Telegram-only после его проверки; в S0–S7
-  сохраняются Web/PWA, данные и проверки. Retirement требует отдельного допуска,
-  доступа к старым данным, проверенного переноса и rollback по FR-58/AD-25.
+- Текущий объём доработок ограничен TMA. Сохранность прежних данных и
+  опубликованных файлов Web/PWA регулируется FR-58/AD-25. Подготовка вывода
+  Web/PWA и сам вывод требуют отдельного решения владельца. Для вывода важны
+  доступ к старым данным, проверенный перенос и откат.
 
 Решение владельца 2026-11-04: PRD/SPEC/AD-14 сохранены без формального
 AssetUsageGrant; AGENTS приведён к этому правилу. Владелец отбирает бесплатные
@@ -205,9 +212,10 @@ AssetUsageGrant; AGENTS приведён к этому правилу. Влад�
 - `@rstest/core` `0.11.5` + `@rstest/adapter-rspack` `0.11.5` — для TypeScript
   domain/application и DOM-independent UI-state seams с Rspack-facing config.
   Не назначать Kotlin tests JavaScript runner до отдельного backend decision.
-- `@playwright/test` `1.62.1` — обязательная browser/mobile/PWA/offline
-  regression после каждой доработки. Он дополняет, но не заменяет
-  зафиксированную Product Owner physical functional-acceptance `NFR-15`.
+- `@playwright/test` `1.62.1` используется для автоматизированных сценариев
+  текущего контура TMA. Для TMA он дополняет физическую приёмку по `NFR-28`.
+  Отдельные сценарии самостоятельного browser/PWA применяются при отдельно
+  согласованной работе на этой поверхности.
 - Не представлять functional-проверку двух устройств как универсальный
   hardware benchmark; screenshots/emulation остаются synthetic browser evidence.
 

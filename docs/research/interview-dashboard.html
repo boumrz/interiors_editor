@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Итоги 7 интервью · InteriorsEditor</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #202d28;
+    --muted: #4d5a52;
+    --green: #26533d;
+    --line: #d2d9ce;
+    --paper: #fafaf6;
+    --serif: "PT Serif", Georgia, "Times New Roman", serif;
+    --sans: "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-padding-block-start: 22px; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.55 var(--sans); }
+  header, main { width: min(960px, calc(100% - 64px)); margin-inline: auto; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 24px 0 17px; border-bottom: 1px solid var(--line); }
+  .brand { font-size: 16px; font-weight: 700; letter-spacing: -.04em; }
+  time, .source { color: var(--muted); font-size: 13px; }
+  nav { display: flex; flex-wrap: wrap; gap: 9px 24px; }
+  nav a { font-size: 14px; }
+  .tabs { gap: 3px; padding: 3px; border: 1px solid var(--line); border-radius: 7px; }
+  .tabs a { padding: 7px 14px; text-decoration: none; border-radius: 4px; }
+  body:not(:has(#competitors:target)) .tabs a[href="#summary"],
+  body:has(#competitors:target) .tabs a[href="#competitors"] { color: white; background: var(--green); }
+  .report-links { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 18px; }
+  .report-links nav { gap: 14px; }
+  a { color: var(--green); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  a:hover, a:focus-visible { color: #8c4128; }
+  a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
+  section { margin: 0; padding-block: 35px; }
+  section + section { border-top: 1px solid var(--line); }
+  h1, h2, h3, p { margin: 0; }
+  h1, h2 { font-family: var(--serif); font-weight: 500; letter-spacing: -.038em; line-height: 1.1; }
+  h1 { font-size: clamp(40px, 5vw, 67px); margin: 5px 0 14px; }
+  h2 { font-size: clamp(31px, 3.4vw, 43px); margin-bottom: 18px; }
+  h3 { font-size: 18px; line-height: 1.33; letter-spacing: -.015em; }
+  .lead { font-size: clamp(18px, 2vw, 22px); line-height: 1.45; max-width: 76ch; }
+  .findings { display: grid; grid-template-columns: repeat(3, 1fr); margin: 24px 0 0; padding: 18px 0; border-block: 1px solid var(--line); }
+  .findings > div { padding-inline: 20px; border-left: 1px solid var(--line); }
+  .findings > div:first-child { padding-left: 0; border: 0; }
+  .findings dt { color: var(--green); font: 500 32px/1.15 var(--serif); }
+  .findings dd { margin: 6px 0 0; font-size: 15px; color: var(--muted); }
+  .context { margin-top: 14px; color: var(--muted); font-size: 15px; }
+  .people { display: grid; grid-template-columns: 1fr 1fr; column-gap: 35px; }
+  .people article { padding: 15px 0; border-top: 1px solid var(--line); }
+  .person { display: block; color: var(--green); font-size: 13px; font-weight: 650; margin-bottom: 4px; }
+  article p { margin-top: 6px; }
+  .ideas article { padding: 17px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(160px, .55fr) minmax(0, 1.45fr); gap: 28px; }
+  .ideas article p:first-child { margin-top: 0; }
+  .refs { font-size: 13px; color: var(--muted); }
+  .refs a { margin-right: 8px; }
+  .scope { color: var(--muted); font-size: 14px; margin-top: 15px; }
+  article:target { background: #eaf0e6; outline: 5px solid #eaf0e6; }
+  #competitors:not(:target), #competitors:target ~ section { display: none; }
+  #summary { border-top: 0; }
+  #summary, #competitors { scroll-margin-block-start: 90px; }
+  .comparison { width: 100%; margin: 24px 0; border-collapse: collapse; table-layout: fixed; font-size: 15px; line-height: 1.4; }
+  .comparison th, .comparison td { padding: 14px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+  .comparison thead th { padding-block: 9px; font-size: 13px; color: var(--muted); }
+  .comparison thead th:first-child { width: 18%; }
+  .comparison tbody th { font-weight: 650; }
+  .comparison .baseline { background: #eaf0e6; }
+  .cell-label { display: none; }
+  .takeaway { max-width: 80ch; }
+  .takeaway p + p { margin-top: 9px; }
+  .sources { margin-top: 20px; border-top: 1px solid var(--line); padding: 12px 0; font-size: 14px; }
+  .sources summary { width: fit-content; color: var(--green); cursor: pointer; }
+  .sources p { margin-top: 6px; color: var(--muted); }
+  .sources a { display: inline-block; }
+  .feedback { margin-top: 14px; padding: 18px 20px; border-left: 3px solid var(--green); background: #edf1e9; }
+  .interview-ideas { margin-top: 24px; margin-bottom: 8px; }
+  .feedback h3 { font-family: var(--serif); font-size: 26px; font-weight: 500; }
+  .feedback > p { max-width: 80ch; }
+  .feedback details { margin-top: 12px; }
+  .feedback summary { color: var(--green); font-weight: 600; cursor: pointer; }
+  .feedback dl { margin: 12px 0; }
+  .feedback dl > div { display: grid; grid-template-columns: minmax(130px, 1fr) 3.3fr; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .feedback dt { font-weight: 600; }
+  .feedback dd { margin: 0; }
+  .feedback dd a { font-size: 13px; }
+  .feedback:target { outline: none; }
+  @media(max-width: 680px) {
+    header, main { width: calc(100% - 36px); }
+    header { align-items: start; flex-direction: column; gap: 7px; padding: 16px 0; }
+    section { padding-block: 25px; }
+    .findings { grid-template-columns: 1fr; padding: 4px 0; }
+    .findings > div, .findings > div:first-child { border: 0; padding: 8px 0; display: grid; grid-template-columns: 78px 1fr; gap: 9px; align-items: baseline; }
+    .findings dt { font-size: 26px; }
+    .findings dd { margin: 0; }
+    .people { grid-template-columns: 1fr; }
+    .ideas article { grid-template-columns: 1fr; gap: 3px; }
+    header { flex-direction: row; align-items: center; flex-wrap: wrap; }
+    .tabs a { padding: 7px 9px; }
+    .comparison, .comparison tbody, .comparison tr, .comparison tbody th { display: block; }
+    .comparison thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    .comparison tr { border-block-start: 1px solid var(--line); padding: 10px 8px; }
+    .comparison tbody th, .comparison td { border: 0; padding: 4px 2px; }
+    .comparison td { display: grid; grid-template-columns: 64px 1fr; gap: 8px; }
+    .cell-label { display: inline; font-size: 12px; color: var(--muted); font-weight: 600; }
+    .feedback { padding: 14px; }
+    .feedback dl > div { grid-template-columns: 1fr; gap: 3px; }
+  }
+  @media print {
+    body { background: white; font-size: 11pt; }
+    header, main { width: 100%; }
+    nav { display: none; }
+    section { padding-block: 15px; }
+    article { break-inside: avoid; }
+    h2 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">InteriorsEditor</span>
+  <nav class="tabs" aria-label="Вкладки дашборда">
+    <a href="#summary">Интервью</a>
+    <a href="#competitors">Конкуренты</a>
+  </nav>
+</header>
+<main>
+<section id="competitors" tabindex="-1" aria-labelledby="market-title">
+  <time datetime="2026-11-23">23 ноября 2026</time>
+  <h1 id="market-title">Конкуренты</h1>
+  <p class="lead">Home Planner показывает, сколько места осталось между предметами. KitPlan позволяет ещё и открыть ящик. Так можно выяснить, поместится ли шкаф в спальне и удобно ли будет им пользоваться.</p>
+  <table class="comparison" aria-label="InteriorsEditor и четыре планировщика по трём задачам">
+    <thead><tr><th scope="col">Редактор</th><th scope="col">Измерить проход</th><th scope="col">Сравнить расстановки</th><th scope="col">Показать результат</th></tr></thead>
+    <tbody>
+      <tr class="baseline">
+        <th scope="row">InteriorsEditor</th>
+        <td><span class="cell-label" aria-hidden="true">Проход</span>При перемещении мебели видны до четырёх зазоров до стен.</td>
+        <td><span class="cell-label" aria-hidden="true">Варианты</span>Отмена и повтор правок в текущей сессии.</td>
+        <td><span class="cell-label" aria-hidden="true">Передача</span>Файл .interiors для переноса и восстановления проекта.</td>
+      </tr>
+      <tr>
+        <th scope="row">Home Planner</th>
+        <td><span class="cell-label" aria-hidden="true">Проход</span>Выбор предмета показывает зазоры до стен и соседней мебели в 2D и 3D.</td>
+        <td><span class="cell-label" aria-hidden="true">Варианты</span>Сохранить копию, переставить мебель и посмотреть оба дизайна в 3D.</td>
+        <td><span class="cell-label" aria-hidden="true">Передача</span>Ссылка для просмотра в браузере или PDF с размерами.</td>
+      </tr>
+      <tr>
+        <th scope="row">KitPlan</th>
+        <td><span class="cell-label" aria-hidden="true">Проход</span>Отмечает узкие проходы. Дверцы и ящики мебели можно открыть в модели.</td>
+        <td><span class="cell-label" aria-hidden="true">Варианты</span>До пяти вариантов в одном проекте с переключением между ними.</td>
+        <td><span class="cell-label" aria-hidden="true">Передача</span>Ссылка на просмотр или голосование, где семья может выбрать вариант.</td>
+      </tr>
+      <tr>
+        <th scope="row">Planner 5D</th>
+        <td><span class="cell-label" aria-hidden="true">Проход</span>В веб-редакторе можно включить расстояния между предметами или измерить зазор линейкой в 2D.</td>
+        <td><span class="cell-label" aria-hidden="true">Варианты</span>Создать отдельную копию проекта и менять её независимо от оригинала.</td>
+        <td><span class="cell-label" aria-hidden="true">Передача</span>Получатель открывает ссылку и осматривает проект в 2D или 3D.</td>
+      </tr>
+      <tr>
+        <th scope="row">Floorplanner</th>
+        <td><span class="cell-label" aria-hidden="true">Проход</span>Пользователь измеряет расстояние рулеткой на 2D-плане.</td>
+        <td><span class="cell-label" aria-hidden="true">Варианты</span>До трёх дизайнов в одном проекте на тарифе Basic.</td>
+        <td><span class="cell-label" aria-hidden="true">Передача</span>Изображение плана или 3D-вида. На Basic — в SD с водяным знаком.</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="takeaway">
+    <h2>Что взять для Telegram</h2>
+    <p><strong>При перемещении шкафа</strong> подсвечивать две грани, между которыми измерен проход, и обновлять число по ходу движения. Так человек видит, какой предмет ограничивает проход и что даст сдвиг шкафа. <a href="#p4">История о спальне</a></p>
+    <p><strong>Для семейного выбора</strong> предложить две расстановки в одном масштабе с подписью, какой размер изменился. Такой парой изображений удобно поделиться в чате. Сохранение вариантов и экспорт изображений потребуют отдельного решения о составе альфы. <a href="#p1">История о рабочем месте</a></p>
+  </div>
+  <details class="sources"><summary>Источники сравнения</summary>
+    <p>InteriorsEditor · <a href="../progress/tma-mobile-editor-polish-2026-11-22.md">измерения и история правок</a> · <a href="../progress/tma-floor-catalog-release-2026-11-21.md">перенос проекта</a></p>
+    <p>Home Planner · <a href="https://share.homeplannerapp.com/rooms/living-room">зазоры вокруг мебели</a> · <a href="https://share.homeplannerapp.com/rooms/dining-room-planner">копии, ссылки и PDF</a></p>
+    <p>KitPlan · <a href="https://kitplan.app/ru/proekt-komnaty-onlayn/">проходы и открывание мебели</a> · <a href="https://kitplan.app/ru/proekt-kvartiry-onlayn/">варианты и голосование</a></p>
+    <p>Planner 5D · <a href="https://support.planner5d.com/en/articles/8898710-distance-between-objects-web">расстояния</a> · <a href="https://support.planner5d.com/en/articles/16964072-how-to-duplicate-a-project">копии проектов</a> · <a href="https://support.planner5d.com/en/articles/15116256-how-to-share-projects">ссылки на просмотр</a></p>
+    <p>Floorplanner · <a href="https://cdn.floorplanner.com/static/brochures/FloorplannerManualEN.pdf#page=10">рулетка на плане, стр. 10</a> · <a href="https://floorplanner.com/basic">варианты и экспорт в Basic</a></p>
+  </details>
+</section>
+<section id="summary" aria-labelledby="title">
+  <div class="report-links"><span class="source">Мобильная Telegram Mini App · iOS и Android · <time datetime="2026-11-23">23 ноября 2026</time></span>
+    <nav aria-label="Разделы интервью"><a href="#people">Участники</a><a href="#features">Доработки</a></nav>
+  </div>
+  <h1 id="title">Итоги 7 интервью</h1>
+  <p class="lead">Шесть участников заполнили анкету об обустройстве жилья. Пятеро вспомнили конкретный случай. Все пятеро выбирали между вариантами, двое из них сравнивали расстановку мебели или зон. Седьмой участник работал с самим редактором и нашёл добавление дверей и окон только после поиска.</p>
+  <dl class="findings">
+    <div><dt>4 из 5</dt><dd>обсуждали решение с семьёй или специалистами. В одном случае окончательный выбор сделала супруга.</dd></div>
+    <div><dt>3 из 5</dt><dd>учитывали цену или доступный бюджет в описанном ремонте.</dd></div>
+    <div><dt>2 из 6</dt><dd>ответивших на анкету назвали текущую задачу. Один думает об обустройстве дома, другая хочет купить большой шкаф.</dd></div>
+  </dl>
+  <p class="context"><strong>Вывод для редактора.</strong> Самая конкретная возможность — помочь человеку выбрать между двумя расстановками по понятному ему критерию. Например, сколько места останется для работы или пройдёт ли человек между кроватью и шкафом.</p>
+  <p class="context"><strong>Приоритет для текущего редактора.</strong> По опыту участника 7 первой стоит сделать заметной команду «Дверь или окно» на плане. <a href="#feedback">Предложение и оценка приоритета</a></p>
+</section>
+
+<section id="people" aria-labelledby="people-title">
+  <h2 id="people-title">По каждому участнику</h2>
+  <div class="people">
+    <article id="p1"><span class="person">Участник 1</span><h3>Рабочее место в жилой комнате</h3><p>Сделал несколько эскизов разделения комнаты на рабочую и спальную зоны. С семьёй выбрал вариант по размеру и удобству рабочего места, затем доработал его в 3D и передал дизайнеру.</p></article>
+    <article id="p2"><span class="person">Участник 2</span><h3>Без конкретного случая</h3><p>Не вспомнил эпизод ремонта или перестановки. На вопрос, есть ли сейчас задача по обустройству жилья, ответил «Нет».</p></article>
+    <article id="p3"><span class="person">Участник 3</span><h3>Загородный дом и выбор материалов</h3><p>Начала с планировки и организации хранения. Учитывала влажность помещений и совместимость материалов, советовалась с родственниками и специалистами. При выборе решающими стали цена и доступность.</p></article>
+    <article id="p4"><span class="person">Участник 4</span><h3>Шкафы и телевизор в спальне</h3><p>С рулеткой и на бумаге сравнил размеры и компоновку шкафов под телевизором, рассчитал отступы для подсветки. Выбор остался за супругой. После ремонта шкафы и тумбочки отличались от ожиданий.</p></article>
+    <article id="p5"><span class="person">Участник 5</span><h3>Ремонт квартиры с дизайнером</h3><p>Вносил правки вместе с дизайнером и прорабом, смотрел 3D-визуализацию. Труднее всего было заранее выбрать расположение розеток, цвета и свет. Сейчас думает о доме, конкретную задачу пока не назвал.</p></article>
+    <article id="p6"><span class="person">Участник 6</span><h3>Перестановка и хранение вещей</h3><p>Замерила комнату и начертила её на бумаге. Мебель встала по плану, но вещи по-прежнему не помещались в шкаф. Следующая покупка — шкаф побольше, выбор зависит от бюджета.</p></article>
+    <article id="p7"><span class="person">Участник 7</span><h3>Двери, окна и обзор комнаты в 3D</h3><p>Оценил мобильный редактор на 6 из 10. Не сразу нашёл, как поставить дверь или окно. Предложил скрывать две стены при взгляде на угол комнаты и дать выбор фона. Усомнился, удобно ли готовить собственные модели на телефоне.</p></article>
+  </div>
+</section>
+
+<section id="features" aria-labelledby="features-title">
+  <h2 id="features-title">Потенциальные доработки мобильной TMA</h2>
+  <article id="feedback" class="feedback">
+    <a class="person" href="#p7">Интервью 7</a>
+    <h3>Первая доработка — видимая команда «Дверь или окно»</h3>
+    <p><strong>Приоритет 3 из 4.</strong> Автор хотел поставить проём и нашёл команду только после поиска. В мобильной TMA кнопка «Добавить проём» появляется после выбора стены. Предлагаю показать «Дверь или окно» на основном экране плана. По нажатию человек выбирает стену и переходит к существующей форме. <a href="../../_bmad-output/specs/spec-interiors-editor-alpha/editor-interaction-and-grid-contract.md">Текущий путь добавления проёма</a></p>
+    <details>
+      <summary>Как расставлены приоритеты и что можно сделать позже</summary>
+      <p><strong>Как считался приоритет.</strong> Сумма двух оценок от 0 до 2. Влияние на задачу — 2 для основного действия, 1 для вспомогательного, 0 для предпочтения в оформлении. Основание — 2 для затруднения, наблюдавшегося на телефоне, 1 для конкретного замечания, применимого к TMA, 0 для предположения.</p>
+      <dl>
+        <div><dt>3 из 4 · Двери и окна</dt><dd>2 + 1. Трудно найти базовое действие по построению плана. Устройство автора в этом эпизоде неизвестно. На телефоне та же команда скрыта до выбора стены.</dd></div>
+        <div><dt>2 из 4 · Обзор в 3D</dt><dd>1 + 1. Автор предложил восемь направлений обзора. При взгляде на комнату под углом можно скрывать два ближайших фасада, чтобы видеть мебель у обеих стен. Текущий режим скрывает один фасад. <a href="../../apps/web/src/adapters/renderer/webgl2-room-renderer-shared.ts">Автоматическое скрытие стен</a></dd></div>
+        <div><dt>1 из 4 · Своя мебель</dt><dd>1 + 0. Автор сомневается, удобно ли искать и конвертировать модель на телефоне. Сбой импорта он не описывал. В «Моих моделях» уже есть импорт GLB и создание макета. Можно яснее подписать второй путь — «Создать по размерам». Он подойдёт, когда у человека нет файла. <a href="../../apps/web/src/ui/telegram-greybox-catalog.tsx">Действия в каталоге</a></dd></div>
+        <div><dt>1 из 4 · Фон сцены</dt><dd>0 + 1. Автор предпочёл бы переключаемый фон. Поле 2D следует теме Telegram, а фон 3D сейчас светлый. Возможная доработка — дать выбрать фон 3D. Экран, на котором возникло пожелание, автор не уточнил. <a href="../../apps/web/src/adapters/renderer/three-dimensional-room-palette.ts">Палитра 3D-сцены</a></dd></div>
+      </dl>
+      <p class="source">Участник 7 также уточнил, что сдвиг сцены двумя пальцами на телефоне уже работает.</p>
+    </details>
+  </article>
+  <h3 class="interview-ideas">Расстановка мебели и обсуждение вариантов</h3>
+  <div class="ideas">
+    <article><h3>Размер прохода между предметами</h3><div><p>При перемещении шкафа показать расстояние от его фасада до края кровати. Сейчас редактор показывает зазоры до стен. Расстояние между двумя предметами помогло бы оценить, удобно ли пользоваться спальней при выбранной компоновке.</p>
+    <p class="refs"><a href="#p4">Интервью 4</a><a href="../progress/tma-mobile-editor-polish-2026-11-22.md">Зазоры в текущей версии</a><a href="https://support.planner5d.com/en/articles/8898710-distance-between-objects-web">Как это устроено в Planner 5D</a></p></div></article>
+    <article><h3>Две расстановки одной комнаты</h3><div><p>Сохранить исходную расстановку, переставить мебель и переключаться между двумя версиями с их размерами. Так можно увидеть, сколько рабочего места или свободного прохода даёт каждая. Сейчас для возврата к предыдущей правке есть отмена в пределах сессии.</p>
+    <p class="refs"><a href="#p1">Интервью 1</a><a href="#p4">Интервью 4</a><a href="https://floorplanner.com/basic">Варианты дизайна в Floorplanner</a></p></div></article>
+    <article><h3>План, которым удобно поделиться</h3><div><p>Отправить в Telegram изображение комнаты с ключевым размером и короткой подписью, например «Здесь стол шире на 30 см». Близкий человек сможет понять разницу между вариантами прямо в переписке.</p>
+    <p class="refs"><a href="#p1">Интервью 1</a><a href="#p4">Интервью 4</a></p></div></article>
+  </div>
+  <p class="scope">После упрощения добавления дверей и окон следующей предлагается доработка замера прохода. Она развивает уже выпущенный инструмент измерений. Сохранение отдельных вариантов и экспорт изображения потребуют пересмотра границ альфы. <a href="../../_bmad-output/planning-artifacts/prds/prd-InteriorsEditor-2026-07-26/prd.md">Решения по FR-3 и FR-46</a></p>
+</section>
+</main>
+</body>
+</html>

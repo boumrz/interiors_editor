@@ -3,6 +3,8 @@
 Статус: **Alpha draft**. Этот companion уточняет пользовательскую поверхность
 уже принятых `CAP-2`, `CAP-4`–`CAP-7`. Он не вводит вторую геометрическую
 модель, не авторизует V1/V2 и не является implementation/readiness evidence.
+Текущий мобильный интерфейс TMA от 23 ноября определён в
+[контракте мобильного редактора](telegram-mobile-editor-contract.md).
 
 ## 1. Единое выделение и прямое редактирование
 
@@ -11,9 +13,10 @@
 создаёт Command или Revision.
 
 Выбранный floor AssetInstance в 2D имеет читаемую локальную front-marker, а в
-3D — эквивалентный selected outline/front-marker. Направление — существующий
-дискретный `RotationStep`: положительные 45° повороты вокруг `+Y` от локальной
-оси `+Z`. Ни SVG, ни WebGL object не владеют поворотом.
+3D — эквивалентный selected outline/front-marker. Дискретный `RotationStep`
+задаёт положительные 45° повороты вокруг `+Y` от локальной оси `+Z`.
+Точный напольный угол TMA следует AD-35. SVG и WebGL проецируют поворот
+из модели.
 
 Drag одного выбранного предмета в 2D или 3D создаёт только
 `PlacementPreview`: выбранный host floor, grid-snapped position, rotated
@@ -26,10 +29,11 @@ cancelled preview не меняет Project.
 На телефоне удержание пустого холста дольше порога pan (`180 ms` в текущем UX
 contract) переводит жест в pan; движение до его истечения продолжает действие
 активного инструмента. Второй pointer всегда принадлежит pinch/pan, не
-подтверждает Wall/Opening/Placement draft. У ActionDock есть один явный `Рука и
-выбор` DOM-control: tap объекта selects, drag selected object показывает
-PlacementPreview, а long press/drag пустого холста pan-ит; accessibility
-никогда не зависит только от long press.
+подтверждает Wall/Opening/Placement draft. У ActionDock есть один явный
+DOM-control «Выбор» в TMA и «Рука и выбор» в исторической Web/PWA. Касание
+выбирает объект, drag выбранного объекта показывает PlacementPreview,
+длительное нажатие и движение по пустому холсту сдвигают план.
+Предусмотрена доступная альтернатива длительному нажатию.
 
 ## 2. Construction grid
 
@@ -125,9 +129,11 @@ History и Portable Backup и не меняют работу обычного `�
 
 ## 4. Проёмы
 
-ActionDock открывает `Добавить проём` только после выбора совместимой Wall; sheet
-сначала предлагает `Дверь` или `Окно`, затем показывает host Wall, 100-mm-grid
-offset, width and clearance. `AddOpening`, move, resize и delete остаются
+Исторический Web/PWA путь начинается после выбора совместимой стены. На
+обычном плане мобильной TMA пользователь выбирает «Дверь» или «Окно» через
+«Добавить», затем указывает стену и положение. Короткий путь начинается с
+уже выбранной подходящей стены. Оба входа используют один черновик, а точная
+форма показывает host Wall, offset, width и clearance. `AddOpening`, move, resize и delete остаются
 canonical wall-hosted commands: Opening не может покинуть usable Wall interval
 или overlap incompatible Opening. Door и Window не создают navigation
 semantics. Open/close/lock/key state не входит в Alpha. При перемещении
@@ -149,7 +155,9 @@ forward direction and bounded procedural silhouette. Внутренний preset
 ### 5.1 Локальные пресеты, цвета и 3D в Telegram
 
 FR-60 и AD-33 используют штатный параметрический путь с целочисленными
-габаритами и допустимыми floor/wall anchors. Каталог покрывает мебель,
+габаритами и напольной опорой для новых экземпляров. Ранее сохранённые
+настенные предметы сохраняют привязку и поддерживаемое редактирование.
+Каталог покрывает мебель,
 сантехнику, технику, свет и аксессуары. После подготовки редактора поиск,
 выбор и размещение работают при закрытом `CatalogGatewayPort`. Пресет предлагает
 значения экземпляра, а его карточка не вводит идентичность в схему проекта.
@@ -175,17 +183,19 @@ FR-60 и AD-33 используют штатный параметрически�
 ## 6. Единый ActionDock
 
 У нижнего safe edge canvas находится один floating ActionDock — единая
-командная поверхность редактора. `Plan 2D` / `3D` остаётся в EditorTopBar;
-постоянная часть dock — `Рука и выбор`, а контекстная показывает максимум три
-действия. На пустом Plan это `Комната`, `Стена`, `Предмет`; у выбранной Wall —
+командная поверхность редактора. `Plan 2D` / `3D` остаётся в EditorTopBar.
+ActionDock имеет постоянный выбор и до трёх контекстных действий.
+На обычном плане TMA он показывает «Комната», «Стена», «Добавить», «Выбор».
+На пустом плане исторической Web/PWA контекст — `Комната`, `Стена`, `Предмет`;
+у выбранной Wall —
 `Добавить проём`, `Свойства`; у выбранного floor AssetInstance — `Повернуть`,
 `Свойства`, у wall AssetInstance — `Свойства`; в PlacementPreview — `Поставить`,
 `Отмена`. Команды удаления в dock нет; удаление доступно через свойства. Undo/Redo
 доступны как подписанные edge-controls, когда соответствующая command есть.
 
-Отдельных `Выбор`/`Рука`, `Фокус`, fullscreen/viewport control и duplicate
-`Опции` submenu не существует. `Добавить проём` недоступно до selection
-compatible Wall. Dock не накрывает active selection/property card, имеет
+Единый выбор охватывает панорамирование. `Фокус`, fullscreen/viewport control
+и duplicate `Опции` submenu отсутствуют. Dock сохраняет доступ к активному
+выделению и параметрам, имеет
 44×44 CSS px DOM controls, visible active state и text/name alternative.
 
 Нажатие предмета открывает его property card near the selection; оно не
@@ -220,7 +230,7 @@ compatible Wall. Dock не накрывает active selection/property card, и
    Неподдерживаемые V1 void и вложенность не показывают ложных размеров.
    Текстовый маршрут, отмена, смена вида и сохранённая Revision проверяются
    в мобильном Playwright MCP.
-9. Telegram FR-60 проверяет категории и привязки при закрытом gateway,
+9. Telegram FR-60 проверяет напольные категории при закрытом gateway,
    габариты, смену цвета, Undo/Redo, reopen и roundtrip проекта со смешанными
    пресетами и точными GLB. Проверяются актуальные и применимые старые readers,
    исходный Web/PWA каталог и истинное отсутствие ресурса.

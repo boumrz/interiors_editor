@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import sqlite3
 from tempfile import TemporaryDirectory
 import unittest
 
@@ -122,16 +123,114 @@ class SupportTests(unittest.TestCase):
         self.assertTrue(self.support.apply(self.message(chat_id, "/support")))
         self.drain()
         self.assertTrue(self.support.apply(self.message(chat_id, text)))
-        self.drain()
 
     def send_ticket(self, chat_id=REPORTER, text=DESCRIPTION):
         self.add_description(chat_id, text)
-        self.assertTrue(self.support.apply(self.press("Отправить", chat_id)))
         self.drain()
         return self.telegram.last_text(OWNER)
 
+    def test_private_input_outside_support_shows_same_commands_as_help(self):
+        self.support.apply(self.message(text="Где список команд?"))
+        self.drain()
+        hint = self.telegram.last_text(REPORTER)
+        self.support.apply(self.message(text="/help"))
+        self.drain()
+        help_message = self.telegram.last_text(REPORTER)
+        self.assertEqual(hint["text"], help_message["text"])
+        self.assertEqual(hint["reply_markup"], help_message["reply_markup"])
+        for command in ("/start", "/support", "/help"):
+            self.assertIn(command, hint["text"])
+        self.assertEqual(self.telegram.received(OWNER), [])
+
+    def test_first_ordinary_send_after_disclosure_reaches_owner_without_button(self):
+        self.support.apply(self.message(text="/support"))
+        self.support.apply(self.message(text="Сообщение до инструкции."))
+        self.drain()
+        self.assertEqual(self.telegram.received(OWNER), [])
+        introduction = self.telegram.received(REPORTER)[0]
+        self.assertIn("обычной кнопкой Telegram", introduction["text"])
+        self.assertIn("в личный чат", introduction["text"])
+        self.assertFalse(introduction.get("reply_markup"))
+        self.support.apply(self.message(text=DESCRIPTION))
+        self.drain()
+        receipt = self.telegram.last_text(REPORTER)["text"]
+        ticket = self.telegram.last_text(OWNER)["text"]
+        self.assertIn(DESCRIPTION, ticket)
+        self.assertIn(ticket.splitlines()[0], receipt)
+        self.assertIn("15 минут", receipt)
+        self.support.apply(self.message(text="Постороннее сообщение после отправки."))
+        self.drain()
+        self.assertEqual(len(self.telegram.received(OWNER)), 1)
+        self.assertIn("/help", self.telegram.last_text(REPORTER)["text"])
+
+    def test_photos_before_and_after_standard_send_share_one_ticket_across_restart(self):
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        self.support.apply(self.message(photo=[{"file_id": "before-text"}]))
+        self.drain()
+        self.assertEqual(self.telegram.received(OWNER), [])
+        self.support.apply(self.message(text=DESCRIPTION))
+        self.drain()
+        ticket = self.telegram.last_text(OWNER)["text"].splitlines()[0]
+        self.restart()
+        self.support.apply(self.message(photo=[{"file_id": "after-text"}]))
+        self.drain()
+        photos = [message for message in self.telegram.received(OWNER) if "photo" in message]
+        self.assertEqual([message["photo"] for message in photos], ["before-text", "after-text"])
+        self.assertTrue(all(ticket.split("№", 1)[1] in message["caption"] for message in photos))
+        self.support.apply(self.message(OWNER, REPLY, reply_to_message=photos[-1]))
+        self.drain()
+        self.assertIn(REPLY, self.telegram.last_text(REPORTER)["text"])
+        self.clock.now += 15 * 60
+        self.support.apply(self.message(photo=[{"file_id": "late"}]))
+        self.drain()
+        self.assertEqual([message["photo"] for message in self.telegram.received(OWNER)
+                          if "photo" in message], ["before-text", "after-text"])
+        self.assertIn("/help", self.telegram.last_text(REPORTER)["text"])
+
+    def test_album_with_caption_submits_once_and_closing_photo_window_keeps_ticket(self):
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        first = self.message(photo=[{"file_id": "album-0"}], caption=DESCRIPTION, media_group_id="album")
+        self.assertTrue(self.support.apply(first))
+        self.restart()
+        self.assertFalse(self.support.apply(first))
+        for photo in range(1, 6):
+            self.support.apply(self.message(photo=[{"file_id": f"album-{photo}"}], media_group_id="album"))
+        self.drain()
+        messages = self.telegram.received(OWNER)
+        self.assertEqual([message["photo"] for message in messages if "photo" in message],
+                         [f"album-{photo}" for photo in range(5)])
+        owner_ticket, = [message for message in messages if "text" in message]
+        self.assertIn(DESCRIPTION, owner_ticket["text"])
+        self.assertIn("максимальное число", self.telegram.last_text(REPORTER)["text"])
+
+        self.support.apply(self.message(text="/cancel"))
+        self.drain()
+        self.assertIn("Приём фото к обращению закрыт", self.telegram.last_text(REPORTER)["text"])
+        self.support.apply(self.message(photo=[{"file_id": "closed"}]))
+        self.drain()
+        self.assertIn("/help", self.telegram.last_text(REPORTER)["text"])
+        self.assertEqual(self.telegram.received(OWNER), messages)
+        self.support.apply(self.message(OWNER, REPLY, reply_to_message=owner_ticket))
+        self.drain()
+        self.assertIn(REPLY, self.telegram.last_text(REPORTER)["text"])
+
+    def test_unacknowledged_intro_cannot_forward_text_until_support_is_reopened(self):
+        self.telegram.error = ("sendMessage", REPORTER, DeliveryError("unknown", code="response-lost"))
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        self.restart()
+        self.support.apply(self.message(text=DESCRIPTION))
+        self.drain()
+        self.assertEqual(self.telegram.received(OWNER), [])
+        self.assertIn("Дождитесь инструкции", self.telegram.last_text(REPORTER)["text"])
+        self.send_ticket()
+        self.assertIn(DESCRIPTION, self.telegram.last_text(OWNER)["text"])
+
     def test_reporter_sends_text_and_photo_and_only_reporter_gets_owner_reply(self):
-        self.add_description()
+        self.support.apply(self.message(text="/support"))
+        self.drain()
         screenshot = self.message(photo=[
             {"file_id": "telegram-thumbnail", "file_unique_id": "thumb", "width": 32, "height": 32},
             {"file_id": SCREENSHOT, "file_unique_id": "full", "width": 800, "height": 600},
@@ -139,7 +238,7 @@ class SupportTests(unittest.TestCase):
         self.assertTrue(self.support.apply(screenshot))
         self.drain()
         self.assertEqual(self.telegram.received(OWNER), [])
-        self.assertTrue(self.support.apply(self.press("Отправить")))
+        self.assertTrue(self.support.apply(self.message(text=DESCRIPTION)))
         self.drain()
         reporter_ack = self.telegram.last_text(REPORTER)["text"]
         owner_ticket = self.telegram.last_text(OWNER)
@@ -157,7 +256,11 @@ class SupportTests(unittest.TestCase):
         self.assertIn("доставлен", self.telegram.last_text(OWNER)["text"])
         self.assertEqual(self.telegram.received(OUTSIDER), [])
 
-    def test_duplicate_updates_and_two_send_clicks_survive_restart_as_one_ticket(self):
+    def test_preupgrade_draft_waits_for_legacy_button_and_two_clicks_submit_once(self):
+        with sqlite3.connect(self.db_path) as old:
+            old.execute("INSERT INTO drafts VALUES (?, ?, ?, '[]', ?)",
+                        (REPORTER, "0123456789abcdef", "Черновик до обновления.", self.clock()))
+        self.restart()
         start = self.message(text="/support")
         self.assertFalse(self.support.apply({"message": start["message"]}))
         self.assertTrue(self.support.apply(start))
@@ -165,6 +268,7 @@ class SupportTests(unittest.TestCase):
         self.drain()
         self.assertTrue(self.support.apply(self.message(text=DESCRIPTION)))
         self.drain()
+        self.assertEqual(self.telegram.received(OWNER), [])
         submit = self.press("Отправить")
         second_click = self.press("Отправить")
         self.assertTrue(self.support.apply(submit))
@@ -235,18 +339,22 @@ class SupportTests(unittest.TestCase):
         self.assertIn(reply, self.telegram.last_text(OUTSIDER)["text"])
         self.assertIn(REPLY, self.telegram.last_text(REPORTER)["text"])
 
-    def test_cancelled_or_expired_draft_rejects_old_send_button(self):
-        self.add_description()
-        old_submit = self.press("Отправить")
-        self.assertTrue(self.support.apply(self.press("Отмена")))
+    def test_cancelled_or_expired_draft_leaves_text_in_help_mode(self):
+        self.support.apply(self.message(text="/support"))
         self.drain()
-
-        self.add_description(text="Новое обращение, которое истечёт.")
-        self.assertTrue(self.support.apply(old_submit))
+        self.support.apply(self.message(photo=[{"file_id": "cancelled"}]))
+        self.assertTrue(self.support.apply(self.message(text="/cancel")))
         self.drain()
+        self.assertIn("отменён", self.telegram.last_text(REPORTER)["text"])
+        self.support.apply(self.message(text=DESCRIPTION))
+        self.drain()
+        self.assertIn("/support", self.telegram.last_text(REPORTER)["text"])
         self.assertEqual(self.telegram.received(OWNER), [])
-        self.clock.now += 24 * 60 * 60 + 1
-        self.assertTrue(self.support.apply(self.press("Отправить")))
+
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        self.clock.now += 24 * 60 * 60
+        self.assertTrue(self.support.apply(self.message(text="Сообщение после истечения.")))
         self.drain()
         self.assertEqual(self.telegram.received(OWNER), [])
 
@@ -267,13 +375,9 @@ class SupportTests(unittest.TestCase):
                 media_group_id="test-album",
             )))
         self.drain()
-        self.assertTrue(self.support.apply(self.press("Отправить")))
-        self.drain()
         self.assertEqual(self.telegram.received(OWNER), [])
 
         self.assertTrue(self.support.apply(self.message(text=DESCRIPTION)))
-        self.drain()
-        self.assertTrue(self.support.apply(self.press("Отправить")))
         self.drain()
         owner_photos = [message["photo"] for message in self.telegram.received(OWNER) if "photo" in message]
         self.assertEqual(owner_photos, [f"screenshot-{count}" for count in range(5)])
@@ -291,19 +395,14 @@ class SupportTests(unittest.TestCase):
             "file_name": "backup.interiors",
         }))
         self.drain()
-        self.support.apply(self.press("Отправить"))
-        self.drain()
         self.assertEqual(self.telegram.received(OWNER), [])
         self.support.apply(self.message(text=description))
-        self.drain()
-        self.support.apply(self.press("Отправить"))
         self.drain()
         self.assertIn(description, self.telegram.last_text(OWNER)["text"])
         self.assertFalse(any(message.get("photo") for message in self.telegram.received(OWNER)))
 
     def test_owner_delivery_retries_only_after_retry_after_across_restart(self):
         self.add_description()
-        self.support.apply(self.press("Отправить"))
         self.telegram.error = ("sendMessage", OWNER, DeliveryError(kind="retry", delay=30, code="429"))
         self.drain()
         self.assertEqual(self.telegram.received(OWNER), [])
@@ -322,7 +421,6 @@ class SupportTests(unittest.TestCase):
 
     def test_ambiguous_owner_delivery_is_not_repeated_after_restart(self):
         self.add_description()
-        self.support.apply(self.press("Отправить"))
         self.telegram.error = ("sendMessage", OWNER, DeliveryError(kind="unknown", code="response-lost"))
         self.drain()
         self.assertEqual(self.telegram.received(OWNER), [])
@@ -345,7 +443,6 @@ class SupportTests(unittest.TestCase):
 
     def test_interrupted_attempt_after_claim_requires_reconciliation(self):
         self.add_description()
-        self.support.apply(self.press("Отправить"))
         self.telegram.error = ("sendMessage", OWNER, KeyboardInterrupt())
         with self.assertRaises(KeyboardInterrupt):
             self.drain()
@@ -358,7 +455,6 @@ class SupportTests(unittest.TestCase):
 
     def test_admin_inspection_does_not_convert_an_active_send_to_uncertain(self):
         self.add_description()
-        self.support.apply(self.press("Отправить"))
         snapshots = []
 
         def inspect_before_send(method, payload):

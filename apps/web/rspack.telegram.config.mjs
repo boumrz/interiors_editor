@@ -45,6 +45,10 @@ export default (environment, arguments_) => {
 						from: "../../docs/legal/telegram-support-privacy.html",
 						to: "legal/2026-11-24/telegram-support-privacy.html",
 					},
+					{
+						from: "../../docs/legal/telegram-support-direct-privacy.html",
+						to: "legal/2026-11-24.2/telegram-support-privacy.html",
+					},
 					{ from: "./public/icon.svg", to: "icon.svg" },
 					{ from: "./public/catalog", to: "catalog" },
 					{

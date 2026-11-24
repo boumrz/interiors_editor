@@ -96,6 +96,14 @@ test("Telegram publishes the unmodified legal editions, provides prelaunch readi
 		await page.getByRole("link", { name: "Политика конфиденциальности InteriorsEditor" }).getAttribute("href"),
 		"/legal/privacy-policy.html",
 	);
+	const directSupportPath = "/legal/2026-11-24.2/telegram-support-privacy.html";
+	const directSupport = await fetch(origin + directSupportPath);
+	assert.equal(directSupport.status, 200, directSupportPath);
+	assert.equal(directSupport.headers.get("cache-control"), "public, max-age=31536000, immutable");
+	assert.equal(
+		await directSupport.text(),
+		await readFile(new URL("telegram-support-direct-privacy.html", source), "utf8"),
+	);
 	assert.ok(
 		api.every(
 			(url) => new URL(url).origin === origin && !url.includes("/stats/"),

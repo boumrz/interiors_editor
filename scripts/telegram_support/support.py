@@ -8,8 +8,9 @@ import time
 
 
 EDITOR_URL = "https://t.me/InteriorsEditorBot?startapp"
-POLICY_URL = "https://domiknote.ru/legal/2026-11-24/telegram-support-privacy.html"
+POLICY_URL = "https://domiknote.ru/legal/2026-11-24.2/telegram-support-privacy.html"
 DRAFT_LIFETIME = 24 * 60 * 60
+PHOTO_WINDOW = 15 * 60
 TICKET_LIFETIME = 30 * 24 * 60 * 60
 REPLAY_LIFETIME = 2 * DRAFT_LIFETIME
 MAX_PHOTOS = 5
@@ -31,6 +32,13 @@ CREATE TABLE IF NOT EXISTS tickets (
     number TEXT PRIMARY KEY,
     author INTEGER NOT NULL,
     touched_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS direct_support (
+    chat_id INTEGER PRIMARY KEY,
+    intro_job INTEGER,
+    ticket TEXT REFERENCES tickets(number) ON DELETE CASCADE,
+    photo_count INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS owner_messages (
     message_id INTEGER PRIMARY KEY,
@@ -141,6 +149,7 @@ class Support:
     def _expire(self, now):
         self.db.execute("DELETE FROM seen WHERE received_at <= ?", (now - REPLAY_LIFETIME,))
         self.db.execute("DELETE FROM drafts WHERE touched_at <= ?", (now - DRAFT_LIFETIME,))
+        self.db.execute("DELETE FROM direct_support WHERE expires_at <= ?", (now,))
         self.db.execute("DELETE FROM tickets WHERE touched_at <= ?", (now - TICKET_LIFETIME,))
         self.db.execute("DELETE FROM outbox WHERE ticket IS NULL AND created_at <= ?", (now - DRAFT_LIFETIME,))
 
@@ -165,10 +174,10 @@ class Support:
         return True
 
     def _job(self, method, payload, purpose, now, ticket=None):
-        self.db.execute("""
+        return self.db.execute("""
             INSERT INTO outbox(method, payload, purpose, ticket, ready_at, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (method, json.dumps(payload, ensure_ascii=False), purpose, ticket, now, now))
+        """, (method, json.dumps(payload, ensure_ascii=False), purpose, ticket, now, now)).lastrowid
 
     def _text(self, chat_id, text, now, *, purpose="notice", ticket=None, markup=None):
         payload = {
@@ -178,28 +187,54 @@ class Support:
         }
         if markup:
             payload["reply_markup"] = markup
-        self._job("sendMessage", payload, purpose, now, ticket)
+        return self._job("sendMessage", payload, purpose, now, ticket)
 
     def _draft(self, chat_id):
         return self.db.execute("SELECT * FROM drafts WHERE chat_id = ?", (chat_id,)).fetchone()
 
+    def _direct_support(self, chat_id):
+        return self.db.execute("SELECT * FROM direct_support WHERE chat_id = ?", (chat_id,)).fetchone()
+
+    def _help(self, chat_id, now):
+        self._text(
+            chat_id,
+            "Доступные команды\n"
+            "/start — открыть редактор\n"
+            "/support — сообщить о проблеме\n"
+            "/help — показать команды",
+            now, markup=_editor_keyboard(include_support=True),
+        )
+
     def _begin(self, chat_id, now):
         draft = self._draft(chat_id)
+        direct = self._direct_support(chat_id)
+        if draft is not None and direct is None:
+            self._text(
+                chat_id,
+                "У вас есть черновик. Чтобы передать его владельцу, нажмите «Отправить» под этим сообщением. "
+                "Для нового обращения отмените черновик и снова откройте /support.",
+                now, markup=_draft_keyboard(draft["token"]),
+            )
+            self._progress(chat_id, draft["token"], draft["description"], json.loads(draft["photos"]), now)
+            return
         if draft is None:
             token = secrets.token_hex(8)
             self.db.execute("INSERT INTO drafts VALUES (?, ?, '', '[]', ?)", (chat_id, token, now))
+            direct = None
         else:
-            token = draft["token"]
             self.db.execute("UPDATE drafts SET touched_at = ? WHERE chat_id = ?", (now, chat_id))
-        self._text(
+        notice = self._text(
             chat_id,
-            "Опишите проблему и приложите до пяти скриншотов как фото. После нажатия "
-            "«Отправить» описание и фото получит владелец InteriorsEditor в личном чате. "
-            "Уберите из обращения адреса, пароли и коды. Условия обработки\n" + POLICY_URL,
-            now, markup=_draft_keyboard(token),
+            "Напишите, что случилось, и отправьте сообщение обычной кнопкой Telegram. "
+            "Описание и до пяти скриншотов получит владелец InteriorsEditor в личный чат. "
+            "Скриншоты отправляйте как фото. Их можно добавить до описания или в течение 15 минут после него. "
+            "Уберите из обращения адреса, пароли и коды. Для отмены используйте /cancel. Условия обработки\n"
+            + POLICY_URL,
+            now, purpose="support-intro",
         )
-        if draft is not None:
-            self._progress(chat_id, token, draft["description"], json.loads(draft["photos"]), now)
+        intro_job = None if direct is not None and direct["intro_job"] is None else notice
+        self.db.execute("INSERT OR REPLACE INTO direct_support (chat_id, intro_job, expires_at) VALUES (?, ?, ?)",
+                        (chat_id, intro_job, now + DRAFT_LIFETIME))
 
     def _progress(self, chat_id, token, description, photos, now):
         text = f"Принято фото: {len(photos)} из {MAX_PHOTOS}. "
@@ -219,50 +254,77 @@ class Support:
             return
         if text in ("/support", "/start support"):
             self._begin(chat_id, now)
-        elif text in ("/start", "/help") or text.startswith("/start "):
+        elif text == "/start" or text.startswith("/start "):
             self._text(
                 chat_id,
                 "Создайте план комнаты в 2D, расставьте мебель и посмотрите результат в 3D. "
                 "Проекты хранятся на вашем устройстве. Для обращения воспользуйтесь /support.",
                 now, markup=_editor_keyboard(include_support=True),
             )
+        elif text == "/help":
+            self._help(chat_id, now)
         elif text == "/cancel":
-            if self.db.execute("DELETE FROM drafts WHERE chat_id = ?", (chat_id,)).rowcount:
-                self._text(chat_id, "Черновик обращения отменён.", now)
-            else:
-                self._text(chat_id, "Чтобы начать обращение, откройте /support.", now)
+            self._cancel(chat_id, now)
         elif chat_id == self.owner_id and isinstance(message.get("reply_to_message"), dict):
             self._owner_reply(message["reply_to_message"], text, now)
         else:
             draft = self._draft(chat_id)
+            direct = self._direct_support(chat_id)
             if draft is not None:
-                self._edit_draft(chat_id, draft, message, text, now)
+                self._edit_draft(chat_id, draft, direct, message, text, now)
+            else:
+                photo = _largest_photo(message.get("photo"))
+                if direct is not None and direct["ticket"] and photo is not None:
+                    self._attach_photo(chat_id, direct, photo, now)
+                else:
+                    self._help(chat_id, now)
 
-    def _edit_draft(self, chat_id, draft, message, text, now):
+    def _cancel(self, chat_id, now):
+        closed = self.db.execute("DELETE FROM direct_support WHERE chat_id = ?", (chat_id,)).rowcount
+        if self.db.execute("DELETE FROM drafts WHERE chat_id = ?", (chat_id,)).rowcount:
+            self._text(chat_id, "Черновик обращения отменён.", now)
+        elif closed:
+            self._text(chat_id, "Приём фото к обращению закрыт.", now)
+        else:
+            self._help(chat_id, now)
+
+    def _edit_draft(self, chat_id, draft, direct, message, text, now):
         if text.startswith("/"):
-            self._text(chat_id, "Отправьте описание обычным сообщением или отмените черновик через /cancel.", now)
+            self._help(chat_id, now)
+            return
+        if direct is not None and direct["intro_job"] is not None:
+            self._text(chat_id, "Дождитесь инструкции от бота и отправьте сообщение ещё раз.", now)
             return
         token = draft["token"]
+        markup = _draft_keyboard(token) if direct is None else None
         photos = json.loads(draft["photos"])
         photo = _largest_photo(message.get("photo"))
         if not text and photo is None:
-            self._text(chat_id, "Добавьте описание текстом, а скриншот отправьте как фото.", now, markup=_draft_keyboard(token))
+            self._text(chat_id, "Добавьте описание текстом, а скриншот отправьте как фото.", now, markup=markup)
             return
         if photo is not None and not text and isinstance(message.get("caption"), str):
             text = message["caption"].strip()
         if len(text) > MAX_TEXT:
-            self._text(chat_id, f"Сократите описание до {MAX_TEXT} символов.", now, markup=_draft_keyboard(token))
+            self._text(chat_id, f"Сократите описание до {MAX_TEXT} символов.", now, markup=markup)
             return
         if photo is not None and len(photos) >= MAX_PHOTOS:
             self._text(chat_id, f"Уже принято максимальное число фото — {MAX_PHOTOS}.", now, markup=_draft_keyboard(token))
             return
         if photo is not None:
             photos.append(photo)
+        if direct is not None and text:
+            self._submit(chat_id, text, photos, now, direct=True)
+            return
         description = text or draft["description"]
         self.db.execute("""
             UPDATE drafts SET description = ?, photos = ?, touched_at = ? WHERE chat_id = ?
         """, (description, json.dumps(photos), now, chat_id))
-        self._progress(chat_id, token, description, photos, now)
+        if direct is None:
+            self._progress(chat_id, token, description, photos, now)
+        else:
+            self.db.execute("UPDATE direct_support SET expires_at = ? WHERE chat_id = ?",
+                            (now + DRAFT_LIFETIME, chat_id))
+            self._text(chat_id, f"Получено фото: {len(photos)} из {MAX_PHOTOS}. Теперь пришлите описание проблемы.", now)
 
     def _callback(self, callback, now):
         chat_id = _private_chat(_object(callback.get("message")), _object(callback.get("from")))
@@ -273,7 +335,7 @@ class Support:
         if not match:
             return
         draft = self._draft(chat_id)
-        if draft is None or draft["token"] != match[2]:
+        if draft is None or draft["token"] != match[2] or self._direct_support(chat_id) is not None:
             notice = "Этот черновик уже закрыт. Для нового обращения используйте /support."
         elif match[1] == "cancel":
             self.db.execute("DELETE FROM drafts WHERE chat_id = ?", (chat_id,))
@@ -282,24 +344,43 @@ class Support:
         elif not draft["description"]:
             notice = "Добавьте описание проблемы."
         else:
-            self._submit(chat_id, draft, now)
+            self._submit(chat_id, draft["description"], json.loads(draft["photos"]), now)
             notice = "Обращение принято."
         self._job("answerCallbackQuery", {"callback_query_id": identifier, "text": notice}, "callback", now)
 
-    def _submit(self, chat_id, draft, now):
+    def _submit(self, chat_id, description, photos, now, *, direct=False):
         number = secrets.token_hex(8).upper()
         self.db.execute("INSERT INTO tickets VALUES (?, ?, ?)", (number, chat_id, now))
         self.db.execute("DELETE FROM drafts WHERE chat_id = ?", (chat_id,))
-        self._text(chat_id, f"Обращение №{number} принято. Ответ придёт в этот чат.", now, purpose="receipt", ticket=number)
+        receipt = f"Обращение №{number} принято. Ответ придёт в этот чат."
+        if direct:
+            self.db.execute("UPDATE direct_support SET ticket = ?, photo_count = ?, expires_at = ? WHERE chat_id = ?",
+                            (number, len(photos), now + PHOTO_WINDOW, chat_id))
+            if len(photos) < MAX_PHOTOS:
+                receipt += " В ближайшие 15 минут можно добавить скриншоты как фото. Чтобы закрыть приём фото, отправьте /cancel."
+        self._text(chat_id, receipt, now, purpose="receipt", ticket=number)
         self._text(
-            self.owner_id, f"Обращение №{number}\n\n{draft['description']}\n\n"
+            self.owner_id, f"Обращение №{number}\n\n{description}\n\n"
             "Чтобы ответить автору, ответьте на это сообщение или на скриншот обращения.",
             now, purpose="owner-anchor", ticket=number,
         )
-        for photo in json.loads(draft["photos"]):
-            self._job("sendPhoto", {
-                "chat_id": self.owner_id, "photo": photo, "caption": f"Скриншот к обращению №{number}",
-            }, "owner-anchor", now, number)
+        for photo in photos:
+            self._send_photo(number, photo, now)
+
+    def _attach_photo(self, chat_id, direct, photo, now):
+        count = direct["photo_count"]
+        if count >= MAX_PHOTOS:
+            self._text(chat_id, f"Уже принято максимальное число фото — {MAX_PHOTOS}.", now)
+            return
+        number = direct["ticket"]
+        self.db.execute("UPDATE direct_support SET photo_count = ? WHERE chat_id = ?", (count + 1, chat_id))
+        self._send_photo(number, photo, now)
+        self._text(chat_id, f"Фото добавлено к обращению №{number}. Получено {count + 1} из {MAX_PHOTOS}.", now)
+
+    def _send_photo(self, number, photo, now):
+        self._job("sendPhoto", {
+            "chat_id": self.owner_id, "photo": photo, "caption": f"Скриншот к обращению №{number}",
+        }, "owner-anchor", now, number)
 
     def _owner_reply(self, quoted, text, now):
         message_id = quoted.get("message_id")
@@ -347,6 +428,8 @@ class Support:
         now = self._time()
         number = job["ticket"]
         with self.db:
+            if job["purpose"] == "support-intro":
+                self.db.execute("UPDATE direct_support SET intro_job = NULL WHERE intro_job = ?", (job["id"],))
             if job["purpose"] == "owner-anchor":
                 self.db.execute("INSERT INTO owner_messages VALUES (?, ?)", (message_id, number))
             if job["purpose"] in ("owner-anchor", "reply"):

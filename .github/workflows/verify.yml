@@ -62,7 +62,7 @@ jobs:
           INTERIORS_TELEGRAM_OUTPUT: ${{ runner.temp }}/interiors-verify/dist-telegram
         run: pnpm run build
       - run: pnpm run test:delivery
-      - name: Verify daily totals and device consent in Chrome and WebKit
+      - name: Verify Telegram opening routes and device consent in Chrome and WebKit
         working-directory: apps/web
         run: |
           node --test scripts/build-telegram-analytics.test.mjs

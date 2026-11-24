@@ -52,6 +52,7 @@ self.addEventListener("fetch", event => {
 });
 '''
 PROJECT_TRANSFER_PATH = "/project-transfer/v1/files"
+MOBILE_OPEN_PATH = "/stats/tma-mobile-open-v1"
 PROJECT_TRANSFER_TOKEN_PATTERN = "^" + PROJECT_TRANSFER_PATH + "/[A-Za-z0-9_-]{43}$"
 PROJECT_TRANSFER_LIMIT_ZONES = (
     b"limit_req_zone $binary_remote_addr zone=interiors_project_transfer_requests:1m rate=6r/m;\n"
@@ -120,7 +121,8 @@ def validate_target(directory, target, rows):
         require(release_set.get("version") == 1 and release_set.get("deliveryTarget") == "telegram" and release_set.get("appBuildId") == build, "Telegram release metadata mismatch")
         require(isinstance(release_set.get("entryPath"), str) and re.fullmatch(r"/telegram\.[A-Za-z0-9_-]+\.js", release_set["entryPath"]) and release_set["entryPath"] in paths, "Missing exact Telegram entry")
         expected = sorted(release_set.get("assets", []), key=lambda row: row["path"])
-        require(expected == [row for row in rows if row["path"] != "/release-set.json"], "Telegram sealed inventory mismatch")
+        actual = sorted((row for row in rows if row["path"] != "/release-set.json"), key=lambda row: row["path"])
+        require(expected == actual, "Telegram sealed inventory mismatch")
     return build
 
 
@@ -295,14 +297,14 @@ def nginx_site(root, paths, *, project_transfer_relay=False):
             relay_path = "|" + PROJECT_TRANSFER_PATH if project_transfer_relay else ""
             lines.extend([
                 '    set $frontend_method_path "$request_method:$request_uri";',
-                '    if ($frontend_method_path !~ "^(GET:|HEAD:|POST:(/stats/tma-(open|repeat)-v2'
+                '    if ($frontend_method_path !~ "^(GET:|HEAD:|POST:(/stats/tma-(open|repeat)-v2|' + MOBILE_OPEN_PATH
                 + relay_path + ')$)") { return 405; }',
             ])
         else:
             lines.append("    if ($request_method !~ ^(GET|HEAD)$) { return 405; }")
         lines.extend(["    if ($invalid_frontend_path) { return 404; }", "    add_header X-Content-Type-Options nosniff always;", "    add_header Referrer-Policy no-referrer always;", "    add_header Cache-Control no-store always;", "    include /etc/nginx/snippets/interiors-catalog-readonly.conf;"])
         if target == "telegram":
-            for path in ("/stats/tma-open-v2", "/stats/tma-repeat-v2"):
+            for path in ("/stats/tma-open-v2", MOBILE_OPEN_PATH, "/stats/tma-repeat-v2"):
                 lines.extend(aggregate_stats_location(path))
             if project_transfer_relay:
                 lines.extend(project_transfer_locations())
@@ -392,12 +394,12 @@ def verify_collector_ready(socket_path="/run/interiors-analytics/collect.sock"):
         client.settimeout(4)
         try:
             client.connect(socket_path)
-            client.sendall(b"GET /health/aggregate-v2 HTTP/1.0\r\nHost: localhost\r\n\r\n")
+            client.sendall(b"GET /health/mobile-open-v1 HTTP/1.0\r\nHost: localhost\r\n\r\n")
             with http.client.HTTPResponse(client) as response:
                 response.begin()
-                require(response.status == 204, "Install and configure the aggregate-v2 collector before release")
+                require(response.status == 204, "Install and configure the mobile-open-v1 collector before release")
         except (OSError, http.client.HTTPException) as error:
-            raise ValueError("The aggregate-v2 collector is unavailable on its private socket") from error
+            raise ValueError("The mobile-open-v1 collector is unavailable on its private socket") from error
 
 
 def _carry_active_web(root, previous, staging, telegram):

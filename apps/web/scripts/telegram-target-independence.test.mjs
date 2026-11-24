@@ -24,6 +24,7 @@ test("Telegram config loads in a checkout without the Web/PWA build or entry", a
 				"scripts/telegram-release-build.mjs",
 				"scripts/telegram-sdk-asset.mjs",
 				"src/app/license-receipt.ts",
+				"src/app/privacy-revision.ts",
 				"../../docs/legal/analytics-consent.html",
 			].map(async (name) => {
 				const destination = join(app, name);

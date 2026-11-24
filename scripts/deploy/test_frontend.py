@@ -114,6 +114,23 @@ class DeploymentTests(unittest.TestCase):
             with self.subTest(extra=extra, replace=replace), self.assertRaises(ValueError):
                 frontend.extract_telegram_release(malformed, self.base / malformed.stem)
 
+    def test_telegram_archive_preserves_two_legal_editions_with_the_same_date(self):
+        paths = []
+        for edition in ("2026-11-24", "2026-11-24.2"):
+            path = Path("legal") / edition / "telegram-support-privacy.html"
+            document = self.telegram / path
+            document.parent.mkdir(parents=True)
+            document.write_text(edition)
+            paths.append(path)
+        self.seal_telegram()
+        output = self.base / "telegram.tar.gz"
+        frontend.package_telegram_release(self.telegram, output, "e" * 40)
+        extracted = self.base / "extracted"
+        frontend.extract_telegram_release(output, extracted)
+        for path in paths:
+            self.assertEqual((extracted / "telegram" / path).read_bytes(),
+                             (self.telegram / path).read_bytes())
+
     def test_telegram_activation_preserves_active_web_assets_and_nginx_block(self):
         root, site, old, archive, incoming = self.telegram_update()
         web_files = frontend.file_rows(root / "current/web")

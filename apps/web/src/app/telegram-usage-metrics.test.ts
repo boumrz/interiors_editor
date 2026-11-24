@@ -9,6 +9,7 @@ const now = Date.UTC(2026, 10, 22, 12);
 const cutoff = Date.UTC(2027, 2, 31, 21);
 const first = now / 1000;
 const open = "/stats/tma-open-v2",
+	mobileOpen = "/stats/tma-mobile-open-v1",
 	repeat = "/stats/tma-repeat-v2";
 const scope = ("tma-v1-" + "a".repeat(64)) as VerifiedTelegramScope;
 const other = ("tma-v1-" + "b".repeat(64)) as VerifiedTelegramScope;
@@ -51,7 +52,12 @@ function fixture() {
 		tail = turn.catch(() => {});
 		await turn;
 	};
-	const model = (at?: number, area = scope, abort = new AbortController()) =>
+	const model = (
+		at?: number,
+		area = scope,
+		abort = new AbortController(),
+		platform?: unknown,
+	) =>
 		createUsageMetrics({
 			store: deviceStatisticsStore(
 				area,
@@ -59,6 +65,7 @@ function fixture() {
 				() => storage(session),
 			),
 			launch: at,
+			platform,
 			signal: abort.signal,
 			clock: () => env.time,
 			studyActive: () => env.active,
@@ -72,6 +79,18 @@ function fixture() {
 		});
 	return { local, session, model, sent, env };
 }
+test("only iOS and Android select the empty mobile route in place of the daily route", async () => {
+	const f = fixture();
+	const platforms = [
+		"ios", "android", "tdesktop", "web", undefined, "Android", "unknown",
+	];
+	for (const [index, platform] of platforms.entries())
+		await f.model(first + index, scope, undefined, platform).start();
+	expect(f.sent).toEqual([mobileOpen, mobileOpen, open, open, open, open, open]);
+	await f.model().setAggregate(false);
+	await f.model(first + 10, scope, undefined, "ios").start();
+	expect(f.sent).toHaveLength(platforms.length);
+});
 test("only verified editable entry sends one empty open by default, even across remount, concurrent start and replay", async () => {
 	const f = fixture();
 	const gate = f.model();

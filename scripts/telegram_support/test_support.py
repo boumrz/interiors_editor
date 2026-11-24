@@ -228,6 +228,62 @@ class SupportTests(unittest.TestCase):
         self.send_ticket()
         self.assertIn(DESCRIPTION, self.telegram.last_text(OWNER)["text"])
 
+    def test_photo_window_uses_sender_time_even_if_telegram_updates_arrive_late(self):
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        sent_at = self.clock()
+        description = self.message(text=DESCRIPTION)
+        timely = self.message(photo=[{"file_id": "sent-in-window"}], date=sent_at + 15 * 60 - 1)
+        late = self.message(photo=[{"file_id": "sent-too-late"}], date=sent_at + 15 * 60)
+        self.clock.now += 60 * 60
+        self.support.apply(description)
+        self.support.apply(timely)
+        self.support.apply(late)
+        self.drain()
+        self.assertEqual([message["photo"] for message in self.telegram.received(OWNER)
+                          if "photo" in message], ["sent-in-window"])
+        self.assertIn("/help", self.telegram.last_text(REPORTER)["text"])
+
+    def test_rollback_replacement_draft_cannot_inherit_direct_send_permissions(self):
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        with sqlite3.connect(self.db_path) as old:
+            old.execute("DELETE FROM drafts WHERE chat_id = ?", (REPORTER,))
+            old.execute("INSERT INTO drafts VALUES (?, ?, '', '[]', ?)",
+                        (REPORTER, "0123456789abcdef", self.clock()))
+        self.restart()
+        self.support.apply(self.message(text=DESCRIPTION))
+        self.drain()
+        self.assertEqual(self.telegram.received(OWNER), [])
+        self.support.apply(self.press("Отправить"))
+        self.drain()
+        self.assertIn(DESCRIPTION, self.telegram.last_text(OWNER)["text"])
+
+    def test_legacy_cancel_after_rollback_ends_the_previous_photo_window(self):
+        ticket = self.send_ticket()
+        with sqlite3.connect(self.db_path) as old:
+            old.execute("INSERT INTO drafts VALUES (?, ?, '', '[]', ?)",
+                        (REPORTER, "0123456789abcdef", self.clock()))
+        self.restart()
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        self.support.apply(self.press("Отмена"))
+        self.drain()
+        self.support.apply(self.message(photo=[{"file_id": "after-cancel"}]))
+        self.drain()
+        self.assertEqual(self.telegram.received(OWNER), [ticket])
+
+    def test_caption_on_extra_photo_sends_description_and_only_first_five_photos(self):
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        for index in range(5):
+            self.support.apply(self.message(photo=[{"file_id": f"image-{index}"}]))
+        self.support.apply(self.message(photo=[{"file_id": "extra"}], caption=DESCRIPTION))
+        self.drain()
+        self.assertIn(DESCRIPTION, self.telegram.last_text(OWNER)["text"])
+        self.assertEqual([message["photo"] for message in self.telegram.received(OWNER)
+                          if "photo" in message], [f"image-{index}" for index in range(5)])
+
     def test_reporter_sends_text_and_photo_and_only_reporter_gets_owner_reply(self):
         self.support.apply(self.message(text="/support"))
         self.drain()

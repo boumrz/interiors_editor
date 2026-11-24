@@ -47,7 +47,7 @@ class ServiceTest(unittest.TestCase):
             self.assertEqual('/run/interiors-analytics/collect.sock', sock['ListenStream'])
             self.assertEqual('www-data', sock['SocketGroup'])
             self.assertEqual('0660', sock['SocketMode'])
-            for suffix, action in [('.service','serve'), ('-daily.service','daily')]:
+            for suffix, action in [('.service','serve'), ('-daily.service','daily'), ('-intraday.service','intraday')]:
                 svc = unit(suffix, 'Service')
                 self.assertEqual('interiors-analytics', svc['User'])
                 self.assertEqual('interiors-analytics', svc['StateDirectory'])
@@ -59,6 +59,10 @@ class ServiceTest(unittest.TestCase):
             timer = unit('-daily.timer','Timer')
             self.assertIn('Europe/Moscow', timer['OnCalendar'])
             self.assertEqual('true', timer['Persistent'])
+            intraday = unit('-intraday.timer', 'Timer')
+            self.assertEqual('*-*-* *:05:00 Europe/Moscow', intraday['OnCalendar'])
+            self.assertEqual('true', intraday['Persistent'])
+            self.assertNotIn('systemctl enable --now interiors-analytics-intraday.timer', installer)
 
     def test_private_cli_fails_clearly_without_activation_or_storage(self):
         with tempfile.TemporaryDirectory() as tmp:

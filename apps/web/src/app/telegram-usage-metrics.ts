@@ -110,7 +110,10 @@ export function deviceStatisticsStore(
 		},
 	};
 }
-type Path = "/stats/tma-open-v2" | "/stats/tma-repeat-v2";
+type Path =
+	| "/stats/tma-open-v2"
+	| "/stats/tma-mobile-open-v1"
+	| "/stats/tma-repeat-v2";
 type View = "closed" | "settings";
 interface Snapshot {
 	view: View;
@@ -123,6 +126,7 @@ interface Snapshot {
 export function createUsageMetrics(opts: {
 	readonly store: ReturnType<typeof deviceStatisticsStore>;
 	readonly launch?: number;
+	readonly platform?: unknown;
 	readonly signal: AbortSignal;
 	readonly clock: () => number;
 	readonly readable: () => Promise<boolean>;
@@ -225,7 +229,11 @@ export function createUsageMetrics(opts: {
 				if (authorized && !p.baseline) p.baseline = at;
 				opts.store.write(p);
 				if (opts.signal.aborted || opts.store.pending("all")) return;
-				opts.send("/stats/tma-open-v2");
+				opts.send(
+					opts.platform === "ios" || opts.platform === "android"
+						? "/stats/tma-mobile-open-v1"
+						: "/stats/tma-open-v2",
+				);
 				if (
 					returning &&
 					!opts.signal.aborted &&

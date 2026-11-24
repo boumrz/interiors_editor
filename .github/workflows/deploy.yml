@@ -36,6 +36,8 @@ jobs:
           python3 -m unittest -v
           scripts.deploy.test_frontend scripts.deploy.test_receiver scripts.deploy.test_configure_github
           scripts.deploy.test_project_backup_relay
+      - name: Verify daily and two-hour Telegram opening totals
+        run: python3 -m unittest discover -s scripts/analytics -p 'test_*.py'
       - name: Verify Telegram support delivery and owner reply routing
         run: python3 -m unittest -v scripts.telegram_support.test_support scripts.telegram_support.test_service
       - name: Install the pinned package manager

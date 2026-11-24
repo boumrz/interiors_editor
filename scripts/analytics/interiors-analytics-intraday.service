@@ -1,0 +1,22 @@
+[Unit]
+Description=Export closed two-hour mobile Telegram opens to Yandex Metrica
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=interiors-analytics
+Group=interiors-analytics
+StateDirectory=interiors-analytics
+StateDirectoryMode=0700
+EnvironmentFile=/etc/interiors-analytics/service.env
+UnsetEnvironment=INTERIORS_CID_KEY_HEX INTERIORS_MP_PRIMARY_TOKEN
+ExecStart=/usr/bin/python3 -B /usr/local/lib/interiors-analytics/collector.py intraday
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitCORE=0

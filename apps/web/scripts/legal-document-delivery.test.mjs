@@ -13,6 +13,7 @@ const web = fileURLToPath(new URL("../", import.meta.url));
 const source = new URL("../../../docs/legal/", import.meta.url);
 const names = ["privacy-policy", "license-agreement", "analytics-consent"];
 const edition = "2026-11-22.2";
+const privacyEdition = "2026-11-24.1";
 
 test("Telegram publishes the unmodified legal editions, provides prelaunch reading and permits saving without JavaScript", {
 	timeout: 60_000,
@@ -63,7 +64,7 @@ test("Telegram publishes the unmodified legal editions, provides prelaunch readi
 		for (const [url, cache] of [
 			[path, "no-store"],
 			[
-				"/legal/" + edition + "/" + name + ".html",
+				"/legal/" + (name === "privacy-policy" ? privacyEdition : edition) + "/" + name + ".html",
 				"public, max-age=31536000, immutable",
 			],
 		]) {
@@ -74,6 +75,10 @@ test("Telegram publishes the unmodified legal editions, provides prelaunch readi
 			assert.equal(await response.text(), body);
 		}
 	}
+	const retainedPrivacy = await fetch(origin + `/legal/${edition}/privacy-policy.html`);
+	assert.equal(retainedPrivacy.status, 200);
+	assert.match(retainedPrivacy.headers.get("cache-control"), /immutable/);
+	assert.equal(await retainedPrivacy.text(), await readFile(new URL(`archive/${edition}/privacy-policy.html`, source), "utf8"));
 	const supportPath = "/legal/2026-11-24/telegram-support-privacy.html";
 	const support = await fetch(origin + supportPath);
 	assert.equal(support.status, 200, supportPath);
@@ -158,7 +163,7 @@ test("the offline reader preserves the underlying screen with the same edition o
 			const link = page.getByRole("link", { name: "Прочитать политику" });
 			assert.equal(
 				await link.getAttribute("href"),
-				`/legal/${edition}/privacy-policy.html`,
+				`/legal/${privacyEdition}/privacy-policy.html`,
 			);
 			await context.unrouteAll();
 			const unexpectedRequests = [];

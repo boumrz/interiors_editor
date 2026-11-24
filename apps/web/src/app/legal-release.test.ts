@@ -47,4 +47,10 @@ test("only readable documents from the edition shown by the entry can support ac
 	expect(legalArchivePath("license-agreement")).toBe(
 		"/legal/2026-11-22.2/license-agreement.html",
 	);
+	expect(legalArchivePath("analytics-consent")).toBe(
+		"/legal/2026-11-22.2/analytics-consent.html",
+	);
+	expect(legalArchivePath("privacy-policy")).toBe(
+		"/legal/2026-11-24.1/privacy-policy.html",
+	);
 });

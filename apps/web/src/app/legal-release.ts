@@ -1,4 +1,5 @@
 import { licenseRevision } from "./license-receipt";
+import { privacyRevision } from "./privacy-revision";
 
 export type LegalDocumentName =
 	| "privacy-policy"
@@ -6,7 +7,7 @@ export type LegalDocumentName =
 	| "analytics-consent";
 
 export const legalArchivePath = (name: LegalDocumentName) =>
-	`/legal/${licenseRevision}/${name}.html`;
+	`/legal/${name === "privacy-policy" ? privacyRevision : licenseRevision}/${name}.html`;
 
 export function bundledLegalDocument(
 	name: LegalDocumentName,

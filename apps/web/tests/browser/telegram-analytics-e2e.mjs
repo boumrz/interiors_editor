@@ -4,7 +4,8 @@ import { signedExample } from "./telegram-entry-signed-fixture.ts";
 
 const license = "Принять лицензионное соглашение";
 const entered = "Новый проект";
-const opens = "/stats/tma-open-v2",
+const dailyOpens = "/stats/tma-open-v2",
+	opens = "/stats/tma-mobile-open-v1",
 	repeats = "/stats/tma-repeat-v2";
 const historical = new Date(1733584787000),
 	current = new Date("2026-11-22T12:00:00Z");
@@ -107,7 +108,7 @@ export async function verifyAnalytics({ editorOrigin, browserType }) {
 				return route.abort();
 			}
 			if (!u.pathname.startsWith("/stats/")) return route.continue();
-			assert([opens, repeats].includes(u.pathname));
+			assert([opens, dailyOpens, repeats].includes(u.pathname));
 			assert.equal(r.method(), "POST");
 			assert.equal(r.postData(), null);
 			assert.equal(u.search, "");
@@ -121,14 +122,14 @@ export async function verifyAnalytics({ editorOrigin, browserType }) {
 		});
 		return ctx;
 	}
-	async function boot(ctx, signed = true) {
+	async function boot(ctx, signed = true, platform = "ios") {
 		const page = await ctx.newPage();
 		// Public Telegram sample is genuinely signed in 2024. Advance only the browser clock once the gate appears.
 		await page.clock.setFixedTime(historical);
 		const hash = new URLSearchParams({
 			tgWebAppData: signed ? signedExample : "invalid",
 			tgWebAppVersion: "8.0",
-			tgWebAppPlatform: "ios",
+			tgWebAppPlatform: platform,
 		});
 		await page.goto(editorOrigin + "/?local-marker=private#" + hash);
 		if (signed) {
@@ -247,7 +248,7 @@ export async function verifyAnalytics({ editorOrigin, browserType }) {
 		assert.deepEqual(sent, [opens, opens, repeats]);
 		await b.close();
 		const c = await device(),
-			fresh = await boot(c);
+			fresh = await boot(c, true, "android");
 		await accept(fresh);
 		await expect
 			.poll(() => sent.slice())
@@ -266,6 +267,10 @@ export async function verifyAnalytics({ editorOrigin, browserType }) {
 		).toBeVisible();
 		await d.close();
 		assert.deepEqual(sent, [opens, opens, repeats, opens]);
+		const e = await device(), desktop = await boot(e, true, "tdesktop");
+		await accept(desktop);
+		await expect.poll(() => sent.slice()).toEqual([opens, opens, repeats, opens, dailyOpens]);
+		await e.close();
 		assert.deepEqual(cloud, []);
 		assert.deepEqual(external, []);
 		console.log(

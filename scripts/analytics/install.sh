@@ -29,7 +29,7 @@ install -d -m 0755 "$lib" "$units"
 install -d -m 0700 "$conf"
 install -m 0644 "$src/collector.py" "$lib/collector.py.new"
 mv -f "$lib/collector.py.new" "$lib/collector.py"
-for file in interiors-analytics.socket interiors-analytics.service interiors-analytics-daily.service interiors-analytics-daily.timer; do
+for file in interiors-analytics.socket interiors-analytics.service interiors-analytics-daily.service interiors-analytics-daily.timer interiors-analytics-intraday.service interiors-analytics-intraday.timer; do
     install -m 0644 "$src/$file" "$units/$file.new"
     mv -f "$units/$file.new" "$units/$file"
 done

@@ -29,6 +29,7 @@ ENV = {
 
 
 OPEN = "/stats/tma-open-v2"
+MOBILE_OPEN = "/stats/tma-mobile-open-v1"
 REPEAT = "/stats/tma-repeat-v2"
 CUTOFF = dt.datetime(2027, 3, 31, 21, tzinfo=dt.timezone.utc)
 
@@ -81,6 +82,77 @@ class CollectorTest(unittest.TestCase):
         self.assertEqual((1, 0), self.store.totals('2026-11-23'))
         self.assertEqual([], self.sent)
 
+    def test_mobile_signals_keep_daily_totals_and_publish_only_full_moscow_intervals(self):
+        self.now = dt.datetime.fromisoformat("2026-11-24T21:25:00+03:00")
+        request = self.serve()
+        self.assertEqual(request('POST', MOBILE_OPEN), 204)
+        self.assertEqual(self.store.activate_intraday(), "2026-11-24T22:00:00+03:00")
+        self.assertEqual(request('POST', MOBILE_OPEN), 204)
+        self.now = dt.datetime.fromisoformat("2026-11-24T22:00:00+03:00")
+        with concurrent.futures.ThreadPoolExecutor(8) as pool:
+            self.assertEqual(set(pool.map(lambda _: request('POST', MOBILE_OPEN), range(10))), {204})
+        self.assertEqual(request('POST', OPEN), 204)
+        self.assertEqual(request('POST', REPEAT), 204)
+        self.assertEqual(self.store.totals('2026-11-24'), (13, 1))
+        self.assertEqual(self.store.intraday_report(dt.date(2026, 11, 24)), [])
+        self.now = dt.datetime.fromisoformat("2026-11-25T00:00:00+03:00")
+        self.assertEqual(request('POST', MOBILE_OPEN), 204)
+        self.assertEqual(self.store.activate_intraday(), "2026-11-24T22:00:00+03:00")
+        self.assertEqual(self.store.intraday_report(dt.date(2026, 11, 24)), [
+            {'start': "2026-11-24T22:00:00+03:00", 'end':"2026-11-25T00:00:00+03:00",
+             'tma_opens_2h': 10, 'state': 'pending'},
+        ])
+        self.assertEqual(self.store.totals('2026-11-25'), (1, 0))
+        self.assertEqual(self.store.intraday_report(dt.date(2026, 11, 25)), [])
+        self.now = dt.datetime.fromisoformat("2026-11-25T04:00:00+03:00")
+        self.assertEqual([row['tma_opens_2h'] for row in self.store.intraday_report(dt.date(2026, 11, 25))], [1, 0])
+
+    def test_intraday_transport_uses_only_bucket_total_and_keeps_its_own_delivery_ledger(self):
+        self.now = dt.datetime.fromisoformat("2026-11-24T21:25:00+03:00")
+        self.store.activate_intraday()
+        self.now = dt.datetime.fromisoformat("2026-11-24T23:59:59+03:00")
+        self.assertTrue(self.app.record(MOBILE_OPEN))
+        self.now += dt.timedelta(minutes=5)
+        with concurrent.futures.ThreadPoolExecutor(6) as pool:
+            list(pool.map(lambda _: self.app.export_intraday(), range(6)))
+        self.assertEqual(self.app.export(), 'sent')
+        self.assertEqual(len(self.sent), 2)
+        intraday, daily = [hits[0] for _, _, hits in self.sent]
+        self.assertEqual(intraday['dl'], c.TMA_URL + '/intraday-report')
+        self.assertEqual(intraday['t'], 'pageview')
+        self.assertNotEqual(intraday['cid'], daily['cid'])
+        self.assertEqual(intraday['et'], daily['et'])
+        self.assertEqual(json.loads(intraday['params']), {"tma_opens_2h": 1})
+        self.assertEqual(json.loads(daily['params']), {"tma_opens": 1, "tma_repeat_opens": 0})
+        self.app.export_intraday()
+        self.assertEqual(len(self.sent), 2)
+
+    def test_intraday_retries_rejection_but_not_indeterminate_delivery_or_expired_intervals(self):
+        self.now = dt.datetime.fromisoformat("2026-11-24T19:15:00+03:00")
+        self.store.activate_intraday()
+        self.now = dt.datetime.fromisoformat("2026-11-24T22:05:00+03:00")
+        statuses = iter(['rejected', 'unknown'])
+        attempted = []
+
+        def sending(counter, token, hits):
+            attempted.append(hits[0])
+            return next(statuses)
+
+        self.app.send = sending
+        self.app.export_intraday()
+        self.app.export_intraday()
+        self.app.export_intraday()
+        self.assertEqual(len(attempted), 2)
+        self.assertEqual(self.store.intraday_report(dt.date(2026, 11, 24))[0]['state'], 'unknown')
+        self.now = dt.datetime.fromisoformat("2026-11-26T00:05:00+03:00")
+        self.assertEqual([row['state'] for row in self.store.intraday_report(dt.date(2026, 11, 24))],
+                         ['unknown', 'expired'])
+        self.app.send = self.sender
+        self.app.export_intraday()
+        threshold = int((self.now - dt.timedelta(hours=12)).timestamp())
+        self.assertEqual(len(self.sent), 6)
+        self.assertTrue(all(int(hits[0]['et']) >= threshold for _, _, hits in self.sent))
+
     def test_old_routes_bodies_and_queries_do_not_contribute(self):
         request = self.serve()
         for path, body in [('/stats/tma-open', b''), ('/stats/tma-return', b'3'*64),
@@ -124,9 +196,13 @@ class CollectorTest(unittest.TestCase):
         with concurrent.futures.ThreadPoolExecutor(4) as pool:
             list(pool.map(lambda _: self.store.initialize(), range(6)))
         self.assertEqual((23,0),self.store.totals('2026-11-22'))
-        self.assertEqual(self.serve()('POST',REPEAT),204)
+        request = self.serve()
+        self.assertEqual(request('POST', REPEAT), 204)
         self.assertEqual((23,1),self.store.totals('2026-11-22'))
+        self.assertEqual(request('POST', MOBILE_OPEN), 204)
+        self.assertEqual(self.store.totals('2026-11-22'), (24,1))
         self.now = CLOSED
+        self.assertEqual(self.store.intraday_report(dt.date(2026, 11, 22)), [])
         self.assertEqual('sending', self.app.export())
         self.assertEqual([],self.sent)
 

@@ -1016,6 +1016,16 @@ function readWebApp(): unknown {
 		? Reflect.get(telegram, "WebApp")
 		: undefined;
 }
+function readStatisticsPlatform(): unknown {
+	try {
+		const sdk = readWebApp();
+		return sdk && typeof sdk === "object" && "platform" in sdk
+			? sdk.platform
+			: undefined;
+	} catch {
+		return undefined;
+	}
+}
 function requestExit() {
 	try {
 		const sdk = readWebApp();
@@ -1187,6 +1197,7 @@ export function mountTelegramBrowserEditor(
 		const model = createUsageMetrics({
 			store,
 			launch: entry.kind === "editor" ? entry.authenticatedAt : undefined,
+			platform: entry.kind === "editor" ? readStatisticsPlatform() : undefined,
 			signal: life.signal,
 			clock: Date.now,
 			studyActive: () => study?.active === true,

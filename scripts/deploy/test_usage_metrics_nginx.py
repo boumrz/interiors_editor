@@ -22,6 +22,7 @@ import frontend
 
 NGINX = os.environ.get("INTERIORS_NGINX_BIN") or shutil.which("nginx")
 TOTAL = "/stats/tma-open-v2"
+MOBILE_TOTAL = "/stats/tma-mobile-open-v1"
 REPEAT = "/stats/tma-repeat-v2"
 RETURN = "/stats/tma-return"
 
@@ -31,6 +32,7 @@ class ProductionRouteContract(unittest.TestCase):
         config = frontend.nginx_site("/tmp/fixture", {"web": set(), "telegram": set()}).decode()
         self.assertNotIn("/stats/tma-return", config)
         self.assertIn("location = "+TOTAL+" {",config)
+        self.assertIn("location = "+MOBILE_TOTAL+" {",config)
         self.assertIn("location = "+REPEAT+" {",config)
         self.assertIn("collect.sock",config)
 
@@ -137,15 +139,17 @@ class PublicNginxTests(NginxFixture):
 
 class AggregateIngressTests(NginxFixture):
 
-    def test_both_public_signals_reach_collector_without_client_headers(self):
+    def test_public_signals_reach_collector_without_client_headers(self):
         cid = b"0123456789abcdef" * 4
         self.assertEqual(self.request(TOTAL, Origin="null"), 204)
+        self.assertEqual(self.request(MOBILE_TOTAL), 204)
         self.assertEqual(self.request(REPEAT), 204)
         self.assertGreaterEqual(self.request(RETURN, body=cid, **{"Content-Type":"text/plain"}),400)
         self.assertGreaterEqual(self.request(RETURN+"-v2",body=b"x"*160,**{"Content-Type":"text/plain"}),400)
         fixed = {"host": "localhost", "connection": "close"}
         self.assertEqual(self.calls, [
             (TOTAL, dict(fixed, **{"content-length": "0"}), b""),
+            (MOBILE_TOTAL, dict(fixed, **{"content-length": "0"}), b""),
             (REPEAT,dict(fixed,**{"content-length":"0"}),b""),
         ])
 
@@ -154,6 +158,8 @@ class AggregateIngressTests(NginxFixture):
             (REPEAT, {"Content-Length": None,"Transfer-Encoding":"chunked"}),
             (TOTAL, {"method": "GET"}), (TOTAL, {"method": "HEAD"}), (TOTAL, {"method": "OPTIONS"}),
             (TOTAL, {"body": b"extra"}), (REPEAT, {"body": b"id"}), (REPEAT+"?",{}), (TOTAL, {"Origin": "https://other.invalid"}),
+            (MOBILE_TOTAL, {"body": b"extra"}), (MOBILE_TOTAL+"?", {}),
+            (MOBILE_TOTAL, {"host": "www.domiknote.ru"}), (MOBILE_TOTAL+"/", {}),
             (TOTAL, {"X-Interiors-Stats": None}), (TOTAL, {"host": "www.domiknote.ru"}),
             (TOTAL + "?id=1", {}), (TOTAL + "/", {}), ("/stats/%74ma-open", {}),
             ("/index.html", {}), ("/catalog-api/v1/catalogs/current", {}),
@@ -178,5 +184,5 @@ class AggregatePipelineTest(NginxFixture):
         self.assertEqual(len(self.reports),1)
         self.assertEqual(json.loads(self.reports[0][0]["params"]),{"tma_opens":1,"tma_repeat_opens":1})
         self.app.env["INTERIORS_MP_AGGREGATE_TOKEN"] = ""
-        with self.assertRaisesRegex(ValueError,"aggregate-v2"):
+        with self.assertRaisesRegex(ValueError,"mobile-open-v1"):
             frontend.verify_collector_ready(self.socket_path)

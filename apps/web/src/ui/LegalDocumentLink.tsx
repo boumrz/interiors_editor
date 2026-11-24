@@ -53,8 +53,9 @@ function LegalReader({ first, onClose, telegram }: ReaderProps) {
 		for (const link of displayed.querySelectorAll<HTMLAnchorElement>(
 			"a[href]",
 		)) {
+			const href = link.getAttribute("href");
 			const target = documentNames.find(
-				(name) => link.getAttribute("href") === `${name}.html`,
+				(name) => href === `${name}.html` || href === legalArchivePath(name),
 			);
 			if (target) {
 				link.href = legalArchivePath(target);

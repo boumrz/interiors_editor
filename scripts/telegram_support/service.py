@@ -29,6 +29,7 @@ EXPECTED_BOT_USERNAME = "InteriorsEditorBot"
 SERVICE_USER = "interiors-telegram-support"
 DEFAULT_CONFIG = Path("/etc/interiors-editor/telegram-support")
 DEFAULT_STATE = Path("/var/lib/interiors-telegram-support")
+SYSTEMD_CREDENTIALS = Path("/run/credentials/interiors-telegram-support.service")
 UPDATE_LIMIT = 100
 LONG_POLL_SECONDS = 12
 BIND_SECONDS = 300
@@ -156,7 +157,11 @@ def read_credential(directory, name):
         raise OpsError("credential-unreadable") from None
     with os.fdopen(descriptor, "rb") as stream:
         info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+        mode = stat.S_IMODE(info.st_mode)
+        # systemd grants the worker read access through an ACL whose mask shows as group-read.
+        systemd_copy = (directory == SYSTEMD_CREDENTIALS and mode == 0o440
+                        and info.st_uid == info.st_gid == 0)
+        if not stat.S_ISREG(info.st_mode) or (mode & 0o077 and not systemd_copy):
             raise OpsError("credential-permissions")
         try:
             return stream.read(256).decode("ascii").strip()

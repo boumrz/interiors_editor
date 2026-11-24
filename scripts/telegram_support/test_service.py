@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import subprocess
 import tempfile
 import time
@@ -301,6 +302,25 @@ class OwnerBindingTests(unittest.TestCase):
 
 
 class OperationTests(unittest.TestCase):
+    def test_only_systemd_credential_directory_accepts_readable_root_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            token = path / "bot-token"
+            token.write_text(TOKEN, encoding="ascii")
+            token.chmod(0o440)
+            info = SimpleNamespace(st_mode=token.stat().st_mode, st_uid=0, st_gid=0)
+            with patch.object(service.os, "fstat", return_value=info):
+                with self.assertRaisesRegex(OpsError, "credential-permissions"):
+                    service.read_credential(path, "bot-token")
+                with patch.object(service, "SYSTEMD_CREDENTIALS", path):
+                    self.assertEqual(service.read_credential(path, "bot-token"), TOKEN)
+                    for mode, uid, gid in [(0o444, 0, 0), (0o460, 0, 0), (0o440, 1, 0), (0o440, 0, 1)]:
+                        with self.subTest(mode=mode, uid=uid, gid=gid):
+                            info.st_mode = (info.st_mode & ~0o777) | mode
+                            info.st_uid, info.st_gid = uid, gid
+                            with self.assertRaisesRegex(OpsError, "credential-permissions"):
+                                service.read_credential(path, "bot-token")
+
     def test_missing_and_public_credentials_fail_quietly_and_safely(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory)

@@ -3,7 +3,11 @@ import {
 	encryptProjectTransfer,
 	isProjectTransferPasswordValid,
 } from "../adapters/telegram/encrypted-project-transfer";
-import { projectDownloadLifetimeMs, type TelegramProjectDownload } from "../adapters/telegram/project-download";
+import {
+	projectDownloadLifetimeMs,
+	telegramProjectDownloadFilename,
+	type TelegramProjectDownload,
+} from "../adapters/telegram/project-download";
 import { TelegramSheetFrame } from "./TelegramSheetFrame";
 import type {
 	createHostFileBridge,
@@ -114,7 +118,7 @@ export class LocalFileTransferSession {
 		} catch {
 			if (!signal.aborted) this.update({
 				kind: "encrypted-failed", prepared,
-				notice: "Не удалось подготовить скачивание. Проверьте подключение и повторите.",
+				notice: "Не удалось подготовить копию. Проверьте подключение и введите пароль ещё раз.",
 			});
 		}
 	}
@@ -138,8 +142,10 @@ export class LocalFileTransferSession {
 		if (!signal.aborted) this.update({
 			kind: "encrypted-ready", prepared,
 			notice: result === "requested"
-				? "Telegram принял запрос. Проверьте файл project.interiors в загрузках."
-				: "Telegram не подтвердил скачивание. Попробуйте ещё раз.",
+				? `Telegram принял запрос. Проверьте файл ${telegramProjectDownloadFilename} в загрузках.`
+				: result === "cancelled"
+					? "Скачивание отменено. Нажмите «Скачать файл», чтобы повторить."
+					: "Telegram не открыл скачивание. Попробуйте ещё раз.",
 		});
 	}
 	public async handoff(): Promise<void> {
@@ -243,57 +249,78 @@ export function LocalFileTransferPanel({
 	);
 }
 
+type ExportPasswordStatus = "empty" | "invalid" | "unconfirmed" | "mismatch" | "ready";
+
+function readExportPassword(form: HTMLFormElement): { password: string; status: ExportPasswordStatus } {
+	const fields = new FormData(form);
+	const password = String(fields.get("password") ?? "");
+	const confirmation = fields.get("confirmation");
+	if (!password) return { password, status: "empty" };
+	if (!isProjectTransferPasswordValid(password)) return { password, status: "invalid" };
+	if (!confirmation) return { password, status: "unconfirmed" };
+	return { password, status: password === confirmation ? "ready" : "mismatch" };
+}
+
 function EncryptedDownloadPanel({ session, prepared, state }: {
 	readonly session: LocalFileTransferSession;
 	readonly prepared: PreparedHostFile;
 	readonly state: Extract<LocalFileTransferState, { readonly prepared?: PreparedHostFile }>;
 }) {
-	const [passwordError, setPasswordError] = useState<string>();
+	const [passwordStatus, setPasswordStatus] = useState<ExportPasswordStatus>("empty");
+	const passwordHintId = useId();
+	const mismatchId = useId();
+	const downloadButton = useRef<HTMLButtonElement>(null);
 	const encrypting = state.kind === "encrypting";
 	const downloading = state.kind === "encrypted-downloading";
 	const ready = state.kind === "encrypted-ready" || downloading;
+	useLayoutEffect(() => {
+		if (ready) downloadButton.current?.focus({ preventScroll: true });
+	}, [ready]);
 	const submit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
-		const form = new FormData(event.currentTarget);
-		const password = String(form.get("password") ?? "");
-		if (!isProjectTransferPasswordValid(password)) {
-			setPasswordError("Введите пароль от 12 до 256 символов.");
-			return;
-		}
-		if (password !== form.get("confirmation")) {
-			setPasswordError("Пароли не совпадают.");
+		const { password, status } = readExportPassword(event.currentTarget);
+		if (status !== "ready") {
+			setPasswordStatus(status);
 			return;
 		}
 		event.currentTarget.reset();
-		setPasswordError(undefined);
+		setPasswordStatus("empty");
 		void session.stageEncrypted(password);
 	};
 	return <TelegramSheetFrame telegram canvasAnchored className={styles.panel}
 		aria-label="Передача файла" aria-busy={encrypting || downloading}>
 		<h2>Файл проекта</h2>
-		<p>{prepared.file.name}</p>
+		<p>{ready ? telegramProjectDownloadFilename : prepared.file.name}</p>
 		{ready ? <>
-			<p role="status">{state.notice ?? "Зашифрованная копия готова. Пароль понадобится для импорта."}</p>
+			<p role="status">{state.notice ?? "Копия готова. Нажмите «Скачать файл» и подтвердите скачивание в Telegram."}</p>
 			<div>
 				<button type="button" onClick={() => session.close()}>Закрыть</button>
-				<button type="button" className={styles.handoff} disabled={downloading}
+				<button ref={downloadButton} type="button" className={styles.handoff} disabled={downloading}
 					onClick={() => void session.downloadEncrypted()}>
-					{downloading ? "Открытие Telegram…" : state.notice ? "Повторить" : "Скачать файл"}
+					{downloading ? "Открытие Telegram…" : "Скачать файл"}
 				</button>
 			</div>
-		</> : <form className={styles.passwordForm} onSubmit={submit}>
-			<p>Копия шифруется на телефоне. Telegram скачает её по временной ссылке. Сервер удалит копию через 15 минут. Сохраните пароль для импорта.</p>
+		</> : <form className={styles.passwordForm} onSubmit={submit}
+			onInput={(event) => setPasswordStatus(readExportPassword(event.currentTarget).status)}>
+			<p>Копия шифруется на телефоне. После подготовки появится кнопка «Скачать файл». Сервер удалит копию через 15 минут.</p>
 			<label>Пароль для копии
-				<input name="password" type="password" autoComplete="new-password" required disabled={encrypting} />
+				<input name="password" type="password" autoComplete="new-password" required disabled={encrypting}
+					aria-describedby={passwordHintId} aria-invalid={passwordStatus === "invalid" || undefined} />
 			</label>
+			<p id={passwordHintId} aria-live="polite">{passwordStatus === "invalid"
+				? "Введите пароль от 12 до 256 символов."
+				: "Придумайте пароль от 12 до 256 символов и сохраните его для импорта."}</p>
 			<label>Повторите пароль
-				<input name="confirmation" type="password" autoComplete="new-password" required disabled={encrypting} />
+				<input name="confirmation" type="password" autoComplete="new-password" required disabled={encrypting}
+					aria-describedby={passwordStatus === "mismatch" ? mismatchId : undefined}
+					aria-invalid={passwordStatus === "mismatch" || undefined} />
 			</label>
-			{passwordError || state.notice ? <p role="alert">{passwordError ?? state.notice}</p> : null}
+			{passwordStatus === "mismatch" ? <p id={mismatchId} role="status">Пароли не совпадают.</p> : null}
+			{state.notice ? <p role="alert">{state.notice}</p> : null}
 			<div>
 				<button type="button" onClick={() => session.close()}>{encrypting ? "Отменить" : "Закрыть"}</button>
-				<button type="submit" disabled={encrypting} className={styles.handoff}>
-					{encrypting ? "Подготовка…" : "Подготовить скачивание"}
+				<button type="submit" disabled={encrypting || passwordStatus !== "ready"} className={styles.handoff}>
+					{encrypting ? "Подготовка…" : "Подготовить копию"}
 				</button>
 			</div>
 		</form>}

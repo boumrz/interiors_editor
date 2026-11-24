@@ -1224,6 +1224,52 @@ test("TMA-UI-PLAN-RING: selected floor item exposes its rotation track and handl
 	}
 });
 
+test("TMA-ENCRYPTED-DOWNLOAD: Android explains invalid passwords and offers a separate, retryable file download", async ({ page }) => {
+	await page.evaluate(async () => {
+		await window.__telegramRuntimeUi.mountNavigable("a");
+		window.__telegramRuntimeUi.enableEncryptedDownload();
+	});
+	await createRoom(page, "Android backup");
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("button", { name: "Экспортировать проект", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Передача файла" });
+	const prepare = panel.getByRole("button", { name: /^Подготовить/ });
+	const password = panel.getByLabel("Пароль для копии", { exact: true });
+	const confirmation = panel.getByLabel("Повторите пароль", { exact: true });
+	const counts = () => page.evaluate(() => window.__telegramRuntimeUi.encryptedTransferCounts());
+	await expect(panel.getByText("Придумайте пароль от 12 до 256 символов и сохраните его для импорта.")).toBeVisible();
+	await expect(password).not.toHaveAttribute("aria-invalid", "true");
+	await expect(prepare).toBeDisabled();
+	await password.fill("abc");
+	await confirmation.fill("abc");
+	await expect(password).toHaveAttribute("aria-invalid", "true");
+	await expect(prepare).toBeDisabled();
+	expect(await counts()).toEqual({ uploads: 0, requests: 0 });
+
+	await password.fill("двенадцать-символов");
+	await expect(panel.getByText("Пароли не совпадают.")).toBeVisible();
+	await expect(prepare).toBeDisabled();
+	await panel.locator("form").dispatchEvent("submit");
+	await expect(panel.getByText("Пароли не совпадают.")).toBeVisible();
+	expect(await counts()).toEqual({ uploads: 0, requests: 0 });
+	await confirmation.clear();
+	await expect(confirmation).not.toHaveAttribute("aria-invalid", "true");
+	await expect(prepare).toBeDisabled();
+	await confirmation.fill("двенадцать-символов");
+	await expect(prepare).toBeEnabled();
+	await prepare.click();
+
+	const download = panel.getByRole("button", { name: "Скачать файл", exact: true });
+	await expect(download).toBeFocused();
+	await expect(panel.getByText("project.interiors", { exact: true })).toBeVisible();
+	expect(await counts()).toEqual({ uploads: 1, requests: 0 });
+	await download.click();
+	await expect(panel.getByRole("status")).toContainText("Скачивание отменено");
+	await download.click();
+	await expect(panel.getByRole("status")).toContainText("Проверьте файл project.interiors в загрузках");
+	expect(await counts()).toEqual({ uploads: 1, requests: 2 });
+});
+
 test("TMA-UI-05: actual export prepares a local File before a fresh handoff gesture and reselects it through the registered importer", async ({
 	page,
 }, info) => {

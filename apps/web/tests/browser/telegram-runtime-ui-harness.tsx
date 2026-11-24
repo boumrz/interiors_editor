@@ -98,20 +98,35 @@ const catalogGateway: CatalogGatewayPort = {
 	resource: async () => ({ kind: "unavailable" }),
 };
 const sharedFiles: File[] = [];
+let androidDownloadEnabled = false;
+let encryptedUploads = 0;
+let encryptedDownloadRequests = 0;
 let localModelFileReads = 0;
 let scopeLockHold: { release: () => void; done: Promise<void> } | undefined;
-const fileTransfer = createHostFileBridge({
-	maximumBytes: 280 * 1024 * 1024,
-	system: {
-		canShare: (data) => data.files?.length === 1,
-		async share(data) {
-			const file = data.files?.[0];
-			if (!(file instanceof File))
-				throw new Error("Expected actual local File");
-			sharedFiles.push(file);
+const fileTransfer = {
+	...createHostFileBridge({
+		maximumBytes: 280 * 1024 * 1024,
+		system: {
+			canShare: (data) => data.files?.length === 1,
+			async share(data) {
+				const file = data.files?.[0];
+				if (!(file instanceof File))
+					throw new Error("Expected actual local File");
+				sharedFiles.push(file);
+			},
+		},
+	}),
+	encryptedDownload: {
+		available: () => androidDownloadEnabled,
+		async stage() {
+			encryptedUploads++;
+			return "/fixture-download";
+		},
+		async download() {
+			return ++encryptedDownloadRequests === 1 ? "cancelled" as const : "requested" as const;
 		},
 	},
-});
+};
 let navigable = false;
 let localGreyboxCatalog = false;
 let browserProtected = false;
@@ -423,6 +438,8 @@ const fixture = {
 		};
 	},
 	sharedFileCount: () => sharedFiles.length,
+	enableEncryptedDownload() { androidDownloadEnabled = true; },
+	encryptedTransferCounts: () => ({ uploads: encryptedUploads, requests: encryptedDownloadRequests }),
 	reselectSharedFile(index: number) {
 		const file = sharedFiles[index];
 		if (!file) throw new Error("No handed off File");

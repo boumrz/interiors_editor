@@ -2,6 +2,7 @@ import { isEncryptedProjectTransfer, MAX_ENCRYPTED_PROJECT_TRANSFER_BYTES } from
 
 const uploadPath = "/project-transfer/v1/files";
 const downloadPathPattern = /^\/project-transfer\/v1\/files\/[A-Za-z0-9_-]{43}$/;
+export const telegramProjectDownloadFilename = "project.interiors";
 export const projectDownloadLifetimeMs = 15 * 60 * 1000;
 type DownloadOutcome = "requested" | "cancelled" | "unavailable";
 type TelegramDownload = (request: { url: string; file_name: string }, done: (accepted: boolean) => void) => void;
@@ -64,7 +65,7 @@ export function createTelegramProjectDownload(dependencies: {
 				}
 				signal.addEventListener("abort", abort, { once: true });
 				try {
-					request({ url: dependencies.origin + path, file_name: "project.interiors" }, (accepted) =>
+					request({ url: dependencies.origin + path, file_name: telegramProjectDownloadFilename }, (accepted) =>
 						finish(accepted === true ? "requested" : "cancelled"));
 				} catch {
 					finish("unavailable");

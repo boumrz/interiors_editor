@@ -159,6 +159,205 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(json.loads((root / "current/inventory.json").read_bytes())["targets"],
                          {"web": web_files, **incoming["targets"]})
 
+    def test_project_transfer_boundaries_and_streaming_apply_only_to_enabled_telegram_host(self):
+        paths = {"web": set(), "telegram": set()}
+        self.assertNotIn(b"project-transfer", frontend.nginx_site(self.base, paths))
+        config = frontend.nginx_site(self.base, paths, project_transfer_relay=True)
+        prefix, web, telegram = config.rsplit(b"\nserver {\n", 2)
+        upload = b"/project-transfer/v1/files"
+        token = b"^/project-transfer/v1/files/[A-Za-z0-9_-]{43}$"
+        self.assertIn(b"limit_req_zone $binary_remote_addr zone=interiors_project_transfer_requests:1m rate=6r/m;", prefix)
+        self.assertIn(b"limit_conn_zone $binary_remote_addr zone=interiors_project_transfer_connections:1m;", prefix)
+        self.assertNotIn(upload, web)
+        self.assertIn(b"set $frontend_method_path \"$request_method:$request_uri\";", telegram)
+        self.assertIn(b"|/project-transfer/v1/files)$", telegram)
+        self.assertIn(b"location = " + upload + b" {", telegram)
+        self.assertIn(b'if ($request_uri != "' + upload + b'") { return 404; }', telegram)
+        self.assertIn(b'location ~ "' + token + b'" {', telegram)
+        self.assertIn(b'if ($request_uri !~ "' + token + b'") { return 404; }', telegram)
+        self.assertIn(b"client_max_body_size 199229492;", telegram)
+        self.assertIn(b"proxy_set_header Content-Type $content_type;", telegram)
+        self.assertIn(b"proxy_set_header Content-Length $content_length;", telegram)
+        self.assertIn(b"proxy_pass_request_body off;", telegram)
+        self.assertNotIn(b"Access-Control-Allow-Origin", telegram)
+        for value in (b"limit_conn interiors_project_transfer_connections 4;",
+                      b"limit_req zone=interiors_project_transfer_requests burst=12 nodelay;",
+                      b"limit_conn_status 429;", b"limit_req_status 429;", b"access_log off;",
+                      b"error_log /dev/null crit;", b"proxy_request_buffering off;", b"proxy_buffering off;",
+                      b"proxy_pass_request_headers off;", b"proxy_set_header Host 127.0.0.1;",
+                      b"proxy_pass http://127.0.0.1:4182;"):
+            with self.subTest(value=value):
+                self.assertGreaterEqual(telegram.count(value), 2)
+
+    def test_project_transfer_explicit_activation_survives_retirement_repeat_and_restore(self):
+        root, site, _, archive, incoming = self.telegram_update()
+        frontend.set_web_retirement(True, root, site, command=lambda _: None, health=lambda *_: None)
+        retired_before = site.read_bytes().split(b"\nserver {\n")[1]
+        for enable in (True, False):
+            frontend.activate_telegram_release(
+                archive, incoming["commit"], root=root, site=site, command=lambda _: None,
+                ready=lambda _: None, health=lambda _: None, enable_project_transfer_relay=enable,
+            )
+            current = site.read_bytes()
+            self.assertEqual(current.count(b"limit_req_zone"), 1)
+            self.assertEqual(current.count(b"limit_conn_zone"), 1)
+            self.assertEqual(current.rsplit(b"\nserver {\n", 2)[1], retired_before)
+            self.assertIn(b"proxy_pass http://127.0.0.1:4182;", current)
+        frontend.set_web_retirement(False, root, site, command=lambda _: None, health=lambda *_: None)
+        self.assertEqual(site.read_bytes().count(b"limit_req_zone"), 1)
+        self.assertNotIn(b"project-transfer", site.read_bytes().rsplit(b"\nserver {\n", 2)[1])
+
+    def test_failed_release_preserves_web_retirement_and_does_not_enable_relay(self):
+        root, site, old, archive, incoming = self.telegram_update()
+        frontend.set_web_retirement(True, root, site, command=lambda _: None, health=lambda *_: None)
+        retired_before = site.read_bytes().split(b"\nserver {\n")[1]
+
+        def fail_health(_):
+            self.assertIn(b"/project-transfer/v1/files", site.read_bytes())
+            raise RuntimeError("reject release")
+
+        with self.assertRaisesRegex(RuntimeError, "reject release"):
+            frontend.activate_telegram_release(
+                archive, incoming["commit"], root=root, site=site, command=lambda _: None,
+                ready=lambda _: None, health=fail_health, enable_project_transfer_relay=True,
+            )
+        self.assertEqual((root / "current").readlink().name, old["release"])
+        rollback = site.read_bytes()
+        self.assertEqual(rollback.split(b"\nserver {\n")[1], retired_before)
+        self.assertNotIn(b"limit_req_zone", rollback)
+        self.assertNotIn(b"/project-transfer/v1/files", rollback)
+        self.assertIn(b"/telegram.456.js", rollback)
+
+    def test_retirement_hides_web_assets_without_changing_release_and_survives_telegram_update(self):
+        root, site, old, archive, incoming = self.telegram_update()
+        original = site.read_bytes().replace(b"    server_name www.domiknote.ru;\n",
+                                             b"    server_name www.domiknote.ru;\n    # custom transport setting\n")
+        site.write_bytes(original)
+        http, web, telegram = original.split(b"\nserver {\n")
+        active_web = frontend.file_rows(root / "current/web")
+        retained_web = frontend.file_rows(root / "retained/web")
+        commands = []
+        checks = []
+
+        result = frontend.set_web_retirement(
+            True, root, site, command=commands.append,
+            health=lambda retired, inventory: checks.append((retired, inventory["release"])),
+        )
+        retired = site.read_bytes()
+        retired_http, retired_web, retired_telegram = retired.split(b"\nserver {\n")
+        self.assertEqual(result, {"webRetired": True, "changed": True, "dryRun": False, "release": old["release"]})
+        self.assertEqual(checks, [(True, old["release"])])
+        self.assertEqual(commands, [["nginx", "-t"], ["systemctl", "reload", "nginx"]])
+        self.assertEqual((retired_http, retired_telegram), (http, telegram))
+        self.assertIn(b"# custom transport setting", retired_web)
+        self.assertIn(b"ssl_certificate ", retired_web)
+        self.assertIn(b"location / { return 302 https://t.me/InteriorsEditorBot?startapp; }", retired_web)
+        self.assertIn(b"location = /sw.js", retired_web)
+        self.assertIn(b"default_type application/javascript;", retired_web)
+        self.assertIn(b"self.skipWaiting()", retired_web)
+        self.assertIn(b"self.clients.claim()", retired_web)
+        for absent in (b"caches.", b"indexedDB", b"Clear-Site-Data", b"/main.123.js", b"interiors-catalog-readonly.conf", b"try_files"):
+            self.assertNotIn(absent, retired_web)
+        self.assertEqual((root / "current").readlink().name, old["release"])
+        self.assertEqual(frontend.file_rows(root / "current/web"), active_web)
+        self.assertEqual(frontend.file_rows(root / "retained/web"), retained_web)
+
+        def health(inventory):
+            self.assertEqual(inventory["targets"], incoming["targets"])
+            self.assertEqual(site.read_bytes().split(b"\nserver {\n")[1], retired_web)
+
+        receipt = frontend.activate_telegram_release(
+            archive, incoming["commit"], root=root, site=site, command=lambda _: None,
+            ready=health, health=health,
+        )
+        next_telegram = site.read_bytes().split(b"\nserver {\n")[2]
+        self.assertIn(b"/telegram.456.js", next_telegram)
+        self.assertNotEqual(telegram, next_telegram)
+        with self.assertRaisesRegex(ValueError, "retired"):
+            frontend.activate_release(self.archive, root, site, command=lambda _: self.fail("changed nginx"))
+
+        undo = frontend.set_web_retirement(False, root, site, command=lambda _: None,
+                                           health=lambda *_: None)
+        self.assertEqual(undo, {"webRetired": False, "changed": True, "dryRun": False, "release": receipt["release"]})
+        self.assertEqual(site.read_bytes().split(b"\nserver {\n"), [http, web, next_telegram])
+        self.assertEqual(frontend.file_rows(root / "current/web"), active_web)
+        self.assertEqual(frontend.file_rows(root / "retained/web"), retained_web)
+
+    def test_retirement_dry_run_and_replay_leave_config_alone(self):
+        root, site, old, _, _ = self.telegram_update()
+        original = site.read_bytes()
+        dry_run = [str(MODULE), "retire-web", "--root", str(root), "--site", str(site), "--dry-run"]
+        with patch.object(sys, "argv", dry_run), patch.object(frontend.os, "geteuid", return_value=1001), patch.object(sys, "stdout", io.StringIO()) as output:
+            frontend.main()
+        self.assertEqual(json.loads(output.getvalue()), {"webRetired": True, "changed": True, "dryRun": True, "release": old["release"]})
+        self.assertEqual(site.read_bytes(), original)
+        self.assertFalse((root / ".web-before-retirement.conf").exists())
+
+        frontend.set_web_retirement(True, root, site, command=lambda _: None, health=lambda *_: None)
+        retired = site.read_bytes()
+        result = frontend.set_web_retirement(True, root, site,
+                                             command=lambda _: self.fail("reloaded an unchanged configuration"),
+                                             health=lambda *_: None)
+        self.assertFalse(result["changed"])
+        self.assertEqual(site.read_bytes(), retired)
+        backup = root / ".web-before-retirement.conf"
+        self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
+        backup.write_bytes(backup.read_bytes() + b"# tampering\n")
+        with self.assertRaisesRegex(ValueError, "rollback"):
+            frontend.set_web_retirement(False, root, site, command=lambda _: self.fail("restored a tampered config"))
+        self.assertEqual(site.read_bytes(), retired)
+
+    def test_retirement_health_failure_restores_original_site_and_pointer(self):
+        root, site, old, _, _ = self.telegram_update()
+        original = site.read_bytes()
+        commands = []
+
+        def unhealthy(retired, inventory):
+            self.assertTrue(retired)
+            self.assertEqual(inventory, old)
+            raise ValueError("public redirect mismatched")
+
+        with self.assertRaisesRegex(ValueError, "public redirect mismatched"):
+            frontend.set_web_retirement(True, root, site, command=commands.append, health=unhealthy)
+        self.assertEqual(site.read_bytes(), original)
+        self.assertEqual((root / "current").readlink().name, old["release"])
+        self.assertEqual(commands, [["nginx", "-t"], ["systemctl", "reload", "nginx"]] * 2)
+
+    def test_retirement_smoke_checks_worker_and_redirect_without_following_it(self):
+        inventory = self.package()
+        locations = []
+        attempts = {"/sw.js": 0, "/main.123.js": 0}
+
+        def public_response(origin, path, method="GET", headers=None, timeout=15, **options):
+            self.assertEqual(origin, frontend.ORIGINS["web"])
+            self.assertEqual(options, {"follow_redirects": False})
+            self.assertEqual(headers, {"Cache-Control": "no-cache"})
+            if path in attempts:
+                attempts[path] += 1
+            if path == "/sw.js":
+                self.assertEqual(method, "GET")
+                worker = frontend.WEB_RETIREMENT_WORKER if attempts[path] > 1 else b"old cached application worker"
+                return 200, {"cache-control": "no-store", "content-type": "application/javascript"}, worker
+            if path == "/main.123.js":
+                self.assertEqual(method, "HEAD")
+                if attempts[path] == 1:
+                    return 200, {"cache-control": "public, max-age=31536000, immutable"}, b""
+            if method == "POST":
+                return 405, {}, b""
+            if path in frontend.WITHDRAWN_CATALOG_PATHS:
+                return 410, {}, b""
+            locations.append(path)
+            return 302, {"location": "https://t.me/InteriorsEditorBot?startapp", "cache-control": "no-store",
+                         "referrer-policy": "no-referrer"}, b""
+
+        with patch.object(frontend, "request", side_effect=public_response), patch.object(frontend.time, "sleep") as pause, patch.object(frontend, "smoke_release") as smoke:
+            frontend.verify_web_retirement(True, inventory)
+            smoke.assert_called_once_with({**inventory, "targets": {"telegram": inventory["targets"]["telegram"]}})
+            self.assertEqual(pause.call_count, 2)
+        self.assertIn("/?previous=deployment-check", locations)
+        self.assertIn("/manifest.webmanifest", locations)
+        self.assertIn("/main.123.js", locations)
+
     def test_telegram_activation_rolls_back_controls_on_failed_health(self):
         root, site, old, archive, incoming = self.telegram_update()
         last_receipt = (root / "last-deployment.json").read_bytes()
@@ -217,16 +416,18 @@ class DeploymentTests(unittest.TestCase):
         site = self.base / "site.conf"
         args = [str(MODULE), "activate-telegram", "--archive", str(archive), "--commit", commit,
                 "--root", str(self.base), "--site", str(site)]
-        with patch.object(sys, "argv", args), patch.object(frontend.os, "geteuid", return_value=0), patch.object(
-            frontend.signal, "signal"
-        ) as signals, patch.object(
-            frontend, "activate_telegram_release", return_value={"deployed": True, "target": "telegram"}
-        ) as activate, patch.object(sys, "stdout", io.StringIO()) as stdout:
-            frontend.main()
-        activate.assert_called_once_with(str(archive), commit, self.base, site)
-        self.assertEqual({call.args[0] for call in signals.call_args_list},
-                         {frontend.signal.SIGINT, frontend.signal.SIGTERM})
-        self.assertEqual(json.loads(stdout.getvalue()), {"deployed": True, "target": "telegram"})
+        for override in ([], ["--enable-project-transfer-relay"]):
+            with patch.object(sys, "argv", args + override), patch.object(frontend.os, "geteuid", return_value=0), patch.object(
+                frontend.signal, "signal"
+            ) as signals, patch.object(
+                frontend, "activate_telegram_release", return_value={"deployed": True, "target": "telegram"}
+            ) as activate, patch.object(sys, "stdout", io.StringIO()) as stdout:
+                frontend.main()
+            activate.assert_called_once_with(str(archive), commit, self.base, site,
+                                             enable_project_transfer_relay=bool(override))
+            self.assertEqual({call.args[0] for call in signals.call_args_list},
+                             {frontend.signal.SIGINT, frontend.signal.SIGTERM})
+            self.assertEqual(json.loads(stdout.getvalue()), {"deployed": True, "target": "telegram"})
 
     def test_telegram_smoke_requires_scoped_receipt_and_probes_only_telegram(self):
         root, site, _, archive, incoming = self.telegram_update()

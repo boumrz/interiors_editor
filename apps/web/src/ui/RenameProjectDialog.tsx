@@ -5,12 +5,13 @@ import { SheetHeader } from "./SheetHeader";
 import sheetStyles from "./SheetHeader.module.css";
 import { TelegramSheetFrame } from "./TelegramSheetFrame";
 
-export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onChange, onSubmit, onRetry, onCancel, onBackdropClose, returnFocusRef, telegram }: {
+export function RenameProjectDialog({ name, error, busy, blocked, canRetry, cancelDisabled, onChange, onSubmit, onRetry, onCancel, onBackdropClose, returnFocusRef, telegram }: {
 	readonly name: string;
 	readonly error?: string;
 	readonly busy: boolean;
 	readonly blocked: boolean;
 	readonly canRetry: boolean;
+	readonly cancelDisabled?: boolean;
 	readonly onChange: (value: string) => void;
 	readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	readonly onRetry: () => void;
@@ -60,20 +61,20 @@ export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onCh
 		? styles.telegram
 		: `${safety.card} ${safety.dialog}`;
 	return <TelegramSheetFrame as="dialog" telegram={telegram} busy={busy} onBackdropClose={onBackdropClose} ref={dialog} aria-labelledby={`${id}-heading`} aria-busy={busy} className={`${shell} ${styles.dialog}`} data-testid="rename-project-sheet" tabIndex={-1}
-		onKeyDown={trapTab} onCancel={event => { event.preventDefault(); if (!busy) onCancel(); }}>
+		onKeyDown={trapTab} onCancel={event => { event.preventDefault(); if (!busy && !cancelDisabled) onCancel(); }}>
 		{telegram ? <SheetHeader
 			title="Переименовать проект"
 			titleId={`${id}-heading`}
 			closeLabel="Закрыть переименование"
-			closeDisabled={busy}
+			closeDisabled={busy || cancelDisabled}
 			onClose={onCancel}
 		/> : <h2 id={`${id}-heading`}>Переименовать проект</h2>}
 		<form noValidate onSubmit={onSubmit}>
 			{telegram ? <div className={`${sheetStyles.body} ${styles.fields}`}>{fields}</div> : fields}
 			<div className={telegram ? `${styles.actions} ${safety.actions} ${sheetStyles.footer} ${safety.sheetActions}` : `${styles.actions} ${safety.actions}`}>
-				<button className={safety.primary} disabled={blocked} type="submit">{busy ? "Сохраняем…" : "Сохранить название"}</button>
+				<button className={safety.primary} disabled={blocked} type="submit">{busy ? "Сохраняем…" : telegram ? "Сохранить" : "Сохранить название"}</button>
 				{canRetry ? <button disabled={busy} onClick={onRetry} type="button">Повторить сохранение</button> : null}
-				<button disabled={busy} onClick={onCancel} type="button">Отмена</button>
+				<button disabled={busy || cancelDisabled} onClick={onCancel} type="button">Отмена</button>
 			</div>
 		</form>
 	</TelegramSheetFrame>;

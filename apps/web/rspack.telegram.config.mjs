@@ -2,7 +2,7 @@ import "./scripts/check-runtime.mjs";
 import { returnStudyConfiguration } from "./scripts/telegram-analytics-configuration.mjs";
 import { resolve } from "node:path";
 import { rspack } from "@rspack/core";
-import browserConfiguration from "./rspack.config.mjs";
+import sharedConfiguration from "./rspack.shared.config.mjs";
 import { telegramSdkAssetPatterns } from "./scripts/telegram-sdk-asset.mjs";
 import { LegalDocumentsPlugin } from "./scripts/legal-documents-build.mjs";
 import {
@@ -12,7 +12,7 @@ import {
 } from "./scripts/telegram-release-build.mjs";
 
 export default (environment, arguments_) => {
-	const base = browserConfiguration(environment, arguments_);
+	const base = sharedConfiguration(environment, arguments_);
 	return {
 		...base,
 		entry: { telegram: "./src/telegram-main.tsx" },

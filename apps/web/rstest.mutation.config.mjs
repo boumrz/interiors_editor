@@ -6,7 +6,7 @@ import { withRspackConfig } from "@rstest/adapter-rspack";
 // is compiled rather than accidentally reusing the original module.
 export default defineConfig({
 	extends: withRspackConfig({
-		configPath: "./rspack.config.mjs",
+		configPath: "./rspack.shared.config.mjs",
 		modifyRspackConfig: (config) => ({ ...config, cache: false }),
 		nodeEnv: "test",
 	}),

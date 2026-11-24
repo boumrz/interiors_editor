@@ -17,7 +17,7 @@ import tarfile
 import tempfile
 import time
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 CONTROLS = {
     "/index.html", "/release-manifest.json", "/release-set.json", "/sw.js", "/manifest.webmanifest",
@@ -40,6 +40,23 @@ WITHDRAWN_CATALOG_PATHS = {"/catalog/" + name for name in WITHDRAWN_CATALOG_FILE
 MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES = 4096, 128 * 1024 * 1024, 1024 * 1024 * 1024
 FRONTEND_ROOT = Path("/opt/interiors-editor/frontend")
 FRONTEND_SITE = Path("/etc/nginx/sites-available/interiors-editor.conf")
+WEB_RETIREMENT_LINK = "https://t.me/InteriorsEditorBot?startapp"
+WEB_RETIREMENT_MARKER = b"    # interiors-web-retired-v1 "
+WEB_RETIREMENT_WORKER = b'''self.addEventListener("install", event => event.waitUntil(self.skipWaiting()));
+self.addEventListener("activate", event => event.waitUntil(self.clients.claim()));
+self.addEventListener("fetch", event => {
+  if (event.request.method === "GET" && event.request.mode === "navigate"
+      && new URL(event.request.url).origin === self.location.origin) {
+    event.respondWith(fetch(event.request));
+  }
+});
+'''
+PROJECT_TRANSFER_PATH = "/project-transfer/v1/files"
+PROJECT_TRANSFER_TOKEN_PATTERN = "^" + PROJECT_TRANSFER_PATH + "/[A-Za-z0-9_-]{43}$"
+PROJECT_TRANSFER_LIMIT_ZONES = (
+    b"limit_req_zone $binary_remote_addr zone=interiors_project_transfer_requests:1m rate=6r/m;\n"
+    b"limit_conn_zone $binary_remote_addr zone=interiors_project_transfer_connections:1m;\n"
+)
 
 
 def require(condition, message):
@@ -228,7 +245,45 @@ def aggregate_stats_location(path):
     return lines
 
 
-def nginx_site(root, paths):
+def project_transfer_locations():
+    upload = [
+        f"    location = {PROJECT_TRANSFER_PATH} {{",
+        f'        if ($request_uri != "{PROJECT_TRANSFER_PATH}") {{ return 404; }}',
+        "        if ($request_method != POST) { return 405; }",
+        "        client_max_body_size 199229492;",
+        "        proxy_set_header Content-Type $content_type;",
+        "        proxy_set_header Content-Length $content_length;",
+    ]
+    download = [
+        f'    location ~ "{PROJECT_TRANSFER_TOKEN_PATTERN}" {{',
+        f'        if ($request_uri !~ "{PROJECT_TRANSFER_TOKEN_PATTERN}") {{ return 404; }}',
+        '        if ($request_method !~ "^(GET|HEAD)$") { return 405; }',
+        "        proxy_pass_request_body off;",
+        '        proxy_set_header Content-Length "";',
+    ]
+    relay = [
+        "        access_log off;",
+        "        error_log /dev/null crit;",
+        "        limit_conn interiors_project_transfer_connections 4;",
+        "        limit_conn_status 429;",
+        "        limit_req zone=interiors_project_transfer_requests burst=12 nodelay;",
+        "        limit_req_status 429;",
+        "        proxy_http_version 1.1;",
+        "        proxy_pass_request_headers off;",
+        "        proxy_set_header Host 127.0.0.1;",
+        '        proxy_set_header Connection "";',
+        "        proxy_request_buffering off;",
+        "        proxy_buffering off;",
+        "        proxy_next_upstream off;",
+        "        proxy_hide_header Cache-Control;",
+        "        proxy_hide_header Set-Cookie;",
+        "        proxy_pass http://127.0.0.1:4182;",
+        "    }",
+    ]
+    return upload + relay + download + relay
+
+
+def nginx_site(root, paths, *, project_transfer_relay=False):
     """Preserve the accepted HTTPS, ACME, read-only catalog and exact-path policy."""
     root = str(root)
     require(re.fullmatch(r"/[A-Za-z0-9_./-]+", root), "Unsafe frontend root")
@@ -237,9 +292,11 @@ def nginx_site(root, paths):
         lines.extend(["server {", "    listen 443 ssl;", "    listen [::]:443 ssl;", "    ssl_certificate /etc/letsencrypt/live/interiors-domiknote/fullchain.pem;", "    ssl_certificate_key /etc/letsencrypt/live/interiors-domiknote/privkey.pem;", "    ssl_protocols TLSv1.2 TLSv1.3;", "    server_name " + origin.split("//")[1] + ";", "    access_log off;", "    error_log /dev/null crit;"])
         if target == "telegram":
             # The complete original request target excludes query strings and URI aliases on writes.
+            relay_path = "|" + PROJECT_TRANSFER_PATH if project_transfer_relay else ""
             lines.extend([
                 '    set $frontend_method_path "$request_method:$request_uri";',
-                '    if ($frontend_method_path !~ "^(GET:|HEAD:|POST:/stats/tma-(open|repeat)-v2$)") { return 405; }',
+                '    if ($frontend_method_path !~ "^(GET:|HEAD:|POST:(/stats/tma-(open|repeat)-v2'
+                + relay_path + ')$)") { return 405; }',
             ])
         else:
             lines.append("    if ($request_method !~ ^(GET|HEAD)$) { return 405; }")
@@ -247,6 +304,8 @@ def nginx_site(root, paths):
         if target == "telegram":
             for path in ("/stats/tma-open-v2", "/stats/tma-repeat-v2"):
                 lines.extend(aggregate_stats_location(path))
+            if project_transfer_relay:
+                lines.extend(project_transfer_locations())
         for path in sorted(WITHDRAWN_CATALOG_PATHS):
             lines.append("    location = " + path + " { return 410; }")
         for path in ["/"] + sorted(paths[target] - WITHDRAWN_CATALOG_PATHS):
@@ -260,17 +319,42 @@ def nginx_site(root, paths):
                 lines.append("        add_header Content-Security-Policy \"frame-src 'none'\" always;")
             lines.append("    }")
         lines.extend(["    location / { return 404; }", "}"])
-    return ("\n".join(lines) + "\n").encode()
+    config = ("\n".join(lines) + "\n").encode()
+    return PROJECT_TRANSFER_LIMIT_ZONES + config if project_transfer_relay else config
 
 
-def telegram_nginx_site(root, paths, current):
+def telegram_nginx_site(root, paths, current, *, enable_project_transfer_relay=False):
     """Replace only the final Telegram block of the installed managed site."""
     block = b"\nserver {\n"
     web, separator, telegram = current.rpartition(block)
     require(separator and b"\n    server_name www.domiknote.ru;\n" in web
             and b"\n    server_name domiknote.ru;\n" in telegram, "Unexpected installed frontend site")
-    replacement = nginx_site(root, {"web": set(), "telegram": paths}).rpartition(block)[2]
-    return web + separator + replacement
+    enabled = PROJECT_TRANSFER_LIMIT_ZONES in web
+    replacement = nginx_site(root, {"web": set(), "telegram": paths},
+                             project_transfer_relay=enabled or enable_project_transfer_relay).rpartition(block)[2]
+    prefix = PROJECT_TRANSFER_LIMIT_ZONES if enable_project_transfer_relay and not enabled else b""
+    return prefix + web + separator + replacement
+
+
+def retired_web_host(web):
+    """Keep the HTTPS transport settings while replacing all Web editor routes."""
+    method = b"    if ($request_method !~ ^(GET|HEAD)$) { return 405; }\n"
+    transport, separator, _ = web.partition(method)
+    require(separator, "Unexpected Web method policy")
+    return b"".join((
+        transport, method, WEB_RETIREMENT_MARKER, sha(web).encode(), b"\n",
+        b"    if ($invalid_frontend_path) { return 404; }\n",
+        b"    add_header X-Content-Type-Options nosniff always;\n",
+        b"    add_header Referrer-Policy no-referrer always;\n",
+        b"    add_header Cache-Control no-store always;\n",
+        b"    location = /sw.js {\n",
+        b"        default_type application/javascript;\n",
+        b"        return 200 '", WEB_RETIREMENT_WORKER, b"';\n",
+        b"    }\n",
+        *(f"    location = {path} {{ return 410; }}\n".encode() for path in sorted(WITHDRAWN_CATALOG_PATHS)),
+        b"    location / { return 302 ", WEB_RETIREMENT_LINK.encode(), b"; }\n",
+        b"}\n",
+    ))
 
 
 def atomic_bytes(path, data, mode=0o644):
@@ -362,15 +446,98 @@ def _telegram_previous_release(root, previous, release):
     return str(previous)
 
 
+def _active_paired_inventory(root):
+    pointer = root / "current"
+    require(pointer.is_symlink(), "Expected existing atomic current pointer")
+    relative = pointer.readlink()
+    require(re.fullmatch(r"releases/[a-f0-9]{16}--[a-f0-9]{16}", str(relative)),
+            "Expected an existing paired release")
+    active = root / relative
+    metadata = active / "inventory.json"
+    require((root / "releases").is_dir() and not (root / "releases").is_symlink()
+            and active.is_dir() and not active.is_symlink()
+            and metadata.is_file() and not metadata.is_symlink()
+            and metadata.stat().st_size <= 4 * 1024 * 1024, "Invalid active release inventory")
+    inventory = json.loads(metadata.read_bytes())
+    require(isinstance(inventory, dict) and inventory.get("release") == relative.name
+            and isinstance(inventory.get("targets"), dict)
+            and set(inventory["targets"]) == set(ORIGINS), "Invalid paired release inventory")
+    for target, build in zip(ORIGINS, relative.name.split("--")):
+        rows = file_rows(active / target)
+        require(rows == inventory["targets"][target] and validate_target(active / target, target, rows) == build,
+                "Active files differ from their inventory: " + target)
+    return inventory
+
+
+def _change_web_routes(retired, root, site, dry_run, command, health):
+    inventory = _active_paired_inventory(root)
+    current = site.read_bytes()
+    boundary = b"\nserver {\n"
+    blocks = current.rsplit(boundary, 2)
+    require(len(blocks) == 3 and b"\n    server_name domiknote.ru www.domiknote.ru;\n" in blocks[0]
+            and b"\n    server_name www.domiknote.ru;\n" in blocks[1]
+            and b"\n    server_name domiknote.ru;\n" in blocks[2], "Unexpected installed frontend site")
+    web = blocks[1]
+    backup = root / ".web-before-retirement.conf"
+    marker_count = web.count(WEB_RETIREMENT_MARKER)
+    before = None
+    if marker_count:
+        require(marker_count == 1 and backup.is_file() and not backup.is_symlink()
+                and backup.stat().st_size <= 4 * 1024 * 1024, "Missing or invalid Web rollback configuration")
+        before = backup.read_bytes()
+        require(WEB_RETIREMENT_MARKER not in before and b"\n    server_name www.domiknote.ru;\n" in before
+                and retired_web_host(before) == web, "Web rollback configuration does not match the installed retirement")
+    changed = retired != bool(marker_count)
+    receipt = {"webRetired": retired, "changed": changed, "dryRun": dry_run, "release": inventory["release"]}
+    if dry_run:
+        return receipt
+    if not changed:
+        health(retired, inventory)
+        return receipt
+    if retired:
+        blocks[1] = retired_web_host(web)
+        require(not backup.is_symlink(), "Linked Web rollback configuration")
+        atomic_bytes(backup, web, mode=0o600)
+    else:
+        blocks[1] = before
+    atomic_bytes(site, boundary.join(blocks))
+    try:
+        command(["nginx", "-t"])
+        command(["systemctl", "reload", "nginx"])
+        health(retired, inventory)
+    except BaseException:
+        atomic_bytes(site, current)
+        command(["nginx", "-t"])
+        command(["systemctl", "reload", "nginx"])
+        raise
+    return receipt
+
+
+def set_web_retirement(retired, root=FRONTEND_ROOT, site=FRONTEND_SITE, *,
+                       dry_run=False, command=run_command, health=None):
+    root, site = Path(root).absolute(), Path(site).absolute()
+    require(root.is_dir() and not root.is_symlink(), "Existing frontend root required")
+    require(site.is_file() and not site.is_symlink(), "Expected existing Nginx site file")
+    verify = health or verify_web_retirement
+    if dry_run:
+        return _change_web_routes(retired, root, site, True, command, verify)
+    with (root / ".project-deploy.lock").open("a") as project_lock:
+        fcntl.flock(project_lock, fcntl.LOCK_EX)
+        with (root / ".deploy.lock").open("a") as deploy_lock:
+            fcntl.flock(deploy_lock, fcntl.LOCK_EX)
+            return _change_web_routes(retired, root, site, False, command, verify)
+
+
 def activate_telegram_release(archive, commit, root=FRONTEND_ROOT, site=FRONTEND_SITE, *,
-                              command=run_command, health=None, ready=None):
+                              command=run_command, health=None, ready=None, enable_project_transfer_relay=False):
     require(isinstance(commit, str) and re.fullmatch(r"[a-f0-9]{40}", commit), "Expected full source commit SHA")
     root = Path(root).absolute()
     require(root.is_dir() and not root.is_symlink(), "Existing frontend root required")
     # Keep the same lock order as a complete project deployment.
     with (root / ".project-deploy.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return _activate_release(archive, root, site, command, health, commit, ready, None, telegram_only=True)
+        return _activate_release(archive, root, site, command, health, commit, ready, None,
+                                 telegram_only=True, enable_project_transfer_relay=enable_project_transfer_relay)
 
 
 def activate_release(archive, root, site, command=run_command, health=None, expected_commit=None, ready=None,
@@ -379,13 +546,16 @@ def activate_release(archive, root, site, command=run_command, health=None, expe
 
 
 def _activate_release(archive, root, site, command, health, expected_commit, ready, catalog_receipt,
-                      *, telegram_only=False):
+                      *, telegram_only=False, enable_project_transfer_relay=False):
     root, site = Path(root).absolute(), Path(site).absolute()
     require(root.is_dir() and not root.is_symlink(), "Existing frontend root required")
     require(site.is_file() and not site.is_symlink(), "Expected existing Nginx site file")
     require((root / "current").is_symlink(), "Expected existing atomic current pointer")
     with open(root / ".deploy.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
+        old_config = site.read_bytes()
+        require(telegram_only or WEB_RETIREMENT_MARKER not in old_config,
+                "Web is retired; activate a Telegram-only archive")
         previous = (root / "current").readlink()
         require(not previous.is_absolute() and previous.parts[0] == "releases" and len(previous.parts) == 2 and ".." not in previous.parts, "Unsafe current pointer")
         with tempfile.TemporaryDirectory(prefix=".staging-", dir=root) as work:
@@ -417,9 +587,12 @@ def _activate_release(archive, root, site, command, health, expected_commit, rea
                     existing = pool / path[1:]
                     require(not existing.exists() or (existing.is_file() and not existing.is_symlink() and sha(existing.read_bytes()) == row["sha256"]), "Immutable retained URL collision: " + target + path)
                     paths[target].add(path)
-            old_config = site.read_bytes()
-            new_config = (telegram_nginx_site(root, paths["telegram"], old_config)
-                          if telegram_only else nginx_site(root, paths))
+            relay_was_enabled = PROJECT_TRANSFER_LIMIT_ZONES in old_config
+            if telegram_only:
+                new_config = telegram_nginx_site(root, paths["telegram"], old_config,
+                                                 enable_project_transfer_relay=enable_project_transfer_relay)
+            else:
+                new_config = nginx_site(root, paths, project_transfer_relay=relay_was_enabled)
             release = root / "releases" / inventory["release"]
             public_directory(release.parent)
             require(not release.parent.is_symlink() and not release.is_symlink(), "Linked release storage")
@@ -466,17 +639,26 @@ def _activate_release(archive, root, site, command, health, expected_commit, rea
                 if config_changed:
                     # A shell may already be loaded. Keep its new immutable URLs
                     # alongside the old ones after reverting the active controls.
-                    atomic_bytes(site, new_config if switched else old_config)
+                    restored_config = new_config if switched else old_config
+                    if switched and enable_project_transfer_relay and not relay_was_enabled:
+                        restored_config = telegram_nginx_site(root, paths["telegram"], old_config)
+                    atomic_bytes(site, restored_config)
                     command(["nginx", "-t"])
                     command(["systemctl", "reload", "nginx"])
                 raise
             return receipt
 
 
-def request(origin, path, method="GET", headers=None, timeout=15):
+class _RejectRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+def request(origin, path, method="GET", headers=None, timeout=15, *, follow_redirects=True):
     deadline = time.monotonic() + timeout
+    open_request = urlopen if follow_redirects else build_opener(_RejectRedirect()).open
     try:
-        response = urlopen(Request(origin + path, method=method, headers=headers or {}), timeout=timeout)
+        response = open_request(Request(origin + path, method=method, headers=headers or {}), timeout=timeout)
     except HTTPError as error:
         response = error
     with response:
@@ -594,6 +776,51 @@ def smoke_release(inventory, timeout_seconds=None, expected_catalog_digest=None)
     return {"passed": True, "release": inventory["release"], "checks": checks + 2}
 
 
+def wait_for_retired_web(inventory, timeout_seconds=25):
+    """Wait for the new Nginx workers to replace the old public routes."""
+    origin = ORIGINS["web"]
+    deadline = time.monotonic() + timeout_seconds
+    public_routes = ({"/catalog-api/v1/catalogs/current"}
+                     | {row["path"] for row in inventory["targets"]["web"] if row["path"] != "/sw.js"})
+
+    def probe(path, method="HEAD"):
+        remaining = deadline - time.monotonic()
+        require(remaining > 0, "Web retirement readiness deadline exceeded")
+        return request(origin, path, method, headers={"Cache-Control": "no-cache"},
+                       timeout=min(5, remaining), follow_redirects=False)
+
+    def check_redirect(path, method="HEAD"):
+        status, headers, _ = probe(path, method)
+        require(status == 302 and headers.get("location") == WEB_RETIREMENT_LINK
+                and headers.get("cache-control") == "no-store" and headers.get("referrer-policy") == "no-referrer",
+                f"Web retirement redirect mismatch (HTTP {status}): {path}")
+
+    while True:
+        try:
+            status, headers, worker = probe("/sw.js", "GET")
+            require(status == 200 and valid_mime("/sw.js", headers) and worker == WEB_RETIREMENT_WORKER
+                    and headers.get("cache-control") == "no-store", f"Web retirement worker mismatch (HTTP {status})")
+            check_redirect("/?previous=deployment-check", "GET")
+            for path in sorted(public_routes - WITHDRAWN_CATALOG_PATHS):
+                check_redirect(path)
+            for path in sorted(WITHDRAWN_CATALOG_PATHS):
+                require(probe(path)[0] == 410, "Withdrawn Web resource is no longer blocked: " + path)
+            require(probe("/", "POST")[0] == 405, "Unexpected Web write route")
+            return
+        except (ValueError, OSError) as error:
+            remaining = deadline - time.monotonic()
+            require(remaining > 0, "Web retirement readiness deadline exceeded: " + str(error))
+            time.sleep(min(0.25, remaining))
+
+
+def verify_web_retirement(retired, inventory):
+    if not retired:
+        smoke_release(inventory)
+        return
+    wait_for_retired_web(inventory)
+    smoke_release({**inventory, "targets": {"telegram": inventory["targets"]["telegram"]}})
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -608,11 +835,27 @@ def main():
         activate.add_argument("--commit", required=True)
         activate.add_argument("--root", default=FRONTEND_ROOT, type=Path)
         activate.add_argument("--site", default=FRONTEND_SITE, type=Path)
+        if name == "activate-telegram":
+            activate.add_argument("--enable-project-transfer-relay", action="store_true")
+    for name in ("retire-web", "restore-web"):
+        route_change = commands.add_parser(name)
+        route_change.add_argument("--root", default=FRONTEND_ROOT, type=Path)
+        route_change.add_argument("--site", default=FRONTEND_SITE, type=Path)
+        route_change.add_argument("--dry-run", action="store_true")
     for name in ("smoke", "smoke-telegram"):
         smoke = commands.add_parser(name)
         smoke.add_argument("--archive", required=True)
         smoke.add_argument("--receipt", type=Path, required=name == "smoke-telegram")
     arguments = parser.parse_args()
+    if arguments.command in ("activate", "activate-telegram") or (
+            arguments.command in ("retire-web", "restore-web") and not arguments.dry_run):
+        require(os.geteuid() == 0, "Activation requires the pre-provisioned privileged deployment service")
+
+        def interrupted(signum, _frame):
+            raise InterruptedError("Deployment interrupted by signal " + str(signum))
+
+        signal.signal(signal.SIGTERM, interrupted)
+        signal.signal(signal.SIGINT, interrupted)
     if arguments.command == "package":
         result = package_release(arguments.web, arguments.telegram, arguments.output, arguments.commit)
         print(json.dumps({"packaged": True, "commit": result["commit"], "release": result["release"]}))
@@ -620,17 +863,17 @@ def main():
         result = package_telegram_release(arguments.telegram, arguments.output, arguments.commit)
         print(json.dumps({"packaged": True, "target": "telegram", "commit": result["commit"], "release": result["release"]}))
     elif arguments.command in ("activate", "activate-telegram"):
-        require(os.geteuid() == 0, "Activation requires the pre-provisioned privileged deployment service")
         require(re.fullmatch(r"[a-f0-9]{40}", arguments.commit), "Expected full source commit SHA")
-        def interrupted(signum, _frame):
-            raise InterruptedError("Deployment interrupted by signal " + str(signum))
-        signal.signal(signal.SIGTERM, interrupted)
-        signal.signal(signal.SIGINT, interrupted)
         if arguments.command == "activate-telegram":
-            receipt = activate_telegram_release(arguments.archive, arguments.commit, arguments.root, arguments.site)
+            receipt = activate_telegram_release(arguments.archive, arguments.commit, arguments.root, arguments.site,
+                                                enable_project_transfer_relay=arguments.enable_project_transfer_relay)
         else:
             receipt = activate_release(arguments.archive, arguments.root, arguments.site, expected_commit=arguments.commit)
         print(json.dumps(receipt))
+    elif arguments.command in ("retire-web", "restore-web"):
+        result = set_web_retirement(arguments.command == "retire-web", arguments.root, arguments.site,
+                                    dry_run=arguments.dry_run)
+        print(json.dumps(result))
     elif arguments.command == "smoke-telegram":
         with tempfile.TemporaryDirectory(prefix="interiors-telegram-smoke-") as temporary:
             inventory = extract_telegram_release(arguments.archive, Path(temporary) / "release")

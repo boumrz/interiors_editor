@@ -5,3 +5,8 @@
 .panel .handoff { background:var(--editor-host-primary-fill, var(--blue)); border-color:var(--blue); color:#fff; }
 .panel button:disabled { cursor: wait; opacity: .6; }
 .panel button:focus-visible { outline:3px solid var(--editor-host-primary, var(--blue)); outline-offset: 3px; }
+.panel.passwordDialog { padding: 16px; }
+.passwordForm, .passwordForm label { display: grid; gap: 8px; }
+.passwordForm { gap: 12px; }
+.passwordForm input { background: var(--canvas, var(--surface)); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; font-size: max(16px, 1rem); min-height: 44px; min-width: 0; padding: 8px 12px; }
+.passwordForm input:focus-visible { outline: 3px solid var(--editor-host-primary, var(--blue)); outline-offset: 1px; }

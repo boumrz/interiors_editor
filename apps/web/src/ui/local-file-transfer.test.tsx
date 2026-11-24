@@ -1,6 +1,6 @@
-import { describe, expect, it } from "@rstest/core";
+import { describe, expect, it, rstest } from "@rstest/core";
 import { renderToStaticMarkup } from "react-dom/server";
-import { createHostFileBridge } from "../adapters/telegram/host-file-bridge";
+import { createHostFileBridge, createTelegramHostFileBridge } from "../adapters/telegram/host-file-bridge";
 import {
 	LocalFileTransferSession,
 	LocalFileTransferPanel,
@@ -13,6 +13,28 @@ const archive = () => ({
 });
 
 describe("explicit local file handoff", () => {
+	it("requires an explicit password before uploading a private Android copy", async () => {
+		const stage = rstest.fn(async () => "/download-capability");
+		const download = rstest.fn(async () => "requested" as const);
+		const session = new LocalFileTransferSession({
+			...createHostFileBridge({ maximumBytes: 20, system: {} }),
+			encryptedDownload: { available: () => true, stage, download },
+		}, () => undefined);
+		await session.prepare(async () => archive());
+		const markup = renderToStaticMarkup(<LocalFileTransferPanel session={session} state={session.snapshot()} telegram />);
+		expect(markup).toContain("Пароль для копии");
+		expect(markup).toContain("15 минут");
+		expect(stage).not.toHaveBeenCalled();
+		await session.stageEncrypted("short");
+		expect(stage).not.toHaveBeenCalled();
+		await session.stageEncrypted("надёжный пароль");
+		expect(stage).toHaveBeenCalledTimes(1);
+		expect(download).not.toHaveBeenCalled();
+		expect(session.snapshot().kind).toBe("encrypted-ready");
+		await session.downloadEncrypted();
+		expect(download).toHaveBeenCalledWith("/download-capability", expect.any(AbortSignal));
+	});
+
 	it("shows preparation and active handoff separately, blocks duplicate actions, and notifies its view", async () => {
 		let release: (() => void) | undefined;
 		const changes: string[] = [];
@@ -192,8 +214,8 @@ describe("explicit local file handoff", () => {
 			<LocalFileTransferPanel session={session} state={session.snapshot()} />,
 		);
 		expect(markup).toContain("Проверьте файл вне приложения");
-		expect(markup).toContain("Повторить передачу");
-		await session.handoff();
+		expect(markup).toContain(">Повторить</button>");
+		await session.retry();
 		expect(shares).toBe(2);
 	});
 	it("discards late preparation and system outcomes after cancellation or replacement", async () => {
@@ -274,7 +296,7 @@ describe("explicit local file handoff", () => {
 						? "Не удалось передать файл"
 						: "Передача отменена",
 			);
-			expect(markup).toContain("Повторить передачу");
+			expect(markup).toContain(">Повторить</button>");
 			expect(markup).toContain("Закрыть");
 		}
 		let shares = 0;
@@ -344,6 +366,82 @@ describe("explicit local file handoff", () => {
 	});
 });
 
+
+it("explains an incomplete local save without attributing it to the user", async () => {
+	rstest.stubGlobal("showSaveFilePicker", async () => {
+		throw new DOMException("The user aborted a request", "AbortError");
+	});
+	try {
+		const session = new LocalFileTransferSession(
+			createTelegramHostFileBridge({ maximumBytes: 20 }),
+			() => undefined,
+		);
+		await session.prepare(async () => archive());
+		await session.handoff();
+		const markup = renderToStaticMarkup(
+			<LocalFileTransferPanel session={session} state={session.snapshot()} telegram />,
+		);
+		expect(markup).toContain("Система не завершила сохранение файла");
+		expect(markup).toContain("сохранение может быть недоступно");
+		expect(markup).toContain(">Повторить</button>");
+	} finally {
+		rstest.unstubAllGlobals();
+	}
+});
+
+it("offers retry after a preparation failure and keeps the next transfer user-initiated", async () => {
+	let attempts = 0;
+	let shares = 0;
+	const session = new LocalFileTransferSession(
+		createHostFileBridge({ maximumBytes: 20, system: {
+			canShare: () => true,
+			share: async () => { shares++; },
+		} }),
+		() => undefined,
+	);
+	await session.prepare(async () => ++attempts === 1 ? undefined : archive());
+	const markup = renderToStaticMarkup(
+		<LocalFileTransferPanel session={session} state={session.snapshot()} telegram />,
+	);
+	expect(markup).toContain("Не удалось подготовить файл");
+	expect(markup).toContain(">Повторить</button>");
+	await session.retry();
+	expect(session.snapshot().kind).toBe("prepared");
+	expect(shares).toBe(0);
+	await session.handoff();
+	expect(shares).toBe(1);
+	session.close();
+	await session.retry();
+	expect(attempts).toBe(2);
+	expect(shares).toBe(1);
+});
+
+it("retries a transfer failure with the same file without recreating the archive", async () => {
+	const bytes = archive();
+	const attempted: File[] = [];
+	let preparations = 0;
+	const session = new LocalFileTransferSession(
+		createHostFileBridge({ maximumBytes: 20, system: {
+			canShare: () => true,
+			share: async ({ files }) => {
+				attempted.push(...(files ?? []));
+				if (attempted.length === 1) throw new Error("Share failed");
+			},
+		} }),
+		() => undefined,
+	);
+	await session.prepare(async () => {
+		preparations++;
+		return bytes;
+	});
+	await session.handoff();
+	expect(session.snapshot().kind).toBe("failed");
+	await session.retry();
+	expect(session.snapshot().kind).toBe("handoff-attempted");
+	expect(preparations).toBe(1);
+	expect(attempted).toHaveLength(2);
+	expect(attempted[1]).toBe(attempted[0]);
+});
 
 it("labels stored source as unverified data and never as a complete project backup or unsaved draft",async()=>{
  const session=new LocalFileTransferSession(createHostFileBridge({maximumBytes:20,system:{}}),()=>undefined);

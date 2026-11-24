@@ -1,4 +1,4 @@
-import baseConfig from './rspack.config.mjs';
+import baseConfig from './rspack.shared.config.mjs';
 import { rspack } from '@rspack/core';
 import { resolve } from 'node:path';
 export default (environment, arguments_) => {

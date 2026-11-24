@@ -1,4 +1,4 @@
-import webConfig from "./rspack.config.mjs";
+import webConfig from "./rspack.shared.config.mjs";
 import { rspack } from "@rspack/core";
 import { resolve } from "node:path";
 import { readFileSync } from "node:fs";

@@ -13,15 +13,16 @@
     "types": ["@rstest/core"]
   },
   "include": [
-    "src/main.tsx",
+    "src/telegram-main.tsx",
     "src/app",
     "src/application",
     "src/domain",
     "src/adapters",
     "src/ui",
     "tests/browser",
-    "rspack.config.mjs",
+    "rspack.shared.config.mjs",
+    "rspack.telegram.config.mjs",
     "rstest.config.mjs",
-    "playwright.config.mjs"
+    "playwright.telegram-entry.config.mjs"
   ]
 }

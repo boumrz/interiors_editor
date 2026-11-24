@@ -94,10 +94,206 @@ function fixture(overrides: Partial<SharedProjectControllerDependencies> = {}) {
 	return {
 		bytes,
 		dependencies,
+		durable,
 		repository,
+		store,
 		runtime: createSharedProjectController(dependencies),
 	};
 }
+
+describe("rename a project from the directory", () => {
+	it("publishes exactly the selected card without entering the editor or changing geometry and other cards", async () => {
+		const { runtime, repository } = fixture();
+		const { controller } = runtime;
+		const selected = await controller.create("Первая комната");
+		if (selected.kind !== "durable") throw new Error("Selected project required");
+		await controller.configureRectangularRoom({ widthMm: "4000", depthMm: "3000", heightMm: "2600" });
+		const base = await repository.loadProject(selected.projectId);
+		if (base.kind !== "durable") throw new Error("Base revision required");
+		const other = await controller.create("Вторая комната");
+		if (other.kind !== "durable") throw new Error("Second project required");
+		await controller.showProjects();
+		const screens: string[] = [];
+		controller.subscribe(state => screens.push(state.kind));
+
+		const result = await controller.renameProjectFromDirectory(selected.projectId, base.candidate.revision.revisionId, "  Гостиная  ");
+		expect(result).toMatchObject({ kind: "durable", projectId: selected.projectId });
+		if (result.kind !== "durable") throw new Error("Published revision required");
+		expect(result.revisionId).not.toBe(base.candidate.revision.revisionId);
+		expect(screens).toEqual(["projects"]);
+		expect(controller.currentRevisionIdentity()).toBeUndefined();
+		expect(controller.sessionHistory()).toEqual({ canUndo: false, canRedo: false });
+		expect(controller.snapshot()).toMatchObject({
+			kind: "projects",
+			projects: expect.arrayContaining([
+				expect.objectContaining({ projectId: selected.projectId, name: "Гостиная", revisionId: result.revisionId }),
+				expect.objectContaining({ projectId: other.projectId, name: "Вторая комната", revisionId: other.revisionId }),
+			]),
+		});
+		const after = await repository.loadProject(selected.projectId);
+		expect(after).toMatchObject({ kind: "durable", candidate: { project: { ...base.candidate.project, name: "Гостиная" } } });
+	});
+
+	it("validates the card revision and keeps it read-only when another writer owns it", async () => {
+		const { runtime, durable, store, repository } = fixture();
+		const { controller } = runtime;
+		const selected = await controller.create("Сохранённый проект");
+		if (selected.kind !== "durable") throw new Error("Selected project required");
+		await controller.showProjects();
+		const hub = controller.snapshot();
+		expect(await controller.renameProjectFromDirectory(selected.projectId, "obsolete", "New name")).toMatchObject({ kind: "stale-base" });
+		expect(await controller.renameProjectFromDirectory(selected.projectId, selected.revisionId, "  ")).toMatchObject({ kind: "rejected", reasonCode: "PROJECT_NAME_REQUIRED" });
+		const contender = new FencedProjectRepository(durable, store, "another-owner");
+		await contender.takeOverWriterLease(selected.projectId);
+		expect(await controller.renameProjectFromDirectory(selected.projectId, selected.revisionId, "New name")).toEqual({ kind: "read-only" });
+		expect(controller.snapshot()).toBe(hub);
+		expect(await repository.loadProject(selected.projectId)).toMatchObject({ kind: "durable", candidate: { revision: { revisionId: selected.revisionId } } });
+	});
+
+	it("allows opening a card for repair when pinned models prevent its rename", async () => {
+		for (const damage of ["missing custom model", "corrupt catalog model"] as const) {
+			const { bytes, repository, runtime } = fixture();
+			const source = await sourceWithResource();
+			const project = damage === "missing custom model" ? source.project : {
+				...source.project,
+				assetDefinitionRefs: [{
+					...source.asset,
+					catalogAssetId: "test-catalog-model",
+					catalogEnvelopeHash: "a".repeat(64),
+					catalogVersion: "test-catalog-v1",
+					source: "CatalogVersion" as const,
+				}],
+			};
+			const serializedProject = canonicalProjectSerializer.serialize(project);
+			const revision = {
+				projectId: project.projectId,
+				revisionId: "saved-with-model",
+				createdAt: instant,
+				schemaVersion: 1 as const,
+				serializedProject,
+				checksum: await checksum.sha256(serializedProject),
+			};
+			bytes.set(source.hash, source.bytes);
+			expect(await repository.publish({ project, revision })).toEqual({ kind: "durable" });
+			if (damage === "missing custom model") bytes.delete(source.hash);
+			else bytes.set(source.hash, new Uint8Array(source.bytes.byteLength).fill(9));
+
+			const { controller } = runtime;
+			await controller.showProjects();
+			const hub = controller.snapshot();
+			expect(await controller.renameProjectFromDirectory(project.projectId, revision.revisionId, "New title")).toEqual({
+				kind: "resources-unavailable",
+			});
+			expect(controller.snapshot()).toBe(hub);
+			expect(await controller.retryDirectoryProjectRename()).toEqual({ kind: "not-ready" });
+			expect(await repository.loadProject(project.projectId)).toMatchObject({ kind: "durable", candidate: { project, revision } });
+			await controller.openProject(project.projectId);
+			expect(controller.snapshot().kind).toBe("recovery-needed");
+		}
+	});
+
+	it("retains the exact candidate on failed publication and retries it in the directory", async () => {
+		const { runtime, repository } = fixture();
+		const { controller } = runtime;
+		const selected = await controller.create("Первоначальное имя");
+		if (selected.kind !== "durable") throw new Error("Selected project required");
+		await controller.showProjects();
+		const hub = controller.snapshot();
+		const publish = repository.publishNextRevision.bind(repository);
+		const attempted: string[] = [];
+		repository.publishNextRevision = async (candidate, base) => {
+			expect(base).toBe(selected.revisionId);
+			attempted.push(candidate.revision.revisionId);
+			return attempted.length === 1
+				? { kind: "persist-failed", reasonCode: "PERSISTENCE_WRITE_FAILED" }
+				: publish(candidate, base);
+		};
+		expect(await controller.renameProjectFromDirectory(selected.projectId, selected.revisionId, "Гостиная")).toEqual({
+			kind: "persist-failed", reasonCode: "PERSISTENCE_WRITE_FAILED", retryAvailable: true,
+		});
+		expect(controller.snapshot()).toBe(hub);
+		expect(await controller.renameProjectFromDirectory(selected.projectId, selected.revisionId, "Другой кандидат")).toEqual({ kind: "in-progress" });
+		await controller.openProject(selected.projectId);
+		expect(controller.snapshot()).toBe(hub);
+		expect(await controller.retryDirectoryProjectRename()).toMatchObject({ kind: "durable", projectId: selected.projectId });
+		expect(attempted).toEqual([attempted[0], attempted[0]]);
+		expect(controller.snapshot()).toMatchObject({ kind: "projects", projects: [expect.objectContaining({ name: "Гостиная" })] });
+	});
+
+	it("keeps the directory visible and blocks concurrent commands while the rename is publishing", async () => {
+		const { runtime, repository } = fixture();
+		const { controller } = runtime;
+		const selected = await controller.create("Сохранённый проект");
+		if (selected.kind !== "durable") throw new Error("Selected project required");
+		await controller.showProjects();
+		const hub = controller.snapshot();
+		let markStarted!: () => void;
+		let releaseWrite!: () => void;
+		const started = new Promise<void>((resolve) => { markStarted = resolve; });
+		const release = new Promise<void>((resolve) => { releaseWrite = resolve; });
+		const publish = repository.publishNextRevision.bind(repository);
+		repository.publishNextRevision = async (candidate, base) => {
+			markStarted();
+			await release;
+			return publish(candidate, base);
+		};
+
+		const rename = controller.renameProjectFromDirectory(selected.projectId, selected.revisionId, "Кухня");
+		await started;
+		try {
+			expect(controller.hasPendingPublication()).toBe(true);
+			expect(await controller.retryDirectoryProjectRename()).toEqual({ kind: "in-progress" });
+			await controller.openProject(selected.projectId);
+			controller.startNewProject();
+			await controller.showProjects();
+			expect(controller.snapshot()).toBe(hub);
+		} finally {
+			releaseWrite();
+		}
+		expect(await rename).toMatchObject({ kind: "durable", projectId: selected.projectId });
+		expect(controller.hasPendingPublication()).toBe(false);
+	});
+
+	it("refreshes a stale card from storage without overwriting the newer project", async () => {
+		const { runtime, dependencies, repository } = fixture();
+		const { controller } = runtime;
+		const selected = await controller.create("Название из списка");
+		if (selected.kind !== "durable") throw new Error("Selected project required");
+		await controller.showProjects();
+		const writer = createSharedProjectController(dependencies).controller;
+		await writer.openProject(selected.projectId);
+		const external = await writer.renameProject("Актуальное название");
+		if (external.kind !== "durable") throw new Error("Newer project required");
+
+		expect(await controller.renameProjectFromDirectory(selected.projectId, selected.revisionId, "Устаревшая правка")).toEqual({
+			kind: "stale-base", reasonCode: "STALE_BASE_REVISION",
+		});
+		expect(controller.snapshot()).toMatchObject({
+			kind: "projects",
+			projects: [expect.objectContaining({ name: "Актуальное название", revisionId: external.revisionId })],
+		});
+		expect(await repository.loadProject(selected.projectId)).toMatchObject({
+			kind: "durable", candidate: { revision: { revisionId: external.revisionId } },
+		});
+	});
+
+	it("accepts the exact durable result after a failed write acknowledgement", async () => {
+		const { runtime, repository } = fixture();
+		const { controller } = runtime;
+		const selected = await controller.create("До переименования");
+		if (selected.kind !== "durable") throw new Error("Selected project required");
+		await controller.showProjects();
+		const publish = repository.publishNextRevision.bind(repository);
+		repository.publishNextRevision = async (candidate, base) => {
+			expect(await publish(candidate, base)).toEqual({ kind: "durable" });
+			return { kind: "persist-failed", reasonCode: "PERSISTENCE_WRITE_FAILED" };
+		};
+		const result = await controller.renameProjectFromDirectory(selected.projectId, selected.revisionId, "После переименования");
+		expect(result).toMatchObject({ kind: "durable", projectId: selected.projectId });
+		expect(await controller.retryDirectoryProjectRename()).toEqual({ kind: "not-ready" });
+		expect(controller.snapshot()).toMatchObject({ kind: "projects", projects: [expect.objectContaining({ name: "После переименования" })] });
+	});
+});
 
 function staticGlb(): Uint8Array {
 	const json = new TextEncoder().encode('{"asset":{"version":"2.0"}} ');

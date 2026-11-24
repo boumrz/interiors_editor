@@ -95,7 +95,6 @@ test("public deployment configuration is exact, copied, and permits no tokens or
 		{ ...configuration, botId: "9007199254740992" },
 		{ ...configuration, environment: "staging" },
 		{ ...configuration, token: "never-allowed" },
-		{ ...configuration, webURL: "" },
 		{ ...configuration, telegramURL: "" },
 		{ ...configuration, telegramURL: "javascript:alert(1)" },
 		{ ...configuration, webURL: "https://user:password@example.invalid" },
@@ -112,6 +111,15 @@ test("public deployment configuration is exact, copied, and permits no tokens or
 			webURL: "",
 		}).kind,
 	).toBe("unavailable");
+});
+
+test("launches without a standalone web editor URL", () => {
+	const { webURL: _webURL, ...telegramOnly } = configuration;
+	expect(parseTelegramDeploymentConfiguration(telegramOnly)).toEqual({
+		kind: "configured",
+		configuration: telegramOnly,
+	});
+	expect(parseTelegramDeploymentConfiguration({ ...telegramOnly, webURL: "" }).kind).toBe("configured");
 });
 test("constructing the entry is inert and missing public configuration never loads SDK or creates runtime", async () => {
 	const f = fixture({ configuration: {} });

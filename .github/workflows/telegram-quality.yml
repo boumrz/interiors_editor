@@ -1,4 +1,4 @@
-name: Verify additive Telegram target
+name: Verify Telegram Mini App
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   telegram:
-    name: Separate release, signed entry and local storage
+    name: Signed Telegram entry, editor and local storage
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -44,12 +44,6 @@ jobs:
         run: pnpm exec node --test scripts/telegram-release-build.test.mjs scripts/telegram-release-build.boundaries.test.mjs scripts/telegram-target-independence.test.mjs scripts/telegram-preview-server.test.mjs scripts/telegram-readonly-fixture-server.test.mjs scripts/telegram-readonly-proof-audit.test.mjs scripts/telegram-readonly-native-terminal-policy.test.mjs scripts/telegram-readonly-fixture-lifecycle.test.mjs tests/verification/telegram-readonly-subject-loader.test.mjs
       - name: Verify native IndexedDB and Web Locks protocol
         run: pnpm exec node scripts/run-telegram-storage-mutation.mjs
-      - name: Verify isolated browser storage admission and revocation
-        run: pnpm exec node scripts/run-browser-registered-storage.mjs
-      - name: Verify qualified browser projects and exact portable resources
-        run: pnpm exec node scripts/run-browser-registered-project.mjs
-      - name: Verify existing-only browser project export and exact source recovery
-        run: pnpm exec node scripts/run-browser-readonly-project.mjs
       - name: Verify existing-only Telegram snapshot reads without provisioning
         run: pnpm exec node scripts/run-telegram-readonly-source.mjs
       - name: Verify the actual signed production target and retained releases
@@ -63,8 +57,6 @@ jobs:
           name: telegram-local-verification
           path: |
             ${{ runner.temp }}/interiors-tma-*
-            ${{ runner.temp }}/interiors-browser-registered-*
-            ${{ runner.temp }}/interiors-browser-readonly-*
             ${{ github.workspace }}/apps/web/reports/readonly-source/native
           if-no-files-found: ignore
           retention-days: 7

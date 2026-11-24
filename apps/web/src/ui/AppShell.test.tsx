@@ -263,6 +263,32 @@ describe("AppShell rectangular plan measurements", () => {
 });
 
 describe("AppShell project transfer surface", () => {
+	it("lets the Telegram system picker choose a backup with an unrecognized file type", () => {
+		const controller = {
+			open: async () => undefined,
+			persistenceRetryPolicy: () => "allowed" as const,
+			sessionHistory: () => ({ canRedo: false, canUndo: false }),
+			snapshot: () => ({ kind: "projects" as const, projects: [] }),
+			subscribe: () => () => undefined,
+			writerAccess: () => ({ kind: "not-ready" as const }),
+		} as unknown as ProjectController;
+		const telegram = renderToStaticMarkup(<AppShell
+			controller={controller}
+			registeredTransferImport
+			hostNavigation={{ close: () => undefined, subscribeBack: () => () => undefined, setBackVisible: () => undefined }}
+		/>);
+		const shared = renderToStaticMarkup(<AppShell controller={controller} registeredTransferImport />);
+		for (const [label, accept] of [
+			["Импортировать проект", "application/json,.json,application/zip,.interiors"],
+			["Импорт файла для переноса", "application/zip,.interiors"],
+		]) {
+			const input = new RegExp(`<input\\b[^>]*aria-label="${label}"[^>]*>`);
+			expect(telegram.match(input)?.[0]).toContain('type="file"');
+			expect(telegram.match(input)?.[0]).not.toContain('accept=');
+			expect(shared.match(input)?.[0]).toContain(`accept="${accept}"`);
+		}
+	});
+
 	it("offers the explicitly selected registered transfer ingress alongside the existing browser import only when enabled", () => {
 		const controller = {
 			open: async () => undefined,

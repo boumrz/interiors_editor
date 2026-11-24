@@ -16,11 +16,11 @@
     "test:coverage": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web test:coverage",
     "test:e2e": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web test:e2e",
     "test:mutation": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web test:mutation",
-    "verify": "pnpm run verify:web && pnpm run test:backend && pnpm run test:mutation",
+    "verify": "pnpm run verify:telegram && pnpm run test:backend && pnpm run test:mutation",
     "check:architecture": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web check:architecture",
     "test:delivery": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web test:delivery",
     "test:backend": "cd apps/catalog-control-plane && ./gradlew --no-daemon --dependency-verification=strict test --rerun-tasks",
-    "verify:web": "pnpm run check:architecture && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:delivery && pnpm run test:e2e",
+    "verify:telegram": "pnpm run check:architecture && pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:delivery && pnpm run test:e2e",
     "test:mutation:hardening": "npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm --filter @interiors/web test:mutation:hardening"
   }
 }

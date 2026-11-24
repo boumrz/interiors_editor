@@ -31,10 +31,11 @@ jobs:
           package-manager-cache: false
       - run: node --test scripts/check-repository.test.mjs
       - run: node scripts/check-repository.mjs
-      - name: Verify archive validation and the restricted receiver
+      - name: Verify archive validation, the restricted receiver and the encrypted backup relay
         run: >-
           python3 -m unittest -v
           scripts.deploy.test_frontend scripts.deploy.test_receiver scripts.deploy.test_configure_github
+          scripts.deploy.test_project_backup_relay
       - name: Install the pinned package manager
         run: npm install --global pnpm@11.20.0
       - name: Install locked dependencies
@@ -65,7 +66,7 @@ jobs:
         run: pnpm exec node scripts/run-telegram-entry.mjs --grep 'TMA-(ENTRY-[0-9]{2}|ITEM-FLUSH-01|CAMERA-FRAMING|OPENINGS|DOOR-HINGE):'
       - name: Verify the scoped Telegram editor and exact project transfer
         working-directory: apps/web
-        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-(EXACT-YAW|EXACT-TRANSFER|UI-PLAN-RING|ROTATION-EXPLICIT|WALL-CONTINUITY|WALL-CONSEQUENCES|DOOR-HINGE-TRANSFER):'
+        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-(EXACT-YAW|EXACT-TRANSFER|UI-PLAN-RING|ROTATION-EXPLICIT|WALL-CONTINUITY|WALL-CONSEQUENCES|DOOR-HINGE-TRANSFER|UI-RESOURCE-03):'
       - name: Verify door storage upgrade and rollback compatibility
         working-directory: apps/web
         run: pnpm exec node scripts/run-telegram-storage-mutation.mjs --grep 'TMA-DOOR-HINGE-STORAGE:'
@@ -75,7 +76,6 @@ jobs:
           INTERIORS_TELEGRAM_BOT_ID: '9112733311'
           INTERIORS_TELEGRAM_ENVIRONMENT: production
           INTERIORS_TELEGRAM_LINK: https://t.me/InteriorsEditorBot?startapp
-          INTERIORS_WEB_URL: https://www.domiknote.ru/
           INTERIORS_EXACT_FLOOR_YAW: '1'
           INTERIORS_DOOR_HINGE_AUTHORING: '1'
           INTERIORS_TELEGRAM_OUTPUT: ${{ runner.temp }}/interiors-release/dist-telegram

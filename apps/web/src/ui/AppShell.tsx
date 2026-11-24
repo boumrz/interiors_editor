@@ -24,6 +24,7 @@ import {
 	type CatalogGatewayPort,
 	type ProjectSourceRecoveryPort,
 	type ProjectStorageNamespace,
+	type ProjectSummary,
 	type VersionedCatalogPublication,
 	WRITER_LEASE_HEARTBEAT_MS,
 } from "../application/ports";
@@ -82,7 +83,8 @@ import { projectDirectoryEmptyLabel, projectDirectoryCards, ProjectStorageStatus
 import { readBoundedLocalGlbFiles } from "./bounded-local-glb-files";
 import { StoredSourceRecovery, prepareUnverifiedSourceFile } from "./stored-source-recovery";
 import { loadLocalGlbResource } from "./local-glb-resource";
-import { LocalFileTransferPanel, LocalFileTransferSession, type LocalFileTransferPort, type LocalFileTransferState } from "./local-file-transfer";
+import { EncryptedImportPasswordDialog, LocalFileTransferPanel, LocalFileTransferSession, type LocalFileTransferPort, type LocalFileTransferState } from "./local-file-transfer";
+import { decryptProjectTransfer, isEncryptedProjectTransfer, MAX_ENCRYPTED_PROJECT_TRANSFER_BYTES } from "../adapters/telegram/encrypted-project-transfer";
 import {
 	previewRoomHeightOpeningConflict,
 	type RoomHeightOpeningResolution,
@@ -357,6 +359,8 @@ type ProjectTransferImportUiState =
 			readonly kind: "staging-resources";
 			readonly total: number;
 	  };
+
+type ProjectTransferDestination = "import" | "registered-import" | "repair";
 
 type CustomGlbImportUiState =
 	| { readonly kind: "idle" }
@@ -1640,7 +1644,6 @@ export function AppShell({
 	const [localFileState, setLocalFileState] = useState<LocalFileTransferState>({ kind: "idle" });
 	const localFileSession = useMemo(() => fileTransfer ? new LocalFileTransferSession(fileTransfer, setLocalFileState) : undefined, [fileTransfer]);
 	useEffect(() => () => localFileSession?.close(), [localFileSession]);
-	const localFilePanel = localFileSession ? <LocalFileTransferPanel session={localFileSession} state={localFileState} telegram={hostNavigation !== undefined} /> : null;
 	const sourceRecoveryPanel = sourceRecovery && localFileSession && (state.kind === "recovery-needed" || (state.kind === "projects" && state.recoveryNeeded)) ? <StoredSourceRecovery port={sourceRecovery} onExport={async (source) => {
 		await localFileSession.prepare(async (signal) => {
 			if (signal.aborted) return undefined;
@@ -1704,6 +1707,11 @@ export function AppShell({
 	>();
 	const [projectTransferImport, setProjectTransferImport] =
 		useState<ProjectTransferImportUiState>({ kind: "idle" });
+	const [encryptedProjectTransfer, setEncryptedProjectTransfer] = useState<{
+		readonly file: File;
+		readonly destination: ProjectTransferDestination;
+		readonly error?: string;
+	}>();
 	const [customGlbRepairError, setCustomGlbRepairError] = useState<
 		string | undefined
 	>();
@@ -1725,6 +1733,9 @@ export function AppShell({
 	const [renameTargetProjectId, setRenameTargetProjectId] = useState<
 		string | undefined
 	>(requestedRenameProjectId);
+	const [directoryRenameTarget, setDirectoryRenameTarget] = useState<ProjectSummary>();
+	const [directoryRenameWrite, setDirectoryRenameWrite] = useState<"idle" | "saving" | "retained">("idle");
+	const directoryRenameInFlight = useRef(false);
 	const [dimensionNotice, setDimensionNotice] = useState<{
 		readonly kind: "notice" | "item-collision";
 		readonly message: string;
@@ -2170,6 +2181,7 @@ export function AppShell({
 	const projectTransferAbortRef = useRef<AbortController | undefined>(
 		undefined,
 	);
+	useEffect(() => () => projectTransferAbortRef.current?.abort(), []);
 	const projectsHeadingRef = useRef<HTMLHeadingElement>(null);
 	const editorHeaderMenuRef = useRef<HTMLButtonElement>(null);
 	const sceneColorTriggerRef = useRef<HTMLButtonElement>(null);
@@ -2192,6 +2204,7 @@ export function AppShell({
 	const editorTopBarRef = useRef<HTMLElement>(null);
 	const historyDiscardTriggerRef = useRef<HTMLButtonElement>(null);
 	const renameProjectTriggerRef = useRef<HTMLButtonElement>(null);
+	const directoryRenameTriggerRef = useRef<HTMLElement>(null);
 	const wallAddHostConflictPanelRef = useRef<HTMLElement>(null);
 	const wallDeletionConflictPanelRef = useRef<HTMLElement>(null);
 	const vertexDeletionPanelRef = useRef<HTMLElement>(null);
@@ -3030,7 +3043,7 @@ export function AppShell({
 		wallDeletionConflict !== undefined ||
 		vertexDeletionCandidate !== undefined ||
 		roomHeightOpeningConflict !== undefined;
-	const hasRawRenameDraft = isRenameProjectOpen && renameProjectName !== project?.name;
+	const hasRawRenameDraft = isRenameProjectOpen && renameProjectName !== (directoryRenameTarget?.name ?? project?.name);
 	const hasRawSelectedItemDraft = !!selectedItem && !!selectedItemFields && (
 		selectedItemFields.widthMm !== String(selectedItem.widthMm) || selectedItemFields.depthMm !== String(selectedItem.depthMm) || selectedItemFields.heightMm !== String(selectedItem.heightMm) || selectedItemFields.label !== selectedItem.label || (!onRotationStepModeChange && selectedItemAngleRaw !== degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem))) || selectedItemFields.color !== selectedItem.color
 	);
@@ -3066,10 +3079,10 @@ export function AppShell({
 	useEffect(() => {
 		if (!hostNavigation) return;
 		try {
-			hostNavigation.setClosingConfirmation?.(hasUndurableEditorDraft || hasRawEditorDraft || writerRecoveryCopy !== undefined || isTakingOverWriterLease || !!leaveFocus || state.kind === "saving" || state.kind === "persist-failed" || projectTransferImport.kind !== "idle");
+			hostNavigation.setClosingConfirmation?.(hasUndurableEditorDraft || hasRawEditorDraft || writerRecoveryCopy !== undefined || isTakingOverWriterLease || !!leaveFocus || state.kind === "saving" || state.kind === "persist-failed" || directoryRenameWrite !== "idle" || projectTransferImport.kind !== "idle");
 			hostNavigation.setVerticalSwipesEnabled?.(!project);
 		} catch { /* Unsupported host capabilities never change Project state. */ }
-	}, [hostNavigation, hasUndurableEditorDraft, hasRawEditorDraft, writerRecoveryCopy, isTakingOverWriterLease, leaveFocus, project, state.kind, projectTransferImport.kind]);
+	}, [hostNavigation, hasUndurableEditorDraft, hasRawEditorDraft, writerRecoveryCopy, isTakingOverWriterLease, leaveFocus, project, state.kind, directoryRenameWrite, projectTransferImport.kind]);
 	const canActivatePwaUpdate =
 		(state.kind === "saved" ||
 			state.kind === "first-run" ||
@@ -3269,27 +3282,73 @@ export function AppShell({
 		}
 	};
 
-	const importProjectTransferFile = async (file: File | undefined, registered = false) => {
-		setProjectTransferError(undefined);
-		if (!file || projectTransferImport.kind !== "idle") return;
+	const readProjectTransferFile = async (
+		file: File | undefined,
+		destination: ProjectTransferDestination = "import",
+		password?: string,
+	) => {
+		const repairing = destination === "repair";
+		if (!file || projectTransferAbortRef.current || projectTransferImport.kind !== "idle" ||
+			(repairing && isRepairingCustomGlb)) return;
+		const setError = repairing ? setCustomGlbRepairError : setProjectTransferError;
+		const sizeError = repairing ? "Резервная копия превышает допустимый размер." : projectTransferImportFeedback("BACKUP_LIMIT_EXCEEDED");
+		const readError = repairing ? "Не удалось прочитать резервную копию." : "Не удалось прочитать файл. Существующие проекты не изменены.";
+		setError(undefined);
+		if (password !== undefined) setEncryptedProjectTransfer({ file, destination });
 		const abortController = new AbortController();
 		projectTransferAbortRef.current = abortController;
 		setProjectTransferImport({ filename: file.name, kind: "reading" });
+		if (repairing) setIsRepairingCustomGlb(true);
 		try {
 			if (file.size > 200 * 1024 * 1024) {
-				setProjectTransferError(projectTransferImportFeedback("BACKUP_LIMIT_EXCEEDED"));
+				setError(sizeError);
+				return;
+			}
+			const prefix = hostNavigation && new Uint8Array(await file.slice(0, 8).arrayBuffer());
+			if (abortController.signal.aborted) return;
+			const encrypted = !!prefix && isEncryptedProjectTransfer(prefix);
+			if (encrypted && file.size > MAX_ENCRYPTED_PROJECT_TRANSFER_BYTES) {
+				setError(sizeError);
+				return;
+			}
+			if (encrypted && password === undefined) {
+				setEncryptedProjectTransfer({ file, destination });
 				return;
 			}
 			const read = fileTransfer ? await fileTransfer.read(file, abortController.signal) : undefined;
 			if (read && read.kind !== "read") {
-				setProjectTransferError(read.kind === "cancelled" ? projectTransferImportFeedback("BACKUP_CANCELLED") : "Не удалось прочитать файл. Существующие проекты не изменены.");
+				setError(read.kind === "cancelled" ? projectTransferImportFeedback("BACKUP_CANCELLED") : readError);
 				return;
 			}
-			const bytes = read?.kind === "read" ? read.bytes : new Uint8Array(await file.arrayBuffer());
+			let bytes = read?.kind === "read" ? read.bytes : new Uint8Array(await file.arrayBuffer());
 			if (abortController.signal.aborted) {
-				setProjectTransferError(
+				setError(
 					projectTransferImportFeedback("PORTABLE_BACKUP_CANCELLED"),
 				);
+				return;
+			}
+			if (encrypted && password !== undefined) {
+				const unlocked = await decryptProjectTransfer(bytes, password, abortController.signal);
+				if (abortController.signal.aborted) return;
+				if (unlocked.kind !== "decrypted") {
+					setEncryptedProjectTransfer({ file, destination, error:
+						unlocked.reasonCode === "TRANSFER_AUTHENTICATION_FAILED"
+							? "Пароль неверен или файл повреждён."
+							: unlocked.reasonCode === "INVALID_TRANSFER_PASSWORD"
+								? "Введите пароль, заданный при экспорте."
+								: "Не удалось открыть зашифрованный файл.",
+					});
+					return;
+				}
+				bytes = unlocked.bytes;
+				setEncryptedProjectTransfer(undefined);
+			}
+			if (repairing) {
+				const result = await controller.repairResourcesFromPortableBackup(bytes);
+				if (result.kind === "rejected")
+					setError("Эта копия не содержит всех нужных точных моделей или не прошла проверку.");
+				else if (result.kind === "persist-failed")
+					setError("Не удалось сохранить восстановленные модели. Повторите попытку.");
 				return;
 			}
 			const importOptions = {
@@ -3314,7 +3373,7 @@ export function AppShell({
 				},
 				signal: abortController.signal,
 			};
-			const result = registered
+			const result = destination === "registered-import"
 				? await controller.importRegisteredPortableBackup(bytes, { onStatus: importOptions.onPortableStatus, signal: abortController.signal })
 				: await controller.importProjectTransfer(bytes, importOptions);
 			if (result.kind === "rejected") {
@@ -3331,20 +3390,37 @@ export function AppShell({
 				);
 			}
 		} catch {
-			setProjectTransferError(
-				"Не удалось прочитать файл. Существующие проекты не изменены.",
-			);
+			if (abortController.signal.aborted) return;
+			setError(readError);
 		} finally {
 			if (projectTransferAbortRef.current === abortController) {
 				projectTransferAbortRef.current = undefined;
 			}
 			setProjectTransferImport({ kind: "idle" });
+			if (repairing) setIsRepairingCustomGlb(false);
 			if (projectTransferInputRef.current) {
 				projectTransferInputRef.current.value = "";
 			}
 			if (registeredTransferInputRef.current) registeredTransferInputRef.current.value = "";
 		}
 	};
+	const repairFromPortableBackup = (file: File | undefined) => void readProjectTransferFile(file, "repair");
+	const repairPasswordPrompt = encryptedProjectTransfer?.destination === "repair";
+	const localFilePanel = <>
+		{localFileSession ? <LocalFileTransferPanel session={localFileSession} state={localFileState} telegram={hostNavigation !== undefined} /> : null}
+		{encryptedProjectTransfer ? <EncryptedImportPasswordDialog
+			filename={encryptedProjectTransfer.file.name}
+			busy={projectTransferImport.kind !== "idle"}
+			error={encryptedProjectTransfer.error ?? (repairPasswordPrompt ? customGlbRepairError : projectTransferError)}
+			submitLabel={repairPasswordPrompt ? "Восстановить" : undefined}
+			onCancel={() => {
+				setEncryptedProjectTransfer(undefined);
+				if (repairPasswordPrompt) setCustomGlbRepairError(undefined);
+				else setProjectTransferError(undefined);
+			}}
+			onUnlock={(password) => void readProjectTransferFile(encryptedProjectTransfer.file, encryptedProjectTransfer.destination, password)}
+		/> : null}
+	</>;
 
 	const downloadRecoveryDraft = async () => {
 		setProjectTransferError(undefined);
@@ -3423,33 +3499,6 @@ export function AppShell({
 			setProjectTransferImport({ kind: "idle" });
 		}
 	};
-	const repairFromPortableBackup = async (file: File | undefined) => {
-		if (!file || isRepairingCustomGlb) return;
-		setCustomGlbRepairError(undefined);
-		if (file.size > 200 * 1024 * 1024) {
-			setCustomGlbRepairError("Резервная копия превышает допустимый размер.");
-			return;
-		}
-		setIsRepairingCustomGlb(true);
-		try {
-			const result = await controller.repairResourcesFromPortableBackup(
-				new Uint8Array(await file.arrayBuffer()),
-			);
-			if (result.kind === "rejected")
-				setCustomGlbRepairError(
-					"Эта копия не содержит всех нужных точных моделей или не прошла проверку.",
-				);
-			else if (result.kind === "persist-failed")
-				setCustomGlbRepairError(
-					"Не удалось сохранить восстановленные модели. Повторите попытку.",
-				);
-		} catch {
-			setCustomGlbRepairError("Не удалось прочитать резервную копию.");
-		} finally {
-			setIsRepairingCustomGlb(false);
-		}
-	};
-
 	const cancelProjectTransferImport = () => {
 		const abortController = projectTransferAbortRef.current;
 		if (!abortController || projectTransferImport.kind === "saving") return;
@@ -3532,7 +3581,8 @@ export function AppShell({
 		}
 	};
 
-	const registeredTransferFileInput = registeredTransferImport ? <input type="file" accept="application/zip,.interiors" aria-label="Импорт файла для переноса" hidden ref={registeredTransferInputRef} disabled={projectTransferImport.kind !== "idle"} onChange={(event) => void importProjectTransferFile(event.currentTarget.files?.[0], true)} /> : null;
+	// iOS Files can classify a valid .interiors archive as an unknown type. Validate its bytes after selection.
+	const registeredTransferFileInput = registeredTransferImport ? <input type="file" accept={hostNavigation ? undefined : "application/zip,.interiors"} aria-label="Импорт файла для переноса" hidden ref={registeredTransferInputRef} disabled={projectTransferImport.kind !== "idle"} onChange={(event) => void readProjectTransferFile(event.currentTarget.files?.[0], "registered-import")} /> : null;
 
 	const exportProjectTransfer = async (projectId?: string, registered = false, storageNamespace?: ProjectStorageNamespace) => {
 		setProjectTransferError(undefined);
@@ -3586,12 +3636,75 @@ export function AppShell({
 	const cancelRenameProject = () => {
 		setIsRenameProjectOpen(false);
 		setRenameProjectError(undefined);
+		setDirectoryRenameTarget(undefined);
+		setDirectoryRenameWrite("idle");
 	};
 
-	const renameProjectFromDirectory = (projectId: string, storageNamespace?: ProjectStorageNamespace) => {
+	const renameProjectFromDirectory = (summary: ProjectSummary, trigger: HTMLButtonElement) => {
+		if (hostNavigation) {
+			const menu = trigger.closest("details");
+			directoryRenameTriggerRef.current = menu?.querySelector("summary") ?? trigger;
+			if (menu) menu.open = false;
+			directoryRenameTriggerRef.current?.focus({ preventScroll: true });
+			setDirectoryRenameTarget(summary);
+			setRenameProjectName(summary.name);
+			setRenameProjectError(undefined);
+			setIsRenameProjectOpen(true);
+			return;
+		}
+		const { projectId, storageNamespace } = summary;
 		setRenameTargetProjectId(projectId);
 		if (storageNamespace === undefined) void controller.openProject(projectId);
 		else void controller.openProject(projectId, { storageNamespace, initialAction: "rename" });
+	};
+
+	const saveDirectoryRename = async (retry = false) => {
+		if (!directoryRenameTarget || directoryRenameInFlight.current) return;
+		directoryRenameInFlight.current = true;
+		setDirectoryRenameWrite("saving");
+		setRenameProjectError(undefined);
+		try {
+			const result = retry
+				? await controller.retryDirectoryProjectRename()
+				: await controller.renameProjectFromDirectory(
+					directoryRenameTarget.projectId,
+					directoryRenameTarget.revisionId,
+					renameProjectName,
+				);
+			setDirectoryRenameWrite(result.kind === "persist-failed" && result.retryAvailable ? "retained" : "idle");
+			switch (result.kind) {
+				case "durable":
+					cancelRenameProject();
+					break;
+				case "rejected":
+					setRenameProjectError(projectNameErrorCopy(result.reasonCode));
+					break;
+				case "stale-base":
+					setRenameProjectError("Проект изменился в другом окне. Закройте форму и откройте её снова.");
+					break;
+				case "read-only":
+				case "writer-lease-lost":
+					setRenameProjectError("Проект открыт для редактирования в другом окне.");
+					break;
+				case "resources-unavailable":
+					setRenameProjectError("Некоторые модели недоступны. Откройте проект и восстановите модели, затем повторите переименование.");
+					break;
+				case "persist-failed":
+					setRenameProjectError(result.retryAvailable
+						? result.reasonCode === "PERSISTENCE_QUOTA_EXCEEDED"
+							? "В хранилище недостаточно места. Освободите место на устройстве и нажмите «Повторить сохранение»."
+							: "Сохранение имени не подтверждено. Нажмите «Повторить сохранение», чтобы проверить ту же правку."
+						: renamePersistenceFailureCopy(result.reasonCode));
+					break;
+				default:
+					setRenameProjectError("Не удалось открыть сохранённую версию проекта. Повторите попытку.");
+			}
+		} catch {
+			setDirectoryRenameWrite(retry ? "retained" : "idle");
+			setRenameProjectError(renamePersistenceFailureCopy("PERSISTENCE_WRITE_FAILED"));
+		} finally {
+			directoryRenameInFlight.current = false;
+		}
 	};
 
 	const submitRenameProject = async (event: FormEvent<HTMLFormElement>) => {
@@ -6469,7 +6582,7 @@ export function AppShell({
 		const recoveryExit = !panel ? controller.writerRecoveryCopy?.() : undefined;
 		const decision = editorBackDecision({
 			pending: hasPendingEditorCommand(),
-			persistFailed: controller.snapshot().kind === "persist-failed" || hasRetainedHistoryTarget,
+			persistFailed: controller.snapshot().kind === "persist-failed" || hasRetainedHistoryTarget || directoryRenameWrite === "retained",
 			draft: recoveryExit !== undefined || (fullTransientNavigationProtection && (hasRawEditorDraft || hasUndurableEditorDraft || [...transientBoundaries.current].some((boundary) => boundary.inspect().hasDraft))),
 			panel,
 			project: !!project || state.kind === "first-run" || state.kind === "recovery-needed",
@@ -6477,7 +6590,10 @@ export function AppShell({
 		if (decision === "confirm-discard") { confirmedWriterExit.current = recoveryExit; leaveFocusActive.current = true; setLeaveFocus(captureEditorFocus()); return; }
 		resumeTransientViews();
 		if (decision === "saving") { setHostBackNotice("Дождитесь завершения текущего действия. Сохраняемая правка не отменена."); return; }
-		if (decision === "persist-failed") { setHostBackNotice("Правка не сохранена. Повторите сохранение или экспортируйте данные для восстановления."); return; }
+		if (decision === "persist-failed") {
+			if (directoryRenameWrite !== "retained") setHostBackNotice("Правка не сохранена. Повторите сохранение или экспортируйте данные для восстановления.");
+			return;
+		}
 		setHostBackNotice(undefined);
 		if (decision === "close-panel") {
 			if (onCleanPanelClose) onCleanPanelClose();
@@ -6588,13 +6704,13 @@ export function AppShell({
 							Новый проект
 						</button>
 						<input
-							accept="application/json,.json,application/zip,.interiors"
+							accept={hostNavigation ? undefined : "application/json,.json,application/zip,.interiors"}
 							aria-label="Импортировать проект"
 							className={styles.visuallyHidden}
 							disabled={projectTransferImport.kind !== "idle"}
 							id="import-project-transfer"
 							onChange={(event) =>
-								void importProjectTransferFile(event.currentTarget.files?.[0])
+								void readProjectTransferFile(event.currentTarget.files?.[0])
 							}
 							ref={projectTransferInputRef}
 							type="file"
@@ -6766,8 +6882,8 @@ export function AppShell({
 											<button
 												aria-label={`Переименовать ${spokenName}`}
 												disabled={!ownerConfirmed || isLegacyOwnerReadOnly(summary.storageNamespace)}
-												onClick={() =>
-													renameProjectFromDirectory(summary.projectId, summary.storageNamespace)
+												onClick={(event) =>
+													renameProjectFromDirectory(summary, event.currentTarget)
 												}
 												type="button"
 											>
@@ -6792,6 +6908,26 @@ export function AppShell({
 					)}
 					{!state.recoveryNeeded ? projectsSupplement : null}
 				</section>
+				{isRenameProjectOpen && directoryRenameTarget ? (
+					<RenameProjectDialog
+						telegram
+						name={renameProjectName}
+						error={renameProjectError}
+						busy={directoryRenameWrite === "saving"}
+						blocked={directoryRenameWrite !== "idle"}
+						canRetry={directoryRenameWrite === "retained"}
+						cancelDisabled={directoryRenameWrite === "retained"}
+						onChange={setRenameProjectName}
+						onSubmit={(event) => {
+							event.preventDefault();
+							if (directoryRenameWrite === "idle") void saveDirectoryRename();
+						}}
+						onRetry={() => void saveDirectoryRename(true)}
+						onCancel={cancelRenameProject}
+						onBackdropClose={() => requestEditorBack(false, cancelRenameProject)}
+						returnFocusRef={directoryRenameTriggerRef}
+					/>
+				) : null}
 				{directoryDeletionTarget ? (
 					<ProjectConfirmationDialog
 						plainLabels={hostNavigation !== undefined}
@@ -6955,12 +7091,13 @@ export function AppShell({
 						<div className={safetyStyles.recoveryActions}>
 							{recoveryRemovalSummary ? (
 								<ResourceRepairControls
+									telegram={hasTelegramEditorSheet}
 									busy={isRepairingCustomGlb || isRemovingUnresolvedCustomGlb}
 									error={customGlbRepairError}
 									onGlbFiles={(files) =>
 										void repairCustomGlbResourceFiles(files)
 									}
-									onBackupFile={(file) => void repairFromPortableBackup(file)}
+									onBackupFile={repairFromPortableBackup}
 								/>
 							) : null}
 							{recoveryRemovalSummary ? (
@@ -7453,10 +7590,11 @@ export function AppShell({
 							</p>
 						) : null}
 						<ResourceRepairControls
+							telegram={hasTelegramEditorSheet}
 							busy={isRepairingCustomGlb || isRemovingUnresolvedCustomGlb}
 							error={customGlbRepairError}
 							onGlbFiles={(files) => void repairCustomGlbResourceFiles(files)}
-							onBackupFile={(file) => void repairFromPortableBackup(file)}
+							onBackupFile={repairFromPortableBackup}
 						/>
 						{recoveryRemovalSummary ? (
 							<button
@@ -7513,10 +7651,11 @@ export function AppShell({
 					>
 						<h2>Недоступная модель находится только в истории</h2>
 						<ResourceRepairControls
+							telegram={hasTelegramEditorSheet}
 							busy={isRepairingCustomGlb}
 							error={customGlbRepairError}
 							onGlbFiles={(files) => void repairCustomGlbResourceFiles(files)}
-							onBackupFile={(file) => void repairFromPortableBackup(file)}
+							onBackupFile={repairFromPortableBackup}
 						/>
 						<p>
 							Текущий план сохранён и доступен для экспорта, но редактирование,

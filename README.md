@@ -1,14 +1,15 @@
 # InteriorsEditor
 
-Редактор планировки квартиры на телефоне: точные размеры в миллиметрах,
-связанные комнаты, мебель и общий 2D/3D проект. Устанавливается как PWA,
-хранит проекты локально и поддерживает offline и переносимые резервные копии.
+Редактор планировки квартиры для Telegram Mini App на iOS и Android. Проекты
+хранятся локально, поддерживают точные размеры в миллиметрах, связанные комнаты,
+мебель, 2D/3D и переносимые резервные копии.
 
-## Основное размещение на 8 ноября 2026
+## Запуск редактора
 
-Telegram Mini App опубликован через [InteriorsEditorBot](https://t.me/InteriorsEditorBot)
-на [domiknote.ru](https://domiknote.ru/); Web/PWA сохранён на
-[www.domiknote.ru](https://www.domiknote.ru/). Владелец подтвердил запуск и выбрал
+Telegram Mini App открывается через [InteriorsEditorBot](https://t.me/InteriorsEditorBot?startapp)
+и обслуживается на [domiknote.ru](https://domiknote.ru/). Решение о переходе
+на единственную версию описано в [плане закрытия Web/PWA](plans/telegram-only-retirement-and-encrypted-backup-2026-11-24.md).
+Владелец выбрал
 нидерландский VPS `147.45.133.75` основным. Прежний российский VPS, его IP и
 четыре устаревшие DNS-записи удалены по указанию владельца; резервные копии
 сохранены. S3 не подключён. Доступ и результаты проверки описаны в
@@ -24,10 +25,9 @@ Telegram Mini App опубликован через [InteriorsEditorBot](https:/
 
 Репозиторий: [boumrz/interiors_editor](https://github.com/boumrz/interiors_editor).
 Владелец разрешил коммит, push и настройку deployment. Push в `main` запускает
-[workflow](.github/workflows/deploy.yml): проверки репозитория, Web/PWA,
-Telegram и Kotlin/PostgreSQL, затем публикацию обоих frontend и Kotlin backend
-из одного коммита на основной VPS. Старые immutable ресурсы сохраняются;
-неудачная серверная проверка возвращает предыдущие frontend и backend.
+[workflow](.github/workflows/deploy.yml) с проверками и публикацией Telegram
+Mini App на основной VPS. Старые неизменяемые ресурсы поддерживают откат
+редактора. Каталог Kotlin/PostgreSQL имеет отдельные проверки и поставку.
 
 Receiver и два secrets environment `production` установлены. Настройка и
 rollback описаны в [инструкции](docs/operations/GITHUB-DEPLOYMENT.md).
@@ -107,16 +107,16 @@ npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm install --frozen-lo
 npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm run dev
 ```
 
-Development режим отключает worker/cache. Для offline PWA нужны production
-build и HTTPS; порядок приведен в [runbook](docs/operations/PHONE-AND-RELEASE-RUNBOOK.md).
+`dev` собирает TMA и открывает локальный сервер предпросмотра. Для проверки
+обычного входа требуется подписанный запуск из Telegram. [Запуск и проверки TMA](docs/TELEGRAM-RUNBOOK.md).
 
 ```sh
-npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm run verify:web
+npx --yes --package=node@24.19.0 --package=pnpm@11.20.0 pnpm run verify:telegram
 ```
 
-`verify:web` проверяет web: lint, границы слоев, обе TypeScript конфигурации,
-unit, build, delivery и browser/PWA. Полный `verify` дополнительно выполняет
-backend test и полную web mutation matrix. Для backend нужны JDK 17 и Docker
+`verify:telegram` запускает lint, проверки архитектуры и типов, модульные тесты,
+сборку, проверки поставки и сценарии TMA. Полный `verify` дополнительно
+запускает проверки каталога и мутационные проверки общего кода. Для каталога нужны JDK 17 и Docker
 для Testcontainers PostgreSQL 18.4:
 
 ```sh
@@ -124,13 +124,9 @@ cd apps/catalog-control-plane
 ./gradlew --no-daemon test pitest
 ```
 
-[CI](.github/workflows/verify.yml) повторяет web и backend проверки в независимых
-jobs. Публикация `main` вызывает этот workflow и Telegram проверки как
-переиспользуемые workflows; PR и `codex/**` проверяются без публикации.
-Полные web mutation и Kotlin PIT выполняются при ручном запуске Verify
-InteriorsEditor; обычные push/PR сохраняют regression и delivery проверки.
-Workflow начнет выполняться после загрузки репозитория на GitHub;
-файл не является успешным CI-прогоном.
+[CI](.github/workflows/verify.yml) проверяет Telegram и каталог в отдельных
+задачах. PR и `codex/**` проверяются без публикации. Мутационные проверки
+полного общего кода и Kotlin PIT можно запустить вручную.
 
 Проект опубликован в GitHub. Разрешение владельца от 12 ноября и текущий
 запрос охватывают commit, push и deployment существующего продукта.

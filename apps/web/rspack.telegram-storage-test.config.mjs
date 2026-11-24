@@ -1,11 +1,11 @@
-import webConfig from './rspack.config.mjs';
+import sharedConfig from './rspack.shared.config.mjs';
 import { rspack } from '@rspack/core';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 // Test-only native IndexedDB/Web Locks harness, never a product entry/release.
 export default (environment, arguments_) => {
-  const base = webConfig(environment, arguments_);
+  const base = sharedConfig(environment, arguments_);
   return {
     ...base,
     entry: './tests/browser/telegram-storage-harness.ts',
@@ -23,7 +23,6 @@ export default (environment, arguments_) => {
       })
     ],
     devServer: {
-      ...base.devServer,
       host: '127.0.0.1',
       port: 49177,
       historyApiFallback: false

@@ -79,8 +79,9 @@ test("TMA-SHEET-01: the Add sheet has a fixed bottom position and returns focus 
 	await expect(sheet.getByRole("button", { name: "Развернуть", exact: true })).toHaveCount(0);
 	await expect.poll(async () => {
 		const box = await sheet.boundingBox();
-		return !!box && Math.abs(box.y + box.height - 728) < 2;
-	}).toBe(true);
+		// The signed host fixture reports a 700px viewport and a 15px content inset.
+		return box ? box.y + box.height : undefined;
+	}).toBeCloseTo(685, 0);
 	const frame = await sheet.boundingBox();
 	const title = await sheet.getByRole("heading", { name: "Добавить", exact: true }).boundingBox();
 	const firstAction = await sheet.getByRole("button", { name: "Дверь", exact: true }).boundingBox();
@@ -754,7 +755,9 @@ test("TMA-ENTRY-10: a missing application chunk gives retry and Web fallback wit
 		(route) => (blocked ? route.abort() : route.continue()),
 	);
 	await page.goto("/");
-	await expect(page.getByText(/Не удалось загрузить редактор/)).toBeVisible();
+	await expect(page.getByRole("status")).toHaveText(
+		"Не удалось загрузить редактор. Повторите запуск.",
+	);
 	await expect(
 		page.getByRole("link", { name: "Открыть веб-редактор" }),
 	).toBeVisible();
@@ -1352,6 +1355,10 @@ test("TMA-ENTRY-12: actual scoped source recovery exports an unverified exact UT
 }) => {
 	await signed(page);
 	await page.addInitScript(() => {
+		Object.defineProperty(globalThis, "showSaveFilePicker", {
+			configurable: true,
+			value: undefined,
+		});
 		Object.defineProperty(navigator, "canShare", {
 			value: () => true,
 			configurable: true,
@@ -1482,6 +1489,10 @@ test("TMA-ENTRY-12: actual scoped source recovery exports an unverified exact UT
 
 async function installReadonlyEntryDelivery(page: Page) {
 	await page.addInitScript(() => {
+		Object.defineProperty(globalThis, "showSaveFilePicker", {
+			configurable: true,
+			value: undefined,
+		});
 		Object.defineProperty(navigator, "canShare", {
 			configurable: true,
 			value: () => true,

@@ -3431,27 +3431,49 @@
 .editorShell .editorViewRow { flex: 0 0 100%; }
 .editorShell .editorSaveState { display: block; line-height: 1.3; overflow: visible; overflow-wrap: anywhere; white-space: normal; }
 
-@media (max-width: 559px) {
-	.editorShell[data-editor-host="telegram"] .editorTopBar {
-		display: grid;
-		grid-template-columns: max-content minmax(0, 1fr) fit-content(34vw) 44px;
-		grid-template-rows: auto auto;
-	}
+.editorShell[data-editor-host="telegram"] .editorTopBar {
+	display: grid;
+	/* Reserve the same space on both sides, even when the save status wraps. */
+	grid-template-columns: 44px minmax(0, 1fr) clamp(44px, 22%, 24rem) minmax(0, 1fr) 44px;
+	/* Keep the plan steady when the normal-size preview status wraps mid-gesture. */
+	grid-template-rows: minmax(48px, auto) auto;
+}
 
+.editorShell[data-editor-host="telegram"] .editorBackAction {
+	grid-column: 1 / 3;
+	grid-row: 1;
+}
+
+.editorShell[data-editor-host="telegram"] .editorTopBar .projectIdentity {
+	align-items: center;
+	grid-column: 3;
+	grid-row: 1;
+	justify-self: stretch;
+	min-inline-size: 0;
+}
+
+.editorShell[data-editor-host="telegram"] .editorSaveState {
+	grid-column: 4;
+	grid-row: 1;
+	text-align: end;
+}
+
+.editorShell[data-editor-host="telegram"] .editorHeaderMenuTrigger {
+	grid-column: 5;
+}
+
+.editorShell[data-editor-host="telegram"] .editorTopBar .editorViewRow {
+	grid-column: 1 / -1;
+	grid-row: 2;
+}
+
+@media (max-width: 559px) {
 	.editorShell[data-editor-host="telegram"] .editorBackAction {
 		font-size: min(.78rem, 16px);
-		grid-column: 1;
-		grid-row: 1;
 	}
 
 	.editorShell[data-editor-host="telegram"] .editorBackAction::before {
 		font-size: min(1.55rem, 26px);
-	}
-
-	.editorShell[data-editor-host="telegram"] .editorTopBar .projectIdentity {
-		grid-column: 2;
-		grid-row: 1;
-		min-inline-size: 0;
 	}
 
 	.editorShell[data-editor-host="telegram"] .editorTopBar .projectIdentity span {
@@ -3460,14 +3482,6 @@
 
 	.editorShell[data-editor-host="telegram"] .editorSaveState {
 		font-size: min(.76rem, 16px);
-		grid-column: 3;
-		grid-row: 1;
-		text-align: end;
-	}
-
-	.editorShell[data-editor-host="telegram"] .editorTopBar .editorViewRow {
-		grid-column: 1 / -1;
-		grid-row: 2;
 	}
 
 	.editorShell[data-editor-host="telegram"] .editorViewRow button {
@@ -3480,10 +3494,6 @@
 @media (max-width: 359px) {
 	.editorShell[data-editor-host="telegram"]:not(:has([data-opening-dragging])) .editorTopBar:has([data-editor-preview]) {
 		grid-template-rows: auto auto auto;
-	}
-
-	.editorShell[data-editor-host="telegram"]:not(:has([data-opening-dragging])) .editorTopBar:has([data-editor-preview]) .projectIdentity {
-		grid-column: 2 / 4;
 	}
 
 	.editorShell[data-editor-host="telegram"]:not(:has([data-opening-dragging])) .editorSaveState[data-editor-preview] {

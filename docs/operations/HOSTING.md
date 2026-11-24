@@ -9,12 +9,13 @@
 | Название в панели | `InteriorsEditor Main NL` |
 | Telegram Mini App | <https://domiknote.ru/> |
 | Бот | <https://t.me/InteriorsEditorBot> |
-| Сохранённый Web/PWA | <https://www.domiknote.ru/> |
+| Прежний Web/PWA origin | <https://www.domiknote.ru/> перенаправляет в Telegram |
 | Прежний российский VPS | `194.87.187.153`, Timeweb ID `6397923` — удалён 8 ноября 2026 вместе с IP |
 
-Подтверждение запуска не заменяет формальную приёмку всех функций. Web/PWA
-не выводится из эксплуатации; браузерный registered-transfer ingress остаётся
-отключённым. Проекты и переносимые резервные копии пользователей локальны.
+Публичный Web/PWA закрыт 24 ноября 2026 года после подтверждения владельца,
+что нужные проекты выгружены. `/sw.js` отдаёт переходный worker для старых
+установок при следующем онлайн-обновлении. Исторический архив и локальные
+хранилища сохранены для отката и совместимости с имеющимися файлами.
 
 ## Доступ и служебные пути
 
@@ -43,8 +44,18 @@ INPUT/OUTPUT, UFW, маршрутов, conntrack и NIC не нашла серв
 или перегрузки. Причина прежнего таймаута остаётся неизвестной, исправление
 не подтверждено. [Последующая диагностика](../progress/telegram-extension-2026-11-04/S7/resume-2026-11-06/network-stability-20261108/README.md).
 
-- Текущий frontend: `/opt/interiors-editor/frontend/current`, релиз
-  `e82158c9f176ee73--0ce06bee515635c1`; сохранены старые Web-ресурсы.
+- Активная TMA от 24 ноября: `197428ac2de60f80`. Frontend находится в
+  `/opt/interiors-editor/frontend/current`. Старые Web-ресурсы остались в
+  архиве для аварийного возврата.
+- Android-экспорт: `interiors-project-backup-relay.service` на
+  `127.0.0.1:4182`. Публичные POST и GET/HEAD ограничены путями
+  `/project-transfer/v1/files`. Служба временно хранит анонимные зашифрованные
+  файлы на диске и освобождает их через 15 минут. Повторная поставка TMA
+  сохраняет активный маршрут relay и редирект прежнего Web origin.
+- Состояние Web/PWA меняется отдельными операциями `retire-web` и
+  `restore-web` из установленного `frontend.py`. Доступна проверка с
+  `--dry-run`. Точная прежняя конфигурация сохранена в
+  `/opt/interiors-editor/frontend/.web-before-retirement.conf`.
 - Каталог: `interiors-catalog.service`, Java 17, `127.0.0.1:4174`.
 - PostgreSQL: контейнер/volume `interiors-editor-catalog-pg18`,
   `127.0.0.1:55432`; образ закреплён по digest в migration evidence.

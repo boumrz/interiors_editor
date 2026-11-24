@@ -16,7 +16,8 @@ import {
 	type TelegramHostCapture,
 	type TelegramHostEnvironment,
 } from "../adapters/telegram/host-environment";
-import { createBrowserHostFileBridge } from "../adapters/telegram/host-file-bridge";
+import { createTelegramHostFileBridge } from "../adapters/telegram/host-file-bridge";
+import { createTelegramProjectDownload } from "../adapters/telegram/project-download";
 import type {
 	TelegramLaunchConfiguration,
 	VerifiedTelegramScope,
@@ -89,7 +90,7 @@ type Links = { readonly telegramURL?: string; readonly webURL?: string };
 export type TelegramDeploymentConfiguration = TelegramLaunchConfiguration & {
 	readonly usageMetrics?: never;
 	readonly telegramURL: string;
-	readonly webURL: string;
+	readonly webURL?: string;
 };
 export function parseTelegramDeploymentConfiguration(value: unknown, _editorOrigin?: string):
 	| {
@@ -119,12 +120,12 @@ export function parseTelegramDeploymentConfiguration(value: unknown, _editorOrig
 			!Number.isSafeInteger(Number(botId)) ||
 			(environment !== "production" && environment !== "test") ||
 			!telegramURL ||
-			!webURL
+			(record.webURL !== undefined && record.webURL !== "" && !webURL)
 		)
 			return { kind: "unavailable", links };
 		return {
 			kind: "configured",
-			configuration: Object.freeze({ botId, environment, telegramURL, webURL }),
+			configuration: Object.freeze({ botId, environment, telegramURL, ...(webURL ? { webURL } : {}) }),
 		};
 	} catch {
 		return { kind: "unavailable", links };
@@ -811,8 +812,8 @@ export function TelegramEditorApp({
 							? "Этот Telegram-редактор пока не настроен. Можно открыть веб-редактор."
 							: "Этот Telegram-редактор пока не настроен. Повторите запуск позже."
 						: state.kind === "unavailable" && state.reason === "timeout"
-							? "Telegram не ответил вовремя. Повторите запуск или откройте веб-редактор."
-							: "Безопасный запуск не подтверждён. Повторите запуск из Telegram или откройте веб-редактор."}
+							? "Telegram не ответил вовремя. Повторите запуск."
+							: "Безопасный запуск не подтверждён. Повторите запуск из Telegram."}
 			</p>
 			<TelegramLegalDocuments />
 			{!checking ? (
@@ -1140,9 +1141,14 @@ export function mountTelegramBrowserEditor(
 	const catalogGateway = new HttpCatalogGateway({
 		checksum: browserBinaryChecksum,
 	});
-	const fileTransfer = createBrowserHostFileBridge({
-		maximumBytes: 280 * 1024 * 1024,
-	});
+	const fileTransfer: LocalFileTransferPort = {
+		...createTelegramHostFileBridge({ maximumBytes: 280 * 1024 * 1024 }),
+		encryptedDownload: createTelegramProjectDownload({
+			origin: window.location.origin,
+			fetch: window.fetch.bind(window),
+			readSdk: readWebApp,
+		}),
+	};
 	const models = new WeakMap<object, UsageMetrics>();
 	const stores = new Map<
 		VerifiedTelegramScope,

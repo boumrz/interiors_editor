@@ -1,6 +1,7 @@
 import { describe, expect, it, rstest } from "@rstest/core";
 import {
 	createBrowserHostFileBridge,
+	createTelegramHostFileBridge,
 	createHostFileBridge,
 	type HostFileSystemPort,
 	type PreparedHostFile,
@@ -31,6 +32,130 @@ function pendingRead() {
 }
 
 describe("local host file handoff", () => {
+	it("uses the native save picker with the exact export, and otherwise shares files locally", async () => {
+		const options: unknown[] = [];
+		const written: File[] = [];
+		const shared: File[] = [];
+		let committed = 0;
+		rstest.stubGlobal("showSaveFilePicker", async (value: unknown) => {
+			options.push(value);
+			return { createWritable: async () => ({
+				write: async (file: File) => { written.push(file); },
+				close: async () => { committed++; },
+				abort: async () => { throw new Error("Successful writes must not abort"); },
+			}) };
+		});
+		rstest.stubGlobal("navigator", {
+			canShare: () => true,
+			share: async ({ files }: ShareData) => { shared.push(...(files ?? [])); },
+		});
+		try {
+			const bridge = createTelegramHostFileBridge({ maximumBytes: 8 });
+			const file = prepared(bridge);
+			const writing = bridge.handoff(file);
+			expect(options).toEqual([{ suggestedName: file.file.name }]);
+			expect(await writing).toEqual({ kind: "handoff-attempted", method: "save" });
+			expect(written).toEqual([file.file]);
+			expect(new Uint8Array(await written[0].arrayBuffer())).toEqual(new Uint8Array(await file.file.arrayBuffer()));
+			expect(committed).toBe(1);
+			expect(shared).toEqual([]);
+			rstest.stubGlobal("showSaveFilePicker", undefined);
+			expect(await bridge.handoff(file)).toEqual({ kind: "handoff-attempted", method: "share" });
+			expect(shared).toEqual([file.file]);
+		} finally {
+			rstest.unstubAllGlobals();
+		}
+	});
+
+	it("never relabels a Blob click as a Telegram system handoff", async () => {
+		rstest.stubGlobal("navigator", {});
+		rstest.stubGlobal("showSaveFilePicker", undefined);
+		const create = rstest.spyOn(URL, "createObjectURL");
+		try {
+			const bridge = createTelegramHostFileBridge({ maximumBytes: 8 });
+			expect(await bridge.handoff(prepared(bridge))).toEqual({ kind: "unsupported" });
+			expect(create).not.toHaveBeenCalled();
+		} finally {
+			create.mockRestore();
+			rstest.unstubAllGlobals();
+		}
+	});
+
+	it("cancels an abandoned write, cleans up failed writes and can retry the same file", async () => {
+		const abort = new AbortController();
+		const written: File[] = [];
+		let attempts = 0;
+		let discards = 0;
+		let committed = 0;
+		rstest.stubGlobal("showSaveFilePicker", async () => ({
+			createWritable: async () => ({
+				write: async (file: File) => {
+					written.push(file);
+					if (++attempts === 1) throw new DOMException("Disk full", "QuotaExceededError");
+					if (attempts === 2) abort.abort();
+				},
+				close: async () => { committed++; },
+				abort: async () => { discards++; },
+			}),
+		}));
+		try {
+			const bridge = createTelegramHostFileBridge({ maximumBytes: 8 });
+			const file = prepared(bridge);
+			expect(await bridge.handoff(file)).toEqual({ kind: "failed", reasonCode: "FILE_HANDOFF_FAILED" });
+			expect(await bridge.handoff(file, abort.signal)).toEqual({ kind: "cancelled" });
+			expect(await bridge.handoff(file)).toEqual({ kind: "handoff-attempted", method: "save" });
+			expect(written).toEqual([file.file, file.file, file.file]);
+			expect(discards).toBe(2);
+			expect(committed).toBe(1);
+		} finally {
+			rstest.unstubAllGlobals();
+		}
+	});
+
+	it("reports an ambiguous save picker abort without starting another system action", async () => {
+		const shared: File[] = [];
+		rstest.stubGlobal("navigator", {
+			canShare: () => true,
+			share: async ({ files }: ShareData) => { shared.push(...(files ?? [])); },
+		});
+		rstest.stubGlobal("showSaveFilePicker", async () => {
+			throw new DOMException("The user aborted a request", "AbortError");
+		});
+		try {
+			const bridge = createTelegramHostFileBridge({ maximumBytes: 8 });
+			expect(await bridge.handoff(prepared(bridge))).toEqual({ kind: "save-incomplete" });
+			expect(shared).toEqual([]);
+		} finally {
+			rstest.unstubAllGlobals();
+		}
+	});
+
+	it("stops at the first cancelled boundary before changing a selected local file", async () => {
+		for (const boundary of ["picker", "stream"] as const) {
+			const abort = new AbortController();
+			const actions: string[] = [];
+			rstest.stubGlobal("showSaveFilePicker", async () => {
+				actions.push("picker");
+				if (boundary === "picker") abort.abort();
+				return { createWritable: async () => {
+					actions.push("stream");
+					abort.abort();
+					return {
+						write: async () => { actions.push("write"); },
+						close: async () => { actions.push("close"); },
+						abort: async () => { actions.push("abort"); },
+					};
+				} };
+			});
+			try {
+				const bridge = createTelegramHostFileBridge({ maximumBytes: 8 });
+				expect(await bridge.handoff(prepared(bridge), abort.signal)).toEqual({ kind: "cancelled" });
+				expect(actions).toEqual(boundary === "picker" ? ["picker"] : ["picker", "stream", "abort"]);
+			} finally {
+				rstest.unstubAllGlobals();
+			}
+		}
+	});
 	it("prepares an exact native File without claiming an external backup", async () => {
 		const bridge = createHostFileBridge({ maximumBytes: 3, system: {} });
 		const bytes = Uint8Array.of(1, 2, 3);

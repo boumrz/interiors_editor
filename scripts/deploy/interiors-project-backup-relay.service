@@ -1,0 +1,31 @@
+[Unit]
+Description=InteriorsEditor temporary encrypted Telegram file relay
+After=network.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/bin/python3 -B /usr/local/lib/interiors-project-backup-relay/project_backup_relay.py
+Restart=on-failure
+RestartSec=2
+PrivateTmp=yes
+StateDirectory=interiors-project-backup-relay
+StateDirectoryMode=0700
+Environment=TMPDIR=/var/lib/interiors-project-backup-relay
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+TasksMax=24
+MemoryHigh=96M
+MemoryMax=192M
+
+[Install]
+WantedBy=multi-user.target

@@ -383,6 +383,21 @@ export type ProjectDeletionResult =
 				| "writer-lease-lost";
 	  };
 
+type DirectoryRenameResult =
+	| Exclude<RenameProjectUseCaseResult, { readonly kind: "persist-failed" }>
+	| {
+			readonly kind: "persist-failed";
+			readonly reasonCode: PublicationFailureReason;
+			readonly retryAvailable: boolean;
+	  }
+	| WriterLeaseLostResult
+	| { readonly kind: "in-progress" | "not-ready" | "read-only" | "resources-unavailable" };
+
+type DirectoryRenameAttempt = {
+	readonly candidate: PublicationCandidate;
+	readonly baseRevisionId: string;
+};
+
 export type CustomGlbResourceRepairResult =
 	| { readonly kind: "recovered"; readonly resourceHash: string }
 	| { readonly kind: "repaired"; readonly resourceHash: string }
@@ -623,6 +638,7 @@ export class ProjectController {
 	private get publicationInFlight(): boolean {
 		return (
 			this.publicationActive ||
+			this.directoryRenameUnsettled ||
 			this.pending !== undefined ||
 			this.pendingHistoryTravel !== undefined
 		);
@@ -630,6 +646,13 @@ export class ProjectController {
 
 	private set publicationInFlight(active: boolean) {
 		this.publicationActive = active;
+	}
+
+	private directoryRenameActive = false;
+	private pendingDirectoryRename?: DirectoryRenameAttempt;
+
+	private get directoryRenameUnsettled(): boolean {
+		return this.directoryRenameActive || this.pendingDirectoryRename !== undefined;
 	}
 
 	public constructor(
@@ -1452,6 +1475,7 @@ export class ProjectController {
 	}
 
 	public open(): Promise<void> {
+		if (this.directoryRenameUnsettled) return Promise.resolve();
 		if (this.openInFlight) {
 			return this.openInFlight;
 		}
@@ -1493,7 +1517,7 @@ export class ProjectController {
 
 	/** Returns to the local picker without changing any durable Project. */
 	public async showProjects(): Promise<void> {
-		if (!this.projectDirectory) {
+		if (!this.projectDirectory || this.directoryRenameUnsettled) {
 			return;
 		}
 		await this.openProjectDirectory(this.beginNavigationRequest());
@@ -1577,6 +1601,7 @@ export class ProjectController {
 
 	/** Starts a separate new Project flow; existing durable cards remain intact. */
 	public startNewProject(): void {
+		if (this.directoryRenameUnsettled) return;
 		this.beginNavigationRequest();
 		this.clearSessionHistory();
 		this.clearRecoveryCustomGlbResourceState();
@@ -1590,7 +1615,7 @@ export class ProjectController {
 		projectId: string,
 		_options?: ProjectOpenOptions,
 	): Promise<void> {
-		if (!this.projectDirectory) {
+		if (!this.projectDirectory || this.directoryRenameUnsettled) {
 			return;
 		}
 		const requestId = this.beginNavigationRequest();
@@ -2140,6 +2165,124 @@ export class ProjectController {
 		if (!projectId || !this.projectDirectory) return undefined;
 		const loaded = await this.projectDirectory.loadProject(projectId);
 		return loaded.kind === "durable" ? loaded.candidate : undefined;
+	}
+
+	/** Publishes a rename against the selected card without entering an editor session. */
+	public async renameProjectFromDirectory(
+		projectId: string,
+		baseRevisionId: string,
+		name: string,
+	): Promise<DirectoryRenameResult> {
+		if (this.publicationInFlight) return { kind: "in-progress" };
+		const directory = this.projectDirectory;
+		const useCase = this.canonicalPlanGraphMutations.renameProject;
+		const hub = this.snapshot();
+		if (!directory || !useCase || hub.kind !== "projects") return { kind: "not-ready" };
+		const card = hub.projects.find(project => project.projectId === projectId);
+		if (!card) return { kind: "not-ready" };
+		if (card.revisionId !== baseRevisionId)
+			return { kind: "stale-base", reasonCode: "STALE_BASE_REVISION" };
+		this.directoryRenameActive = true;
+		try {
+			const loaded = await directory.loadProject(projectId);
+			if (loaded.kind !== "durable" || !isV1Candidate(loaded.candidate) ||
+				loaded.candidate.project.projectId !== projectId || loaded.candidate.revision.projectId !== projectId)
+				return { kind: "not-ready" };
+			if (loaded.candidate.revision.revisionId !== baseRevisionId) {
+				this.updateDirectoryCard(loaded.candidate);
+				return { kind: "stale-base", reasonCode: "STALE_BASE_REVISION" };
+			}
+			const writer = await this.inspectWriterAccess(loaded.candidate);
+			if (writer.kind !== "writable") return { kind: writer.kind };
+			let attempt: DirectoryRenameAttempt | undefined;
+			const result = await useCase.execute(loaded.candidate, name, status => {
+				if (status.kind !== "saving") attempt = { candidate: status.candidate, baseRevisionId };
+			});
+			return await this.finishDirectoryRename(result, attempt);
+		} catch {
+			return { kind: "persist-failed", reasonCode: "PERSISTENCE_WRITE_FAILED", retryAvailable: false };
+		} finally {
+			this.directoryRenameActive = false;
+		}
+	}
+
+	public async retryDirectoryProjectRename(): Promise<DirectoryRenameResult> {
+		if (this.directoryRenameActive) return { kind: "in-progress" };
+		const attempt = this.pendingDirectoryRename;
+		if (!attempt || this.snapshot().kind !== "projects") return { kind: "not-ready" };
+		this.directoryRenameActive = true;
+		try {
+			const result = await this.publishNextRevision(attempt.candidate, attempt.baseRevisionId);
+			return await this.finishDirectoryRename(
+				result.kind === "durable"
+					? {
+						kind: "durable",
+						projectId: attempt.candidate.project.projectId,
+						revisionId: attempt.candidate.revision.revisionId,
+					}
+					: result.kind === "stale-base"
+						? { kind: "stale-base", reasonCode: "STALE_BASE_REVISION" }
+						: result,
+				attempt,
+			);
+		} catch {
+			return { kind: "persist-failed", reasonCode: "PERSISTENCE_WRITE_FAILED", retryAvailable: true };
+		} finally {
+			this.directoryRenameActive = false;
+		}
+	}
+
+	private async finishDirectoryRename(
+		result: RenameProjectUseCaseResult,
+		attempt: DirectoryRenameAttempt | undefined,
+	): Promise<DirectoryRenameResult> {
+		if (this.writerLeases?.consumeLostWriterLease()) {
+			this.pendingDirectoryRename = undefined;
+			return { kind: "writer-lease-lost", reasonCode: "WRITER_LEASE_LOST" };
+		}
+		this.pendingDirectoryRename = undefined;
+		if (result.kind === "persist-failed") {
+			if (attempt && this.projectDirectory) {
+				const expected = attempt.candidate.revision;
+				// A lost acknowledgement does not make a verified durable rename pending.
+				const latest = await this.projectDirectory.loadProject(expected.projectId).catch(() => undefined);
+				if (latest?.kind === "durable" &&
+					latest.candidate.project.projectId === expected.projectId &&
+					latest.candidate.revision.projectId === expected.projectId &&
+					latest.candidate.revision.revisionId === expected.revisionId &&
+					latest.candidate.revision.checksum === expected.checksum &&
+					latest.candidate.revision.serializedProject === expected.serializedProject) {
+					this.updateDirectoryCard(latest.candidate);
+					return { kind: "durable", projectId: expected.projectId, revisionId: expected.revisionId };
+				}
+				if (latest?.kind === "durable" && latest.candidate.revision.revisionId === attempt.baseRevisionId &&
+					result.reasonCode !== "PERSISTENCE_QUOTA_EXCEEDED") {
+					const missingResources = await this.verifiedUnresolvedPinnedCustomGlbResourceHashes(attempt.candidate)
+						.catch(() => undefined);
+					if (missingResources?.length) return { kind: "resources-unavailable" };
+				}
+			}
+			if (result.reasonCode === "PERSISTENCE_WRITE_FAILED" || result.reasonCode === "PERSISTENCE_QUOTA_EXCEEDED") {
+				this.pendingDirectoryRename = attempt;
+			}
+			return { ...result, retryAvailable: this.pendingDirectoryRename !== undefined };
+		}
+		if (result.kind === "durable" && attempt) this.updateDirectoryCard(attempt.candidate);
+		if (result.kind === "stale-base" && attempt && this.projectDirectory) {
+			const latest = await this.projectDirectory.loadProject(attempt.candidate.project.projectId);
+			if (latest.kind === "durable") this.updateDirectoryCard(latest.candidate);
+		}
+		return result;
+	}
+
+	private updateDirectoryCard(candidate: DurablePublicationCandidate): void {
+		const hub = this.snapshot();
+		if (hub.kind !== "projects") return;
+		const projects = hub.projects.map(card => card.projectId === candidate.project.projectId
+			? { ...card, revisionId: candidate.revision.revisionId, name: candidate.project.name, updatedAt: candidate.project.updatedAt }
+			: card);
+		projects.sort((first, second) => second.updatedAt.localeCompare(first.updatedAt) || first.projectId.localeCompare(second.projectId));
+		this.setState({ ...hub, projects });
 	}
 
 	/** Renaming creates the next exact-base revision and becomes undoable only when publication is durable. */
@@ -3665,7 +3808,7 @@ export class ProjectController {
 	}
 
 	public hasPendingPublication(): boolean {
-		return this.publicationActive;
+		return this.publicationActive || this.directoryRenameActive;
 	}
 
 	/** Actual retained retry target; the failure view may still display the previous Durable Project. */

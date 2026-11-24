@@ -1,26 +1,62 @@
-import assert from 'node:assert/strict';
-import {test} from 'node:test';
-import {mkdtemp,copyFile,mkdir,symlink,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {spawnSync} from 'node:child_process';
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { copyFile, mkdir, mkdtemp, readdir, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
-// A config-loading contract, not a replacement for an actual production build.
-async function isolatedConfiguration(assertion) {
- const original=resolve(fileURLToPath(new URL('..',import.meta.url)));
- const directory=await mkdtemp(join(tmpdir(),'interiors-tma-config-no-pwa-'));
- try {
-  await mkdir(join(directory,'scripts'));
-  for(const name of ['package.json','rspack.config.mjs','rspack.telegram.config.mjs','scripts/check-runtime.mjs','scripts/telegram-release-build.mjs','scripts/telegram-sdk-asset.mjs']) await copyFile(join(original,name),join(directory,name));
-  await symlink(join(original,'node_modules'),join(directory,'node_modules'),'dir');
-  const child=spawnSync(process.execPath,['--input-type=module','-e',assertion],{cwd:directory,encoding:'utf8',timeout:30000,env:{...process.env,INTERIORS_TELEGRAM_OUTPUT:join(directory,'dist-telegram')}});
-  assert.equal(child.signal,null,child.stderr);assert.equal(child.status,0,child.stderr||child.stdout);
- } finally { await rm(directory,{recursive:true,force:true}); }
-}
-test('Telegram configuration loads without browser entry, HTML, manifest or worker template',async()=>{
- await isolatedConfiguration(`import assert from 'node:assert/strict';import configure from './rspack.telegram.config.mjs';const target=configure({}, {mode:'production'});assert.deepEqual(target.entry,{telegram:'./src/telegram-main.tsx'});assert.equal(target.output.clean,false);assert.equal(target.plugins.some(plugin=>plugin.constructor.name==='InteriorsServiceWorkerPlugin'),false);assert.equal(target.plugins.some(plugin=>plugin.constructor.name==='TelegramReleasePlugin'),true);`);
-});
-test('browser compilation still requires its actual worker template',async()=>{
- await isolatedConfiguration(`import assert from 'node:assert/strict';import configure from './rspack.config.mjs';const target=configure({}, {mode:'production'});const worker=target.plugins.find(plugin=>plugin.constructor.name==='InteriorsServiceWorkerPlugin');assert.ok(worker);assert.throws(()=>worker.apply({}),{code:'ENOENT'});`);
+test("Telegram config loads in a checkout without the Web/PWA build or entry", async () => {
+	const original = fileURLToPath(new URL("../", import.meta.url));
+	const root = await mkdtemp(join(tmpdir(), "interiors-tma-config-no-pwa-"));
+	const app = join(root, "apps", "web");
+	try {
+		const configurations = (await readdir(original)).filter((name) =>
+			/^rspack\.(shared|telegram)\.config\.mjs$/.test(name),
+		);
+		await Promise.all(
+			[
+				"package.json",
+				...configurations,
+				"scripts/check-runtime.mjs",
+				"scripts/legal-documents-build.mjs",
+				"scripts/telegram-analytics-configuration.mjs",
+				"scripts/telegram-release-build.mjs",
+				"scripts/telegram-sdk-asset.mjs",
+				"src/app/license-receipt.ts",
+				"../../docs/legal/analytics-consent.html",
+			].map(async (name) => {
+				const destination = join(app, name);
+				await mkdir(dirname(destination), { recursive: true });
+				await copyFile(join(original, name), destination);
+			}),
+		);
+		await symlink(join(original, "node_modules"), join(app, "node_modules"), "dir");
+		const child = spawnSync(
+			process.execPath,
+			[
+				"--input-type=module",
+				"-e",
+				`import assert from "node:assert/strict";
+				import configure from "./rspack.telegram.config.mjs";
+				const target = configure({}, { mode: "production" });
+				assert.deepEqual(target.entry, { telegram: "./src/telegram-main.tsx" });
+				assert.equal(target.output.clean, false);
+				assert.equal(target.devServer, undefined);
+				const plugins = target.plugins.map(plugin => plugin.constructor.name);
+				assert.ok(plugins.includes("TelegramReleasePlugin"));
+				assert.ok(!plugins.includes("InteriorsServiceWorkerPlugin"));`,
+			],
+			{
+				cwd: app,
+				encoding: "utf8",
+				timeout: 30_000,
+				env: { ...process.env, INTERIORS_TELEGRAM_OUTPUT: join(app, "dist-telegram") },
+			},
+		);
+		assert.equal(child.signal, null, child.stderr);
+		assert.equal(child.status, 0, child.stderr || child.stdout);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
 });

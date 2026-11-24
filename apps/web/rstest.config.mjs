@@ -3,7 +3,7 @@ import { withRspackConfig } from '@rstest/adapter-rspack';
 
 export default defineConfig({
   extends: withRspackConfig({
-    configPath: './rspack.config.mjs',
+    configPath: './rspack.shared.config.mjs',
     nodeEnv: 'test'
   }),
   include: [

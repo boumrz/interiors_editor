@@ -264,6 +264,19 @@ const fixture = {
 		for (const size of sizes ?? [-1]) { const data = size === -1 ? triangleGlb() : new Uint8Array(size), file = new File([data], "exact.glb"); const read = file.arrayBuffer.bind(file); file.arrayBuffer = async () => { localModelFileReads++; return read(); }; transfer.items.add(file); }
 		input.files = transfer.files; input.dispatchEvent(new Event("change", { bubbles: true }));
 	},
+	async currentBackupBytes() {
+		const result = await runtime?.controller.exportProjectTransfer();
+		if (result?.kind !== "ready") throw new Error("Expected a complete backup of the current project");
+		return [...result.bytes];
+	},
+	selectRepairBackup(bytes: readonly number[]) {
+		const input = document.querySelector<HTMLInputElement>('input[aria-label="Выбрать резервную копию для восстановления моделей"]');
+		if (!input) throw new Error("No backup repair control");
+		const transfer = new DataTransfer();
+		transfer.items.add(new File([Uint8Array.from(bytes)], "project.interiors", { type: "application/octet-stream" }));
+		input.files = transfer.files;
+		input.dispatchEvent(new Event("change", { bubbles: true }));
+	},
 
 	writerRecoveryName: () => runtime?.controller.writerRecoveryCopy()?.project.name,
 	localModelFileReads: () => localModelFileReads,

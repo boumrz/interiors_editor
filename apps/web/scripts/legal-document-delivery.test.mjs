@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { createServer } from "node:http";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
+import { LegalDocumentsPlugin } from "./legal-documents-build.mjs";
 import { createTelegramPreviewServer } from "./telegram-preview-server.mjs";
 
 const web = fileURLToPath(new URL("../", import.meta.url));
@@ -87,13 +87,17 @@ test("the offline reader preserves the underlying screen with the same edition o
 	timeout: 60_000,
 }, async (t) => {
 	const { rspack } = await import("@rspack/core");
-	const { default: configure } = await import("../rspack.config.mjs");
+	const { default: configure } = await import("../rspack.shared.config.mjs");
 	const config = configure({}, { mode: "production" });
 	const temporary = await mkdtemp(join(tmpdir(), "interiors-legal-reader-"));
 	t.after(() => rm(temporary, { recursive: true, force: true }));
 	config.context = web;
 	config.entry = "./tests/browser/legal-reader-fixture.tsx";
 	config.output = { ...config.output, path: temporary };
+	config.plugins = [
+		new rspack.HtmlRspackPlugin({ templateContent: '<!doctype html><html lang="ru"><head><meta charset="utf-8"></head><body><div id="root"></div></body></html>' }),
+		new LegalDocumentsPlugin(),
+	];
 	const compiler = rspack(config);
 	await new Promise((resolve, reject) =>
 		compiler.run((err, stats) =>
@@ -172,39 +176,4 @@ test("the offline reader preserves the underlying screen with the same edition o
 			await context.close();
 		}
 	}
-});
-
-test("an active PWA worker refreshes the three stable legal URLs and preserves their last valid offline copies", {timeout:30000}, async t=>{
- const texts=Object.fromEntries(await Promise.all(names.map(async n=>[n,await readFile(new URL(n+".html",source),"utf8")])));
- const shell=names.flatMap(n=>["/legal/"+n+".html","/legal/old/"+n+".html"]);
- const template=await readFile(join(web,"public/sw.template.js"),"utf8");
- const worker=template.replace("__INTERIORS_APP_SHELL_CACHE__","interiors-editor-shell-fixed").replace("__INTERIORS_BROWSE_CACHE__","interiors-editor-browse-fixed").replace("__INTERIORS_APP_SHELL__",JSON.stringify(shell)).replace("__INTERIORS_RELEASE_MANIFEST__","{}");
- let stage="previous";
- const server=createServer((req,res)=>{
-  const path=new URL(req.url,"http://localhost").pathname;
-  if(path==="/sw.js"){res.writeHead(200,{"Content-Type":"text/javascript"});return res.end(worker);}
-  if(path==="/"){res.writeHead(200,{"Content-Type":"text/html"});return res.end("<title>Test</title>");}
-  const n=names.find(name=>path.endsWith("/"+name+".html"));
-  if(!n){res.writeHead(404);return res.end();}
-  const archived=path.startsWith("/legal/old/");
-  const html=(stage==="spa" ? "<!doctype html><html><body><main><h1>InteriorsEditor</h1></main></body></html>" : stage==="wrong-doc" ? texts[n==="privacy-policy"?"license-agreement":"privacy-policy"] : texts[n])+"<!--"+(archived?"archive":stage)+"-->";
-  res.writeHead(stage==="404"?404:stage==="500"?500:200,{"Content-Type":stage==="wrong-type"?"application/json":"text/html; charset=utf-8","Cache-Control":"no-store"});
-  res.end(html);
- });
- await new Promise(done=>server.listen(0,"127.0.0.1",done));t.after(()=>new Promise(done=>server.close(done)));
- const browser=await chromium.launch({channel:"chrome"});t.after(()=>browser.close());
- const context=await browser.newContext();const page=await context.newPage();
- await page.goto("http://127.0.0.1:"+server.address().port);
- await page.evaluate(async()=>{await navigator.serviceWorker.register("/sw.js");await navigator.serviceWorker.ready;});
- await page.waitForFunction(()=>Boolean(navigator.serviceWorker.controller));
- const get=path=>page.evaluate(async url=>{try{return await (await fetch(url)).text();}catch{return null;}},path);
- stage="current";
- for(const n of names){assert.match(await get("/legal/"+n+".html"),/<!--current-->/);assert.match(await get("/legal/old/"+n+".html"),/<!--archive-->/);}
- for(stage of ["404","500","spa","wrong-doc","wrong-type"]){
-  for(const n of names)assert.match(await get("/legal/"+n+".html"),/<!--current-->/,stage+" must keep "+n);
- }
- await context.setOffline(true);
- for(const n of names)assert.match(await get("/legal/"+n+".html"),/<!--current-->/);
- await page.evaluate(async()=>{const cache=await caches.open("interiors-editor-shell-fixed");await cache.put("/legal/license-agreement.html",new Response("<main><h1>InteriorsEditor</h1></main>",{headers:{"Content-Type":"text/html"}}));});
- assert.equal(await get("/legal/license-agreement.html"),null,"a corrupt offline copy never serves the editor shell");
 });

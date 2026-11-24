@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { unzipSync } from "fflate";
 import type {} from "./telegram-runtime-ui-harness";
+import { encryptProjectTransfer } from "../../src/adapters/telegram/encrypted-project-transfer";
 import { openEditorCatalog, openOpeningDetailsOnSelectedWall } from "./telegram-entry-support";
 import { projectRectangularRoomForWebGl } from "../../src/adapters/renderer/rectangular-room-projection";
 import { canvasPointForFloor, canvasPointForSceneItem } from "../../src/ui/three-dimensional-floor-interaction";
@@ -1545,7 +1546,7 @@ test("TMA-UI-17: Back before the Saving status preserves the dispatched rename a
  await page.getByRole("button",{name:"Переименовать проект Before checksum",exact:true}).click();
  await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("Held real rename");
  await page.evaluate(()=>window.__telegramRuntimeUi.holdPublicationChecksum("Held real rename"));
- await page.getByRole("button",{name:"Сохранить название",exact:true}).click();
+ await page.getByRole("button",{name:"Сохранить",exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
  expect(await page.evaluate(()=>window.__telegramRuntimeUi.state().kind)).toBe("saved");
  await page.evaluate(()=>window.__telegramRuntimeUi.hostBack());
@@ -1674,7 +1675,7 @@ test("TMA-UI-19: Back keeps a failed real candidate and recovery export until ex
  await page.getByRole("button",{name:"Переименовать проект Quota before rename",exact:true}).click();
  await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("Retained quota rename");
  await page.evaluate(()=>window.__telegramRuntimeUi.failNextScopedProjectWrite());
- await page.getByRole("button",{name:"Сохранить название",exact:true}).click();
+ await page.getByRole("button",{name:"Сохранить",exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.state().kind)).toBe("persist-failed");
  const failed=await rows(page,"a");
  expect(failed.projects).toEqual(before.projects);
@@ -1784,7 +1785,7 @@ test("TMA-UI-26: closing the page during an actual uncommitted save reopens the 
  await page.getByRole("button",{name:"Переименовать проект Last durable before abrupt close",exact:true}).click();
  await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("Uncommitted after close");
  await page.evaluate(()=>window.__telegramRuntimeUi.holdPublicationChecksum("Uncommitted after close"));
- await page.getByRole("button",{name:"Сохранить название",exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
+ await page.getByRole("button",{name:"Сохранить",exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
  await page.close({runBeforeUnload:false});
  const reopened=await context.newPage();
  try{
@@ -1816,7 +1817,7 @@ test("TMA-UI-28: embedded Telegram exposes static GLB only and rejects a queued 
 test("TMA-UI-29: Back requires an explicit discard for an actual fence-loss recovery candidate",async({page,context})=>{
  await navigableRoom(page,"Fence recovery base");
  await page.getByRole("button",{name:"Переименовать проект Fence recovery base",exact:true}).click();await page.getByRole("textbox",{name:"Новое название проекта",exact:true}).fill("Retained fence candidate");
- await page.evaluate(()=>window.__telegramRuntimeUi.holdPublicationChecksum("Retained fence candidate"));await page.getByRole("button",{name:"Сохранить название",exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
+ await page.evaluate(()=>window.__telegramRuntimeUi.holdPublicationChecksum("Retained fence candidate"));await page.getByRole("button",{name:"Сохранить",exact:true}).click();await expect.poll(()=>page.evaluate(()=>window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
  const foreign=await context.newPage();
  try{
   await foreign.goto(page.url());await foreign.evaluate(async()=>{await window.__telegramRuntimeUi.initialize();await window.__telegramRuntimeUi.mountConcurrentNavigable("a");});await foreign.getByRole("button",{name:"Открыть Fence recovery base",exact:true}).click();
@@ -1859,6 +1860,53 @@ test("TMA-UI-31: exact repair bounds precede every File read or storage write an
  }
  await page.evaluate(()=>window.__telegramRuntimeUi.selectRepairFiles());await saved(page);expect(await page.evaluate(()=>window.__telegramRuntimeUi.localModelFileReads())).toBe(1);expect(await rows(page,"a")).toEqual(before);
 });
+
+for (const format of ["plain", "encrypted"] as const) {
+	test(`TMA-UI-RESOURCE-03: ${format} backup restores exact models without creating a project`, async ({ page }) => {
+		const fixture = await page.evaluate(async () => {
+			const fixture = await window.__telegramRuntimeUi.prepareUpperCustom("a");
+			window.__telegramRuntimeUi.mountPreparedNavigable("a");
+			return fixture;
+		});
+		await open(page, "Uppercase local model");
+		const project = await currentProject(page);
+		const archive = Uint8Array.from(await page.evaluate(() => window.__telegramRuntimeUi.currentBackupBytes()));
+		const password = "backup-fixture-password";
+		const backup = format === "encrypted" ? await encryptProjectTransfer(archive, password) : { kind: "plain" as const, bytes: archive };
+		if (backup.kind === "rejected") throw new Error("Expected an encrypted backup fixture");
+
+		await page.evaluate(() => window.__telegramRuntimeUi.removeCurrentResource("a"));
+		await page.getByRole("button", { name: "Открыть Uppercase local model", exact: true }).click();
+		await expect(page.getByRole("button", { name: "Восстановить модели из резервной копии", exact: true })).toBeVisible();
+		const before = await rows(page, "a");
+		const chooser = page.getByLabel("Выбрать резервную копию для восстановления моделей", { exact: true });
+		const selectBackup = () => page.evaluate((bytes) => window.__telegramRuntimeUi.selectRepairBackup(bytes), [...backup.bytes]);
+		await selectBackup();
+		if (format === "encrypted") {
+			const dialog = page.getByRole("dialog", { name: "Пароль файла проекта", exact: true });
+			const field = dialog.getByLabel("Пароль, заданный при экспорте", { exact: true });
+			const restore = dialog.getByRole("button", { name: "Восстановить", exact: true });
+			await expect(dialog).toBeVisible();
+			await expect(chooser).not.toHaveAttribute("accept");
+			await field.fill("incorrect-fixture-password");
+			await restore.click();
+			await expect(dialog.getByRole("alert")).toContainText("Пароль неверен");
+			expect(await rows(page, "a")).toEqual(before);
+			await dialog.getByRole("button", { name: "Отмена", exact: true }).click();
+			await expect(dialog).toHaveCount(0);
+			expect(await rows(page, "a")).toEqual(before);
+			await selectBackup();
+			await field.fill(password);
+			await restore.click();
+			await expect(dialog).toHaveCount(0);
+		}
+		await saved(page);
+		expect(await currentProject(page)).toEqual(project);
+		expect(await rows(page, "a")).toEqual(before);
+		const repaired = await page.evaluate(() => window.__telegramRuntimeUi.allScopedRows("a"));
+		expect(repaired).toMatchObject({ resources: [{ resourceHash: fixture.resourceHash, blob: { blobBytes: fixture.sourceBytes } }] });
+	});
+}
 
 
 test("TMA-UI-32: a one-mm retained wall remains touch-selectable and independently deletable without losing its room", async ({ page }) => {

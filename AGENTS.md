@@ -2,11 +2,11 @@
 
 ## Current phase
 
-The mobile Telegram Mini App (TMA) on iOS and Android is the only active product scope. Allocate product planning, design, implementation, bug fixes, testing, and release work exclusively to TMA. Standalone browser, installed PWA, and other product surfaces require a separate explicit owner decision before any work is planned or performed. Run the TMA checks for current releases. Keep the already-published Web/PWA assets byte-for-byte and preserve existing user data. Changes to the shared core and legacy-file checks are in scope when needed for TMA behavior, data compatibility, or rollback.
+The mobile Telegram Mini App (TMA) on iOS and Android is the only product. Allocate product planning, design, implementation, bug fixes, testing, and release work exclusively to TMA. On 24 November 2026 the product owner confirmed that needed Web/PWA projects had been exported and authorized disabling the old public editor. Preserve existing user data and the archived release required for rollback. Changes to the shared core and legacy-file checks are in scope when needed for TMA behavior, data compatibility, or rollback.
 
 The existing Web/PWA Alpha has a historical implementation-readiness verdict of `READY` dated 2026-08-30. Telegram is deployed, with release evidence in `docs/progress/tma-editor-release-2026-11-22.md`. Epic 10 and physical client acceptance have their own assessment. Each approved scope keeps its applicable readiness gate. Browser registered-transfer ingress is disabled. Do not create new extension application code, package manifests, build configuration, tests, generated assets, deployment configuration, or implementation artifacts until the product owner approves the planning package and the BMAD implementation-readiness gate returns `READY` for the applicable scope or an explicit written waiver exists.
 
-The S0–S7 coexistence plan records the historical Web/PWA baseline and data protection obligations. Web/PWA retirement, including preparation and removal, requires a separate owner decision. See `plans/telegram-mini-app-extension-spec-2026-11-04.md`.
+The S0–S7 coexistence plan records the historical Web/PWA baseline and data protection obligations. The current decisions and checks for retiring that entry are in `plans/telegram-only-retirement-and-encrypted-backup-2026-11-24.md`.
 
 ## Research dashboards and future roadmaps
 
@@ -63,8 +63,10 @@ Artifact ownership:
   outside the application, as defined by PRD/SPEC/AD-14. Formal
   `AssetUsageGrant`, licensing/provenance/declaration/attribution/notice
   admission is not an Alpha gate (owner decision, 2026-11-04). Technical
-  resource validation, exact pinning and the prohibition on uploading user
-  Projects/files remain unchanged.
+  resource validation and exact pinning continue to apply. The Android export
+  exception approved on 24 November permits a user-initiated, password-encrypted
+  archive for temporary download with 15-minute server retention. The password,
+  original filename, launch parameters, and plaintext remain on the device.
 - One project has one fenced writer; other contexts are read-only until explicit takeover.
 - Experimental custom import is static GLB only and must pass resource and security policy.
 

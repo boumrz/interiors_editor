@@ -17,9 +17,8 @@ async function load() {
 	} catch {
 		if (current !== generation) return;
 		element?.firstElementChild?.setAttribute("aria-busy", "false");
-		if (status)
-			status.textContent =
-				"Не удалось загрузить редактор. Повторите запуск или откройте веб-редактор.";
+		if (status) status.textContent =
+			"Не удалось загрузить редактор. Повторите запуск.";
 		retry?.removeAttribute("hidden");
 	}
 }

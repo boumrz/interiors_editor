@@ -8,12 +8,15 @@ import {
 	projectOpeningsRemainValid,
 	updateDoorOpeningInProject,
 	wallOpeningHostsForProject,
+	windowsWithMixedSillsOnSameWall,
 } from "./door-opening-project";
 import { addGeneralWallToProject } from "./general-wall-project";
 import { createInitialProject } from "./initial-project";
 import { createParametricFloorItem } from "./parametric-item";
 import { createParametricWallItem } from "./parametric-wall-item";
+import type { Project } from "./project";
 import { configureRectangularRoom } from "./rectangular-room";
+import type { WindowOpening } from "./wall-opening";
 
 function ids(...values: string[]) {
 	let index = 0;
@@ -77,7 +80,131 @@ function sharedWallHeightOpeningMinimumProject() {
 	};
 }
 
+const alignmentTime = "2026-08-24T12:00:00.000Z";
+const windowAlignment = { kind: "align-matching-windows", openingId: "window-1" } as const;
+
+function withWindows(source: Project, ...windows: readonly Omit<WindowOpening, "kind">[]) {
+	return windows.reduce((project, { openingId, ...window }) => {
+		const added = addWindowOpeningToProject(project, window, ids(openingId), alignmentTime);
+		if (added.kind !== "accepted") throw new Error(`Expected valid window ${openingId}: ${added.reasonCode}`);
+		return added.project;
+	}, source);
+}
+
+function sideBySide(windowHeightMm: number, wallSegmentId = "wall-1") {
+	return [
+		{ openingId: "window-1", offsetMm: 400, sillMm: 300, widthMm: 600, heightMm: windowHeightMm, wallSegmentId },
+		{ openingId: "window-2", offsetMm: 1250, sillMm: 150, widthMm: 600, heightMm: windowHeightMm, wallSegmentId },
+	] as const;
+}
+
 describe("door opening Project mutation", () => {
+	it("aligns every equal-size same-wall window to 900 mm, preserving dimensions, offsets, identities and other openings", () => {
+		const door = addDoorOpeningToProject(roomProject(), {
+			heightMm: 2100, offsetMm: 680, sillMm: 0, wallSegmentId: "wall-2", widthMm: 900,
+		}, ids("door-1"), alignmentTime);
+		if (door.kind !== "accepted") throw new Error("Expected a valid Door fixture");
+		const [first, second] = sideBySide(600);
+		const source = withWindows(door.project, first, second,
+			{ ...first, openingId: "window-3", offsetMm: 2100, sillMm: 1100 },
+			{ ...first, openingId: "different-width", offsetMm: 2900, widthMm: 350 },
+			{ ...first, openingId: "different-height", offsetMm: 3550, heightMm: 500 },
+			{ ...first, openingId: "other-wall", wallSegmentId: "wall-2", offsetMm: 1800 },
+		);
+		const expectedIds = ["window-1", "window-2", "window-3"];
+		expect(windowsWithMixedSillsOnSameWall(source.level.openings, "window-1").map(({ openingId }) => openingId)).toEqual(expectedIds);
+		const nextTime = "2026-08-24T12:01:00.000Z";
+		const result = updateDoorOpeningInProject(source, windowAlignment, nextTime);
+		expect(result).toEqual({
+			kind: "accepted",
+			project: {
+				...source, updatedAt: nextTime,
+				level: {
+					...source.level,
+					openings: source.level.openings.map(opening =>
+						expectedIds.includes(opening.openingId) ? { ...opening, sillMm: 900 } : opening),
+				},
+			},
+		});
+	});
+
+	it("aligns tall windows flush with the lower ceiling of a shared wall", () => {
+		const source = withWindows(sharedWallHeightOpeningMinimumProject(), ...sideBySide(2100, "wall-divider"));
+		const result = updateDoorOpeningInProject(source, windowAlignment, alignmentTime);
+		if (result.kind !== "accepted") throw new Error(`Expected alignable tall windows: ${result.reasonCode}`);
+		expect(result.project.level.openings.map(({ sillMm }) => sillMm)).toEqual([300, 300]);
+		expect(projectOpeningsRemainValid(result.project)).toBe(true);
+	});
+
+	it("uses the actual taller host when another wall in the same plan is lower", () => {
+		const divided = sharedWallHeightOpeningMinimumProject();
+		const host = wallOpeningHostsForProject(divided)?.find(wall =>
+			wall.heightMm === 2700 && wall.usableLengthMm >= 1550);
+		if (!host) throw new Error("Expected a taller canonical boundary wall");
+		const source = withWindows(divided, ...sideBySide(2100, host.wallSegmentId));
+		const result = updateDoorOpeningInProject(source, windowAlignment, alignmentTime);
+		if (result.kind !== "accepted") throw new Error(`Expected alignable tall windows: ${result.reasonCode}`);
+		expect(result.project.level.openings.map(({ sillMm }) => sillMm)).toEqual([600, 600]);
+	});
+
+	it("excludes a Door even when its wall and dimensions match those of the Windows", () => {
+		const door = addDoorOpeningToProject(roomProject(), {
+			heightMm: 2100, offsetMm: 3300, sillMm: 0, wallSegmentId: "wall-1", widthMm: 900,
+		}, ids("door-1"), alignmentTime);
+		if (door.kind !== "accepted") throw new Error("Expected a valid Door fixture");
+		const [first, second] = sideBySide(2100);
+		const source = withWindows(door.project, { ...first, offsetMm: 650, widthMm: 900 }, { ...second, offsetMm: 1950, widthMm: 900 });
+		expect(windowsWithMixedSillsOnSameWall(source.level.openings, "door-1")).toEqual([]);
+		const result = updateDoorOpeningInProject(source, windowAlignment, alignmentTime);
+		if (result.kind !== "accepted") throw new Error(`Expected alignable windows: ${result.reasonCode}`);
+		expect(result.project.level.openings.map(({ kind, sillMm }) => ({ kind, sillMm }))).toEqual([
+			{ kind: "Door", sillMm: 0 }, { kind: "Window", sillMm: 500 }, { kind: "Window", sillMm: 500 },
+		]);
+	});
+
+	it("rejects a stale or invalid source host before returning any aligned geometry", () => {
+		const source = withWindows(roomProject(), ...sideBySide(600));
+		const withMissingHost = {
+			...source, level: { ...source.level, openings: source.level.openings.map(opening => ({ ...opening, wallSegmentId: "missing" })) },
+		};
+		expect(updateDoorOpeningInProject(withMissingHost, windowAlignment, alignmentTime))
+			.toEqual({ kind: "rejected", reasonCode: "WALL_NOT_FOUND" });
+		const withBadOffset = {
+			...source,
+			level: {
+				...source.level,
+				openings: source.level.openings.map(opening => opening.openingId === "window-1" ? { ...opening, offsetMm: 100 } : opening),
+			},
+		};
+		expect(updateDoorOpeningInProject(withBadOffset, windowAlignment, alignmentTime))
+			.toEqual({ kind: "rejected", reasonCode: "OPENING_OUTSIDE_WALL_INTERVAL" });
+	});
+
+	it("leaves already aligned windows, a lone window, and an invalid selection untouched", () => {
+		const [first, second] = sideBySide(600);
+		const source = withWindows(roomProject(), first, { ...second, sillMm: first.sillMm },
+			{ ...first, openingId: "lone-window", offsetMm: 2100, widthMm: 350 });
+		for (const openingId of ["window-1", "lone-window", "missing"]) {
+			expect(windowsWithMixedSillsOnSameWall(source.level.openings, openingId)).toEqual([]);
+			expect(updateDoorOpeningInProject(source, { ...windowAlignment, openingId }, alignmentTime))
+				.toEqual({ kind: "accepted", project: source });
+		}
+	});
+
+	it("rejects alignment of the whole set when the second window would collide with a wall-mounted item", () => {
+		const [first, second] = sideBySide(600);
+		const source = withWindows(roomProject(), first, { ...second, sillMm: 600 });
+		const panel = createParametricWallItem(source, {
+			color: "#416b91", depthMm: 50, elevationMm: 1300, heightMm: 100,
+			label: "Настенная панель", offsetMm: second.offsetMm, side: "left", wallSegmentId: second.wallSegmentId, widthMm: 300,
+		}, ids("panel-1"), alignmentTime);
+		if (panel.kind !== "accepted") throw new Error("Expected a panel outside existing openings");
+		const before = JSON.stringify(panel.project);
+		expect(updateDoorOpeningInProject(panel.project, windowAlignment, alignmentTime))
+			.toEqual({ kind: "rejected", reasonCode: "WALL_OPENING_COLLISION" });
+		expect(JSON.stringify(panel.project)).toBe(before);
+	});
+
 	it("keeps an added opening out of an existing wall-mounted panel", () => {
 		const panel = createParametricWallItem(
 			roomProject(),

@@ -9,6 +9,7 @@ import { canonicalProjectSerializer } from "../application/create-project";
 import { ExportRuntimePortableBackupUseCase } from "../application/export-runtime-portable-backup";
 import type { CustomAssetResourceStorePort } from "../application/ports";
 import type { ImportPortableBackupStatus } from "../application/import-portable-backup";
+import { validateRuntimeV1Project } from "../application/runtime-v1-project-validation";
 import { createRegisteredRuntimePortablePorts } from "../adapters/portable-backup/registered-runtime-portable";
 import { FflatePortableBackupDecoder } from "../adapters/portable-backup/fflate-portable-backup-decoder";
 import { FflatePortableBackupEncoder } from "../adapters/portable-backup/fflate-portable-backup-encoder";
@@ -168,6 +169,129 @@ async function sourceWithResource() {
 }
 
 describe("shared Project controller composition", () => {
+	it("rejects overlapping TMA floor commands before publication, including first and repeated model placement", async () => {
+		const { bytes, runtime } = fixture({ floorItemCollisionPolicy: "reject" });
+		const { controller } = runtime;
+		await controller.open();
+		expect(await controller.create("Strict item geometry")).toMatchObject({ kind: "durable" });
+		expect(await controller.configureRectangularRoom({
+			depthMm: "3000", heightMm: "2600", widthMm: "4000",
+		})).toMatchObject({ kind: "durable" });
+		const room = controller.snapshot();
+		if (room.kind !== "saved" || room.project.schemaVersion !== 1) throw new Error("Expected a kept room");
+		const roomId = room.project.level.rooms[0].roomId;
+		const item = {
+			color: "#416b91", depthMm: 300, heightMm: 800, label: "Стол", roomId,
+			widthMm: 1000, xMm: 1200, zMm: 1200,
+		};
+		const obstacle = { ...item, label: "Стул", widthMm: 500, zMm: 1650 };
+		expect(await controller.createParametricFloorItem(item)).toMatchObject({ kind: "durable" });
+		expect(await controller.createParametricFloorItem(obstacle)).toMatchObject({ kind: "durable" });
+		const before = controller.snapshot();
+		const history = controller.sessionRetentionRoots();
+		if (before.kind !== "saved") throw new Error("Expected two kept items");
+		const assetInstanceId = before.project.assetInstances[0].assetInstanceId;
+		const collision = { kind: "rejected", reasonCode: "ITEM_COLLISION" };
+
+		expect(await controller.createParametricFloorItem(obstacle)).toEqual(collision);
+		expect(await controller.moveParametricFloorItem({ assetInstanceId, xMm: 1200, zMm: 1650 })).toEqual(collision);
+		expect(await controller.rotateParametricFloorItem({ assetInstanceId, exact: true, yawRadians: Math.PI / 2 })).toEqual(collision);
+		expect(await controller.resizeParametricFloorItem({ assetInstanceId, widthMm: 1000, depthMm: 1000, heightMm: 800 })).toEqual(collision);
+
+		const glbBytes = staticGlb();
+		const asset = {
+			assetDefinitionId: "test-local-glb",
+			byteLength: glbBytes.byteLength,
+			depthMm: 300,
+			displayName: "GLB furnishing",
+			format: "glb" as const,
+			heightMm: 800,
+			resourceHash: await sha256Bytes(glbBytes),
+			widthMm: 500,
+		};
+		const imported = { asset, color: obstacle.color, roomId, glbBytes, xMm: 1200, zMm: 1650 };
+		expect(await controller.createCustomGlbFloorItem(imported)).toEqual(collision);
+		expect(bytes.size).toBe(0);
+		expect(controller.snapshot()).toEqual(before);
+		expect(controller.sessionRetentionRoots()).toEqual(history);
+
+		expect(await controller.createCustomGlbFloorItem({ ...imported, xMm: 2800 })).toMatchObject({ kind: "durable" });
+		expect(bytes.get(asset.resourceHash)).toEqual(glbBytes);
+		const afterImport = controller.snapshot();
+		expect(await controller.createParametricFloorItem({
+			...obstacle, assetDefinitionId: asset.assetDefinitionId, xMm: 2800,
+		})).toEqual(collision);
+		expect(controller.snapshot()).toEqual(afterImport);
+	});
+
+	it("keeps existing overlapping Web projects readable and lets TMA repair and undo the overlap", async () => {
+		const { runtime, dependencies } = fixture();
+		const legacy = runtime.controller;
+		await legacy.open();
+		const created = await legacy.create("Old overlap");
+		if (created.kind !== "durable") throw new Error("Project creation failed");
+		await legacy.configureRectangularRoom({ depthMm: "3000", heightMm: "2600", widthMm: "4000" });
+		const room = legacy.snapshot();
+		if (room.kind !== "saved" || room.project.schemaVersion !== 1) throw new Error("Expected a kept room");
+		const pose = {
+			color: "#416b91", depthMm: 500, heightMm: 800, label: "Стул", roomId: room.project.level.rooms[0].roomId,
+			widthMm: 500, xMm: 1200, zMm: 1200,
+		};
+		await legacy.createParametricFloorItem(pose);
+		expect(await legacy.createParametricFloorItem(pose)).toMatchObject({
+			kind: "durable", warnings: [{ kind: "item" }],
+		});
+		const before = legacy.snapshot();
+		await legacy.showProjects();
+		const strict = createSharedProjectController({ ...dependencies, floorItemCollisionPolicy: "reject" }).controller;
+		await strict.openProject(created.projectId);
+		expect(strict.snapshot()).toEqual(before);
+		if (before.kind !== "saved" || before.project.schemaVersion !== 1) throw new Error("Legacy overlap unavailable");
+		expect(validateRuntimeV1Project(before.project)).toMatchObject({ kind: "accepted" });
+		const assetInstanceId = before.project.assetInstances[0].assetInstanceId;
+
+		expect(await strict.moveParametricFloorItem({ assetInstanceId, xMm: 1300, zMm: 1200 })).toEqual({
+			kind: "rejected", reasonCode: "ITEM_COLLISION",
+		});
+		expect(await strict.moveParametricFloorItem({ assetInstanceId, xMm: 2400, zMm: 1200 })).toMatchObject({ kind: "durable" });
+		expect(await strict.undo()).toMatchObject({ kind: "durable" });
+		expect(strict.snapshot()).toEqual(before);
+		expect(await strict.redo()).toMatchObject({ kind: "durable" });
+	});
+
+	it("aligns saved windows as one undoable revision and reopens the corrected geometry", async () => {
+		const { runtime, dependencies } = fixture();
+		const { controller } = runtime;
+		await controller.open();
+		const created = await controller.create("Окна на разной высоте");
+		if (created.kind !== "durable") throw new Error("Project creation failed");
+		await controller.configureRectangularRoom({ depthMm: "3000", heightMm: "2600", widthMm: "4000" });
+		const room = controller.snapshot();
+		if (room.kind !== "saved" || room.project.schemaVersion !== 1) throw new Error("Expected a saved room");
+		const { wallSegmentId } = room.project.level.wallSegments[0];
+		for (const [offsetMm, sillMm] of [[700, 450], [2300, 1000]]) {
+			expect(await controller.addWindowOpening({ wallSegmentId, heightMm: 1000, widthMm: 1000, offsetMm, sillMm }))
+				.toMatchObject({ kind: "durable" });
+		}
+		const before = controller.snapshot();
+		if (before.kind !== "saved" || before.project.schemaVersion !== 1) throw new Error("Expected saved windows");
+		const { openingId } = before.project.level.openings[0];
+		const align = { kind: "align-matching-windows", openingId } as const;
+		expect(await controller.updateDoorOpening(align)).toMatchObject({ kind: "durable" });
+		const after = controller.snapshot();
+		if (after.kind !== "saved" || after.project.schemaVersion !== 1) throw new Error("Expected aligned durable windows");
+		expect(after.project.level.openings.map(({ sillMm }) => sillMm)).toEqual([900, 900]);
+		expect(await controller.updateDoorOpening(align)).toEqual({ kind: "unchanged" });
+		expect(await controller.undo()).toMatchObject({ kind: "durable" });
+		expect(controller.snapshot()).toEqual(before);
+		expect(await controller.redo()).toMatchObject({ kind: "durable" });
+		expect(controller.snapshot()).toEqual(after);
+		await controller.showProjects();
+		const reopened = createSharedProjectController(dependencies).controller;
+		await reopened.openProject(created.projectId);
+		expect(reopened.snapshot()).toEqual(after);
+	});
+
 	it("durably closes a room with an exact short tail, restores it through history and reopens it for independent deletion", async () => {
 		const { runtime, dependencies } = fixture();
 		const { controller } = runtime;

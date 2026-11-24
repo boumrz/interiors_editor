@@ -4,6 +4,8 @@ import { expect, type Page, type Locator, test } from "@playwright/test";
 import {
 	audit,
 	installEntryAudit,
+	openEditorCatalog,
+	openOpeningDetailsOnSelectedWall,
 	semanticRows,
 } from "./telegram-entry-support";
 import { signedExample, fixtureEditionTime } from "./telegram-entry-signed-fixture";
@@ -63,6 +65,34 @@ test.beforeEach(async ({ page, baseURL }) => {
 			? route.continue()
 			: route.abort(),
 	);
+});
+
+test("TMA-SHEET-01: the Add sheet has a fixed bottom position and returns focus without a write", async ({ page }, info) => {
+	await signed(page);
+	await page.setViewportSize({ width: 360, height: 740 });
+	await page.goto("/");
+	await createRoom(page, "Шторка добавления");
+	const before = await semanticRows(page);
+	const add = page.getByTestId("editor-action-dock").getByRole("button", { name: "Добавить", exact: true });
+	await add.click();
+	const sheet = page.getByRole("dialog", { name: "Добавить", exact: true });
+	await expect(sheet.getByRole("button", { name: "Развернуть", exact: true })).toHaveCount(0);
+	await expect.poll(async () => {
+		const box = await sheet.boundingBox();
+		return !!box && Math.abs(box.y + box.height - 728) < 2;
+	}).toBe(true);
+	const frame = await sheet.boundingBox();
+	const title = await sheet.getByRole("heading", { name: "Добавить", exact: true }).boundingBox();
+	const firstAction = await sheet.getByRole("button", { name: "Дверь", exact: true }).boundingBox();
+	if (!frame || !title || !firstAction) throw new Error("Missing Add sheet layout");
+	expect(title.x - frame.x).toBeGreaterThanOrEqual(12);
+	expect(Math.abs(title.x - firstAction.x)).toBeLessThan(2);
+	await expect(sheet.getByRole("button", { name: "Дверь", exact: true })).toBeVisible();
+	await page.screenshot({ path: info.outputPath("common-sheet-360.png") });
+	await page.keyboard.press("Escape");
+	await expect(sheet).toBeHidden();
+	await expect(add).toBeFocused();
+	expect(await semanticRows(page)).toEqual(before);
 });
 
 test("TMA-UI-POLISH-01: healthy Projects has only user actions and a readable blue New Project label", async ({ page }, info) => {
@@ -161,9 +191,9 @@ test("TMA-UI-POLISH-03: destructive confirmation uses two plain actions and canc
 	expect(await semanticRows(page)).toEqual(before);
 });
 
-async function expectTmaModalBottom(dialog: Locator) {
+async function expectTmaModalBottom(dialog: Locator, modal = true) {
 	await expect(dialog).toBeVisible();
-	expect(await dialog.evaluate((element) => element.matches(":modal"))).toBe(true);
+	expect(await dialog.evaluate((element) => element.matches(":modal"))).toBe(modal);
 	await expect.poll(() => dialog.evaluate((element) => {
 		const hostHeight = Number.parseFloat(getComputedStyle(element).getPropertyValue("--editor-viewport-height"));
 		const visibleHeight = Math.min(window.innerHeight, hostHeight || window.innerHeight);
@@ -176,39 +206,26 @@ async function expectTmaModalBottom(dialog: Locator) {
 	})).toBe(0);
 }
 
-test("TMA-CONFIRM: moving a door keeps a compact modal bottom sheet in the visible safe area", async ({ page }) => {
+test("TMA-CONFIRM: the keyboard moves a door once and Undo restores its position", async ({ page }) => {
 	await signed(page);
 	await page.goto("/");
 	await createRoom(page, "Проверка проёма");
 	await page.getByTestId("wall-segment").first().click();
-	await page.getByRole("button", { name: "Добавить проём" }).click();
-	await page.getByRole("button", { name: "Дверь", exact: true }).click();
-	await page.getByRole("button", { name: "Добавить", exact: true }).click();
-	await expect(page.getByRole("dialog", { name: "Новый проём", exact: true })).toHaveCount(0);
+	const draft = await openOpeningDetailsOnSelectedWall(page);
+	await draft.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect(draft).toHaveCount(0);
+	await expect(page.getByTestId("editor-action-dock").getByRole("button", { name: "Добавить", exact: true })).toBeFocused();
 	const handle = page.getByTestId("opening-move-handle");
 	await handle.focus();
 	await expect(handle).toBeFocused();
-	await handle.press("ArrowRight");
-	const dialog = page.getByTestId("opening-move-confirmation");
-	await expect(dialog).toBeVisible();
 	const before = await semanticRows(page);
-	for (const width of [390, 320]) {
-		await page.setViewportSize({ width, height: 745 });
-		await expectTmaModalBottom(dialog);
-		const bounds = await dialog.boundingBox();
-		expect(bounds!.height).toBeLessThan(210);
-		expect(bounds!.x).toBeCloseTo(12, 0);
-		expect(bounds!.width).toBeCloseTo(width - 24, 0);
-		for (const button of await dialog.getByRole("button").all()) {
-			const box = await button.boundingBox();
-			expect(box!.height).toBeGreaterThanOrEqual(44);
-			expect(box!.height).toBeLessThan(60);
-		}
-	}
-	await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
-	await dialog.getByRole("button", { name: "Отменить" }).click();
-	await expect(dialog).toHaveCount(0);
-	expect(await semanticRows(page)).toEqual(before);
+	const initial = Number(await handle.getAttribute("cx"));
+	await handle.press("ArrowRight");
+	await expect.poll(async () => (await semanticRows(page)).revisions.length).toBe(before.revisions.length + 1);
+	await expect(page.getByTestId("opening-move-confirmation")).toHaveCount(0);
+	await expect.poll(async () => Number(await handle.getAttribute("cx"))).toBeGreaterThan(initial);
+	await page.getByRole("button", { name: /^Отменить действие/ }).click();
+	await expect.poll(async () => Number(await handle.getAttribute("cx"))).toBeCloseTo(initial, 3);
 });
 
 test("TMA-UI-POLISH-04: editor surfaces share rounded controls with separate touch targets across screen sizes", async ({ page }, info) => {
@@ -217,7 +234,7 @@ test("TMA-UI-POLISH-04: editor surfaces share rounded controls with separate tou
 	await createRoom(page, "Проверка интерфейса");
 	for (const width of [320, 390, 768, 820]) {
 		await page.setViewportSize({ width, height: 844 });
-		const itemLabel = page.getByRole("button", { name: "Предметы интерьера", exact: true }).locator("span");
+		const itemLabel = page.getByTestId("editor-action-dock").getByRole("button", { name: "Добавить", exact: true }).locator("span");
 		expect(await itemLabel.evaluate(element => element.getBoundingClientRect().height <= Number.parseFloat(getComputedStyle(element).lineHeight) + 1)).toBe(true);
 		const dockRows = await page.getByTestId("editor-action-dock").getByRole("button").evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().y)));
 		expect(new Set(dockRows).size).toBe(1);
@@ -314,7 +331,7 @@ test("TMA-CATALOG-LOCAL-01: signed Telegram offers floor presets and opens its o
 	await page.goto("/");
 	await createRoom(page, "Локальный каталог");
 	await page.context().setOffline(true);
-	await page.getByRole("navigation", { name: "Инструменты редактора" }).getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await openEditorCatalog(page);
 	const catalog = page.getByRole("dialog", { name: "Предметы интерьера" });
 	for (const name of ["Стул", "Шкаф", "Ванна", "Стиральная машина"]) {
 		await expect(catalog.getByRole("button", { name: new RegExp(`^${name} `) })).toBeVisible();
@@ -349,6 +366,8 @@ test("TMA-CATALOG-LOCAL-01: signed Telegram offers floor presets and opens its o
 		})).toBe(true);
 	}
 	await expect(presets).toHaveAttribute("aria-selected", "true");
+	await expect(catalog.getByRole("button", { name: "Импортировать свой GLB", exact: true })).toHaveCount(0);
+	await expect(catalog.getByTestId("custom-glb-import-input")).toHaveCount(0);
 	await catalog.getByRole("button", { name: "Техника", exact: true }).click();
 	await search.fill("холодильник");
 	const headerPosition = await sections.boundingBox();
@@ -365,6 +384,7 @@ test("TMA-CATALOG-LOCAL-01: signed Telegram offers floor presets and opens its o
 	await expect(catalog.getByRole("button", { name: "Техника", exact: true })).toHaveAttribute("aria-pressed", "true");
 	await expect(catalog.getByRole("button", { name: /^Холодильник / })).toBeVisible();
 	await catalog.getByRole("button", { name: "Очистить поиск", exact: true }).click();
+	await own.click();
 	const chooser = page.waitForEvent("filechooser");
 	await catalog.getByRole("button", { name: "Импортировать свой GLB", exact: true }).click();
 	const fileInput = await chooser;
@@ -398,7 +418,7 @@ test("TMA-ITEM-FLUSH-01: a cabinet can be placed at an exact inner wall face bet
 	await page.goto("/");
 	await createRoom(page, "Шкаф у стены");
 	const before = await semanticRows(page);
-	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await openEditorCatalog(page);
 	await page.getByRole("dialog", { name: "Предметы интерьера", exact: true }).getByRole("button", { name: /^Шкаф / }).click();
 	const color = page.getByTestId("tma-placement-color");
 	await expect(color).toHaveCount(0);
@@ -448,7 +468,7 @@ test("TMA-SHEETS: selected floor properties open from the bottom and isolate the
 	await page.goto("/");
 	await createRoom(page, "Свойства стола");
 	const button = (name: string) => page.getByRole("button", { name, exact: true });
-	await button("Предметы интерьера").click();
+	await openEditorCatalog(page);
 	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
 	await clickRectangularRoomCentre(page);
 	await button("Подтвердить размещение предмета").click();
@@ -466,8 +486,10 @@ test("TMA-SHEETS: selected floor properties open from the bottom and isolate the
 	expect(await page.getByTestId("editor-top-bar").evaluate((element) => !!element.closest("[inert]"))).toBe(true);
 	const close = sheet.getByRole("button", { name: "Скрыть панель предмета" });
 	await expect(close).toBeFocused();
+	await expect(sheet.getByRole("button", { name: "Развернуть", exact: true })).toHaveCount(0);
+	const height = sheet.getByRole("textbox", { name: "Высота выбранного предмета, мм", exact: true });
 	await page.keyboard.press("Shift+Tab");
-	await expect(sheet.getByRole("button", { name: "Удалить предмет" })).toBeFocused();
+	await expect(height).toBeFocused();
 	await page.keyboard.press("Tab");
 	await expect(close).toBeFocused();
 	await info.attach("selected-floor-properties", { body: await page.screenshot(), contentType: "image/png" });
@@ -479,9 +501,10 @@ test("TMA-SHEETS: selected floor properties open from the bottom and isolate the
 			&& box.y >= 30 && box.y + box.height <= 508;
 	}).toBe(true);
 	await expect(close).toBeInViewport();
-	await expect(sheet.getByRole("button", { name: "Удалить предмет" })).not.toBeInViewport();
-	await sheet.getByRole("button", { name: "Удалить предмет" }).scrollIntoViewIfNeeded();
-	await expect(sheet.getByRole("button", { name: "Удалить предмет" })).toBeInViewport();
+	await sheet.getByRole("tab", { name: "Настройки", exact: true }).click();
+	const remove = sheet.getByRole("button", { name: "Удалить предмет", exact: true });
+	await remove.scrollIntoViewIfNeeded();
+	await expect(remove).toBeInViewport();
 	await expect(close).toBeInViewport();
 	await page.setViewportSize({ width: 390, height: 700 });
 	await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
@@ -489,18 +512,19 @@ test("TMA-SHEETS: selected floor properties open from the bottom and isolate the
 	await expect(sheet).toHaveCount(0);
 	await expect(trigger).toBeFocused();
 	await trigger.click();
-	const angle = sheet.getByRole("textbox", { name: "Угол поворота выбранного предмета, градусы" });
-	await angle.fill("15,5");
+	const width = sheet.getByRole("textbox", { name: "Ширина выбранного предмета, мм", exact: true });
+	const originalWidth = await width.inputValue();
+	await width.fill("550");
 	const before = await semanticRows(page);
 	await close.click();
 	const guard = page.getByRole("alertdialog", { name: "Несохранённая правка" });
 	await guard.getByRole("button", { name: "Продолжить", exact: true }).click();
-	await expect(angle).toBeFocused();
-	await expect(angle).toHaveValue("15,5");
+	await expect(width).toBeFocused();
+	await expect(width).toHaveValue("550");
 	expect(await semanticRows(page)).toEqual(before);
 	await page.evaluate(() => window.__telegramEntryProof.host.emit("backButtonClicked"));
 	await guard.getByRole("button", { name: "Отменить правку", exact: true }).click();
-	await expect(angle).toHaveValue("0");
+	await expect(width).toHaveValue(originalWidth);
 	await page.evaluate(() => window.__telegramEntryProof.host.emit("backButtonClicked"));
 	await expect(sheet).toHaveCount(0);
 	await expect(trigger).toBeFocused();
@@ -843,8 +867,7 @@ test("TMA-KEYBOARD-01: numeric entry keeps the plan in place above the keyboard"
 	});
 	const original = await position();
 	const revision = await semanticRows(page);
-	await page.getByRole("button", { name: "Добавить проём", exact: true }).click();
-	const sheet = page.getByRole("dialog", { name: "Новый проём" });
+	const sheet = await openOpeningDetailsOnSelectedWall(page);
 	const width = sheet.getByRole("textbox", { name: "Ширина, мм", exact: true });
 	expect(await width.evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
 	await width.fill("980");
@@ -853,7 +876,7 @@ test("TMA-KEYBOARD-01: numeric entry keeps the plan in place above the keyboard"
 	await expect.poll(position).toEqual(original);
 	await expect(width).toBeFocused();
 	await expect(width).toHaveValue("980");
-	const submit = sheet.getByRole("button", { name: "Добавить", exact: true });
+	const submit = sheet.getByRole("button", { name: "Подтвердить", exact: true });
 	await submit.scrollIntoViewIfNeeded();
 	expect(await submit.evaluate(el => el.getBoundingClientRect().bottom)).toBeLessThanOrEqual(465);
 	await page.setViewportSize({ width: 390, height: 800 });
@@ -899,10 +922,7 @@ test("TMA-HOST-02: dark host theme keeps actual room controls readable without c
 		window.__telegramEntryProof.host.emit("themeChanged");
 	});
 	await page.getByTestId("wall-segment").first().click();
-	await page
-		.getByRole("button", { name: "Добавить проём", exact: true })
-		.click();
-	const dialog = page.getByRole("dialog", { name: "Новый проём", exact: true });
+	const dialog = await openOpeningDetailsOnSelectedWall(page);
 	await expect(dialog).toBeVisible();
 	expect(
 		await dialog
@@ -1244,9 +1264,7 @@ test("TMA-THEME-02: actual dark dimension, rename, leave, catalog and local-file
 		.getByRole("button", { name: "Отменить правку", exact: true })
 		.click();
 	await expect(rename).not.toBeVisible();
-	await page
-		.getByRole("button", { name: "Предметы интерьера", exact: true })
-		.click();
+	await openEditorCatalog(page);
 	const catalog = page
 		.getByTestId("catalog-title")
 		.locator("xpath=ancestor::*[@role='dialog'][1]");
@@ -1753,14 +1771,13 @@ test("TMA-OPENINGS: create, flip and reopen a door beside a framed window in Pla
 	await page.goto("/");
 	await createRoom(page, "Дверь и окно");
 	await page.getByTestId("wall-segment").first().click();
-	await page.getByRole("button", { name: "Добавить проём" }).click();
-	const dialog = page.getByTestId("opening-creation-draft");
+	const dialog = await openOpeningDetailsOnSelectedWall(page);
 	const direction = (sheet: Locator) => sheet.getByRole("group", { name: /^(Направление открывания|Открывание)$/ });
 	await direction(dialog).getByRole("button", { pressed: false }).click();
 	const positiveLabel = await direction(dialog).getByRole("button", { pressed: true }).textContent();
 	const previewLeaf = page.getByTestId("opening-creation-preview").getByTestId("door-leaf");
 	expect(Number(await previewLeaf.getAttribute("y2"))).toBeGreaterThan(0);
-	await dialog.getByRole("button", { name: "Добавить", exact: true }).click();
+	await dialog.getByRole("button", { name: "Подтвердить", exact: true }).click();
 	const door = page.getByTestId("door-opening");
 	expect(Number(await door.getByTestId("door-leaf").getAttribute("y2"))).toBeGreaterThan(0);
 	await door.getByTestId("opening-move-handle").click();
@@ -1774,11 +1791,10 @@ test("TMA-OPENINGS: create, flip and reopen a door beside a framed window in Pla
 
 	await clickRectangularRoomPoint(page, { x: 0.25, y: 0.4 });
 	await page.getByTestId("wall-segment").last().click();
-	await page.getByRole("button", { name: "Добавить проём" }).click();
-	await dialog.getByRole("button", { name: "Окно", exact: true }).click();
+	await openOpeningDetailsOnSelectedWall(page, "Окно");
 	await expect(direction(dialog)).toHaveCount(0);
 	await expect(page.getByTestId("window-frame")).toBeVisible();
-	await dialog.getByRole("button", { name: "Добавить", exact: true }).click();
+	await dialog.getByRole("button", { name: "Подтвердить", exact: true }).click();
 	await expect(page.getByTestId("window-opening").getByTestId("window-opening-pane")).toHaveCount(2);
 
 	await page.getByRole("button", { name: "Назад", exact: true }).click();
@@ -1807,8 +1823,7 @@ test("TMA-DOOR-HINGE: the signed author chooses both door settings and restores 
 	const project = "Проверка петель";
 	await createRoom(page, project);
 	await page.getByTestId("wall-segment").first().click();
-	await page.getByRole("button", { name: "Добавить проём" }).click();
-	const sheet = page.getByTestId("opening-creation-draft");
+	const sheet = await openOpeningDetailsOnSelectedWall(page);
 	const hinge = sheet.getByRole("group", { name: "Петли", exact: true });
 	const direction = sheet.getByRole("group", { name: "Открывание", exact: true });
 	const preview = page.getByTestId("opening-creation-preview").getByTestId("door-leaf");
@@ -1828,7 +1843,7 @@ test("TMA-DOOR-HINGE: the signed author chooses both door settings and restores 
 	}
 	expect(poses.size).toBe(4);
 	expect(await semanticRows(page)).toEqual(before);
-	await sheet.getByRole("button", { name: "Добавить", exact: true }).click();
+	await sheet.getByRole("button", { name: "Подтвердить", exact: true }).click();
 	await expect(sheet).toHaveCount(0);
 	const saved = await semanticRows(page);
 	expect(saved.revisions).toHaveLength(before.revisions.length + 1);
@@ -1874,7 +1889,7 @@ test("TMA-SCENE-PALETTE: opening the color chooser preserves the placement draft
 		if (!box) throw new Error(`Expected a visible bounding box for ${element}`);
 		return box;
 	};
-	await button("Предметы интерьера").click();
+	await openEditorCatalog(page);
 	await page
 		.getByRole("dialog", { name: "Предметы интерьера" })
 		.getByRole("button", { name: /^Стул / })
@@ -2184,7 +2199,7 @@ test("TMA-CAMERA-FRAMING: placement and selection preserve the rendered camera",
 	if (!bounds) throw new Error("Missing 3D canvas");
 	const itemPoint = { x: bounds.x + bounds.width * 0.59, y: bounds.y + bounds.height * 0.49 };
 	const selection = page.getByTestId("three-dimensional-item-selection-frame");
-	await button("Предметы интерьера").click();
+	await openEditorCatalog(page);
 	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стол / }).click();
 	await expect(page.getByTestId("three-dimensional-item-placement-menu")).toBeVisible();
 	await expect.poll(read, { message: "Opening placement keeps the same viewport and projection" }).toEqual(overview);

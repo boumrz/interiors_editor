@@ -9,6 +9,7 @@ import {
 import styles from "./ProjectSafety.module.css";
 import { SheetHeader } from "./SheetHeader";
 import sheetStyles from "./SheetHeader.module.css";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 
 /** Keep the modal open while its action is pending. */
 export function ProjectConfirmationDialog({
@@ -109,13 +110,15 @@ export function ProjectConfirmationDialog({
 		</>
 	);
 	return (
-		<dialog
+		<TelegramSheetFrame
+			as="dialog"
+			telegram={plainLabels}
+			compact
+			busy={busy}
 			aria-busy={busy}
 			aria-describedby={children ? descriptionId : undefined}
 			aria-label={label}
-			className={plainLabels
-				? `${sheetStyles.dialog} ${sheetStyles.telegramDialog} ${styles.telegramConfirmation}`
-				: `${styles.card} ${styles.dialog}`}
+			className={plainLabels ? styles.telegramConfirmation : `${styles.card} ${styles.dialog}`}
 			data-testid={testId}
 			data-confirm-tone={confirmTone}
 			data-telegram-confirmation={plainLabels || undefined}
@@ -157,6 +160,6 @@ export function ProjectConfirmationDialog({
 					{busy ? busyLabel : plainLabels ? "Подтвердить" : confirmLabel}
 				</button>
 			</div>
-		</dialog>
+		</TelegramSheetFrame>
 	);
 }

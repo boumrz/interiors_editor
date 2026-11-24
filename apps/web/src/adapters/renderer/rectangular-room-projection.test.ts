@@ -732,7 +732,7 @@ describe("projectRectangularRoomForWebGl", () => {
 				centerZM: 1.55,
 				depthM: 3.1,
 				heightM: 2.4,
-				wall: { exteriorNormal: { x: -1, z: 0 }, wallSegmentId: "wall-4" },
+				wall: { exteriorNormal: { x: -1, z: 0 }, vertexIds: ["v-1", "v-4"], wallSegmentId: "wall-4" },
 				widthM: 0.1,
 			}),
 		);
@@ -743,7 +743,7 @@ describe("projectRectangularRoomForWebGl", () => {
 				centerZM: 1.55,
 				depthM: 3.1,
 				heightM: 2.7,
-				wall: { exteriorNormal: { x: 1, z: 0 }, wallSegmentId: "wall-2" },
+				wall: { exteriorNormal: { x: 1, z: 0 }, vertexIds: ["v-2", "v-3"], wallSegmentId: "wall-2" },
 				widthM: 0.1,
 			}),
 		);
@@ -1394,7 +1394,7 @@ describe("projectRectangularRoomForWebGl", () => {
 			expect.objectContaining({
 				centerYM: 1.3,
 				heightM: 2.6,
-				wall: { exteriorNormal: { x: 0, z: -1 }, wallSegmentId: "wall-1" },
+				wall: { exteriorNormal: { x: 0, z: -1 }, vertexIds: ["v-1", "v-2"], wallSegmentId: "wall-1" },
 			}),
 		);
 		expect(
@@ -1403,7 +1403,7 @@ describe("projectRectangularRoomForWebGl", () => {
 			expect.objectContaining({
 				centerYM: 1.5,
 				heightM: 3,
-				wall: { exteriorNormal: { x: 0, z: -1 }, wallSegmentId: "wall-5" },
+				wall: { exteriorNormal: { x: 0, z: -1 }, vertexIds: ["v-5", "v-6"], wallSegmentId: "wall-5" },
 			}),
 		);
 	});
@@ -1523,7 +1523,7 @@ describe("projectRectangularRoomForWebGl", () => {
 			scene?.walls.find((wall) => wall.wall?.wallSegmentId === "wall-1"),
 		).toEqual(
 			expect.objectContaining({
-				wall: { exteriorNormal: { x: 0, z: -1 }, wallSegmentId: "wall-1" },
+				wall: { exteriorNormal: { x: 0, z: -1 }, vertexIds: ["v-1", "v-2"], wallSegmentId: "wall-1" },
 			}),
 		);
 	});

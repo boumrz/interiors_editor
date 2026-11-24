@@ -1,6 +1,7 @@
 import {
   setParametricFloorItemYaw,
   type CreateParametricFloorItemResult,
+  type FloorItemCollisionPolicy,
   type SetParametricFloorItemYawInput,
   type ParametricFloorItemPlacementWarning
 } from '../domain/parametric-item';
@@ -25,6 +26,7 @@ export type RotateParametricFloorItemUseCaseResult =
   | { readonly kind: 'persist-failed'; readonly reasonCode: import('./ports').PublicationFailureReason };
 
 interface RotateParametricFloorItemDependencies {
+  readonly floorItemCollisionPolicy?: FloorItemCollisionPolicy;
   readonly checksum: ChecksumPort;
   readonly clock: ClockPort;
   readonly ids: IdPort;
@@ -41,7 +43,12 @@ export class RotateParametricFloorItemUseCase {
     input: SetParametricFloorItemYawInput,
     onStatus: (status: RotateParametricFloorItemStatus) => void
   ): Promise<RotateParametricFloorItemUseCaseResult> {
-    const updated = setParametricFloorItemYaw(base.project, input, this.dependencies.clock.now());
+    const updated = setParametricFloorItemYaw(
+      base.project,
+      input,
+      this.dependencies.clock.now(),
+      this.dependencies.floorItemCollisionPolicy,
+    );
     if (updated.kind === 'rejected') {
       return updated;
     }

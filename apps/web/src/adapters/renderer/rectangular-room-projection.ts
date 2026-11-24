@@ -67,6 +67,7 @@ export interface SceneBox {
 	readonly assetAnchor?: "floor" | "wall";
 	readonly wall?: {
 		readonly wallSegmentId: string;
+		readonly vertexIds?: readonly [string, string];
 		readonly exteriorNormal?: {
 			readonly x: number;
 			readonly z: number;
@@ -118,6 +119,18 @@ export interface CustomGlbSceneModel {
 	readonly assetDefinitionId: string;
 }
 
+interface ScenePlanPoint {
+	readonly xM: number;
+	readonly zM: number;
+}
+
+export interface ExteriorCutawayEdge {
+	readonly start: ScenePlanPoint;
+	readonly end: ScenePlanPoint;
+	readonly normal: { readonly x: number; readonly z: number };
+	readonly wallSegmentId: string;
+}
+
 export interface RectangularRoomWebGlScene {
 	/** The full component envelope used exclusively to frame the disposable camera. */
 	readonly cameraBounds: {
@@ -136,6 +149,8 @@ export interface RectangularRoomWebGlScene {
 	/** Present only when a Room's usable floor cannot be represented as boxes. */
 	readonly floorPolygons?: readonly SceneFloorPolygon[];
 	readonly walls: readonly SceneBox[];
+	/** Complete exterior centerlines. Door and window cuts only split wall meshes. */
+	readonly exteriorCutawayEdges?: readonly ExteriorCutawayEdge[];
 	readonly openingParts?: readonly OpeningPart[];
 	readonly items: readonly SceneBox[];
 	/** Optional resource metadata; never an engine object or a render instruction. */
@@ -257,12 +272,21 @@ export function projectRectangularRoomForWebGl(
 		]),
 	);
 	const openingParts: OpeningPart[] = [];
+	const exteriorCutawayEdges: ExteriorCutawayEdge[] = [];
 	const wallBoxes = project.level.wallSegments.map((wall) => {
 		const start = vertexById.get(wall.startVertexId);
 		const end = vertexById.get(wall.endVertexId);
 		const projection = wallProjectionById.get(wall.wallSegmentId);
 		if (!start || !end || !projection) {
 			return [];
+		}
+		if (projection.exteriorNormal) {
+			exteriorCutawayEdges.push({
+				start: { xM: metres(start.xMm - minimumXmm), zM: metres(start.zMm - minimumZmm) },
+				end: { xM: metres(end.xMm - minimumXmm), zM: metres(end.zMm - minimumZmm) },
+				normal: projection.exteriorNormal,
+				wallSegmentId: wall.wallSegmentId,
+			});
 		}
 		return wallBoxesForProjection({
 			openingParts: showOpeningTemplates ? openingParts : undefined,
@@ -332,6 +356,7 @@ export function projectRectangularRoomForWebGl(
 			widthM: outerWidthM,
 		},
 		dimensions: { depthMm: usableDepthMm, heightMm, widthMm: usableWidthMm },
+		exteriorCutawayEdges,
 		floors: [...floors, ...doorThresholdFloors],
 		...(openingParts.length ? { openingParts } : {}),
 		...(floorPolygons.length === 0 ? {} : { floorPolygons }),
@@ -497,6 +522,7 @@ function wallBoxesForProjection(input: {
 			wall: projection.exteriorNormal
 				? {
 						exteriorNormal: projection.exteriorNormal,
+						vertexIds: [wall.startVertexId, wall.endVertexId],
 						wallSegmentId: wall.wallSegmentId,
 					}
 				: { wallSegmentId: wall.wallSegmentId },

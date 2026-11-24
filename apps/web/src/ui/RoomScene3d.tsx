@@ -21,6 +21,7 @@ import {
 } from "../adapters/renderer/webgl2-room-renderer";
 import {
 	floorYawFieldsForRadians,
+	type ParametricFloorItemPlacementAssessment,
 	rotationStepForYawRadians,
 	yawRadiansFor,
 } from "../domain/parametric-item";
@@ -35,10 +36,12 @@ import {
 	loadCustomGlbRuntime,
 } from "./custom-glb-runtime-loader";
 import { SheetHeader } from "./SheetHeader";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 import { FloorRotationAngleField, RotationModeToggle } from "./FloorRotationAngleField";
 import rotationStyles from "./FloorRotationControls.module.css";
 import { degreesForYawRadians, steppedYawRadians } from "./rotation-angle";
 import { itemCountCopy } from "./item-count-copy";
+import { itemPlacementPreviewFeedback } from "./editor-plan-presentation";
 import sceneStyles from "./RoomScene3d.module.css";
 import {
 	canvasPointForFloor,
@@ -103,7 +106,7 @@ interface RoomScene3dProps {
 	readonly assessItemPlacement?: (input: {
 		readonly xM: number;
 		readonly zM: number;
-	}) => boolean;
+	}) => ParametricFloorItemPlacementAssessment;
 	readonly onCancelItemPlacement?: () => void;
 	readonly onCloseItemPlacement?: () => void;
 	readonly skipBlurCommit?: (target: HTMLInputElement) => boolean;
@@ -399,7 +402,7 @@ export function RoomScene3d({
 	);
 	const cameraRef = useRef(camera);
 	cameraRef.current = camera;
-	const [cutawayMode, setCutawayMode] = useState<WebGl2CutawayMode>("auto");
+	const [cutawayMode, setCutawayMode] = useState<"auto" | "show-all">("auto");
 	const [canvasSize, setCanvasSize] = useState<Point>({ x: 0, y: 0 });
 	const drawingBufferSize = resizeDrawingBufferOnChangeOnly ? canvasSize : undefined;
 	const [sceneViewportInsets, setSceneViewportInsets] =
@@ -670,10 +673,12 @@ export function RoomScene3d({
 		const point = placementPointFromGesture
 			? snapFloorItemPoint?.(itemPlacementPoint) ?? itemPlacementPoint
 			: itemPlacementPoint;
+		const assessment = assessItemPlacement?.(point);
 		return {
 			...point,
 			...itemPlacementDraft,
-			isValid: assessItemPlacement?.(point) ?? false,
+			isValid: assessment !== undefined && assessment.kind !== "invalid",
+			reasonCode: assessment?.kind === "invalid" ? assessment.reasonCode : undefined,
 		};
 	}, [assessItemPlacement, itemPlacementDraft, itemPlacementPoint, placementPointFromGesture, snapFloorItemPoint]);
 	const placementXM = threeDimensionalItemPlacementPreview?.xM;
@@ -687,6 +692,9 @@ export function RoomScene3d({
 		: threeDimensionalItemPlacementPreview.isValid
 			? "ready"
 			: "choose-another-point";
+	const invalidPlacementCopy = threeDimensionalItemPlacementPreview?.reasonCode === "ITEM_COLLISION"
+		? itemPlacementPreviewFeedback(threeDimensionalItemPlacementPreview)
+		: "Выберите другое место";
 
 	const renderedScene = useMemo(() => {
 		const renderedItems = scene.items.map((item) =>
@@ -738,7 +746,8 @@ export function RoomScene3d({
 		: rendererStructureKey;
 
 	const renderedCamera = camera;
-	const renderedCutawayMode: WebGl2CutawayMode = cutawayMode;
+	const renderedCutawayMode: WebGl2CutawayMode =
+		plainLabels && cutawayMode === "auto" ? "auto-sector" : cutawayMode;
 
 	useEffect(() => {
 		if (!submittedItemPreview) return;
@@ -2085,7 +2094,7 @@ export function RoomScene3d({
 				{customGlbRuntimeStatus}
 			</output>
 			{itemPlacementDraft ? (
-				<aside
+				<TelegramSheetFrame telegram={plainLabels} canvasAnchored
 					aria-label="Размещение предмета"
 					className={sceneStyles.itemPlacementMenu}
 					data-placement-state={itemPlacementState}
@@ -2128,15 +2137,15 @@ export function RoomScene3d({
 									data-testid="three-dimensional-item-placement-status"
 									role="status"
 								>
-									Выберите другое место
+									{invalidPlacementCopy}
 								</span>
 							) : null}
 						</div>
 					</div>
 					)}
 					{onCloseItemPlacement && itemPlacementState === "choose-another-point" ? (
-						<span className={sceneStyles.itemPlacementStatus} role="status" data-testid="three-dimensional-item-placement-status">
-							Выберите другое место
+						<span className={sceneStyles.itemPlacementStatus} data-placement-state={itemPlacementState} role="status" data-testid="three-dimensional-item-placement-status">
+							{invalidPlacementCopy}
 						</span>
 					) : null}
 					{itemPlacementControls}
@@ -2212,7 +2221,7 @@ export function RoomScene3d({
 							{plainLabels ? "Подтвердить" : "Поставить"}
 						</button>
 					</div>
-				</aside>
+				</TelegramSheetFrame>
 			) : null}
 			{!itemPlacementDraft ? withSelectedRotationEditor(
 				<section

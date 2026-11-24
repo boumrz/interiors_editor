@@ -17,6 +17,7 @@ import { rectangularRoomLoopBoundsForRoom } from "./rectangular-room-loop";
 import { wallOpeningIntervalMm } from "./wall-opening";
 
 export interface ParametricFloorItemInput {
+	readonly colorVariantId?: string;
 	readonly assetDefinitionId?: string;
 	readonly yawStep?: RotationStep;
 	readonly yawMilliDeg?: number;
@@ -163,11 +164,11 @@ export type ParametricFloorItemPlacementWarning = Exclude<
 	{ readonly kind: "wall" }
 >;
 
+export type FloorItemCollisionPolicy = "warn" | "reject";
+
 /**
- * A collision preflight has three deliberately distinct outcomes.  Only
- * `invalid` blocks an item command; `warning` keeps the semantic collision in
- * the candidate so the user can explicitly confirm it without an automatic
- * move, resize or normalization of the item.
+ * An invalid preflight blocks the command. Warnings describe collisions the
+ * active policy permits, such as door clearance.
  */
 export type ParametricFloorItemPlacementAssessment =
 	| { readonly kind: "valid" }
@@ -187,6 +188,7 @@ export function assessParametricFloorItemPlacement(
 	project: Project,
 	input: ParametricFloorItemInput,
 	excludedAssetInstanceId?: string,
+	collisionPolicy: FloorItemCollisionPolicy = "warn",
 ): ParametricFloorItemPlacementAssessment {
 	if (!hasValidInput(project, input)) {
 		return { kind: "invalid", reasonCode: "INVALID_DIMENSION" };
@@ -195,21 +197,12 @@ export function assessParametricFloorItemPlacement(
 	if (!host || !isWithinUsableRoomHost(input, host)) {
 		return { kind: "invalid", reasonCode: "OUTSIDE_ROOM_HOST" };
 	}
-	const targets = findParametricFloorItemCollisionTargets(
+	return assessFloorItemCollisions(
 		project,
 		input,
 		excludedAssetInstanceId,
+		collisionPolicy,
 	);
-	const warnings: ParametricFloorItemPlacementWarning[] = [];
-	for (const target of targets) {
-		if (target.kind === "wall") {
-			return { kind: "invalid", reasonCode: "WALL_ITEM_COLLISION" };
-		}
-		warnings.push(target);
-	}
-	return warnings.length > 0
-		? { kind: "warning", warnings }
-		: { kind: "valid" };
 }
 
 /**
@@ -259,11 +252,15 @@ export function createParametricFloorItem(
 	input: ParametricFloorItemInput,
 	ids: IdSource,
 	updatedAt: string,
+	collisionPolicy: FloorItemCollisionPolicy = "warn",
 ): CreateParametricFloorItemResult {
-	const placement = assessParametricFloorItemPlacement(project, input);
+	const placement = assessParametricFloorItemPlacement(project, input, undefined, collisionPolicy);
 	if (placement.kind === "invalid") {
 		return { kind: "rejected", reasonCode: placement.reasonCode };
 	}
+	const variant = input.colorVariantId === undefined
+		? undefined
+		: alphaParametricItemColorVariantFor(input.colorVariantId);
 	const item: SchematicAssetInstance = {
 		anchorClass: "floor",
 		assetInstanceId: ids.next(),
@@ -271,6 +268,7 @@ export function createParametricFloorItem(
 			? {}
 			: { assetDefinitionId: input.assetDefinitionId }),
 		color: input.color,
+		...(variant === undefined ? {} : { colorVariantId: variant.variantId }),
 		depthMm: input.depthMm,
 		elevationMm: 0,
 		heightMm: input.heightMm,
@@ -310,6 +308,7 @@ export function moveParametricFloorItem(
 	project: Project,
 	input: MoveParametricFloorItemInput,
 	updatedAt: string,
+	collisionPolicy: FloorItemCollisionPolicy = "warn",
 ): CreateParametricFloorItemResult {
 	const item = project.assetInstances.find(
 		(candidate) => candidate.assetInstanceId === input.assetInstanceId,
@@ -346,14 +345,15 @@ export function moveParametricFloorItem(
 		...canonicalFloorYawFields(item),
 		zMm: input.zMm,
 	};
-	if (hasFloorItemWallCollision(project, moved)) {
-		return { kind: "rejected", reasonCode: "WALL_ITEM_COLLISION" };
-	}
-	const warnings = floorItemPlacementWarnings(
+	const placement = assessFloorItemCollisions(
 		project,
 		moved,
 		item.assetInstanceId,
+		collisionPolicy,
 	);
+	if (placement.kind === "invalid") {
+		return { kind: "rejected", reasonCode: placement.reasonCode };
+	}
 	return {
 		kind: "accepted",
 		project: {
@@ -366,7 +366,7 @@ export function moveParametricFloorItem(
 			),
 			updatedAt,
 		},
-		...(warnings.length > 0 ? { warnings } : {}),
+		...(placement.kind === "warning" ? { warnings: placement.warnings } : {}),
 	};
 }
 
@@ -377,6 +377,7 @@ export function setParametricFloorItemYaw(
 	project: Project,
 	input: SetParametricFloorItemYawInput,
 	updatedAt: string,
+	collisionPolicy: FloorItemCollisionPolicy = "warn",
 ): CreateParametricFloorItemResult {
 	const item = project.assetInstances.find(
 		(candidate) => candidate.assetInstanceId === input.assetInstanceId,
@@ -398,14 +399,15 @@ export function setParametricFloorItemYaw(
 	if (!roomId) {
 		return { kind: "rejected", reasonCode: "OUTSIDE_ROOM_HOST" };
 	}
-	if (hasFloorItemWallCollision(project, rotated)) {
-		return { kind: "rejected", reasonCode: "WALL_ITEM_COLLISION" };
-	}
-	const warnings = floorItemPlacementWarnings(
+	const placement = assessFloorItemCollisions(
 		project,
 		rotated,
 		item.assetInstanceId,
+		collisionPolicy,
 	);
+	if (placement.kind === "invalid") {
+		return { kind: "rejected", reasonCode: placement.reasonCode };
+	}
 	return {
 		kind: "accepted",
 		project: {
@@ -418,7 +420,7 @@ export function setParametricFloorItemYaw(
 			),
 			updatedAt,
 		},
-		...(warnings.length > 0 ? { warnings } : {}),
+		...(placement.kind === "warning" ? { warnings: placement.warnings } : {}),
 	};
 }
 
@@ -427,6 +429,7 @@ export function resizeParametricFloorItem(
 	project: Project,
 	input: ResizeParametricFloorItemInput,
 	updatedAt: string,
+	collisionPolicy: FloorItemCollisionPolicy = "warn",
 ): CreateParametricFloorItemResult {
 	const item = project.assetInstances.find(
 		(candidate) => candidate.assetInstanceId === input.assetInstanceId,
@@ -458,14 +461,15 @@ export function resizeParametricFloorItem(
 	if (!roomId) {
 		return { kind: "rejected", reasonCode: "OUTSIDE_ROOM_HOST" };
 	}
-	if (hasFloorItemWallCollision(project, resized)) {
-		return { kind: "rejected", reasonCode: "WALL_ITEM_COLLISION" };
-	}
-	const warnings = floorItemPlacementWarnings(
+	const placement = assessFloorItemCollisions(
 		project,
 		resized,
 		item.assetInstanceId,
+		collisionPolicy,
 	);
+	if (placement.kind === "invalid") {
+		return { kind: "rejected", reasonCode: placement.reasonCode };
+	}
 	return {
 		kind: "accepted",
 		project: {
@@ -478,7 +482,7 @@ export function resizeParametricFloorItem(
 			),
 			updatedAt,
 		},
-		...(warnings.length > 0 ? { warnings } : {}),
+		...(placement.kind === "warning" ? { warnings: placement.warnings } : {}),
 	};
 }
 
@@ -539,6 +543,7 @@ export function rotateParametricFloorItem(
 	project: Project,
 	input: RotateParametricFloorItemInput,
 	updatedAt: string,
+	collisionPolicy: FloorItemCollisionPolicy = "warn",
 ): CreateParametricFloorItemResult {
 	const item = project.assetInstances.find(
 		(candidate) => candidate.assetInstanceId === input.assetInstanceId,
@@ -561,14 +566,15 @@ export function rotateParametricFloorItem(
 	if (!roomId) {
 		return { kind: "rejected", reasonCode: "OUTSIDE_ROOM_HOST" };
 	}
-	if (hasFloorItemWallCollision(project, rotated)) {
-		return { kind: "rejected", reasonCode: "WALL_ITEM_COLLISION" };
-	}
-	const warnings = floorItemPlacementWarnings(
+	const placement = assessFloorItemCollisions(
 		project,
 		rotated,
 		item.assetInstanceId,
+		collisionPolicy,
 	);
+	if (placement.kind === "invalid") {
+		return { kind: "rejected", reasonCode: placement.reasonCode };
+	}
 	return {
 		kind: "accepted",
 		project: {
@@ -580,7 +586,7 @@ export function rotateParametricFloorItem(
 			),
 			updatedAt,
 		},
-		...(warnings.length > 0 ? { warnings } : {}),
+		...(placement.kind === "warning" ? { warnings: placement.warnings } : {}),
 	};
 }
 
@@ -681,7 +687,9 @@ function hasValidInput(
 				(asset) => asset.assetDefinitionId === input.assetDefinitionId,
 			)) ||
 		input.label.trim().length === 0 ||
-		!/^#[0-9a-fA-F]{6}$/.test(input.color)
+		!/^#[0-9a-fA-F]{6}$/.test(input.color) ||
+		(input.colorVariantId !== undefined &&
+			alphaParametricItemColorVariantFor(input.colorVariantId)?.color !== input.color)
 	) {
 		return false;
 	}
@@ -730,19 +738,25 @@ function isValidFootprint(footprint: FloorItemFootprint): boolean {
 	);
 }
 
-function floorItemPlacementWarnings(
+function assessFloorItemCollisions(
 	project: Project,
 	footprint: FloorItemFootprint,
-	excludedAssetInstanceId?: string,
-): readonly ParametricFloorItemPlacementWarning[] {
-	return findParametricFloorItemCollisionTargets(
+	excludedAssetInstanceId: string | undefined,
+	collisionPolicy: FloorItemCollisionPolicy,
+): ParametricFloorItemPlacementAssessment {
+	const targets = findParametricFloorItemCollisionTargets(
 		project,
 		footprint,
 		excludedAssetInstanceId,
-	).filter(
-		(target): target is ParametricFloorItemPlacementWarning =>
-			target.kind === "item" || target.kind === "door-clearance",
 	);
+	if (targets.some(target => target.kind === "wall")) {
+		return { kind: "invalid", reasonCode: "WALL_ITEM_COLLISION" };
+	}
+	const warnings = targets.filter(target => target.kind !== "wall");
+	if (collisionPolicy === "reject" && warnings.some(target => target.kind === "item")) {
+		return { kind: "invalid", reasonCode: "ITEM_COLLISION" };
+	}
+	return warnings.length > 0 ? { kind: "warning", warnings } : { kind: "valid" };
 }
 
 function floorItemCollisionItems(
@@ -756,13 +770,6 @@ function floorItemCollisionItems(
 			item.assetInstanceId !== excludedAssetInstanceId &&
 			footprintsOverlap(footprint, item),
 	);
-}
-
-function hasFloorItemWallCollision(
-	project: Project,
-	footprint: FloorItemFootprint,
-): boolean {
-	return floorItemCollisionWalls(project, footprint).length > 0;
 }
 
 function floorItemCollisionWalls(
@@ -928,7 +935,7 @@ function pointInSimplePolygon(
 	return inside;
 }
 
-function segmentIsInsidePolygon(
+export function segmentIsInsidePolygon(
 	start: PlanPoint,
 	end: PlanPoint,
 	polygon: readonly PlanPoint[],
@@ -1079,7 +1086,7 @@ function isValidWallBody(wall: AddWallSegmentInput): boolean {
 	);
 }
 
-function footprintsOverlap(
+export function footprintsOverlap(
 	first: FloorItemFootprint,
 	second: FloorItemFootprint,
 ): boolean {

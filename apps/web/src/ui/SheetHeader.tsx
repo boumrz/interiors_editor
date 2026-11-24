@@ -1,5 +1,6 @@
 import type { ReactNode, Ref } from "react";
 import styles from "./SheetHeader.module.css";
+import { useTelegramSheetClose } from "./TelegramSheetFrame";
 
 export function SheetHeader({
 	title,
@@ -24,6 +25,7 @@ export function SheetHeader({
 	readonly protectEditorDraft?: boolean;
 	readonly className?: string;
 }) {
+	const closeSheet = useTelegramSheetClose();
 	return (
 		<header className={className ? `${styles.header} ${className}` : styles.header}>
 			<div className={styles.title}>
@@ -35,9 +37,10 @@ export function SheetHeader({
 			<button
 				aria-label={closeLabel}
 				className={styles.close}
+				data-sheet-close=""
 				data-editor-host-back={protectEditorDraft ? "panel" : undefined}
 				disabled={closeDisabled}
-				onClick={onClose}
+				onClick={closeSheet ? () => closeSheet(onClose) : onClose}
 				type="button"
 			>
 				<span aria-hidden="true">×</span>

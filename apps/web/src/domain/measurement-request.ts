@@ -1,5 +1,11 @@
-import { resolveOrthogonalPlanFaces } from "./derived-orthogonal-plan-faces";
-import { floorItemFootprintCorners } from "./parametric-item";
+import { type DerivedOrthogonalRoomFace, resolveOrthogonalPlanFaces } from "./derived-orthogonal-plan-faces";
+import {
+	type FloorItemFootprint,
+	floorItemFootprintCorners,
+	footprintsOverlap,
+	segmentIsInsidePolygon,
+	yawRadiansFor,
+} from "./parametric-item";
 import {
 	type FloorSchematicAssetInstance,
 	isFloorSchematicAssetInstance,
@@ -97,6 +103,83 @@ export function measureDistance(
 		: { kind: "target-unavailable" };
 }
 
+export type FloorItemClearance =
+	| ({ readonly kind: "gap"; readonly distanceMm: number } & Segment)
+	| ({ readonly kind: "blocked" | "touch" } & Segment)
+	| { readonly kind: "overlap" | "target-unavailable" };
+
+/** Computes a read-only measurement from the current draft and derived floor. */
+export function measureFloorItemClearance(
+	source: FloorItemFootprint,
+	target: FloorItemFootprint,
+	floor: readonly PlanPoint[],
+	obstacles: readonly FloorItemFootprint[],
+): FloorItemClearance {
+	const sourceBoundary = boundaryForPolygon(floorItemFootprintCorners(source));
+	const targetBoundary = boundaryForPolygon(floorItemFootprintCorners(target));
+	if (!sourceBoundary || !targetBoundary || floor.length < 3) {
+		return { kind: "target-unavailable" };
+	}
+	if (footprintsOverlap(source, target)) return { kind: "overlap" };
+	const closest = closestPointsBetween(sourceBoundary, targetBoundary);
+	if (!closest) return { kind: "target-unavailable" };
+	const segment = { start: closest.source, end: closest.target };
+	if (closest.distanceMm === 0) return { ...segment, kind: "touch" };
+	if (
+		!segmentIsInsidePolygon(segment.start, segment.end, floor) ||
+		obstacles.some((obstacle) =>
+			obstructsOpenSegment(segment, obstacle),
+		)
+	) {
+		return { ...segment, kind: "blocked" };
+	}
+	return { ...segment, kind: "gap", distanceMm: closest.distanceMm };
+}
+
+function obstructsOpenSegment(segment: Segment, item: FloorItemFootprint): boolean {
+	const angle = yawRadiansFor(item);
+	const cosine = Math.cos(angle);
+	const sine = Math.sin(angle);
+	const local = ({ xMm, zMm }: PlanPoint) => ({
+		xMm: (xMm - item.xMm) * cosine - (zMm - item.zMm) * sine,
+		zMm: (xMm - item.xMm) * sine + (zMm - item.zMm) * cosine,
+	});
+	const start = local(segment.start);
+	const end = local(segment.end);
+	const width = parameterInterval(start.xMm, end.xMm, item.widthMm / 2);
+	const depth = parameterInterval(start.zMm, end.zMm, item.depthMm / 2);
+	if (!width || !depth) return false;
+	const entry = Math.max(width[0], depth[0]);
+	const exit = Math.min(width[1], depth[1]);
+	return entry <= exit && entry < 1 && exit > 0;
+}
+
+function parameterInterval(
+	start: number,
+	end: number,
+	extent: number,
+): readonly [number, number] | undefined {
+	const change = end - start;
+	if (Math.abs(change) < 1e-9) {
+		return Math.abs(start) <= extent ? [-Infinity, Infinity] : undefined;
+	}
+	const first = (-extent - start) / change;
+	const last = (extent - start) / change;
+	return [Math.min(first, last), Math.max(first, last)];
+}
+
+export function usableFloorBoundary(room: DerivedOrthogonalRoomFace): readonly PlanPoint[] | undefined {
+	if (room.usableFloorPolygonMm) return room.usableFloorPolygonMm;
+	const tile = room.usableFloorTilesMm[0];
+	if (!tile || room.usableFloorTilesMm.length !== 1) return undefined;
+	return [
+		{ xMm: tile.minXmm, zMm: tile.minZmm },
+		{ xMm: tile.maxXmm, zMm: tile.minZmm },
+		{ xMm: tile.maxXmm, zMm: tile.maxZmm },
+		{ xMm: tile.minXmm, zMm: tile.maxZmm },
+	];
+}
+
 function resolveMeasurementTarget(
 	project: Project,
 	target: MeasurementTarget,
@@ -135,18 +218,8 @@ function resolveMeasurementTarget(
 				(candidate) => candidate.roomId === target.roomId,
 			);
 			if (!room) return undefined;
-			if (room.usableFloorPolygonMm) {
-				return boundaryForPolygon(room.usableFloorPolygonMm);
-			}
-			const tile = room.usableFloorTilesMm[0];
-			return tile && room.usableFloorTilesMm.length === 1
-				? boundaryForPolygon([
-						{ xMm: tile.minXmm, zMm: tile.minZmm },
-						{ xMm: tile.maxXmm, zMm: tile.minZmm },
-						{ xMm: tile.maxXmm, zMm: tile.maxZmm },
-						{ xMm: tile.minXmm, zMm: tile.maxZmm },
-					])
-				: undefined;
+			const boundary = usableFloorBoundary(room);
+			return boundary ? boundaryForPolygon(boundary) : undefined;
 		}
 	}
 }

@@ -1,3 +1,4 @@
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 import type {
 	createHostFileBridge,
 	HostFileKind,
@@ -94,8 +95,10 @@ export class LocalFileTransferSession {
 export function LocalFileTransferPanel({
 	session,
 	state,
+	telegram,
 }: {
 	readonly session: LocalFileTransferSession;
+	readonly telegram?: boolean;
 	readonly state: LocalFileTransferState;
 }) {
 	if (state.kind === "idle") return null;
@@ -116,7 +119,7 @@ export function LocalFileTransferPanel({
 								? "Подготовка файла…"
 								: "Файл готов к передаче. Выберите системное действие и проверьте полученный файл.";
 	return (
-		<aside
+		<TelegramSheetFrame telegram={telegram} canvasAnchored
 			className={styles.panel}
 			aria-label="Передача файла"
 			aria-busy={busy}
@@ -154,6 +157,6 @@ export function LocalFileTransferPanel({
 					</button>
 				) : null}
 			</div>
-		</aside>
+		</TelegramSheetFrame>
 	);
 }

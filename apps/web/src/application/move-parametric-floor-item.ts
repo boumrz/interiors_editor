@@ -2,6 +2,7 @@ import { publishProjectMutation } from './project-mutation-publication';
 import {
   moveParametricFloorItem,
   type CreateParametricFloorItemResult,
+  type FloorItemCollisionPolicy,
   type MoveParametricFloorItemInput,
   type ParametricFloorItemPlacementWarning
 } from '../domain/parametric-item';
@@ -25,6 +26,7 @@ export type MoveParametricFloorItemUseCaseResult =
   | { readonly kind: 'persist-failed'; readonly reasonCode: import('./ports').PublicationFailureReason };
 
 interface MoveParametricFloorItemDependencies {
+  readonly floorItemCollisionPolicy?: FloorItemCollisionPolicy;
   readonly checksum: ChecksumPort;
   readonly clock: ClockPort;
   readonly ids: IdPort;
@@ -40,7 +42,12 @@ export class MoveParametricFloorItemUseCase {
     input: MoveParametricFloorItemInput,
     onStatus: (status: MoveParametricFloorItemStatus) => void
   ): Promise<MoveParametricFloorItemUseCaseResult> {
-    const updated = moveParametricFloorItem(base.project, input, this.dependencies.clock.now());
+    const updated = moveParametricFloorItem(
+      base.project,
+      input,
+      this.dependencies.clock.now(),
+      this.dependencies.floorItemCollisionPolicy,
+    );
     if (updated.kind === 'rejected') {
       return updated;
     }

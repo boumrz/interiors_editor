@@ -8,9 +8,11 @@ import {
   UpdateDoorOpeningInProjectUseCase
 } from './door-opening-project';
 import { canonicalProjectSerializer } from './create-project';
-import type { PublicationCandidate } from './ports';
+import type { DurablePublicationCandidate, PublicationCandidate } from './ports';
 import { createInitialProject } from '../domain/initial-project';
 import { configureRectangularRoom } from '../domain/rectangular-room';
+import { addWindowOpeningToProject } from '../domain/door-opening-project';
+import { createParametricWallItem } from '../domain/parametric-wall-item';
 
 function ids(...values: string[]) {
   let index = 0;
@@ -51,6 +53,26 @@ function candidateWithDoor(): PublicationCandidate {
   };
 }
 
+function candidateWithWindows(sills: readonly number[], addPanel = false): PublicationCandidate {
+  const base = baseCandidate();
+  const withWindows = sills.reduce((project, sillMm, index) => {
+    const added = addWindowOpeningToProject(project, {
+      heightMm: 600, offsetMm: 550 + index * 950, sillMm, wallSegmentId: 'wall-1', widthMm: 600
+    }, ids(`window-${index + 1}`), project.updatedAt);
+    if (added.kind !== 'accepted') throw new Error('Expected valid window fixture');
+    return added.project;
+  }, base.project);
+  const panel = addPanel ? createParametricWallItem(withWindows, {
+    color: '#416b91', depthMm: 50, elevationMm: 1300, heightMm: 100,
+    label: 'Панель', offsetMm: 1500, side: 'left', wallSegmentId: 'wall-1', widthMm: 300
+  }, ids('panel-1'), withWindows.updatedAt) : undefined;
+  if (panel?.kind === 'rejected') throw new Error('Expected panel above existing window');
+  const project = panel?.project ?? withWindows;
+  return { project, revision: { ...base.revision, serializedProject: canonicalProjectSerializer.serialize(project) } };
+}
+
+const alignWindows = { kind: 'align-matching-windows', openingId: 'window-1' } as const;
+
 function dependencies(idsPort = ids('door-1', 'revision-2')) {
   return {
     checksum: { sha256: async () => 'sum:door' },
@@ -64,6 +86,40 @@ function dependencies(idsPort = ids('door-1', 'revision-2')) {
 }
 
 describe('door opening Project use cases', () => {
+	it('publishes one fenced revision with both corrected window sills', async () => {
+		const publications: { candidate: DurablePublicationCandidate; baseId: string }[] = [];
+		const statuses: string[] = [];
+		const base = candidateWithWindows([300, 600]);
+		const update = new UpdateDoorOpeningInProjectUseCase({
+			...dependencies(ids('aligned-revision')),
+			repository: {
+				publishNextRevision: async (candidate, baseId) => {
+					publications.push({ candidate, baseId });
+					return { kind: 'durable' };
+				}
+			}
+		});
+		await expect(update.execute(base, alignWindows, ({ kind }) => statuses.push(kind)))
+			.resolves.toEqual({ kind: 'durable', projectId: 'project-1', revisionId: 'aligned-revision' });
+		expect(statuses).toEqual(['saving', 'saved']);
+		expect(publications.map(({ baseId, candidate }) => ({
+			baseId, sills: candidate.project.level.openings.map(({ sillMm }) => sillMm)
+		}))).toEqual([{ baseId: 'revision-1', sills: [900, 900] }]);
+		expect(base.project.level.openings.map(({ sillMm }) => sillMm)).toEqual([300, 600]);
+	});
+
+	it('allocates no revision on a collision or when another update already aligned the pair', async () => {
+		const update = new UpdateDoorOpeningInProjectUseCase({
+			...dependencies({ next: () => { throw new Error('Must not allocate a revision'); } }),
+			repository: { publishNextRevision: async () => { throw new Error('Must not publish a revision'); } }
+		});
+		const notify = () => { throw new Error('Must not change save status'); };
+		await expect(update.execute(candidateWithWindows([300, 600], true), alignWindows, notify))
+			.resolves.toEqual({ kind: 'rejected', reasonCode: 'WALL_OPENING_COLLISION' });
+		await expect(update.execute(candidateWithWindows([300, 300]), alignWindows, notify))
+			.resolves.toEqual({ kind: 'unchanged' });
+	});
+
 	it('keeps a stale Door candidate out of durable history', async () => {
 		const expectedBaseRevisionIds: string[] = [];
 		let unconditionalPublishes = 0;

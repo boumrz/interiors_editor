@@ -483,6 +483,11 @@ describe("createParametricFloorItem", () => {
 				warnings: [{ kind: "door-clearance", openingId: "door-1" }],
 			},
 		);
+		expect(assessParametricFloorItemPlacement(withDoor.project, input, undefined, "reject"))
+			.toEqual({
+				kind: "warning",
+				warnings: [{ kind: "door-clearance", openingId: "door-1" }],
+			});
 		expect(
 			createParametricFloorItem(
 				withDoor.project,
@@ -1130,6 +1135,23 @@ describe("createParametricFloorItem", () => {
 		if (first.kind !== "accepted") {
 			throw new Error("Expected first item");
 		}
+		const second = {
+			color: "#e67e22",
+			depthMm: 700,
+			heightMm: 750,
+			label: "Касание",
+			roomId: "room-1",
+			widthMm: 1200,
+			xMm: 2200,
+			zMm: 1000,
+		};
+		expect(assessParametricFloorItemPlacement(first.project, second, undefined, "reject"))
+			.toEqual({ kind: "valid" });
+		expect(assessParametricFloorItemPlacement(first.project, { ...second, xMm: 2199 }, undefined, "reject"))
+			.toEqual({ kind: "invalid", reasonCode: "ITEM_COLLISION" });
+		expect(createParametricFloorItem(first.project, { ...second, xMm: 2199 }, idsThatMustNotAllocate(),
+			"2026-08-06T08:00:01.000Z", "reject",
+		)).toEqual({ kind: "rejected", reasonCode: "ITEM_COLLISION" });
 
 		expect(
 			createParametricFloorItem(
@@ -1155,18 +1177,10 @@ describe("createParametricFloorItem", () => {
 		);
 		const touching = createParametricFloorItem(
 			first.project,
-			{
-				color: "#e67e22",
-				depthMm: 700,
-				heightMm: 750,
-				label: "Касание",
-				roomId: "room-1",
-				widthMm: 1200,
-				xMm: 2200,
-				zMm: 1000,
-			},
+			second,
 			ids("item-2"),
 			"2026-08-06T08:00:01.000Z",
+			"reject",
 		);
 		expect(touching).toEqual(expect.objectContaining({ kind: "accepted" }));
 		if (touching.kind !== "accepted") {
@@ -1785,6 +1799,12 @@ describe("rotateParametricFloorItem", () => {
 				warnings: [{ assetInstanceId: "item-2", kind: "item" }],
 			}),
 		);
+		expect(rotateParametricFloorItem(
+			second.project,
+			{ assetInstanceId: "item-1", deltaSteps: 1 },
+			"2026-08-12T10:01:00.000Z",
+			"reject",
+		)).toEqual({ kind: "rejected", reasonCode: "ITEM_COLLISION" });
 	});
 
 	it("rejects an invalid rotation intent or missing item without mutating the Project", () => {
@@ -2211,4 +2231,48 @@ describe("exact floor placement yaw", () => {
 		if (rotated.kind !== "accepted") throw new Error(rotated.reasonCode);
 		expect(rotated.project.assetInstances[0]).toHaveProperty("yawMilliDeg", 359999);
 	});
+});
+
+it("keeps a named floor color variant in the same exact placement mutation", () => {
+	const project = roomProject();
+	const placement = {
+		color: "#8c6e4c",
+		colorVariantId: "alpha-walnut",
+		depthMm: 500,
+		heightMm: 750,
+		label: "Стул",
+		roomId: "room-1",
+		widthMm: 400,
+		xMm: 1000,
+		yawMilliDeg: 37_500,
+		zMm: 1000,
+	};
+	const placed = createParametricFloorItem(project, placement, ids("copy"), project.updatedAt);
+	expect(placed).toMatchObject({
+		kind: "accepted",
+		project: { assetInstances: [{ assetInstanceId: "copy", colorVariantId: "alpha-walnut", yawMilliDeg: 37_500 }] },
+	});
+	expect(createParametricFloorItem(
+		project,
+		{ ...placement, color: "#ffffff" },
+		idsThatMustNotAllocate(),
+		project.updatedAt,
+	)).toMatchObject({ kind: "rejected", reasonCode: "INVALID_DIMENSION" });
+});
+
+it("keeps the optional variant absent for ordinary placement and rejects incorrect pairs", () => {
+	const project = roomProject();
+	const placement = {
+		color: "#8c6e4c", depthMm: 500, heightMm: 750, label: "Стул",
+		roomId: "room-1", widthMm: 400, xMm: 1000, zMm: 1000,
+	};
+	const placed = createParametricFloorItem(project, placement, ids("plain"), project.updatedAt);
+	expect(placed.kind).toBe("accepted");
+	if (placed.kind === "accepted") expect(placed.project.assetInstances[0]).not.toHaveProperty("colorVariantId");
+	for (const input of [
+		{ ...placement, colorVariantId: "unknown" },
+		{ ...placement, color: "no#8c6e4c" },
+	]) {
+		expect(createParametricFloorItem(project, input, idsThatMustNotAllocate(), project.updatedAt).kind).toBe("rejected");
+	}
 });

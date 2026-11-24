@@ -5,10 +5,12 @@ import {
 	wallOpeningHostsForProject,
 } from "../domain/door-opening-project";
 import { isWallSchematicAssetInstance, type Project } from "../domain/project";
+import { PREFERRED_WINDOW_SILL_MM } from "../domain/wall-opening";
 
 export type OpeningCreationKind = "Door" | "Window";
 
 export interface OpeningCreationDraft {
+	readonly baseRevisionId?: string;
 	readonly heightMm: string;
 	readonly kind: OpeningCreationKind;
 	readonly swingSide?: "left" | "right";
@@ -55,7 +57,7 @@ const DEFAULT_DOOR = {
 
 const DEFAULT_WINDOW = {
 	heightMm: 1200,
-	sillMm: 900,
+	sillMm: PREFERRED_WINDOW_SILL_MM,
 	widthMm: 1200,
 } as const;
 
@@ -71,18 +73,33 @@ export function openingCreationDraftFor(
 	project: Project,
 	wallSegmentId: string,
 	kind: OpeningCreationKind = "Door",
+	placement?: { readonly baseRevisionId: string; readonly offsetMm: number },
 ): OpeningCreationDraft | undefined {
 	const host = openingCreationHostFor(project, wallSegmentId);
 	if (!host) return undefined;
 	const defaults = kind === "Door" ? DEFAULT_DOOR : DEFAULT_WINDOW;
 	return {
+		...(placement ? { baseRevisionId: placement.baseRevisionId } : {}),
 		heightMm: String(defaults.heightMm),
 		kind,
-		offsetMm: String(defaultOffsetMm(host.usableLengthMm, defaults.widthMm)),
+		offsetMm: String(placement?.offsetMm ?? defaultOffsetMm(host.usableLengthMm, defaults.widthMm)),
 		sillMm: String(defaults.sillMm),
 		wallSegmentId,
 		widthMm: String(defaults.widthMm),
 	};
+}
+
+export function openingCreationHostsFor(project: Project, kind: OpeningCreationKind): readonly OpeningCreationHost[] {
+	const defaults = kind === "Door" ? DEFAULT_DOOR : DEFAULT_WINDOW;
+	const hosts = new Map(wallOpeningHostsForProject(project)?.map(host => [host.wallSegmentId, host]));
+	const vertices = new Map(project.level.vertices.map(vertex => [vertex.vertexId, vertex]));
+	return project.level.wallSegments.flatMap((wall, index) => {
+		const host = hosts.get(wall.wallSegmentId);
+		const start = vertices.get(wall.startVertexId);
+		const end = vertices.get(wall.endVertexId);
+		if (!host || !start || !end || host.usableLengthMm < defaults.widthMm || host.heightMm < defaults.heightMm + defaults.sillMm) return [];
+		return [{ ...host, ordinal: index + 1, lengthMm: Math.round(Math.hypot(end.xMm - start.xMm, end.zMm - start.zMm)) }];
+	});
 }
 
 export function openingCreationHostFor(
@@ -122,6 +139,7 @@ export function openingCreationHostFor(
 export function validateOpeningCreationDraft(
 	project: Project,
 	draft: OpeningCreationDraft,
+	windowSillPolicy: "draft" | "preset" = "draft",
 ): OpeningCreationDraftValidation {
 	const host = openingCreationHostFor(project, draft.wallSegmentId);
 	if (!host) {
@@ -132,7 +150,9 @@ export function validateOpeningCreationDraft(
 	}
 	const widthMm = positiveInteger(draft.widthMm);
 	const heightMm = positiveInteger(draft.heightMm);
-	const sillMm = draft.kind === "Door" ? 0 : nonNegativeInteger(draft.sillMm);
+	const sillMm = draft.kind === "Door"
+		? DEFAULT_DOOR.sillMm
+		: windowSillPolicy === "preset" ? DEFAULT_WINDOW.sillMm : nonNegativeInteger(draft.sillMm);
 	if (widthMm === undefined || heightMm === undefined || sillMm === undefined) {
 		return {
 			kind: "invalid",
@@ -163,6 +183,14 @@ export function validateOpeningCreationDraft(
 					{ next: () => "opening-draft-preview" },
 					project.updatedAt,
 				);
+	if (draft.baseRevisionId !== undefined) {
+		const offsetMm = nonNegativeInteger(draft.offsetMm);
+		if (offsetMm === undefined) return { kind: "invalid", message: "Укажите целое смещение в миллиметрах." };
+		const result = validate(offsetMm);
+		return result.kind === "accepted"
+			? { host, input: { ...dimensions, offsetMm }, kind: "valid" }
+			: { kind: "invalid", message: creationRejectionMessage(result) };
+	}
 	const probe = validate(Math.ceil(widthMm / 2));
 	if (
 		probe.kind === "rejected" &&

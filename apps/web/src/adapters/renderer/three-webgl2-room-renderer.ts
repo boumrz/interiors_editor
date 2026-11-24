@@ -36,13 +36,14 @@ import {
 import {
 	cameraEyeAndTargetFor,
 	furnitureGreyboxPartsFor,
-	hiddenWallSegmentIdsForCutaway,
+	wallCutawayForCamera,
 	type WebGl2Camera,
 	type WebGl2CutawayMode,
 	type WebGl2RendererQualityTier,
 	type WebGl2RuntimeModel,
 	type WebGl2RuntimeModels,
 	type WebGl2SceneRenderer,
+	type WebGl2WallCutaway,
 } from "./webgl2-room-renderer-shared";
 
 interface ItemNode {
@@ -135,7 +136,7 @@ export function createThreeWebGl2RoomSceneRenderer(
 	const itemNodes = new Map<string, ItemNode>();
 	let activeScene = scene;
 	let activeRuntimeModels = runtimeModels;
-	let hiddenWallSegmentIds = new Set<string>();
+	let cutaway: WebGl2WallCutaway | undefined;
 
 	for (const floor of scene.floors) {
 		roomGroup.add(
@@ -206,14 +207,8 @@ export function createThreeWebGl2RoomSceneRenderer(
 			camera.position.set(...viewpoint.eye);
 			camera.lookAt(...viewpoint.target);
 			camera.updateProjectionMatrix();
-			hiddenWallSegmentIds = new Set(
-				hiddenWallSegmentIdsForCutaway(
-					activeScene,
-					viewport,
-					hiddenWallSegmentIds,
-					cutawayMode,
-				),
-			);
+			cutaway = wallCutawayForCamera(activeScene, viewport, cutawayMode, cutaway);
+			const { hiddenWallSegmentIds } = cutaway;
 			for (const [wallSegmentId, groups] of wallGroups) {
 				for (const group of groups) {
 					group.visible = !hiddenWallSegmentIds.has(wallSegmentId);

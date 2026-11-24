@@ -3,11 +3,16 @@ import {
 	type KeyboardEvent,
 	useLayoutEffect,
 	useRef,
+	useState,
 } from "react";
+import { createPortal } from "react-dom";
+import { isOverlayBackdrop, useBackdropDismiss } from "./backdrop-dismiss";
 import styles from "./SheetHeader.module.css";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 
 type EditorModalSheetProps = ComponentPropsWithRef<"aside"> & {
 	readonly telegramModal: boolean;
+	readonly telegramSheet?: boolean;
 	readonly busy?: boolean;
 	readonly onRequestClose: () => void;
 	readonly restoreFocus?: () => HTMLElement | null;
@@ -29,6 +34,7 @@ function focusableControls(sheet: HTMLElement) {
 
 export function EditorModalSheet({
 	telegramModal,
+	telegramSheet = telegramModal,
 	busy = false,
 	onRequestClose,
 	restoreFocus,
@@ -41,14 +47,21 @@ export function EditorModalSheet({
 	const sheetRef = useRef<HTMLElement | null>(null);
 	const backdropRef = useRef<HTMLDivElement | null>(null);
 	const focusFallback = useRef(restoreFocus);
+	const [editorLayer, setEditorLayer] = useState<HTMLElement | null>();
+	const backdrop = useBackdropDismiss(isOverlayBackdrop, busy ? undefined : onRequestClose);
 
 	useLayoutEffect(() => {
 		focusFallback.current = restoreFocus;
 	}, [restoreFocus]);
+	useLayoutEffect(() => {
+		if (telegramSheet) {
+			setEditorLayer(sheetRef.current?.closest<HTMLElement>('main[data-editor-host="telegram"]') ?? null);
+		}
+	}, [telegramSheet]);
 
 	useLayoutEffect(() => {
 		const sheet = sheetRef.current;
-		if (!telegramModal || !sheet) return;
+		if (!telegramModal || !sheet || editorLayer === undefined) return;
 		const active = document.activeElement;
 		const blocked: Element[] = [];
 		// Isolation ends at the editor. Recovery and draft confirmations can
@@ -71,7 +84,10 @@ export function EditorModalSheet({
 			}
 		}
 		if (!sheet.contains(document.activeElement)) {
-			(focusableControls(sheet)[0] ?? sheet).focus({ preventScroll: true });
+			const focusable = focusableControls(sheet);
+			const first = focusable.find(control => control.hasAttribute("data-sheet-initial-focus"))
+				?? focusable[0];
+			(first ?? sheet).focus({ preventScroll: true });
 		}
 		return () => {
 			for (const sibling of blocked) sibling.removeAttribute("inert");
@@ -92,7 +108,7 @@ export function EditorModalSheet({
 				target?.focus({ preventScroll: true });
 			});
 		};
-	}, [telegramModal]);
+	}, [editorLayer, telegramModal]);
 
 	useLayoutEffect(() => {
 		const sheet = sheetRef.current;
@@ -111,6 +127,11 @@ export function EditorModalSheet({
 	function onSheetKeyDown(event: KeyboardEvent<HTMLElement>) {
 		if (!telegramModal) {
 			onKeyDown?.(event);
+			if (telegramSheet && event.key === "Escape" && !event.defaultPrevented) {
+				event.preventDefault();
+				event.stopPropagation();
+				onRequestClose();
+			}
 			return;
 		}
 		if (
@@ -144,24 +165,24 @@ export function EditorModalSheet({
 		}
 	}
 
-	return (
+	const layer = (
 		<>
 			{telegramModal ? (
 				<div
 					aria-hidden="true"
 					className={styles.editorBackdrop}
 					ref={backdropRef}
+					{...backdrop}
 				/>
 			) : null}
-			<aside
+			<TelegramSheetFrame
 				{...props}
 				{...(telegramModal ? { role: "dialog", "aria-modal": true } : {})}
-				className={
-					telegramModal
-						? `${className ?? ""} ${styles.dialog} ${styles.telegramDialog} ${styles.editorDialog}`
-						: className
-				}
+				className={telegramModal ? `${className ?? ""} ${styles.editorDialog}` : className}
 				data-telegram-modal-sheet={telegramModal || undefined}
+				telegram={telegramSheet}
+				compact={!telegramModal}
+				busy={busy}
 				onKeyDown={onSheetKeyDown}
 				ref={(element) => {
 					sheetRef.current = element;
@@ -171,7 +192,8 @@ export function EditorModalSheet({
 				tabIndex={telegramModal ? -1 : props.tabIndex}
 			>
 				{children}
-			</aside>
+			</TelegramSheetFrame>
 		</>
 	);
+	return telegramSheet && editorLayer ? createPortal(layer, editorLayer) : layer;
 }

@@ -3,8 +3,9 @@ import safety from "./ProjectSafety.module.css";
 import styles from "./RenameProjectDialog.module.css";
 import { SheetHeader } from "./SheetHeader";
 import sheetStyles from "./SheetHeader.module.css";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 
-export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onChange, onSubmit, onRetry, onCancel, returnFocusRef, telegram }: {
+export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onChange, onSubmit, onRetry, onCancel, onBackdropClose, returnFocusRef, telegram }: {
 	readonly name: string;
 	readonly error?: string;
 	readonly busy: boolean;
@@ -14,6 +15,7 @@ export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onCh
 	readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 	readonly onRetry: () => void;
 	readonly onCancel: () => void;
+	readonly onBackdropClose?: () => void;
 	readonly returnFocusRef: RefObject<HTMLElement | null>;
 	readonly telegram?: boolean;
 }) {
@@ -55,9 +57,9 @@ export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onCh
 		{error ? <p ref={errorRef} className={safety.error} id="rename-project-error" role="alert" tabIndex={-1}>{error}</p> : null}
 	</>;
 	const shell = telegram
-		? `${sheetStyles.dialog} ${sheetStyles.telegramDialog} ${styles.telegram}`
+		? styles.telegram
 		: `${safety.card} ${safety.dialog}`;
-	return <dialog ref={dialog} aria-labelledby={`${id}-heading`} aria-busy={busy} className={`${shell} ${styles.dialog}`} data-testid="rename-project-sheet" tabIndex={-1}
+	return <TelegramSheetFrame as="dialog" telegram={telegram} busy={busy} onBackdropClose={onBackdropClose} ref={dialog} aria-labelledby={`${id}-heading`} aria-busy={busy} className={`${shell} ${styles.dialog}`} data-testid="rename-project-sheet" tabIndex={-1}
 		onKeyDown={trapTab} onCancel={event => { event.preventDefault(); if (!busy) onCancel(); }}>
 		{telegram ? <SheetHeader
 			title="Переименовать проект"
@@ -74,5 +76,5 @@ export function RenameProjectDialog({ name, error, busy, blocked, canRetry, onCh
 				<button disabled={busy} onClick={onCancel} type="button">Отмена</button>
 			</div>
 		</form>
-	</dialog>;
+	</TelegramSheetFrame>;
 }

@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { unzipSync } from "fflate";
 import type {} from "./telegram-runtime-ui-harness";
+import { openEditorCatalog, openOpeningDetailsOnSelectedWall } from "./telegram-entry-support";
 import { projectRectangularRoomForWebGl } from "../../src/adapters/renderer/rectangular-room-projection";
 import { canvasPointForFloor, canvasPointForSceneItem } from "../../src/ui/three-dimensional-floor-interaction";
 import { clickRectangularRoomPoint } from "./room-geometry-fixture";
@@ -109,6 +110,123 @@ test("TMA-UI-01: real EditorApp creates a durable rectangle and reload reopens i
 	expect(await browser(page)).toEqual(preserved);
 });
 
+test("TMA-ADD-OPENING: the ordinary plan adds a door or window at the specified position", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, "Проёмы на плане");
+	const dock = page.getByTestId("editor-action-dock");
+	await expect(dock.getByRole("button")).toHaveText(["Комната", "Стена", "Добавить", "Выбор"]);
+	const add = dock.getByRole("button", { name: "Добавить", exact: true });
+	await add.click();
+	const chooser = page.getByRole("dialog", { name: "Добавить", exact: true });
+	await expect(chooser.getByRole("button", { name: "Предмет", exact: true })).toBeVisible();
+	await chooser.getByRole("button", { name: "Дверь", exact: true }).click();
+	await expect(chooser).toBeHidden();
+	const picking = page.getByTestId("opening-host-picker");
+	await expect(picking).toBeVisible();
+	await expect(page.locator('[data-testid="wall-segment"][data-opening-host="true"]')).toHaveCount(4);
+	await page.getByTestId("wall-segment").first().click();
+	const candidate = page.getByTestId("opening-creation-draft");
+	await expect(candidate).toBeVisible();
+	await expect(page.getByTestId("opening-creation-preview")).toBeVisible();
+	expect((await currentProject(page)).level.openings).toEqual([]);
+	await candidate.getByRole("button", { name: "Параметры", exact: true }).click();
+	await candidate.getByRole("textbox", { name: "Смещение вдоль стены, мм" }).fill("1300");
+	await candidate.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	const [door] = (await currentProject(page)).level.openings;
+	expect(door).toMatchObject({ kind: "Door", offsetMm: 1300 });
+	await page.getByTestId("wall-segment").first().click();
+	await expect(page.getByRole("button", { name: "Добавить проём", exact: true })).toHaveCount(0);
+	await expect(add).toBeVisible();
+
+	await dock.getByRole("button", { name: "Выбор и перемещение", exact: true }).click();
+	await add.click();
+	await chooser.getByRole("button", { name: "Окно", exact: true }).click();
+	await picking.getByRole("button", { name: "Выбрать стену", exact: true }).click();
+	await page.getByRole("button", { name: /^Стена 2 ·/ }).click();
+	await expect(candidate).toBeVisible();
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await page.getByRole("button", { name: "Продолжить", exact: true }).click();
+	await candidate.getByRole("button", { name: "Параметры", exact: true }).click();
+	await expect(candidate.getByRole("textbox", { name: "Высота подоконника, мм" })).toHaveCount(0);
+	await candidate.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	expect((await currentProject(page)).level.openings).toEqual([door, expect.objectContaining({ kind: "Window", sillMm: 900 })]);
+});
+
+for (const [kind, width] of [["Дверь", 900], ["Окно", 1200]] as const) {
+test(`TMA-MOVE-OPENING: ${kind} follows its dimension and saves one revision at release`, async ({ page }, info) => {
+	await page.setViewportSize({ width: 320, height: 740 });
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring"));
+	await createRoom(page, "Перемещение проёма");
+	await page.getByTestId("wall-segment").first().click();
+	await page.getByTestId("editor-action-dock").getByRole("button", { name: "Добавить", exact: true }).click();
+	await page.getByRole("dialog", { name: "Добавить", exact: true }).getByRole("button", { name: kind, exact: true }).click();
+	await page.getByTestId("opening-creation-draft").getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	const baseline = await currentProject(page);
+	const before = await rows(page, "a");
+	const handle = page.getByTestId("opening-move-handle");
+	const contact = await handle.boundingBox();
+	if (!contact) throw new Error("Opening move handle is missing");
+	const x = contact.x + contact.width / 2;
+	const y = contact.y + contact.height / 2;
+	if (kind === "Дверь") {
+		await page.mouse.move(x, y);
+		await page.mouse.down();
+		await page.mouse.move(x + 20, y, { steps: 4 });
+		await expect(page.getByTestId("opening-drag-dimension")).toBeVisible();
+		await page.getByTestId("plan-canvas").dispatchEvent("pointercancel", { pointerId: 1, pointerType: "mouse", isPrimary: true });
+		await page.mouse.up();
+		await expect(page.getByTestId("opening-drag-dimension")).toHaveCount(0);
+		expect(await rows(page, "a")).toEqual(before);
+
+		await page.mouse.move(x, y);
+		await page.mouse.down();
+		await page.mouse.move(x + 125, y, { steps: 5 });
+		await expect(page.getByTestId("opening-move-feedback")).toBeVisible();
+		await page.mouse.up();
+		await expect(page.getByTestId("opening-drag-dimension")).toHaveCount(0);
+		await expect(page.getByText("Проём не помещается в границы выбранной стены.", { exact: true })).toBeVisible();
+		expect(await rows(page, "a")).toEqual(before);
+	}
+	await page.mouse.move(x, y);
+	await page.mouse.down();
+	await page.mouse.move(x + 12, y, { steps: 2 });
+	const edges = page.getByTestId("opening-preview-edges");
+	await expect(edges.locator("circle")).toHaveCount(2);
+	const dimension = page.getByTestId("opening-drag-dimension");
+	await expect(dimension).toHaveText(String(width));
+	await expect(page.getByText("Проём не помещается в границы выбранной стены.", { exact: true })).toHaveCount(0);
+	const startX = (await dimension.boundingBox())?.x ?? 0;
+	await page.mouse.move(x + 30, y, { steps: 4 });
+	await expect.poll(async () => (await dimension.boundingBox())?.x ?? 0).toBeGreaterThan(startX + 4);
+	const jambs = await edges.locator("circle").evaluateAll(nodes => nodes.map(node => {
+		const rect = node.getBoundingClientRect();
+		return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+	}));
+	const labelBounds = await dimension.boundingBox();
+	if (!labelBounds || jambs.length !== 2) throw new Error("Missing dimension marks");
+	expect(Math.abs(labelBounds.x + labelBounds.width / 2 - (jambs[0].x + jambs[1].x) / 2)).toBeLessThan(1);
+	expect(labelBounds.y + labelBounds.height).toBeLessThan(jambs[0].y);
+	await page.screenshot({ path: info.outputPath("opening-drag-dimension.png") });
+	await expect(page.getByRole("button", { name: "Параметры", exact: true })).toBeHidden();
+	expect(await rows(page, "a")).toEqual(before);
+	await page.mouse.up();
+	await saved(page);
+	await expect(page.getByTestId("opening-move-confirmation")).toHaveCount(0);
+	await expect(edges).toHaveCount(0);
+	const [original] = baseline.level.openings;
+	const [moved] = (await currentProject(page)).level.openings;
+	expect(moved?.offsetMm).toBeGreaterThan(original.offsetMm);
+	expect(moved).toEqual({ ...original, offsetMm: moved?.offsetMm });
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
+	await page.getByRole("button", { name: /^Отменить действие/ }).click();
+	await saved(page);
+	expect((await currentProject(page)).level.openings).toEqual(baseline.level.openings);
+});
+}
+
 test("TMA-UI-02: full A→B→A remount keeps Projects/preferences isolated and leaves real browser data/cache/preferences untouched", async ({
 	page,
 }) => {
@@ -176,10 +294,7 @@ test("TMA-UI-03: a real pinned raw-UPPER resource hydrates its visible custom ca
 		contentType: "application/json",
 		body: JSON.stringify(fixture),
 	});
-	await page
-		.getByRole("navigation", { name: "Инструменты редактора" })
-		.getByRole("button", { name: "Предметы интерьера", exact: true })
-		.click();
+	await openEditorCatalog(page);
 	await page.getByRole("button", { name: "Кастомное", exact: true }).click();
 	const card = page.getByRole("button", {
 		name: /Local upper triangle.*Кастомное/,
@@ -302,7 +417,7 @@ test("TMA-UI-RESOURCE-02: opening a project retries one unreadable pinned blob",
 test("TMA-EXACT-YAW: exact 2D placement restores in 3D and in the compatible runtime", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
 	await createRoom(page, "Точный поворот");
-	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await openEditorCatalog(page);
 	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
 	await expect(page.getByTestId("tma-placement-color")).toHaveCount(0);
 	await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
@@ -367,10 +482,10 @@ test("TMA-EXACT-YAW: exact 2D placement restores in 3D and in the compatible run
 	await open(page, "Точный поворот");
 	expect((await currentProject(page)).assetInstances[0]).toEqual(durable);
 	await page.getByTestId("schematic-item").click();
-	const left = page.getByRole("textbox", { name: "Слева, мм", exact: true });
-	if (!(await left.isVisible())) {
-		await page.getByRole("button", { name: "Развернуть панель предмета", exact: true }).click();
-	}
+	const properties = page.getByTestId("selected-item-inspector");
+	await properties.getByRole("button", { name: "Развернуть панель предмета", exact: true }).click();
+	await properties.getByRole("tab", { name: "До стен", exact: true }).click();
+	const left = properties.getByRole("textbox", { name: "Слева, мм", exact: true });
 	const next = Number(await left.inputValue()) + 20;
 	await left.fill(String(next));
 	await left.press("Enter");
@@ -457,7 +572,7 @@ test("TMA-ROTATION-SPACING: four rotation controls stay on one row in Plan and 3
 	test.setTimeout(60_000);
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
 	await createRoom(page, "Геометрия поворота");
-	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await openEditorCatalog(page);
 	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
 	await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
 	const planLeft = page.getByRole("button", { name: "Повернуть размещаемый предмет влево на 1°", exact: true });
@@ -542,7 +657,7 @@ async function expectRotationStepButton(button: Locator, pressed: boolean) {
 test("TMA-ROTATION-EXPLICIT: angle drafts and snap mode work across plan, 3D and the keyboard", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
 	await createRoom(page, "Режим вращения");
-	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await openEditorCatalog(page);
 	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
 	await clickRectangularRoomPoint(page, { x: 0.45, y: 0.5 });
 	const placement = page.getByTestId("item-placement-action-dock");
@@ -623,7 +738,7 @@ test("TMA-ROTATION-EXPLICIT: angle drafts and snap mode work across plan, 3D and
 async function selectExactChair(page: Page, name: string) {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
 	await createRoom(page, name);
-	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await openEditorCatalog(page);
 	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
 	await clickRectangularRoomPoint(page, { x: 0.44, y: 0.48 });
 	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
@@ -676,6 +791,7 @@ test("TMA-SELECTED-ROTATION: a selected Plan item offers exact angle and shared 
 		}
 		await properties.click();
 	}
+	await inspector.getByRole("tab", { name: "До стен", exact: true }).click();
 	await expect(inspector.getByRole("textbox", { name: "Слева, мм", exact: true })).toBeVisible();
 	await expect(inspector.getByRole("textbox", { name: angleLabel, exact: true })).toHaveCount(0);
 	await expect(inspector.getByRole("button", { name: "Шаг 45°", exact: true })).toHaveCount(0);
@@ -937,10 +1053,9 @@ test("TMA-DOOR-HINGE-TRANSFER: rollback keeps the saved hinge and v3 refuses its
 	await open(page, "Петли и копия");
 	expect(await rows(page, "a")).toEqual(oldRows);
 	await page.getByTestId("wall-segment").first().click();
-	await page.getByRole("button", { name: "Добавить проём", exact: true }).click();
-	const opening = page.getByTestId("opening-creation-draft");
+	const opening = await openOpeningDetailsOnSelectedWall(page);
 	await opening.getByRole("group", { name: "Петли" }).getByRole("button", { name: "Справа", exact: true }).click();
-	await opening.getByRole("button", { name: "Добавить", exact: true }).click();
+	await opening.getByRole("button", { name: "Подтвердить", exact: true }).click();
 	await expect(opening).toHaveCount(0);
 	const placed = (await currentProject(page)).level.openings;
 	expect(placed).toEqual([expect.objectContaining({ hingeEnd: "end" })]);
@@ -980,7 +1095,7 @@ test("TMA-UI-GUIDES-01: placement distances use the rotated footprint and remain
 	});
 	await open(page, "Uppercase local model");
 	const before = await rows(page, "a");
-	await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+	await openEditorCatalog(page);
 	await page.getByRole("button", { name: /Local upper triangle.*Кастомное/ }).click();
 	await page.getByRole("button", { name: "Разместить на плане", exact: true }).click();
 	await clickRectangularRoomPoint(page, { x: 0.32, y: 0.52 });
@@ -1018,7 +1133,7 @@ for (const firstContact of ["ring", "floor"] as const) {
 		});
 		await open(page, "Uppercase local model");
 		const before = await rows(page, "a");
-		await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+		await openEditorCatalog(page);
 		await page.getByRole("button", { name: /Local upper triangle.*Кастомное/ }).click();
 		await page.getByRole("button", { name: "Разместить на плане", exact: true }).click();
 		await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
@@ -1397,7 +1512,7 @@ test("TMA-UI-14: starter contour raw dimensions survive Continue and discard res
 
 test("TMA-UI-15: catalog composer raw text survives its close button and explicit discard creates no data", async ({page})=>{
  await navigableRoom(page,"Composer raw");
- await page.getByRole("button",{name:"Предметы интерьера",exact:true}).click();
+ await openEditorCatalog(page);
  const catalog=page.getByRole("dialog",{name:"Предметы интерьера",exact:true});
  await catalog.locator("summary").click();
  await catalog.getByRole("button",{name:"Создать макетный предмет",exact:true}).click();
@@ -1447,9 +1562,8 @@ test("TMA-OPENING-SAVE-FOCUS: publishing a new opening retains keyboard focus in
 	await navigableRoom(page, "Сохранение проёма");
 	const before = await rows(page, "a");
 	await page.getByTestId("wall-segment").first().click();
-	await page.getByRole("button", { name: "Добавить проём", exact: true }).click();
-	const sheet = page.getByTestId("opening-creation-draft");
-	const submit = sheet.getByRole("button", { name: "Добавить", exact: true });
+	const sheet = await openOpeningDetailsOnSelectedWall(page);
+	const submit = sheet.getByRole("button", { name: "Подтвердить", exact: true });
 	await submit.focus();
 	await page.evaluate(() => window.__telegramRuntimeUi.holdScopeLock("a"));
 	try {
@@ -1684,14 +1798,14 @@ test("TMA-UI-26: closing the page during an actual uncommitted save reopens the 
 
 test("TMA-UI-27: an oversized actual local GLB is refused before reading bytes and without Project changes",async({page})=>{
  await navigableRoom(page,"Bounded local GLB");const before=await rows(page,"a");
- await page.getByRole("button",{name:"Предметы интерьера",exact:true}).click();await page.getByTestId("catalog-authoring").locator("summary").click();
+ await openEditorCatalog(page);await page.getByTestId("catalog-authoring").locator("summary").click();
  await page.evaluate(()=>window.__telegramRuntimeUi.selectModelFile("glb",25*1024*1024+1));
  await expect(page.getByText("Одна GLB-модель ограничена 25 MiB, чтобы её можно было хранить и открыть на телефоне.",{exact:true})).toBeVisible();
  expect(await page.evaluate(()=>window.__telegramRuntimeUi.localModelFileReads())).toBe(0);expect(await rows(page,"a")).toEqual(before);
 });
 test("TMA-UI-28: embedded Telegram exposes static GLB only and rejects a queued FBX selection without conversion or reads",async({page})=>{
  await navigableRoom(page,"Static GLB only");const before=await rows(page,"a");
- await page.getByRole("button",{name:"Предметы интерьера",exact:true}).click();await page.getByTestId("catalog-authoring").locator("summary").click();
+ await openEditorCatalog(page);await page.getByTestId("catalog-authoring").locator("summary").click();
  await expect(page.getByRole("button",{name:"Выбрать FBX или ZIP",exact:true})).toHaveCount(0);
  await expect(page.getByRole("button",{name:"Выбрать GLB",exact:true})).toBeVisible();
  await page.evaluate(()=>window.__telegramRuntimeUi.selectModelFile("fbx",1));
@@ -2432,4 +2546,194 @@ test("TMA-ITEM-PALETTE: a legacy wall light has concise dimension labels and ref
 	await page.getByRole("button", { name: "Подтвердить", exact: true }).click();
 	await saved(page);
 	await expect(control).toHaveAccessibleName(/Орех/i);
+});
+
+test("TMA-NOV23-INSPECTOR: numeric blur saves a single field and color is chosen in 3D", async ({ page }) => {
+	await selectExactChair(page, "Параметры стула");
+	const inspector = page.getByTestId("selected-item-inspector");
+	await inspector.getByRole("button", { name: "Развернуть панель предмета" }).click();
+	const tabs = inspector.getByRole("tab");
+	await expect(tabs).toHaveText(["Размеры", "До стен", "Настройки"]);
+	await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+	const width = inspector.getByRole("textbox", { name: "Ширина выбранного предмета, мм" });
+	const depth = inspector.getByRole("textbox", { name: "Глубина выбранного предмета, мм" });
+	const original = (await currentProject(page)).assetInstances[0];
+	const before = await rows(page, "a");
+	await width.fill("550");
+	expect(await rows(page, "a")).toEqual(before);
+	await depth.focus();
+	await saved(page);
+	expect((await currentProject(page)).assetInstances[0]).toMatchObject({ widthMm: 550 });
+	await expect(inspector.getByRole("button", { name: "Применить размеры" })).toHaveCount(0);
+	await depth.fill("0");
+	await width.focus();
+	await expect(depth).toHaveAttribute("aria-invalid", "true");
+	expect((await currentProject(page)).assetInstances[0]).toMatchObject({ depthMm: original?.depthMm });
+	await width.fill("560");
+	await depth.focus();
+	await expect.poll(async () => (await currentProject(page)).assetInstances[0]).toHaveProperty("widthMm", 560);
+	await expect(depth).toHaveValue("0");
+	await depth.press("Escape");
+	await expect(depth).toHaveValue(String(original?.depthMm));
+	await saved(page);
+	const resized = await rows(page, "a");
+	await width.fill("560");
+	await width.press("Enter");
+	await expect(width).toHaveValue("560");
+	expect(await rows(page, "a")).toEqual(resized);
+	await tabs.nth(1).click();
+	const left = inspector.getByRole("textbox", { name: "Слева, мм" });
+	await left.focus();
+	await expect(page.locator('[data-testid="item-wall-distances"][data-side="left"]')).toHaveAttribute("data-focused", "true");
+	const movedDistance = String(Number(await left.inputValue()) + 50);
+	const oldPosition = (await currentProject(page)).assetInstances[0];
+	await left.fill(movedDistance);
+	await inspector.getByRole("textbox", { name: "Справа, мм" }).focus();
+	await saved(page);
+	expect((await currentProject(page)).assetInstances[0]).not.toEqual(oldPosition);
+	await expect(left).toHaveValue(movedDistance);
+	const positioned = await rows(page, "a");
+	await expect(inspector.getByRole("button", { name: /^Цвет/ })).toHaveCount(0);
+	await tabs.nth(2).click();
+	const deletion = inspector.getByRole("button", { name: "Удалить предмет", exact: true });
+	await deletion.click();
+	await page.getByRole("dialog", { name: "Удалить предмет?" }).getByRole("button", { name: "Отменить" }).click();
+	await expect(deletion).toBeFocused();
+	expect(await rows(page, "a")).toEqual(positioned);
+	await tabs.first().click();
+	await expect(width).toHaveValue("560");
+	await expect(inspector.getByRole("button", { name: /^Цвет/ })).toHaveCount(0);
+	await inspector.getByRole("button", { name: "Скрыть панель предмета" }).click();
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await page.getByRole("button", { name: /^Цвет/ }).click();
+	const palette = page.getByRole("dialog", { name: "Цвет предмета" });
+	await expect(palette).toBeVisible();
+	await palette.getByRole("button", { name: "Орех", exact: true }).click();
+	await page.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	expect((await currentProject(page)).assetInstances[0]).toMatchObject({ widthMm: 560, colorVariantId: "alpha-walnut" });
+});
+
+test("TMA-PROPERTY-SHEET: furniture tabs keep the same bottom geometry and top hit layer", async ({ page }) => {
+	await selectExactChair(page, "Единая геометрия параметров");
+	await page.setViewportSize({ width: 360, height: 740 });
+	const inspector = page.getByTestId("selected-item-inspector");
+	await inspector.getByRole("button", { name: "Развернуть панель предмета" }).click();
+	const shellEdges = () => inspector.evaluate((element) => {
+		const { top, bottom, left, right } = element.getBoundingClientRect();
+		return [top, bottom, left, right].map(Math.round);
+	});
+	await expect.poll(() => inspector.evaluate((element) => element.getAnimations().every(animation => animation.playState !== "running"))).toBe(true);
+	const originalEdges = await shellEdges();
+	for (const name of ["До стен", "Настройки", "Размеры"]) {
+		await inspector.getByRole("tab", { name }).click();
+		await expect(inspector).toHaveAttribute("aria-modal", "true");
+		await expect.poll(shellEdges).toEqual(originalEdges);
+		await expect(inspector.getByRole("button", { name: "Развернуть", exact: true })).toHaveCount(0);
+		expect(await inspector.evaluate((element) => {
+			const { left, top, width, height } = element.getBoundingClientRect();
+			return element.parentElement === element.closest("main") &&
+				[20, width / 2, width - 20].every(x =>
+					element.contains(document.elementFromPoint(left + x, top + height / 2)));
+		})).toBe(true);
+	}
+});
+
+test("TMA-WALL-SHEET: wall properties share the fixed bottom anchor and aligned opening values", async ({ page }, info) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring"));
+	await createRoom(page, "Шторка свойств стены");
+	const wall = page.getByTestId("wall-segment").first();
+	await wall.click();
+	const opening = await openOpeningDetailsOnSelectedWall(page);
+	await opening.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	await page.setViewportSize({ width: 360, height: 740 });
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	const wallSheet = page.getByTestId("selected-wall-inspector");
+	await expect(wallSheet.getByRole("button", { name: "Развернуть", exact: true })).toHaveCount(0);
+	await expect(wallSheet).toHaveAttribute("aria-modal", "true");
+	await expect.poll(() => wallSheet.evaluate((element) => element.getAnimations().every(animation => animation.playState !== "running"))).toBe(true);
+	const frame = await wallSheet.boundingBox();
+	if (!frame) throw new Error("Missing wall sheet layout");
+	expect(Math.abs(frame.y + frame.height - 728)).toBeLessThan(2);
+	const openingWidth = wallSheet.getByTestId("wall-opening-width");
+	await expect(openingWidth.getByText("Ширина дверного проёма", { exact: true })).toBeVisible();
+	const label = await openingWidth.locator("dt").boundingBox();
+	const value = await openingWidth.locator("dd").boundingBox();
+	if (!label || !value) throw new Error("Missing opening dimension row");
+	expect(value.x - label.x - label.width).toBeGreaterThanOrEqual(7);
+	expect(await wallSheet.evaluate((element) => {
+		const { left, top, width } = element.getBoundingClientRect();
+		return element.contains(document.elementFromPoint(left + width / 2, top + 30));
+	})).toBe(true);
+	await page.screenshot({ path: info.outputPath("wall-properties-360.png") });
+	await wallSheet.getByRole("button", { name: "Закрыть свойства стены" }).click();
+	await expect(wallSheet).toBeHidden();
+});
+
+test("TMA-NOV23-COPY: a locked exact item duplicates into the current 3D view", async ({ page }) => {
+	await selectExactChair(page, "Точная копия");
+	const scene = page.getByRole("button", { name: "3D", exact: true });
+	await scene.click();
+	await page.getByRole("button", { name: /^Цвет/ }).click();
+	await page.getByRole("button", { name: "Орех", exact: true }).click();
+	await page.getByRole("dialog").getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	await page.getByRole("button", { name: "План 2D", exact: true }).click();
+	const angle = page.getByRole("textbox", { name: "Угол поворота выбранного предмета, градусы" });
+	await angle.fill("37,5");
+	await angle.press("Enter");
+	await saved(page);
+	const inspector = page.getByTestId("selected-item-inspector");
+	await inspector.getByRole("button", { name: "Развернуть панель предмета" }).click();
+	await inspector.getByRole("tab", { name: "Настройки" }).click();
+	await inspector.getByRole("button", { name: "Заблокировать предмет" }).click();
+	await saved(page);
+	const original = (await currentProject(page)).assetInstances[0];
+	expect(original).toMatchObject({ locked: true, yawMilliDeg: 37_500, colorVariantId: "alpha-walnut" });
+	const before = await rows(page, "a");
+	await inspector.getByRole("button", { name: "Скрыть панель предмета" }).click();
+	await scene.click();
+	await page.getByRole("button", { name: "Дублировать", exact: true }).click();
+	await expect(scene).toHaveAttribute("aria-pressed", "true");
+	await expect(page.getByRole("textbox", { name: "Поворот предмета в 3D, градусы" })).toHaveValue(/37[.,]5/);
+	expect(await rows(page, "a")).toEqual(before);
+	await page.getByRole("button", { name: "План 2D", exact: true }).click();
+	await clickRectangularRoomPoint(page, { x: 0.76, y: 0.66 });
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	const [unchanged, duplicate] = (await currentProject(page)).assetInstances;
+	expect(unchanged).toEqual(original);
+	expect(duplicate).toMatchObject({ widthMm: original?.widthMm, yawMilliDeg: 37_500, colorVariantId: "alpha-walnut" });
+	expect(duplicate).not.toHaveProperty("locked");
+	expect(duplicate?.assetInstanceId).not.toBe(original?.assetInstanceId);
+});
+
+test("TMA-NOV23-CLEARANCE: TMA omits the pair picker and retains wall distances during placement and move", async ({ page }) => {
+	await selectExactChair(page, "Зазор между предметами");
+	await openEditorCatalog(page);
+	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
+	await clickRectangularRoomPoint(page, { x: 0.78, y: 0.48 });
+	await expect(page.getByTestId("item-wall-distances").first()).toBeVisible();
+	await expect(page.getByRole("button", { name: "Измерить до предмета", exact: true })).toHaveCount(0);
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	const [first, second] = (await currentProject(page)).assetInstances;
+	if (!first || !second) throw new Error("Expected a pair of chairs");
+	const source = page.locator(`[data-item-id="${first.assetInstanceId}"] [data-testid="schematic-item"]`);
+	await source.click();
+	await expect(page.getByRole("button", { name: "Измерить до предмета", exact: true })).toHaveCount(0);
+	const base = await rows(page, "a");
+	const bounds = await source.boundingBox();
+	if (!bounds) throw new Error("Expected a selectable item");
+	const start = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(start.x + 20, start.y, { steps: 4 });
+	await expect(page.getByTestId("item-wall-distances").first()).toBeVisible();
+	await page.mouse.up();
+	await saved(page);
+	await expect(page.getByRole("button", { name: "Подтвердить перемещение", exact: true })).toHaveCount(0);
+	expect((await rows(page, "a")).revisions).toHaveLength(base.revisions.length + 1);
+	expect((await currentProject(page)).assetInstances[0]).not.toEqual(first);
 });

@@ -76,7 +76,7 @@ function View() {
  return <div style={{ position: "relative", width: "100%", height: "640px" }} id="editor-surface">
   <Scene {...registration} scene={scene} selectedItemId={selectedItemId} canTransformSelectedItem
    itemPlacementDraft={placementMode ? { color: "#8C7B6B", depthMm: 400, heightMm: 750, label: "Несохранённый стол", widthMm: 400, yawRadians: yaw } : undefined}
-   assessItemPlacement={(point) => assessParametricFloorItemPlacement(project, placementInput(project, point, yaw)).kind !== "invalid"}
+   assessItemPlacement={(point) => assessParametricFloorItemPlacement(project, placementInput(project, point, yaw))}
    onItemPlacementYawChange={(next) => { placementYaw = next; setYaw(next); }}
    onCancelItemPlacement={() => { placementMode = false; refresh?.(); }}
    {...(omitPlacementCallback ? {} : { onPlaceItem: async (point: { readonly xM: number; readonly zM: number }) => {

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "@rstest/core";
 import { renderToStaticMarkup } from "react-dom/server";
+import { projectRectangularRoomForWebGl } from "../adapters/renderer/rectangular-room-projection";
+import { furnitureGreyboxPartsFor } from "../adapters/renderer/webgl2-room-renderer-shared";
 
 import type {
 	ProjectController,
 	ProjectScreenState,
 } from "../app/project-controller";
+import { addWindowOpeningToProject, updateDoorOpeningInProject } from "../domain/door-opening-project";
 import { createInitialProject } from "../domain/initial-project";
+import { createParametricFloorItem } from "../domain/parametric-item";
 import type { Project } from "../domain/project";
 import { configureRectangularRoom } from "../domain/rectangular-room";
 import {
@@ -19,6 +23,7 @@ import {
 	itemPlacementFeedback,
 	itemPlacementPreviewFeedback,
 	itemPlacementWarningSummary,
+	openingEditInputFor,
 	persistenceFailureCopy,
 	preloadedGlbLoadingStatusCopy,
 	projectDirectoryUpdatedCopy,
@@ -32,6 +37,10 @@ import {
 	wallThicknessErrorCopy,
 } from "./AppShell";
 import { itemCountCopy } from "./item-count-copy";
+import { defaultDrawingDimensionVisibility } from "./drawing-dimension-visibility";
+import { initialEditorViewport } from "./editor-viewport";
+import { PlanProjection } from "./PlanProjection";
+import { telegramGreyboxKindForLabel } from "./telegram-greybox-catalog";
 
 describe("healthy local offline status", () => {
 	it("appears only for an online-state-independent, writable Project surface", () => {
@@ -958,7 +967,160 @@ describe("wall mutation correction", () => {
 	});
 });
 
+describe("Telegram item front direction", () => {
+	const cases = [
+		{ label: "Стул", yaw: { yawMilliDeg: 0 }, reference: "back", fromFront: false },
+		{ label: "Стул", yaw: { yawStep: 2 }, reference: "back", fromFront: false },
+		{ label: "Стул из старого проекта", yaw: { yawMilliDeg: 326524 }, reference: "back", fromFront: false },
+		{ label: "Кресло", yaw: { yawMilliDeg: 73500 }, reference: "back", fromFront: false },
+		{ label: "Диван", yaw: { yawStep: 3 }, reference: "back", fromFront: false },
+		{ label: "Односпальная кровать", yaw: { yawStep: 1 }, reference: "headboard", fromFront: false },
+		{ label: "Комод", yaw: { yawMilliDeg: 158500 }, reference: "drawer", fromFront: true },
+		{ label: "Угловой диван", yaw: { yawStep: 1 }, reference: "corner-back", fromFront: false },
+		{ label: "Стол", yaw: { yawStep: 6 } },
+		{ label: "Стул", yaw: { yawStep: 1 }, assetDefinitionId: "imported-chair" },
+	] as const;
+
+	it.each(cases)("points toward the 3D front of $label at $yaw", (fixture) => {
+		const baseController = rectangularFixtureController();
+		const state = baseController.snapshot();
+		if (state.kind !== "saved" || state.project.schemaVersion !== 1) throw new Error("Missing room fixture");
+		const item = {
+			anchorClass: "floor",
+			assetInstanceId: "facing-fixture",
+			color: "#123456",
+			depthMm: 620,
+			heightMm: 900,
+			label: fixture.label,
+			roomId: "room-1",
+			widthMm: 540,
+			xMm: 1600,
+			zMm: 1200,
+			...fixture.yaw,
+			...("assetDefinitionId" in fixture ? { assetDefinitionId: fixture.assetDefinitionId } : {}),
+		} as const;
+		const project = { ...state.project, assetInstances: [item] };
+		const controller = new Proxy(baseController, {
+			get(target, property) {
+				if (property === "snapshot") return () => ({ ...state, project });
+				return Reflect.get(target, property, target);
+			},
+		});
+		const markup = renderToStaticMarkup(
+			<AppShell controller={controller} localGreyboxCatalog hostNavigation={{
+				subscribeBack: () => () => undefined,
+				setBackVisible: () => undefined,
+				close: () => undefined,
+			}} />,
+		);
+		const group = markup.match(/<g data-item-id="facing-fixture" transform="rotate\(([^ )]+)[^"]*\)">([\s\S]*?)<path ([^>]*data-testid="schematic-item-front"[^>]*)>/);
+		if (!group) throw new Error("Missing rendered plan item marker");
+		const [, planAngleText, silhouette, marker] = group;
+		const baseDy = Number(marker.match(/d="M [^ ]+ [^ ]+ l -4 ([^ ]+) h 8 z"/)?.[1]);
+		const markerRotation = Number(marker.match(/transform="rotate\(([^ )]+)/)?.[1] ?? 0);
+		const planFrontAngle = (Number(planAngleText) + markerRotation) * Math.PI / 180;
+		const arrowX = Math.sign(baseDy) * Math.sin(planFrontAngle);
+		const arrowZ = -Math.sign(baseDy) * Math.cos(planFrontAngle);
+
+		const sceneItem = projectRectangularRoomForWebGl(project, telegramGreyboxKindForLabel)?.items[0];
+		if (!sceneItem) throw new Error("Missing 3D item projection");
+		const parts = furnitureGreyboxPartsFor(sceneItem, true);
+		const yaw = sceneItem.yawRadians ?? 0;
+		const reference = "reference" in fixture
+			? parts.find((part) => fixture.reference === "corner-back"
+				? part.tone === "shadow"
+				: part.role === fixture.reference)
+			: undefined;
+		if ("reference" in fixture && !reference) throw new Error("Missing directional part in 3D");
+		const frontSign = "fromFront" in fixture && !fixture.fromFront ? -1 : 1;
+		const frontX = reference ? (reference.box.centerXM - sceneItem.centerXM) * frontSign : Math.sin(yaw);
+		const frontZ = reference ? (reference.box.centerZM - sceneItem.centerZM) * frontSign : Math.cos(yaw);
+		expect((arrowX * frontX + arrowZ * frontZ) / Math.hypot(frontX, frontZ)).toBeCloseTo(1, 8);
+
+		// Where the 2D detail draws a backrest or headboard, it must stay opposite its arrow.
+		const silhouetteTransform = silhouette.match(/data-testid="plan-item-silhouette" transform="([^"]+)"/)?.[1];
+		expect(silhouetteTransform).toMatch(/^translate\([^()]+\) scale\([^()]+\)( rotate\(180 50 50\))?$/);
+		if ("reference" in fixture && (fixture.reference === "back" || fixture.reference === "headboard")) {
+			expect(silhouetteTransform).toContain("rotate(180 50 50)");
+		} else {
+			expect(silhouetteTransform).not.toContain("rotate(180 50 50)");
+		}
+	});
+});
+
 describe("item placement preview feedback", () => {
+	it("blocks placement over an existing item on the Telegram plan", () => {
+		const state = rectangularFixtureController().snapshot();
+		if (state.kind !== "saved" || state.project.schemaVersion !== 1) throw new Error("Missing room fixture");
+		const footprint = { widthMm: 600, depthMm: 600, heightMm: 750, color: "#123456", label: "Стул", yawRadians: 0 };
+		const point = { xMm: 1600, zMm: 1200 };
+		const placed = createParametricFloorItem(state.project, { ...footprint, ...point, roomId: "room-1" },
+			{ next: () => "chair" }, state.project.updatedAt);
+		if (placed.kind !== "accepted") throw new Error("Chair must fit the room");
+		const ignore = () => undefined;
+		const reject = async () => false;
+		const renderPlacement = (xMm: number) => renderToStaticMarkup(
+			<PlanProjection
+				plainLabels
+				activeTool="item"
+				dimensionVisibility={defaultDrawingDimensionVisibility()}
+				initialItemPlacementPoint={{ xMm, zMm: point.zMm }}
+				isInteractionLocked={false}
+				isWallMoveMode={false}
+				isWallSplitMode={false}
+				isWallVertexMoveMode={false}
+				itemDraft={footprint}
+				movableWallVertexIds={[]}
+				onCancelItemPlacement={ignore}
+				onDrawWall={reject}
+				onDrawingVisibilityChange={ignore}
+				onItemPlacementYawChange={ignore}
+				onMoveDoorOpening={reject}
+				onMoveItem={reject}
+				onMoveWall={reject}
+				onMoveWallVertex={reject}
+				onPlaceItem={ignore}
+				onPwaUpdateSafetyChange={ignore}
+				onResolveSplitHostConflict={async () => "rejected"}
+				onRotateItem={reject}
+				onSelectItem={ignore}
+				onSelectWall={ignore}
+				onSplitWall={async () => ({ kind: "rejected" })}
+				onWallMoveModeChange={ignore}
+				onWallSplitModeChange={ignore}
+				onWallVertexMoveModeChange={ignore}
+				openingCreationPreview={undefined}
+				openingMoveErrorCopy={errorCopy}
+				project={placed.project}
+				readOnly={false}
+				selectedItemId={undefined}
+				selectedWallId={undefined}
+				setViewport={ignore}
+				viewport={initialEditorViewport}
+				wallThicknessMm={undefined}
+			/>,
+		);
+		const blocked = renderPlacement(point.xMm);
+		expect(blocked).toContain('data-placement-tier="invalid"');
+		expect(blocked).toContain('data-testid="item-placement-confirm" disabled=""');
+		expect(blocked).toContain("Предмет пересекается с другим предметом. Выберите другое место.");
+		const free = renderPlacement(2700);
+		expect(free).toContain('data-placement-tier="valid"');
+		expect(free).not.toContain('data-testid="item-placement-confirm" disabled=""');
+	});
+
+	it("explains why a colliding placement cannot be confirmed", () => {
+		expect(itemPlacementPreviewFeedback({ isValid: false, reasonCode: "ITEM_COLLISION" }))
+			.toBe("Предмет пересекается с другим предметом. Выберите другое место.");
+	});
+
+	it("identifies the unchanged values when a conflicting edit is rejected", () => {
+		expect(errorCopy("ITEM_COLLISION", "move")).toBe("Пересечение с другим предметом. Предмет остался на прежнем месте.");
+		expect(errorCopy("ITEM_COLLISION", "rotation")).toBe("Пересечение с другим предметом. Угол поворота не изменился.");
+		expect(errorCopy("ITEM_COLLISION", "size")).toBe("Пересечение с другим предметом. Размеры не изменились.");
+		expect(errorCopy("ITEM_COLLISION")).toBe("Предметы не могут пересекаться.");
+	});
+
 	it("names the current collision or valid placement before the user presses Поставить", () => {
 		expect(
 			itemPlacementWarningSummary([
@@ -1015,6 +1177,47 @@ describe("item placement preview feedback", () => {
 				{ isPreparingResource: true },
 			),
 		).toBe("Подготавливаем модель…");
+	});
+});
+
+describe("saved opening edits", () => {
+	it("resizes a Telegram window with its saved non-default offset and sill", () => {
+		const state = rectangularFixtureController().snapshot();
+		if (state.kind !== "saved" || state.project.schemaVersion !== 1) throw new Error("Missing room fixture");
+		const window = addWindowOpeningToProject(state.project,
+			{ wallSegmentId: "wall-1", widthMm: 950, heightMm: 1100, offsetMm: 1737, sillMm: 837 },
+			{ next: () => "older-window" }, state.project.updatedAt);
+		if (window.kind !== "accepted") throw new Error("Missing saved Window fixture");
+		const [saved] = window.project.level.openings;
+		const draft = {
+			baseRevisionId: state.revisionId, kind: "Window", openingId: saved.openingId,
+			widthMm: "1050", heightMm: "1250", offsetMm: "1301",
+		} as const;
+		const input = openingEditInputFor(draft, saved, true);
+		if (!input) throw new Error("Expected valid window dimensions");
+		const resized = updateDoorOpeningInProject(window.project, input, window.project.updatedAt);
+		expect(resized).toMatchObject({ kind: "accepted", project: { level: { openings: [{
+			...saved, widthMm: 1050, heightMm: 1250, offsetMm: 1737, sillMm: 837,
+		}] } } });
+		const tooTall = openingEditInputFor({ ...draft, heightMm: "1800" }, saved, true);
+		if (!tooTall) throw new Error("Expected a numeric height ready for domain validation");
+		expect(updateDoorOpeningInProject(window.project, tooTall, window.project.updatedAt))
+			.toEqual({ kind: "rejected", reasonCode: "OPENING_OUT_OF_BOUNDS" });
+		expect(openingEditInputFor({ ...draft, widthMm: "0" }, saved, true)).toBeUndefined();
+		expect(openingEditInputFor({ ...draft, openingId: "missing" }, saved, true)).toBeUndefined();
+	});
+
+	it("keeps Telegram Door offsets and explicit movement editable", () => {
+		const door = { openingId: "door", kind: "Door", offsetMm: 1737, sillMm: 0 } as const;
+		const draft = {
+			baseRevisionId: "revision", kind: "Door", openingId: door.openingId,
+			widthMm: "950", heightMm: "2050", offsetMm: "1301",
+			swingSide: "left", hingeEnd: "end",
+		} as const;
+		expect(openingEditInputFor(draft, door, true)).toMatchObject({ offsetMm: 1301, swingSide: "left", hingeEnd: "end" });
+		expect(openingEditInputFor(draft, door, false)).toMatchObject({ offsetMm: 1737 });
+		expect(openingEditInputFor({ ...draft, isMove: true }, door, false)).toMatchObject({ offsetMm: 1301 });
+		expect(openingEditInputFor({ ...draft, offsetMm: "-1" }, door, true)).toBeUndefined();
 	});
 });
 

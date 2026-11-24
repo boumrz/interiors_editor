@@ -16,6 +16,7 @@ import { configureRectangularRoom } from "../domain/rectangular-room";
 import {
 	openingCreationDraftFor,
 	openingCreationHostFor,
+	openingCreationHostsFor,
 	validateOpeningCreationDraft,
 } from "./opening-creation-draft";
 
@@ -84,6 +85,30 @@ describe("opening creation draft", () => {
 			kind: "invalid",
 			message: "Ширина больше свободного участка стены.",
 		});
+	});
+
+	it("preserves the entered placement millimetre and refuses an invalid candidate instead of repositioning it", () => {
+		const project = roomProject();
+		const draft = openingCreationDraftFor(project, "wall-1", "Door", { baseRevisionId: "r1", offsetMm: 1301 });
+		if (!draft) throw new Error("Expected a wall opening draft");
+		expect(draft.baseRevisionId).toBe("r1");
+		expect(validateOpeningCreationDraft(project, draft)).toMatchObject({ kind: "valid", input: { offsetMm: 1301 } });
+		for (const offsetMm of ["", "1301.5", "-1"]) {
+			expect(validateOpeningCreationDraft(project, { ...draft, offsetMm })).toEqual({
+				kind: "invalid", message: "Укажите целое смещение в миллиметрах.",
+			});
+		}
+		for (const offsetMm of ["449", "3651"]) {
+			expect(validateOpeningCreationDraft(project, { ...draft, offsetMm }).kind).toBe("invalid");
+		}
+		expect(validateOpeningCreationDraft(project, { ...draft, offsetMm: "450" })).toMatchObject({ kind: "valid", input: { offsetMm: 450 } });
+	});
+
+	it("lists usable wall hosts in project order with their lengths", () => {
+		const project = roomProject();
+		expect(openingCreationHostsFor(project, "Window").map(host => [host.ordinal, host.wallSegmentId, host.lengthMm])).toEqual([
+			[1, "wall-1", 4100], [2, "wall-2", 3100], [3, "wall-3", 4100], [4, "wall-4", 3100],
+		]);
 	});
 
 	it("validates the chosen door swing and drops it when creating a window", () => {
@@ -266,6 +291,30 @@ describe("opening creation draft", () => {
 				widthMm: "800",
 			}),
 		).toMatchObject({ kind: "valid" });
+	});
+
+	it("creates equal Telegram windows at the preset floor height regardless of old raw sill values", () => {
+		const project = roomProject();
+		const first = openingCreationDraftFor(project, "wall-1", "Window");
+		const second = openingCreationDraftFor(project, "wall-2", "Window", { baseRevisionId: "r1", offsetMm: 1441 });
+		if (!first || !second) throw new Error("Expected automatic and exact Window drafts");
+		const dimensions = { widthMm: "1050", heightMm: "1700" };
+		const preview = validateOpeningCreationDraft(project, { ...first, ...dimensions, sillMm: "750" }, "preset");
+		const exact = validateOpeningCreationDraft(project, { ...second, ...dimensions, sillMm: "1000" }, "preset");
+		if (preview.kind !== "valid" || exact.kind !== "valid") throw new Error("Both identical windows must fit above the preset sill");
+		const placedFirst = addWindowOpeningToProject(project, preview.input, ids("window-1"), project.updatedAt);
+		if (placedFirst.kind !== "accepted") throw new Error("First Window must publish");
+		const placedSecond = addWindowOpeningToProject(placedFirst.project, exact.input, ids("window-2"), project.updatedAt);
+		expect(placedSecond).toMatchObject({ kind: "accepted", project: { level: { openings: [
+			{ heightMm: 1700, kind: "Window", sillMm: 900, widthMm: 1050 },
+			{ heightMm: 1700, kind: "Window", offsetMm: 1441, sillMm: 900, widthMm: 1050 },
+		] } } });
+		expect(validateOpeningCreationDraft(project, { ...second, heightMm: "1701", sillMm: "0" }, "preset"))
+			.toEqual({ kind: "invalid", message: "Проём не помещается по высоте стены." });
+		expect(validateOpeningCreationDraft(project, { ...second, ...dimensions, sillMm: "750" }))
+			.toMatchObject({ kind: "valid", input: { sillMm: 750 } });
+		expect(validateOpeningCreationDraft(project, { ...second, kind: "Door", heightMm: "2100", sillMm: "900" }, "preset"))
+			.toMatchObject({ kind: "valid", input: { sillMm: 0 } });
 	});
 
 	it("uses the conservative diagonal host and canonical direction on a reversed wall", () => {

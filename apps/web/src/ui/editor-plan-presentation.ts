@@ -127,6 +127,8 @@ export function itemPlacementPreviewFeedback(
 		return "";
 	}
 	switch (preview.reasonCode) {
+		case "ITEM_COLLISION":
+			return "Предмет пересекается с другим предметом. Выберите другое место.";
 		case "WALL_ITEM_COLLISION":
 			return "Предпросмотр пересекает стену.";
 		case "OUTSIDE_ROOM_HOST":
@@ -223,9 +225,12 @@ export function visualGridStepMm(): number {
 
 export interface PlanProjectionProps {
 	readonly plainLabels?: boolean;
+	/** Built-in models whose visible front faces local -Z in the 3D scene. */
+	readonly reversedItemFrontIds?: ReadonlySet<string>;
 	readonly exactFloorYaw?: boolean;
 	readonly rotationStepMode?: boolean;
 	readonly onRotationStepModeChange?: (checked: boolean) => void;
+	readonly rotationInspectorState?: import("./plan-rotation-layout").PlanRotationInspectorState;
 	readonly selectedWallRun?: UninterruptedWallRun;
 	readonly initialItemPlacementPoint?: ItemPlacementPoint;
 	readonly onItemPlacementPointChange?: (point: ItemPlacementPoint | undefined) => void;
@@ -233,6 +238,7 @@ export interface PlanProjectionProps {
 	readonly keyboardItemMovement?: boolean;
 	readonly showOpeningTemplates?: boolean;
 	readonly showItemWallDistances?: boolean;
+	readonly focusedWallDistance?: import("./item-wall-distances").ItemWallDistance["side"];
 	readonly floorItemWallSnap?: FloorItemWallSnap;
 	readonly itemPlacementControls?: ReactNode;
 	readonly registerTransientBoundary?: RegisterEditorTransientBoundary;
@@ -260,6 +266,8 @@ export interface PlanProjectionProps {
 				readonly widthMm: number;
 		  }
 		| undefined;
+	readonly openingHostIds?: ReadonlySet<string>;
+	readonly onChooseOpeningHost?: (wallSegmentId: string, offsetMm: number) => void;
 	readonly onItemPlacementYawChange: (yawRadians: number) => void;
 	readonly itemDraft:
 		| {
@@ -276,6 +284,7 @@ export interface PlanProjectionProps {
 	readonly onCloseItemPlacement?: () => void;
 	readonly onDrawWall: (input: AddWallSegmentInput) => Promise<boolean>;
 	readonly onDrawingVisibilityChange: (isVisible: boolean) => void;
+	readonly onOpeningMoveStart?: () => void;
 	readonly onSelectOpening?: (openingId: string) => void;
 	readonly onClearSelection?: () => void;
 	readonly onMoveDoorOpening: (input: {

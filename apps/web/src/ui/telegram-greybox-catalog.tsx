@@ -554,11 +554,11 @@ export function TelegramGreyboxCatalog({
 						</button>
 					)}
 				</div>
-				<div className={styles.tmaGreyboxActions}>
-					<button type="button" onClick={onImportModel} disabled={importBusy}>
-						Импортировать свой GLB
-					</button>
-					{ownModels && (
+				{ownModels && (
+					<div className={styles.tmaGreyboxActions}>
+						<button type="button" onClick={onImportModel} disabled={importBusy}>
+							Импортировать свой GLB
+						</button>
 						<button
 							type="button"
 							aria-expanded={composerOpen}
@@ -566,8 +566,8 @@ export function TelegramGreyboxCatalog({
 						>
 							{composerOpen ? "Скрыть параметры" : "Создать макетный предмет"}
 						</button>
-					)}
-				</div>
+					</div>
+				)}
 			</div>
 			<div
 				className={styles.tmaGreyboxCatalog}

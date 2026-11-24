@@ -80,6 +80,7 @@ import type {
 	DoorOpeningProjectMutationUseCaseResult,
 	MoveDoorOpeningInProjectUseCase,
 	UpdateDoorOpeningInProjectUseCase,
+	UpdateDoorOpeningInProjectUseCaseResult,
 } from "../application/door-opening-project";
 import type {
 	ExpandOrthogonalGridStatus,
@@ -272,8 +273,8 @@ import type {
 import type {
 	AddDoorOpeningInput,
 	AddWindowOpeningInput,
-	UpdateWallOpeningInput,
 } from "../domain/wall-opening";
+import type { UpdateProjectWallOpeningInput } from "../domain/door-opening-project";
 
 type EditorProject = Project | ProjectV2;
 
@@ -3496,11 +3497,11 @@ export class ProjectController {
 		}
 	}
 
-	/** Updates the selected Door in place, including width and hinge side. */
+	/** Publishes an Opening edit or a matching-window alignment. */
 	public async updateDoorOpening(
-		input: UpdateWallOpeningInput,
+		input: UpdateProjectWallOpeningInput,
 	): Promise<
-		| DoorOpeningProjectMutationUseCaseResult
+		| UpdateDoorOpeningInProjectUseCaseResult
 		| { readonly kind: "in-progress" | "not-ready" }
 	> {
 		const current = this.current;

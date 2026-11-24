@@ -4,6 +4,8 @@ import styles from "./AppShell.module.css";
 import type { ScreenPoint, ScreenRect } from "./drawing-dimension-layout";
 import type { ItemWallDistance } from "./item-wall-distances";
 
+type Side = ItemWallDistance["side"];
+
 const sideLabels = {
 	left: "Слева",
 	right: "Справа",
@@ -22,11 +24,13 @@ export function ItemWallDistanceLines({
 	projectPoint,
 	bounds,
 	obstacles,
+	focusedSide,
 }: {
 	readonly distances: readonly ItemWallDistance[];
 	readonly projectPoint: (point: ItemWallDistance["start"]) => ScreenPoint;
 	readonly bounds: ScreenRect;
 	readonly obstacles: readonly ScreenRect[];
+	readonly focusedSide?: Side;
 }) {
 	const occupied = [...obstacles];
 	const canPlace = (rect: ScreenRect) =>
@@ -74,6 +78,7 @@ export function ItemWallDistanceLines({
 					<g
 						data-testid="item-wall-distances"
 						data-side={side}
+						data-focused={focusedSide === side || undefined}
 						data-conflict={distanceMm < -1e-7 || undefined}
 						key={side}
 					>
@@ -125,10 +130,16 @@ export function ItemWallDistanceFields({
 	disabled,
 	onApply,
 	skipBlurCommit,
+	onFocusSide,
+	drafts,
+	onDraftChange,
 }: {
 	readonly distances: readonly ItemWallDistance[];
 	readonly disabled?: boolean;
 	readonly skipBlurCommit?: (target: HTMLInputElement) => boolean;
+	readonly onFocusSide?: (side: Side | undefined) => void;
+	readonly drafts?: Partial<Record<Side, string>>;
+	readonly onDraftChange?: (side: Side, value: string | undefined) => void;
 	readonly onApply: (side: ItemWallDistance["side"], valueMm: number) => boolean | Promise<boolean>;
 }) {
 	const errorId = useId();
@@ -148,8 +159,12 @@ export function ItemWallDistanceFields({
 							<label htmlFor={`${errorId}-${side}`}>{sideLabels[side]}</label>
 							<WallDistanceInput
 								id={`${errorId}-${side}`}
+								onFocusChange={onFocusSide ? (focused) => onFocusSide(focused ? side : undefined) : undefined}
+								draftValue={drafts?.[side]}
+								updateDraft={onDraftChange ? (next) => onDraftChange(side, next) : undefined}
 								disabled={disabled || pending || distance === undefined}
 								errorId={errorSide === side ? errorId : undefined}
+								labelHint={distance ? undefined : `${errorId}-unavailable`}
 								label={sideLabels[side]}
 								value={value}
 								skipBlurCommit={skipBlurCommit}
@@ -162,7 +177,9 @@ export function ItemWallDistanceFields({
 									}
 									setPending(true);
 									try {
-										setErrorSide(await onApply(side, parsed) ? undefined : side);
+										const applied = await onApply(side, parsed);
+										setErrorSide(applied ? undefined : side);
+										if (applied) onDraftChange?.(side, undefined);
 									} finally {
 										setPending(false);
 									}
@@ -172,6 +189,9 @@ export function ItemWallDistanceFields({
 					);
 				})}
 			</div>
+			{distances.length < 4 ? (
+				<p id={`${errorId}-unavailable`}>В этом направлении внутренняя граница комнаты недоступна.</p>
+			) : null}
 			{errorSide ? (
 				<p id={errorId} className={styles.fieldError} role="alert">
 					Укажите доступное расстояние целым числом в мм.
@@ -190,6 +210,10 @@ function WallDistanceInput({
 	skipBlurCommit,
 	onEdit,
 	onApply,
+	onFocusChange,
+	draftValue,
+	updateDraft,
+	labelHint,
 }: {
 	readonly id: string;
 	readonly disabled: boolean;
@@ -199,12 +223,18 @@ function WallDistanceInput({
 	readonly skipBlurCommit?: (target: HTMLInputElement) => boolean;
 	readonly onEdit: () => void;
 	readonly onApply: (next: string) => Promise<void>;
+	readonly onFocusChange?: (focused: boolean) => void;
+	readonly draftValue?: string;
+	readonly updateDraft?: (value: string | undefined) => void;
+	readonly labelHint?: string;
 }) {
-	const [raw, setRaw] = useState<string>();
+	const [localRaw, setLocalRaw] = useState<string>();
+	const raw = updateDraft ? draftValue : localRaw;
+	const setRaw = updateDraft ?? setLocalRaw;
 	return (
 		<input
 			id={id}
-			aria-describedby={errorId}
+			aria-describedby={errorId ?? labelHint}
 			aria-invalid={errorId ? true : undefined}
 			aria-label={`${label}, мм`}
 			data-editor-blur-commit=""
@@ -216,10 +246,13 @@ function WallDistanceInput({
 				onEdit();
 				setRaw(event.currentTarget.value);
 			}}
+			onFocus={() => onFocusChange?.(true)}
 			onBlur={(event) => {
-				if (skipBlurCommit?.(event.currentTarget)) return;
-				setRaw(undefined);
-				if (raw !== undefined && raw !== value) void onApply(raw.trim());
+				onFocusChange?.(false);
+				if (skipBlurCommit?.(event.currentTarget) || raw === undefined) return;
+				const next = raw.trim();
+				if (!updateDraft || next === value) setRaw(undefined);
+				if (next !== value) void onApply(next);
 			}}
 			onKeyDown={(event) => {
 				if (event.key === "Enter") {

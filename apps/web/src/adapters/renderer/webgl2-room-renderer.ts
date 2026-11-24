@@ -10,14 +10,15 @@ import { THREE_DIMENSIONAL_ROOM_SURFACE_COLORS } from "./three-dimensional-room-
 import {
 	cameraEyeAndTargetFor,
 	furnitureGreyboxPartsFor,
-	hiddenWallSegmentIdsForCutaway,
 	sceneBoxYawRadians,
+	wallCutawayForCamera,
 	type FurnitureGreyboxPart,
 	type WebGl2Camera,
 	type WebGl2CutawayMode,
 	type WebGl2RendererQualityTier,
 	type WebGl2RuntimeModels,
 	type WebGl2SceneRenderer,
+	type WebGl2WallCutaway,
 } from "./webgl2-room-renderer-shared";
 
 export {
@@ -604,7 +605,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 		unitCubeVertices,
 		context.STATIC_DRAW,
 	);
-	let hiddenWallSegmentIds = new Set<string>();
+	let cutaway: WebGl2WallCutaway | undefined;
 	let activeScene = scene;
 
 	const drawBox = (
@@ -723,14 +724,8 @@ function createProceduralWebGl2RoomSceneRenderer(
 					camera,
 				);
 			});
-			hiddenWallSegmentIds = new Set(
-				hiddenWallSegmentIdsForCutaway(
-					activeScene,
-					camera,
-					hiddenWallSegmentIds,
-					cutawayMode,
-				),
-			);
+			cutaway = wallCutawayForCamera(activeScene, camera, cutawayMode, cutaway);
+			const { hiddenWallSegmentIds } = cutaway;
 			const useDetailedWallFinish = shouldUseDetailedWallFinish(
 				activeScene.walls.length,
 			);

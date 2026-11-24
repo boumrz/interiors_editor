@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { isOverlayBackdrop, useBackdropDismiss } from "./backdrop-dismiss";
 import styles from "./EditorLeaveGuard.module.css";
 
 export interface EditorFocusSnapshot {
@@ -18,16 +19,18 @@ export function captureEditorFocus(): EditorFocusSnapshot {
 }
 
 /** Keeps an existing native dialog and its controlled raw fields mounted. */
-export function EditorLeaveGuard({ focus, fallback, onContinue, onDiscard }: {
+export function EditorLeaveGuard({ focus, fallback, onContinue, onDiscard, telegram }: {
 	readonly focus: EditorFocusSnapshot;
 	readonly fallback: HTMLElement | null;
 	readonly onContinue: () => void;
 	readonly onDiscard: () => void;
+	readonly telegram?: boolean;
 }) {
 	const [parent] = useState(() => [...document.querySelectorAll("dialog[open]")].at(-1) ?? document.body);
 	const overlay = useRef<HTMLDivElement>(null);
 	const continueButton = useRef<HTMLButtonElement>(null);
 	const discardButton = useRef<HTMLButtonElement>(null);
+	const backdrop = useBackdropDismiss(isOverlayBackdrop, onContinue);
 	useLayoutEffect(() => {
 		const backgrounds = parent === document.body ? [document.getElementById("root")] : [...parent.children];
 		const prior = backgrounds.flatMap((element) => element instanceof HTMLElement && element !== overlay.current ? [{ element, inert: element.inert }] : []);
@@ -48,7 +51,7 @@ export function EditorLeaveGuard({ focus, fallback, onContinue, onDiscard }: {
 			});
 		};
 	}, [parent, focus, fallback]);
-	return createPortal(<div ref={overlay} className={styles.overlay}>
+	return createPortal(<div ref={overlay} className={styles.overlay} {...(telegram ? backdrop : {})}>
 		<section className={styles.card} role="alertdialog" aria-modal="true" aria-label="Несохранённая правка" aria-describedby="editor-leave-description" tabIndex={-1} onKeyDown={(event) => {
 		if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onContinue(); }
 		else if (event.key === "Tab") {

@@ -1,0 +1,32 @@
+.tabs {
+	background: var(--editor-host-canvas, var(--canvas));
+	border-radius: var(--editor-host-radius, 12px);
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	padding: 4px;
+}
+
+.tabs button {
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--editor-host-ink, var(--ink));
+	font: 650 .875rem/1.2 var(--font-display);
+	min-height: 44px;
+	min-width: 0;
+	overflow-wrap: anywhere;
+	padding: 4px 2px;
+}
+
+.tabs button[aria-selected="true"] {
+	background: var(--editor-host-primary-soft, var(--surface));
+	border-color: var(--editor-host-primary, var(--blue));
+	color: var(--editor-host-primary, var(--blue));
+}
+
+.tabs button:focus-visible {
+	outline: 2px solid var(--editor-host-focus, var(--blue));
+	outline-offset: -2px;
+}
+
+.panel[hidden] { display: none; }

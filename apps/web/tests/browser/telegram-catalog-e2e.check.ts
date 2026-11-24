@@ -79,7 +79,7 @@ async function openOwnModels(page: Page) {
 }
 
 async function importOwnModel(page: Page) {
-	const catalog = await openCatalog(page);
+	const catalog = await openOwnModels(page);
 	const [chooser] = await Promise.all([
 		page.waitForEvent("filechooser"),
 		catalog

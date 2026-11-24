@@ -11,6 +11,7 @@ import {
 import type { HostNavigationPort } from "./editor-host-boundary";
 import { SheetHeader } from "./SheetHeader";
 import sheetStyles from "./SheetHeader.module.css";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 import styles from "./browser-legal-access.module.css";
 import entryStyles from "./telegram-legal-entry.module.css";
 
@@ -26,13 +27,13 @@ function LegalStatus() {
 export function TelegramLegalDocuments() {
 	return (
 		<nav className={styles.links} aria-label="Документы приложения">
-			<LegalDocumentLink documentName="privacy-policy">
+			<LegalDocumentLink telegram documentName="privacy-policy">
 				Политика конфиденциальности
 			</LegalDocumentLink>
-			<LegalDocumentLink documentName="license-agreement">
+			<LegalDocumentLink telegram documentName="license-agreement">
 				Лицензионное соглашение
 			</LegalDocumentLink>
-			<LegalDocumentLink documentName="analytics-consent">
+			<LegalDocumentLink telegram documentName="analytics-consent">
 				Согласие на дополнительную статистику
 			</LegalDocumentLink>
 		</nav>
@@ -140,9 +141,10 @@ export function TelegramSettings({
 		<>
 			{children(open, navigation)}
 			{!onExitBeforeEntry && (
-				<dialog
+				<TelegramSheetFrame
+					as="dialog"
+					telegram
 					ref={dialog}
-					className={`${sheetStyles.dialog} ${sheetStyles.telegramDialog}`}
 					aria-labelledby="telegram-settings-heading"
 					onClose={() => {
 						host?.navigation.setBackVisible(
@@ -181,7 +183,7 @@ export function TelegramSettings({
 							</button>
 						</footer>
 					)}
-				</dialog>
+				</TelegramSheetFrame>
 			)}
 			{analytics && <TelegramUsageDialog metrics={analytics} />}
 		</>

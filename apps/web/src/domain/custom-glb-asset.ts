@@ -1,6 +1,7 @@
 import {
 	createParametricFloorItem,
 	type CreateParametricFloorItemResult,
+	type FloorItemCollisionPolicy,
 	type ParametricFloorItemInput,
 } from "./parametric-item";
 import type { CustomGlbAssetDefinition, Project } from "./project";
@@ -57,6 +58,7 @@ export function createCustomGlbFloorItem(
 	input: CreateCustomGlbFloorItemInput,
 	ids: IdSource,
 	updatedAt: string,
+	collisionPolicy?: FloorItemCollisionPolicy,
 ): CreateCustomGlbFloorItemResult {
 	const definitionValidation = validateCustomGlbAssetDefinition(input.asset);
 	if (definitionValidation.kind === "rejected") return definitionValidation;
@@ -87,6 +89,7 @@ export function createCustomGlbFloorItem(
 		},
 		ids,
 		updatedAt,
+		collisionPolicy,
 	);
 }
 

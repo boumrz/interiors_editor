@@ -3,6 +3,7 @@ import type { UsageMetrics } from "../app/telegram-usage-metrics";
 import { LegalDocumentLink } from "./LegalDocumentLink";
 import { SheetHeader } from "./SheetHeader";
 import sheetStyles from "./SheetHeader.module.css";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 import styles from "./telegram-usage-dialog.module.css";
 
 function StatisticsSwitch({
@@ -62,9 +63,11 @@ export function TelegramUsageDialog({
 	}, [visible]);
 	if (!visible) return null;
 	return (
-		<dialog
+		<TelegramSheetFrame
+			as="dialog"
+			telegram
+			busy={state.busy}
 			ref={ref}
-			className={`${sheetStyles.dialog} ${sheetStyles.telegramDialog}`}
 			aria-labelledby={id}
 			aria-busy={state.busy}
 			onCancel={(event) => {
@@ -91,7 +94,7 @@ export function TelegramUsageDialog({
 				{state.aggregateEnabled ? (
 					<section className={styles.additional} aria-labelledby={`${id}-additional`}>
 						<h3 id={`${id}-additional`}>Дополнительная статистика</h3>
-						<LegalDocumentLink documentName="analytics-consent">
+						<LegalDocumentLink telegram documentName="analytics-consent">
 							Согласие на дополнительную статистику
 						</LegalDocumentLink>
 						{state.studyOpen ? (
@@ -128,6 +131,6 @@ export function TelegramUsageDialog({
 					</p>
 				)}
 			</div>
-		</dialog>
+		</TelegramSheetFrame>
 	);
 }

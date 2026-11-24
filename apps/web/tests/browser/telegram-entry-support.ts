@@ -2,6 +2,26 @@ import { verifyTelegramLaunch } from "../../src/adapters/telegram/signed-launch"
 import { licenseRevision } from "../../src/app/license-receipt";
 import { fixtureEditionTime, fixtureSignedTime } from "./telegram-entry-signed-fixture";
 import type { Page } from "@playwright/test";
+
+export async function openEditorCatalog(page: Page) {
+	const workspace = page.getByTestId("editor-workspace");
+	const isTelegramPlan = await workspace.getAttribute("data-editor-host") === "telegram" &&
+		await workspace.getAttribute("data-view-mode") === "plan";
+	if (!isTelegramPlan) {
+		await page.getByRole("button", { name: "Предметы интерьера", exact: true }).click();
+		return;
+	}
+	await page.getByTestId("editor-action-dock").getByRole("button", { name: "Добавить", exact: true }).click();
+	await page.getByRole("dialog", { name: "Добавить", exact: true }).getByRole("button", { name: "Предмет", exact: true }).click();
+}
+
+export async function openOpeningDetailsOnSelectedWall(page: Page, kind: "Дверь" | "Окно" = "Дверь") {
+	await page.getByTestId("editor-action-dock").getByRole("button", { name: "Добавить", exact: true }).click();
+	await page.getByRole("dialog", { name: "Добавить", exact: true }).getByRole("button", { name: kind, exact: true }).click();
+	const draft = page.getByTestId("opening-creation-draft");
+	await draft.getByRole("button", { name: "Параметры", exact: true }).click();
+	return draft;
+}
 export interface TelegramEntryAudit {
 	opens: string[];
 	deletes: number;

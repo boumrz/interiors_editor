@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { isDialogBackdrop, useBackdropDismiss } from "./backdrop-dismiss";
 import {
 	bundledLegalDocument,
 	legalArchivePath,
@@ -23,9 +24,9 @@ export function closeActiveLegalDocument(): boolean {
 }
 
 type ReadingPlace = { name: LegalDocumentName; scroll: number };
-type ReaderProps = { first: LegalDocumentName; onClose: () => void };
+type ReaderProps = { first: LegalDocumentName; onClose: () => void; telegram: boolean };
 
-function LegalReader({ first, onClose }: ReaderProps) {
+function LegalReader({ first, onClose, telegram }: ReaderProps) {
 	const [history, setHistory] = useState<ReadingPlace[]>([
 		{ name: first, scroll: 0 },
 	]);
@@ -34,6 +35,7 @@ function LegalReader({ first, onClose }: ReaderProps) {
 	const content = useRef<HTMLDivElement>(null);
 	const save = useRef<HTMLAnchorElement>(null);
 	const html = bundledLegalDocument(current.name);
+	const backdrop = useBackdropDismiss(isDialogBackdrop, onClose);
 
 	useLayoutEffect(() => {
 		const element = dialog.current;
@@ -107,6 +109,7 @@ function LegalReader({ first, onClose }: ReaderProps) {
 				event.preventDefault();
 				back();
 			}}
+			{...(telegram ? backdrop : {})}
 		>
 			<div className={styles.actions}>
 				<button data-legal-back="" type="button" onClick={back}>
@@ -129,9 +132,11 @@ function LegalReader({ first, onClose }: ReaderProps) {
 export function LegalDocumentLink({
 	documentName,
 	children,
+	telegram = false,
 }: {
 	documentName: LegalDocumentName;
 	children: ReactNode;
+	telegram?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const trigger = useRef<HTMLAnchorElement>(null);
@@ -158,6 +163,7 @@ export function LegalDocumentLink({
 			{open && (
 				<LegalReader
 					first={documentName}
+					telegram={telegram}
 					onClose={() => {
 						setOpen(false);
 						trigger.current?.focus({ preventScroll: true });

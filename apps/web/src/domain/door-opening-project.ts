@@ -17,9 +17,14 @@ import {
 	type DeleteWallOpeningResult,
 	deleteWallOpening,
 	moveWallOpening,
+	PREFERRED_WINDOW_SILL_MM,
+	type UpdateWallOpeningResult,
 	updateWallOpening,
+	type WallOpening,
 	type WallOpeningHost,
+	type WallOpeningState,
 	wallOpeningIntervalMm,
+	type WindowOpening,
 } from "./wall-opening";
 
 interface IdSource {
@@ -37,6 +42,11 @@ export type DoorOpeningProjectMutationResult =
 				| "DOOR_CLEARANCE_COLLISION"
 				| "WALL_OPENING_COLLISION";
 	  };
+
+export type UpdateProjectWallOpeningInput = UpdateWallOpeningInput | {
+	readonly kind: "align-matching-windows";
+	readonly openingId: string;
+};
 
 /**
  * Adds a durable Door only after resolving the selected concrete wall's
@@ -162,22 +172,25 @@ export function moveDoorOpeningInProject(
 	};
 }
 
-/** Updates editable width, centre offset or hinge side without changing the wall host. */
+/** Edits an Opening or aligns matching Window sills in one Project update. */
 export function updateDoorOpeningInProject(
 	project: Project,
-	input: UpdateWallOpeningInput,
+	input: UpdateProjectWallOpeningInput,
 	updatedAt: string,
 ): DoorOpeningProjectMutationResult {
 	const wallHosts = wallOpeningHostsForProject(project);
 	if (!wallHosts) {
 		return { kind: "rejected", reasonCode: "INVALID_WALL_HOST" };
 	}
-	const updated = updateWallOpening(
-		{ openings: project.level.openings, wallHosts },
-		input,
-	);
+	const state = { openings: project.level.openings, wallHosts };
+	const updated = "kind" in input
+		? alignMatchingWindowSills(state, input.openingId)
+		: updateWallOpening(state, input);
 	if (updated.kind === "rejected") {
 		return updated;
+	}
+	if (updated.openings === state.openings) {
+		return { kind: "accepted", project };
 	}
 	if (!openingsKeepFloorItemsClear(project, updated.openings)) {
 		return { kind: "rejected", reasonCode: "DOOR_CLEARANCE_COLLISION" };
@@ -193,6 +206,38 @@ export function updateDoorOpeningInProject(
 			updatedAt,
 		},
 	};
+}
+
+/** A Window can explicitly align equal-size peers on its canonical wall. */
+export function windowsWithMixedSillsOnSameWall(
+	openings: readonly WallOpening[],
+	openingId: string,
+): readonly WindowOpening[] {
+	const selected = openings.find((opening) => opening.openingId === openingId);
+	if (selected?.kind !== "Window") return [];
+	const matching = openings.filter((opening): opening is WindowOpening =>
+		opening.kind === "Window" &&
+		opening.wallSegmentId === selected.wallSegmentId &&
+		opening.widthMm === selected.widthMm &&
+		opening.heightMm === selected.heightMm,
+	);
+	return matching.some((opening) => opening.sillMm !== selected.sillMm) ? matching : [];
+}
+
+function alignMatchingWindowSills(state: WallOpeningState, openingId: string): UpdateWallOpeningResult {
+	const matching = windowsWithMixedSillsOnSameWall(state.openings, openingId);
+	const first = matching[0];
+	if (!first) return { kind: "accepted", openings: state.openings };
+	const host = state.wallHosts.find((wall) => wall.wallSegmentId === first.wallSegmentId);
+	if (!host) return { kind: "rejected", reasonCode: "WALL_NOT_FOUND" };
+	const sillMm = Math.min(PREFERRED_WINDOW_SILL_MM, host.heightMm - first.heightMm);
+	let openings = state.openings;
+	for (const window of matching) {
+		const updated = updateWallOpening({ ...state, openings }, { openingId: window.openingId, sillMm });
+		if (updated.kind === "rejected") return updated;
+		openings = updated.openings;
+	}
+	return { kind: "accepted", openings };
 }
 
 /**

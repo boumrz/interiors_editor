@@ -52,11 +52,26 @@ describe("RoomScene3d", () => {
 				scene={scene}
 				itemPlacementDraft={{ color: "#123456", depthMm: 500, heightMm: 700, label: "Стул", widthMm: 500 }}
 				initialItemPlacementPoint={{ xM: 1.5, zM: 1.5 }}
-				assessItemPlacement={() => true}
+				assessItemPlacement={() => ({ kind: "valid" })}
 			/>,
 		);
 		expect(markup).toContain('data-x-m="1.500"');
 		expect(markup).toContain('data-placement-valid="true"');
+	});
+
+	it("marks a colliding draft as unavailable in 3D and explains the obstruction", () => {
+		const markup = renderToStaticMarkup(
+			<RoomScene3d
+				plainLabels
+				scene={scene}
+				itemPlacementDraft={{ color: "#123456", depthMm: 500, heightMm: 700, label: "Стул", widthMm: 500 }}
+				initialItemPlacementPoint={{ xM: 1.5, zM: 1.5 }}
+				assessItemPlacement={() => ({ kind: "invalid", reasonCode: "ITEM_COLLISION" })}
+			/>,
+		);
+		expect(markup).toContain('data-placement-valid="false"');
+		expect(markup).toContain('data-placement-state="choose-another-point"');
+		expect(markup).toContain("Предмет пересекается с другим предметом. Выберите другое место.");
 	});
 
 	it("reports a verified GLB as visible only after its local runtime has decoded", () => {

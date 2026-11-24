@@ -4,10 +4,10 @@ import {
   deleteDoorOpeningFromProject,
   moveDoorOpeningInProject,
 	updateDoorOpeningInProject,
+	type UpdateProjectWallOpeningInput,
   type DoorOpeningProjectMutationResult
 } from '../domain/door-opening-project';
 import type { AddDoorOpeningInput, AddWindowOpeningInput } from '../domain/wall-opening';
-import type { UpdateWallOpeningInput } from '../domain/wall-opening';
 import { PROJECT_SCHEMA_VERSION, type Revision } from '../domain/project';
 import type {
   ChecksumPort,
@@ -29,6 +29,10 @@ export type DoorOpeningProjectMutationUseCaseResult =
   | { readonly kind: 'durable'; readonly projectId: string; readonly revisionId: string }
   | { readonly kind: 'stale-base'; readonly reasonCode: 'STALE_BASE_REVISION' }
   | { readonly kind: 'persist-failed'; readonly reasonCode: import('./ports').PublicationFailureReason };
+
+export type UpdateDoorOpeningInProjectUseCaseResult =
+  | DoorOpeningProjectMutationUseCaseResult
+  | { readonly kind: 'unchanged' };
 
 interface DoorOpeningProjectMutationDependencies {
   readonly checksum: ChecksumPort;
@@ -94,16 +98,17 @@ export class MoveDoorOpeningInProjectUseCase {
   }
 }
 
-/** Publishes one validated width, side or offset edit for a durable Opening. */
+/** Publishes one validated edit or matching-window alignment. */
 export class UpdateDoorOpeningInProjectUseCase {
   public constructor(private readonly dependencies: DoorOpeningProjectMutationDependencies) {}
 
   public async execute(
     base: PublicationCandidate,
-    input: UpdateWallOpeningInput,
+    input: UpdateProjectWallOpeningInput,
     onStatus: (status: DoorOpeningProjectMutationStatus) => void
-  ): Promise<DoorOpeningProjectMutationUseCaseResult> {
+  ): Promise<UpdateDoorOpeningInProjectUseCaseResult> {
     const updated = updateDoorOpeningInProject(base.project, input, this.dependencies.clock.now());
+    if (updated.kind === 'accepted' && updated.project === base.project) return { kind: 'unchanged' };
     return publishDoorMutation(updated, this.dependencies, onStatus, base.revision.revisionId);
   }
 }

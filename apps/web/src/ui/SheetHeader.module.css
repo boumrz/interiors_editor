@@ -104,10 +104,12 @@
 	background: rgb(11 23 32 / 32%);
 	inset: 0;
 	position: fixed;
-	z-index: 20;
+	z-index: 30;
 }
 
-.editorDialog { overscroll-behavior: contain; z-index: 21; }
+.telegramDialog[data-telegram-bottom-sheet]:is(aside) { isolation: isolate; z-index: 31; }
+main[data-editor-host="telegram"] .canvasSheet[data-telegram-bottom-sheet] { z-index: 13; }
+.editorDialog { overscroll-behavior: contain; }
 
 @keyframes telegram-sheet-rise {
 	from { translate: 0 100%; }
@@ -144,6 +146,10 @@ main[data-editor-host="telegram"] .telegramDialog:is(
 	position: sticky;
 	top: 0;
 	z-index: 2;
+}
+
+.editorDialog:has(> .body) > .header {
+	padding-inline: 16px 12px;
 }
 
 .consequenceSheet {

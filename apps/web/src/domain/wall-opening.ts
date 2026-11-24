@@ -6,6 +6,7 @@ import type { WallOpening } from "./project";
  * residential route, so a narrower value must never become durable geometry.
  */
 export const MINIMUM_RESIDENTIAL_DOORWAY_WIDTH_MM = 800;
+export const PREFERRED_WINDOW_SILL_MM = 900;
 
 /**
  * A wall host exposes the already-derived usable interval and permitted

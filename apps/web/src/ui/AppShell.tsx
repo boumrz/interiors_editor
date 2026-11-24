@@ -33,7 +33,7 @@ import type {
 } from "../application/storage-pressure";
 import type { ImportPortableBackupStatus } from "../application/import-portable-backup";
 import type { AddWallSegmentInput } from "../domain/add-wall-segment";
-import { wallOpeningHostsForProject } from "../domain/door-opening-project";
+import { wallOpeningHostsForProject, windowsWithMixedSillsOnSameWall } from "../domain/door-opening-project";
 import { resolveOrthogonalPlanFaces } from "../domain/derived-orthogonal-plan-faces";
 import {
 	type AddGeneralWallHostResolutionInput,
@@ -89,7 +89,7 @@ import {
 	roomTypes,
 	type UpdateRoomPropertiesInput,
 } from "../domain/update-room-properties";
-import { MINIMUM_RESIDENTIAL_DOORWAY_WIDTH_MM } from "../domain/wall-opening";
+import { MINIMUM_RESIDENTIAL_DOORWAY_WIDTH_MM, type UpdateWallOpeningInput } from "../domain/wall-opening";
 import styles from "./AppShell.module.css";
 import {
 	CustomGlbPreview,
@@ -111,6 +111,7 @@ import {
 	type EditorFloorAsset,
 	type EditorProject,
 	type EditorTool,
+	itemPlacementPreviewFeedback,
 	isFloorEditorAsset,
 	itemPlacementWarningSummary,
 	type WallSplitHostConflictResolutionResult,
@@ -120,8 +121,10 @@ import {
 import { type EditorViewport, initialEditorViewport } from "./editor-viewport";
 import inspectorStyles from "./InspectorPanels.module.css";
 import { ItemWallDistanceFields } from "./ItemWallDistances";
-import { itemWallDistancePositionFor, itemWallDistancesFor } from "./item-wall-distances";
+import { itemWallDistancePositionFor, itemWallDistancesFor, type ItemWallDistance } from "./item-wall-distances";
 import { EditorModalSheet } from "./EditorModalSheet";
+import { TmaFloorItemTabs, type FloorItemTab } from "./TmaFloorItemTabs";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 import { SheetHeader } from "./SheetHeader";
 import { EditorConsequenceSheet } from "./EditorConsequenceSheet";
 import sheetStyles from "./SheetHeader.module.css";
@@ -130,8 +133,10 @@ import { itemCountCopy } from "./item-count-copy";
 import { openingCreationDialogKeyAction } from "./opening-creation-dialog";
 import {
 	type OpeningCreationDraft,
+	type OpeningCreationKind,
 	openingCreationDraftFor,
 	openingCreationHostFor,
+	openingCreationHostsFor,
 	validateOpeningCreationDraft,
 } from "./opening-creation-draft";
 import { PlanProjection } from "./PlanProjection";
@@ -241,7 +246,6 @@ interface OpeningDraftFields {
 	readonly kind: "Door" | "Window";
 	readonly offsetMm: string;
 	readonly openingId: string;
-	readonly sillMm: string;
 	readonly widthMm: string;
 }
 
@@ -286,6 +290,7 @@ type WallMutationCorrection =
 	  };
 
 interface ItemFields {
+	readonly colorVariantId?: string;
 	readonly color: string;
 	readonly depthMm: string;
 	readonly heightMm: string;
@@ -701,12 +706,20 @@ function activeEditorModeCopy(
 	}
 }
 
-export function errorCopy(reasonCode: string): string {
+type FloorItemEdit = "move" | "rotation" | "size";
+
+const itemCollisionCopy: Record<FloorItemEdit, string> = {
+	move: "Пересечение с другим предметом. Предмет остался на прежнем месте.",
+	rotation: "Пересечение с другим предметом. Угол поворота не изменился.",
+	size: "Пересечение с другим предметом. Размеры не изменились.",
+};
+
+export function errorCopy(reasonCode: string, itemEdit?: FloorItemEdit): string {
 	switch (reasonCode) {
 		case "OUTSIDE_ROOM_HOST":
 			return "Предмет должен целиком находиться внутри выбранной комнаты.";
 		case "ITEM_COLLISION":
-			return "Предметы не могут пересекаться.";
+			return itemEdit ? itemCollisionCopy[itemEdit] : "Предметы не могут пересекаться.";
 		case "WALL_ITEM_COLLISION":
 			return "Стена не может пересекать размещённый предмет. Переместите предмет или проведите стену иначе.";
 		case "WALL_HOST_NOT_FOUND":
@@ -1268,6 +1281,31 @@ function nonNegativeSafeInteger(raw: string): number | undefined {
 	return Number.isSafeInteger(value) ? value : undefined;
 }
 
+function canEditOpeningOffset(draft: OpeningDraftFields, telegram: boolean): boolean {
+	return draft.isMove === true || (telegram && draft.kind === "Door");
+}
+
+export function openingEditInputFor(
+	draft: OpeningDraftFields,
+	saved: Pick<Project["level"]["openings"][number], "kind" | "offsetMm" | "openingId" | "sillMm"> | undefined,
+	telegram: boolean,
+): UpdateWallOpeningInput | undefined {
+	if (saved?.openingId !== draft.openingId || saved.kind !== draft.kind) return undefined;
+	const widthMm = positiveInteger(draft.widthMm);
+	const heightMm = positiveInteger(draft.heightMm);
+	const offsetMm = canEditOpeningOffset(draft, telegram) ? nonNegativeSafeInteger(draft.offsetMm) : saved.offsetMm;
+	if (widthMm === undefined || heightMm === undefined || offsetMm === undefined) return undefined;
+	return {
+		openingId: saved.openingId,
+		heightMm,
+		offsetMm,
+		sillMm: saved.sillMm,
+		widthMm,
+		...(draft.swingSide ? { swingSide: draft.swingSide } : {}),
+		...(draft.hingeEnd !== undefined ? { hingeEnd: draft.hingeEnd } : {}),
+	};
+}
+
 function wallItemDraftFieldsFor(
 	input: ParametricWallItemInput,
 ): WallItemDraftFields {
@@ -1602,7 +1640,7 @@ export function AppShell({
 	const [localFileState, setLocalFileState] = useState<LocalFileTransferState>({ kind: "idle" });
 	const localFileSession = useMemo(() => fileTransfer ? new LocalFileTransferSession(fileTransfer, setLocalFileState) : undefined, [fileTransfer]);
 	useEffect(() => () => localFileSession?.close(), [localFileSession]);
-	const localFilePanel = localFileSession ? <LocalFileTransferPanel session={localFileSession} state={localFileState} /> : null;
+	const localFilePanel = localFileSession ? <LocalFileTransferPanel session={localFileSession} state={localFileState} telegram={hostNavigation !== undefined} /> : null;
 	const sourceRecoveryPanel = sourceRecovery && localFileSession && (state.kind === "recovery-needed" || (state.kind === "projects" && state.recoveryNeeded)) ? <StoredSourceRecovery port={sourceRecovery} onExport={async (source) => {
 		await localFileSession.prepare(async (signal) => {
 			if (signal.aborted) return undefined;
@@ -1687,7 +1725,14 @@ export function AppShell({
 	const [renameTargetProjectId, setRenameTargetProjectId] = useState<
 		string | undefined
 	>(requestedRenameProjectId);
-	const [dimensionError, setDimensionError] = useState<string | undefined>();
+	const [dimensionNotice, setDimensionNotice] = useState<{
+		readonly kind: "notice" | "item-collision";
+		readonly message: string;
+	}>();
+	const dimensionError = dimensionNotice?.message;
+	const setDimensionError = useCallback((message: string | undefined, kind: "notice" | "item-collision" = "notice") => {
+		setDimensionNotice(message === undefined ? undefined : { kind, message });
+	}, []);
 	const [directoryDeletionTarget, setDirectoryDeletionTarget] = useState<{
 		readonly projectId: string;
 		readonly name: string;
@@ -1695,10 +1740,10 @@ export function AppShell({
 	}>();
 	const directoryDeletionTriggerRef = useRef<HTMLButtonElement>(null);
 	useEffect(() => {
-		if (!dimensionError) return;
+		if (dimensionNotice?.kind !== "notice") return;
 		const timeout = window.setTimeout(() => setDimensionError(undefined), 5000);
 		return () => window.clearTimeout(timeout);
-	}, [dimensionError]);
+	}, [dimensionNotice, setDimensionError]);
 	const [wallMutationCorrectionState, setWallMutationCorrectionState] =
 		useState<WallMutationCorrection | undefined>();
 	const wallMutationCorrectionActionRef = useRef<HTMLButtonElement>(null);
@@ -1710,9 +1755,12 @@ export function AppShell({
 		useState<DimensionFields>(initialDimensions);
 	const [openingCreationDraft, setOpeningCreationDraft] =
 		useState<OpeningCreationDraft>();
+	const [openingEntry, setOpeningEntry] = useState<"add" | OpeningCreationKind>();
+	const [showOpeningWallList, setShowOpeningWallList] = useState(false);
+	const [showOpeningCreationDetails, setShowOpeningCreationDetails] = useState(false);
 	const [openingDraft, setOpeningDraft] = useState<OpeningDraftFields>();
 	const isOpeningDialogOpen =
-		openingCreationDraft !== undefined || openingDraft !== undefined;
+		openingEntry !== undefined || openingCreationDraft !== undefined || openingDraft !== undefined;
 	const [selectedOpeningId, setSelectedOpeningId] = useState<string>();
 
 	const [wallDeletionConflict, setWallDeletionConflict] =
@@ -2038,6 +2086,9 @@ export function AppShell({
 	const [selectedItemFields, setSelectedItemFields] = useState<
 		ItemFields | undefined
 	>();
+	const [floorDimensionErrors, setFloorDimensionErrors] = useState<
+		Partial<Record<keyof DimensionFields, string>>
+	>({});
 	const [wallItemPositionFields, setWallItemPositionFields] = useState<
 		Readonly<Record<string, WallItemPositionFields>>
 	>({});
@@ -2122,6 +2173,19 @@ export function AppShell({
 	const projectsHeadingRef = useRef<HTMLHeadingElement>(null);
 	const editorHeaderMenuRef = useRef<HTMLButtonElement>(null);
 	const sceneColorTriggerRef = useRef<HTMLButtonElement>(null);
+	const itemDeleteTriggerRef = useRef<HTMLButtonElement>(null);
+	const floorPropertiesTriggerRef = useRef<HTMLButtonElement>(null);
+	const [itemDeleteConfirmation, setItemDeleteConfirmation] = useState(false);
+	const [floorItemTab, setFloorItemTab] = useState<FloorItemTab>("sizes");
+	const [itemWallDrafts, setItemWallDrafts] = useState<Partial<Record<ItemWallDistance["side"], string>>>({});
+	const [focusedWallDistance, setFocusedWallDistance] = useState<ItemWallDistance["side"]>();
+	const updateItemWallDraft = (side: ItemWallDistance["side"], value: string | undefined) => {
+		setItemWallDrafts((current) => {
+			if (value !== undefined) return { ...current, [side]: value };
+			const { [side]: _removed, ...remaining } = current;
+			return remaining;
+		});
+	};
 	const editorActionMenuRef = useRef<HTMLDialogElement>(null);
 	const editorActionDockRef = useRef<HTMLDivElement>(null);
 	const selectionPropertiesTriggerRef = useRef<HTMLButtonElement>(null);
@@ -2138,6 +2202,10 @@ export function AppShell({
 		undefined,
 	);
 	const openingCreationActionRef = useRef<HTMLButtonElement>(null);
+	const addDockTriggerRef = useRef<HTMLButtonElement>(null);
+	const doorChoiceRef = useRef<HTMLButtonElement>(null);
+	const windowChoiceRef = useRef<HTMLButtonElement>(null);
+	const openingWallListRef = useRef<HTMLButtonElement>(null);
 	const openingCreationDialogRef = useRef<HTMLElement>(null);
 	useLayoutEffect(() => {
 		const dialog = editorActionMenuRef.current;
@@ -2523,9 +2591,10 @@ export function AppShell({
 	const wallRunSegmentIds = selectedWallRun && selectedWallRun.wallSegmentIds.length > 1
 		? selectedWallRun.wallSegmentIds
 		: undefined;
+	const windowSillPolicy = hostNavigation ? "preset" : "draft";
 	const openingCreationDraftValidation =
 		project?.schemaVersion === 1 && openingCreationDraft
-			? validateOpeningCreationDraft(project, openingCreationDraft)
+			? validateOpeningCreationDraft(project, openingCreationDraft, windowSillPolicy)
 			: undefined;
 	const openingCreationHost =
 		project?.schemaVersion === 1 && openingCreationDraft
@@ -2546,9 +2615,29 @@ export function AppShell({
 	const canConfirmOpeningCreationDraft =
 		openingCreationDraftValidation?.kind === "valid";
 	const canOpenOpeningCreationDraft = selectedWallOpeningHost !== undefined;
+	const openingHostChoices = useMemo(() =>
+		project?.schemaVersion === 1 && openingEntry && openingEntry !== "add"
+			? openingCreationHostsFor(project, openingEntry)
+			: [], [openingEntry, project]);
+	const openingHostIds = useMemo(() => new Set(openingHostChoices.map(host => host.wallSegmentId)), [openingHostChoices]);
+	const compactOpeningCreation = openingCreationDraft?.baseRevisionId !== undefined && !showOpeningCreationDetails;
 	const selectedOpening = project?.level.openings.find(
 		(opening) => opening.openingId === selectedOpeningId,
 	);
+	const windowAlignmentAvailable = !!(
+		hostNavigation &&
+		project?.schemaVersion === 1 &&
+		openingDraft?.kind === "Window" &&
+		windowsWithMixedSillsOnSameWall(project.level.openings, openingDraft.openingId).length
+	);
+	const windowAlignmentDirty =
+		selectedOpening?.kind !== "Window" ||
+		openingDraft?.openingId !== selectedOpening.openingId ||
+		openingDraft.widthMm !== String(selectedOpening.widthMm) ||
+		openingDraft.heightMm !== String(selectedOpening.heightMm);
+	const openingDraftPreviewOffset = openingDraft && canEditOpeningOffset(openingDraft, hostNavigation !== undefined)
+		? nonNegativeSafeInteger(openingDraft.offsetMm)
+		: undefined;
 	const doorDraftWallId = openingCreationDraft?.kind === "Door"
 		? openingCreationDraft.wallSegmentId
 		: openingDraft?.kind === "Door" ? selectedOpening?.wallSegmentId : undefined;
@@ -2792,6 +2881,7 @@ export function AppShell({
 		return widthMm && depthMm && heightMm && label.length > 0
 			? {
 					color: source.color,
+					...("colorVariantId" in source && typeof source.colorVariantId === "string" ? { colorVariantId: source.colorVariantId } : {}),
 					...(furnitureKind === undefined ? {} : { furnitureKind }),
 					yawRadians: itemPlacementYawRadians,
 					...floorYawFieldsForRadians(itemPlacementYawRadians, exactFloorYaw),
@@ -2834,6 +2924,20 @@ export function AppShell({
 		() => project ? projectRectangularRoomForWebGl(project, localGreyboxCatalog ? telegramGreyboxKindForLabel : undefined, hostNavigation !== undefined) : undefined,
 		[project, localGreyboxCatalog, hostNavigation],
 	);
+	const reversedPlanItemFrontIds = useMemo(() => {
+		if (!hostNavigation || !threeDimensionalScene) return undefined;
+		const ids = new Set<string>();
+		for (const item of threeDimensionalScene.items) {
+			if (item.assetAnchor !== "floor" || item.assetInstanceId === undefined ||
+				item.assetDefinitionId !== undefined) continue;
+			// These built-in meshes have a backrest or headboard on local +Z.
+			const kind = item.material?.furnitureKind;
+			if (kind === "chair" || kind === "sofa" || kind === "bed") {
+				ids.add(item.assetInstanceId);
+			}
+		}
+		return ids;
+	}, [hostNavigation, threeDimensionalScene]);
 	const threeDimensionalOrigin = useMemo(() => {
 		if (!project || project.level.vertices.length === 0) return undefined;
 		return {
@@ -2877,7 +2981,7 @@ export function AppShell({
 		if (!isItemPlacementActive) retainedPlacementPoint.current = undefined;
 	}, [isItemPlacementActive]);
 	const isEditorDockVisible =
-		!isItemPlacementSurfaceActive && openingCreationDraft === undefined;
+		!isItemPlacementSurfaceActive && openingCreationDraft === undefined && (!openingEntry || openingEntry === "add");
 	useLayoutEffect(() => {
 		if (!project?.projectId || !isEditorDockVisible) return;
 		const dock = editorActionDockRef.current?.closest<HTMLElement>("nav");
@@ -2943,7 +3047,7 @@ export function AppShell({
 		return fields !== undefined && (fields.offsetMm !== String(item.offsetMm) || fields.elevationMm !== String(item.elevationMm));
 	});
 	const hasRawCustomImportDraft = customGlbImport.kind === "ready" || customGlbImport.kind === "checking" || fbxConversion.kind === "converting";
-	const hasRawEditorDraft = hasRawRenameDraft || hasRawSelectedItemDraft || hasRawRoomPropertyDraft || hasRawProjectNameDraft || hasRawDimensionDraft || hasRawPlaceholderDraft || hasRawWallPositionDraft || hasRawCustomImportDraft || itemColorVariantDraft !== undefined;
+	const hasRawEditorDraft = Object.keys(itemWallDrafts).length > 0 || hasRawRenameDraft || hasRawSelectedItemDraft || hasRawRoomPropertyDraft || hasRawProjectNameDraft || hasRawDimensionDraft || hasRawPlaceholderDraft || hasRawWallPositionDraft || hasRawCustomImportDraft || itemColorVariantDraft !== undefined;
 	const isEditorPreview = state.kind === "saved" && (
 		isItemPlacementActive ||
 		(fullTransientNavigationProtection && (hasRawEditorDraft || hasUndurableEditorDraft))
@@ -2951,7 +3055,8 @@ export function AppShell({
 	const editorSaveState =
 		state.kind === "saving"
 			? "Сохраняем…"
-            : hasRetainedHistoryTarget ? "Правка не сохранена"
+			: hasRetainedHistoryTarget || (state.kind === "saved" && dimensionNotice?.kind === "item-collision")
+				? "Правка не сохранена"
 			: isEditorPreview
 				? "Предпросмотр — не сохранено"
 				: state.kind === "saved"
@@ -3079,23 +3184,30 @@ export function AppShell({
 		setDimensions(dimensionsFrom(metrics));
 	}, [metrics]);
 
+	const previousInspectorItem = useRef<EditorFloorAsset | undefined>(undefined);
 	useEffect(() => {
+		const previous = previousInspectorItem.current;
+		previousInspectorItem.current = selectedItem;
+		if (previous?.assetInstanceId !== selectedItem?.assetInstanceId) {
+			setFloorDimensionErrors({});
+		}
 		if (!selectedItem) {
 			setSelectedItemFields(undefined);
 			setSelectedItemAngleRaw("0");
 			return;
 		}
-		setSelectedItemFields({
+		const sameItem = hostNavigation && previous?.assetInstanceId === selectedItem.assetInstanceId;
+		setSelectedItemFields((raw) => ({
 			color: selectedItem.color,
-			depthMm: String(selectedItem.depthMm),
-			heightMm: String(selectedItem.heightMm),
+			depthMm: sameItem && raw && previous.depthMm === selectedItem.depthMm ? raw.depthMm : String(selectedItem.depthMm),
+			heightMm: sameItem && raw && previous.heightMm === selectedItem.heightMm ? raw.heightMm : String(selectedItem.heightMm),
 			label: selectedItem.label,
-			widthMm: String(selectedItem.widthMm),
-		});
+			widthMm: sameItem && raw && previous.widthMm === selectedItem.widthMm ? raw.widthMm : String(selectedItem.widthMm),
+		}));
 		setSelectedItemAngleRaw(
 			degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)),
 		);
-	}, [selectedItem]);
+	}, [hostNavigation, selectedItem]);
 
 	useEffect(() => {
 		setWallItemPositionFields(
@@ -3877,6 +3989,12 @@ export function AppShell({
 		setWallAddHostConflict(undefined);
 		requestAnimationFrame(() => wallToolButtonRef.current?.focus());
 	};
+	const showItemCollisionRejection = (edit?: FloorItemEdit) => {
+		setItemPlacementConfirmation(undefined);
+		setDimensionError(edit
+			? errorCopy("ITEM_COLLISION", edit)
+			: itemPlacementPreviewFeedback({ isValid: false, reasonCode: "ITEM_COLLISION" }), "item-collision");
+	};
 
 	const rotateItem = async (input: {
 		readonly assetInstanceId: string;
@@ -3896,7 +4014,12 @@ export function AppShell({
 		setDimensionError(undefined);
 		const result = await controller.rotateParametricFloorItem({ ...input, exact: exactFloorYaw });
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			if (hostNavigation && result.reasonCode === "ITEM_COLLISION") {
+				showItemCollisionRejection("rotation");
+				if (selectedItem?.assetInstanceId === input.assetInstanceId) {
+					setSelectedItemAngleRaw(degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)));
+				}
+			} else setDimensionError(errorCopy(result.reasonCode));
 			return false;
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
@@ -3995,6 +4118,62 @@ export function AppShell({
 				? document.activeElement
 				: undefined;
 		setOpeningCreationDraft(draft);
+	};
+
+	const closeOpeningEntry = () => {
+		setOpeningEntry(undefined);
+		setShowOpeningWallList(false);
+		setDimensionError(undefined);
+		requestAnimationFrame(() => addDockTriggerRef.current?.focus());
+	};
+
+	const goBackFromOpeningEntry = () => {
+		if (!openingEntry || openingEntry === "add") {
+			closeOpeningEntry();
+			return;
+		}
+		setDimensionError(undefined);
+		setShowOpeningWallList(false);
+		setOpeningEntry("add");
+		const choice = openingEntry === "Door" ? doorChoiceRef : windowChoiceRef;
+		requestAnimationFrame(() => choice.current?.focus());
+	};
+
+	const placeNewOpening = (kind: OpeningCreationKind, wallSegmentId: string, offsetMm?: number) => {
+		const latest = controller.snapshot();
+		if (latest.kind !== "saved" || latest.project.schemaVersion !== 1 || latest.project !== project || isEditorReadOnly || isMutationBlocked) return;
+		const initial = openingCreationDraftFor(latest.project, wallSegmentId, kind);
+		if (!initial) return;
+		const validation = offsetMm === undefined ? validateOpeningCreationDraft(latest.project, initial, windowSillPolicy) : undefined;
+		const draft = openingCreationDraftFor(latest.project, wallSegmentId, kind, {
+			baseRevisionId: latest.revisionId,
+			offsetMm: offsetMm ?? (validation?.kind === "valid" ? validation.input.offsetMm : Number(initial.offsetMm)),
+		});
+		if (!draft) return;
+		setOpeningEntry(undefined);
+		setShowOpeningWallList(false);
+		setShowOpeningCreationDetails(false);
+		setDimensionError(undefined);
+		setOpeningCreationDraft(draft);
+	};
+
+	const chooseOpeningType = (kind: OpeningCreationKind) => {
+		const closeOrSelect = () => {
+			setActiveTool("select");
+			setSelectedItemId(undefined);
+			setSelectedOpeningId(undefined);
+			setWallDeletionConflict(undefined);
+			openingCreationRestoreFocusRef.current = addDockTriggerRef.current ?? undefined;
+			if (project?.schemaVersion === 1 && selectedWallOpeningHost && openingCreationHostsFor(project, kind).some(host => host.wallSegmentId === selectedWallOpeningHost.wallSegmentId)) {
+				placeNewOpening(kind, selectedWallOpeningHost.wallSegmentId);
+				return;
+			}
+			setSelectedWallId(undefined);
+			setOpeningEntry(kind);
+			requestAnimationFrame(() => openingWallListRef.current?.focus());
+		};
+		if (hasRawEditorDraft || hasUndurableEditorDraft) requestEditorBack(false, closeOrSelect);
+		else closeOrSelect();
 	};
 
 	const activateSelectTool = () => {
@@ -4833,6 +5012,7 @@ export function AppShell({
 						? {}
 						: { assetDefinitionId: reusedItemDefinitionId }),
 					color: draft.color,
+					colorVariantId: draft.colorVariantId,
 					depthMm: draft.depthMm,
 					yawStep: draft.yawStep,
 						yawMilliDeg: draft.yawMilliDeg,
@@ -4850,7 +5030,9 @@ export function AppShell({
 		if (result.kind === "cancelled") return;
 		const feedback = itemPlacementFeedback(result);
 		if (result.kind !== "durable") {
-			setDimensionError(feedback);
+			if (hostNavigation && result.kind === "rejected" && result.reasonCode === "ITEM_COLLISION") {
+				showItemCollisionRejection();
+			} else setDimensionError(feedback);
 			if (acceptedCreation) {
 				consumeCreationSurface();
 				setSelectedItemId(undefined);
@@ -4895,7 +5077,8 @@ export function AppShell({
 		setDimensionError(undefined);
 		const result = await controller.moveParametricFloorItem(input);
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			if (hostNavigation && result.reasonCode === "ITEM_COLLISION") showItemCollisionRejection("move");
+			else setDimensionError(errorCopy(result.reasonCode));
 			return false;
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
@@ -4914,6 +5097,8 @@ export function AppShell({
 			return;
 		}
 		setDimensionError(undefined);
+		setFloorItemTab("sizes");
+		setItemWallDrafts({});
 		setIsSelectionInspectorExpanded(false);
 		setIsWallMoveMode(false);
 		setIsWallSplitMode(false);
@@ -4934,6 +5119,7 @@ export function AppShell({
 	};
 
 	const openSelectionProperties = () => {
+		setFloorItemTab("sizes");
 		setIsEditorActionMenuOpen(false);
 		setIsSelectionInspectorExpanded(true);
 	};
@@ -5281,6 +5467,9 @@ export function AppShell({
 		setReusedItemDefinitionId(assetDefinitionId);
 		setItemFields({
 			color: selectedItem.color,
+			...(hostNavigation && "colorVariantId" in selectedItem && selectedItem.colorVariantId
+				? { colorVariantId: selectedItem.colorVariantId }
+				: {}),
 			depthMm: String(selectedItem.depthMm),
 			heightMm: String(selectedItem.heightMm),
 			label: selectedItem.label,
@@ -5289,8 +5478,10 @@ export function AppShell({
 		setSelectedItemId(undefined);
 		setSelectedWallId(undefined);
 		setSelectedOpeningId(undefined);
-		setViewMode("plan");
-		setItemPlacementYawRadians(0);
+		if (!hostNavigation) setViewMode("plan");
+		retainedPlacementPoint.current = undefined;
+		setIsSelectionInspectorExpanded(false);
+		setItemPlacementYawRadians(hostNavigation ? yawRadiansForEditorFloorAsset(selectedItem) : 0);
 		setActiveTool("item");
 	};
 
@@ -5579,15 +5770,18 @@ export function AppShell({
 		pendingCreationRef.current = undefined;
 		setDimensionError(undefined);
 		setOpeningCreationDraft(undefined);
+		setShowOpeningCreationDetails(false);
 		setActiveTool("select");
 		const restoreTarget = openingCreationRestoreFocusRef.current;
+		const fromAddChooser = openingCreationDraft?.baseRevisionId !== undefined;
 		openingCreationRestoreFocusRef.current = undefined;
 		requestAnimationFrame(() => {
 			if (restoreTarget?.isConnected) {
 				restoreTarget.focus();
 				return;
 			}
-			openingCreationActionRef.current?.focus();
+			const currentTrigger = fromAddChooser ? addDockTriggerRef.current : openingCreationActionRef.current;
+			(currentTrigger ?? addDockTriggerRef.current)?.focus();
 		});
 	};
 
@@ -5722,9 +5916,15 @@ export function AppShell({
 
 	const confirmOpeningCreationDraft = async () => {
 		if (project?.schemaVersion !== 1 || !openingCreationDraft) return;
+		const latest = controller.snapshot();
+		if (openingCreationDraft.baseRevisionId !== undefined && (latest.kind !== "saved" || latest.revisionId !== openingCreationDraft.baseRevisionId)) {
+			setDimensionError("План изменился. Выберите место проёма заново.");
+			return;
+		}
 		const validation = validateOpeningCreationDraft(
 			project,
 			openingCreationDraft,
+			windowSillPolicy,
 		);
 		if (validation.kind === "invalid") {
 			setDimensionError(validation.message);
@@ -5783,6 +5983,12 @@ export function AppShell({
 		);
 		if (!opening || opening.offsetMm === input.offsetMm) return false;
 		if (project?.schemaVersion !== 1) return false;
+		if (hostNavigation) {
+			setDimensionError(undefined);
+			const result = await controller.moveDoorOpening(input);
+			if (result.kind === "rejected") setDimensionError(errorCopy(result.reasonCode));
+			return result.kind === "durable";
+		}
 		const preview = moveDoorOpeningInProject(project, input, project.updatedAt);
 		if (preview.kind === "rejected") {
 			setDimensionError(errorCopy(preview.reasonCode));
@@ -5799,69 +6005,9 @@ export function AppShell({
 			kind: opening.kind,
 			offsetMm: String(input.offsetMm),
 			openingId: opening.openingId,
-			sillMm: String(opening.sillMm),
 			widthMm: String(opening.widthMm),
 		});
 		return true;
-	};
-
-	const updateSelectedDoorOpening = async (input: {
-		readonly swingSide?: "left" | "right";
-		readonly hingeEnd?: "end" | null;
-		readonly heightMm?: number;
-		readonly offsetMm?: number;
-		readonly openingId: string;
-		readonly sillMm?: number;
-		readonly widthMm?: number;
-	}) => {
-		if (
-			isEditorReadOnly ||
-			isWorking ||
-			state.kind === "persist-failed" ||
-			state.kind === "recovery-needed"
-		)
-			return;
-		if (
-			input.widthMm === undefined &&
-			input.heightMm === undefined &&
-			input.sillMm === undefined &&
-			input.offsetMm === undefined &&
-			input.swingSide === undefined &&
-			input.hingeEnd === undefined
-		) {
-			setDimensionError("Укажите хотя бы одно значение проёма для изменения.");
-			return;
-		}
-		if (
-			(input.widthMm !== undefined &&
-				(!Number.isSafeInteger(input.widthMm) || input.widthMm <= 0)) ||
-			(input.heightMm !== undefined &&
-				(!Number.isSafeInteger(input.heightMm) || input.heightMm <= 0)) ||
-			(input.sillMm !== undefined &&
-				(!Number.isSafeInteger(input.sillMm) || input.sillMm < 0)) ||
-			(input.offsetMm !== undefined &&
-				(!Number.isSafeInteger(input.offsetMm) || input.offsetMm < 0))
-		) {
-			setDimensionError("Укажите положительные целые ширину и высоту.");
-			return;
-		}
-		setDimensionError(undefined);
-		const result = await controller.updateDoorOpening(input);
-		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
-			return;
-		}
-		const settled = controller.snapshot();
-		if (
-			result.kind === "durable" ||
-			(result.kind === "persist-failed" &&
-				settled.kind === "persist-failed" &&
-				"candidate" in settled)
-		) {
-			// The confirmed candidate now belongs to save/recovery. Keeping its
-			// editing modal would allow a second confirmation after a retry.
-			setOpeningDraft(undefined);
-		}
 	};
 
 	const openOpeningDraft = (opening: Project["level"]["openings"][number]) => {
@@ -5879,13 +6025,12 @@ export function AppShell({
 			kind: opening.kind,
 			offsetMm: String(opening.offsetMm),
 			openingId: opening.openingId,
-			sillMm: String(opening.sillMm),
 			widthMm: String(opening.widthMm),
 		});
 	};
 
-	const confirmOpeningDraft = async () => {
-		if (!openingDraft) return;
+	const confirmOpeningDraft = async (action: "edit" | "align" = "edit") => {
+		if (!openingDraft || isEditorReadOnly || isMutationBlocked) return;
 		const latest = controller.snapshot();
 		if (
 			latest.kind !== "saved" ||
@@ -5895,34 +6040,31 @@ export function AppShell({
 			setDimensionError("План изменился. Выберите проём заново.");
 			return;
 		}
-		const widthMm = positiveInteger(openingDraft.widthMm);
-		const heightMm = positiveInteger(openingDraft.heightMm);
-
-		const currentOpening = project?.level.openings.find(
+		const currentOpening = latest.project.level.openings.find(
 			(opening) => opening.openingId === openingDraft.openingId,
 		);
-		const offsetMm = openingDraft.isMove
-			? Number(openingDraft.offsetMm)
-			: currentOpening?.offsetMm;
-		const sillMm = currentOpening?.sillMm;
-		if (
-			widthMm === undefined ||
-			heightMm === undefined ||
-			sillMm === undefined ||
-			offsetMm === undefined
-		) {
+		const input = openingEditInputFor(openingDraft, currentOpening, hostNavigation !== undefined);
+		if (!input) {
 			setDimensionError("Укажите положительные целые ширину и высоту.");
 			return;
 		}
-		await updateSelectedDoorOpening({
-			...(openingDraft.swingSide ? { swingSide: openingDraft.swingSide } : {}),
-			...(openingDraft.hingeEnd !== undefined ? { hingeEnd: openingDraft.hingeEnd } : {}),
-			heightMm,
-			offsetMm,
-			openingId: openingDraft.openingId,
-			sillMm,
-			widthMm,
-		});
+		if (action === "align" && (!windowAlignmentAvailable || windowAlignmentDirty)) return;
+		setDimensionError(undefined);
+		const result = await controller.updateDoorOpening(action === "align"
+			? { kind: "align-matching-windows", openingId: input.openingId }
+			: input);
+		if (result.kind === "rejected") {
+			setDimensionError(errorCopy(result.reasonCode));
+			return;
+		}
+		const settled = controller.snapshot();
+		if (
+			result.kind === "durable" ||
+			(result.kind === "persist-failed" && settled.kind === "persist-failed" && "candidate" in settled)
+		) {
+			// The confirmed candidate now belongs to save/recovery.
+			setOpeningDraft(undefined);
+		}
 	};
 
 	const cancelOpeningDraft = () => {
@@ -5930,7 +6072,10 @@ export function AppShell({
 		setOpeningDraft(undefined);
 	};
 
-	const commitSelectedItem = async () => {
+	const setFloorDimensionError = (field: keyof DimensionFields, message: string | undefined) => {
+		setFloorDimensionErrors((current) => ({ ...current, [field]: message }));
+	};
+	const commitSelectedItem = async (edit?: { field: keyof DimensionFields; raw: string }) => {
 		if (
 			!selectedItem ||
 			!selectedItemFields ||
@@ -5943,14 +6088,30 @@ export function AppShell({
 		) {
 			return;
 		}
-		const widthMm = positiveInteger(selectedItemFields.widthMm);
-		const depthMm = positiveInteger(selectedItemFields.depthMm);
-		const heightMm = positiveInteger(selectedItemFields.heightMm);
-		setDimensionError(undefined);
+		const report = (error: string | undefined) => {
+			if (edit) setFloorDimensionError(edit.field, error);
+			else setDimensionError(error);
+		};
+		const editedValue = edit ? positiveInteger(edit.raw.trim()) : undefined;
+		const widthMm = edit ? (edit.field === "widthMm" ? editedValue : selectedItem.widthMm)
+			: positiveInteger(selectedItemFields.widthMm);
+		const depthMm = edit ? (edit.field === "depthMm" ? editedValue : selectedItem.depthMm)
+			: positiveInteger(selectedItemFields.depthMm);
+		const heightMm = edit ? (edit.field === "heightMm" ? editedValue : selectedItem.heightMm)
+			: positiveInteger(selectedItemFields.heightMm);
+		report(undefined);
 		if (!widthMm || !depthMm || !heightMm) {
-			setDimensionError("Укажите целые положительные размеры предмета.");
+			report(edit ? "Укажите целый положительный размер в мм." : "Укажите целые положительные размеры предмета.");
 			return;
 		}
+		if (widthMm === selectedItem.widthMm && depthMm === selectedItem.depthMm &&
+			heightMm === selectedItem.heightMm) {
+			if (edit && edit.raw !== String(editedValue)) {
+				setSelectedItemFields((current) => current ? { ...current, [edit.field]: String(editedValue) } : current);
+			}
+			return;
+		}
+		if (edit && dimensionNotice?.kind === "item-collision") setDimensionError(undefined);
 		const result = await controller.resizeParametricFloorItem({
 			assetInstanceId: selectedItem.assetInstanceId,
 			depthMm,
@@ -5958,8 +6119,16 @@ export function AppShell({
 			widthMm,
 		});
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			if (hostNavigation && result.reasonCode === "ITEM_COLLISION") {
+				if (edit) report(errorCopy(result.reasonCode, "size"));
+				showItemCollisionRejection("size");
+				return;
+			}
+			report(errorCopy(result.reasonCode));
 			return;
+		}
+		if (edit && (result.kind === "in-progress" || result.kind === "not-ready")) {
+			report("Дождитесь сохранения предыдущей правки и повторите ввод.");
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
 			setDimensionError(
@@ -6029,6 +6198,8 @@ export function AppShell({
 	};
 
 	const cancelSelectedItemNumericDraft = () => {
+		setItemWallDrafts({});
+		setFloorDimensionErrors({});
 		if (!selectedItem) return;
 		setDimensionError(undefined);
 		setSelectedItemFields({
@@ -6271,6 +6442,16 @@ export function AppShell({
 	const canOpenTelegramEditorSheet = hasTelegramEditorSheet && !isExternalSaveFailure;
 	const selectionBehindSheet = isEditorActionMenuOpen || isOpeningDialogOpen
 		|| isDimensionFilterOpen || isPlanInspectorOpen || isRoomDirectoryOpen || isBuiltInCatalogOpen;
+	const closeFloorItemProperties = () => {
+		setIsSelectionInspectorExpanded(false);
+		requestAnimationFrame(() => floorPropertiesTriggerRef.current?.focus({ preventScroll: true }));
+	};
+	const closeWallProperties = () => {
+		setIsSelectionInspectorExpanded(false);
+		setWallItemDraft(undefined);
+		setWallItemDraftFields(undefined);
+		requestAnimationFrame(() => selectionPropertiesTriggerRef.current?.focus({ preventScroll: true }));
+	};
 	const requestEditorBack = (explicitProjects = false, onCleanPanelClose?: () => void) => {
 		if (!isNavigationProtected) { void returnToProjects(); return; }
 		if (leaveFocus) { continueEditorDraft(); return; }
@@ -6284,7 +6465,7 @@ export function AppShell({
 		const footerToggle = state.kind === "projects"
 			? projectsHeadingRef.current?.closest("section")?.querySelector<HTMLButtonElement>('[data-projects-footer-toggle][aria-expanded="true"]')
 			: undefined;
-		const panel = !explicitProjects && (!!onCleanPanelClose || !!footerToggle || (fullTransientNavigationProtection && (!!nativePanel || isRenameProjectOpen || isEditorActionMenuOpen || (hasTelegramEditorSheet && isOpeningDialogOpen) || isPlanInspectorOpen || isRoomDirectoryOpen || isBuiltInCatalogOpen || isSelectionInspectorExpanded || localFileState.kind !== "idle")));
+		const panel = !explicitProjects && (!!onCleanPanelClose || !!footerToggle || (fullTransientNavigationProtection && (!!nativePanel || isRenameProjectOpen || isEditorActionMenuOpen || (hasTelegramEditorSheet && isOpeningDialogOpen) || isPlanInspectorOpen || isRoomDirectoryOpen || isBuiltInCatalogOpen || (viewMode === "plan" && isSelectionInspectorExpanded) || localFileState.kind !== "idle")));
 		const recoveryExit = !panel ? controller.writerRecoveryCopy?.() : undefined;
 		const decision = editorBackDecision({
 			pending: hasPendingEditorCommand(),
@@ -6306,12 +6487,16 @@ export function AppShell({
 			else if (isRenameProjectOpen) cancelRenameProject();
 			else if (localFileState.kind !== "idle") localFileSession?.close();
 			else if (isEditorActionMenuOpen) setIsEditorActionMenuOpen(false);
+			else if (openingEntry) goBackFromOpeningEntry();
 			else if (hasTelegramEditorSheet && isOpeningDialogOpen && openingCreationDraft) closeOpeningCreationDraft();
 			else if (hasTelegramEditorSheet && isOpeningDialogOpen && openingDraft) cancelOpeningDraft();
 			else if (isRoomDirectoryOpen) closeRoomDirectory();
 			else if (isBuiltInCatalogOpen) closeOverlay();
 			else if (isPlanInspectorOpen) closePlanInspector();
-			else if (isSelectionInspectorExpanded) setIsSelectionInspectorExpanded(false);
+			else if (isSelectionInspectorExpanded) {
+				if (hasTelegramEditorSheet && selectedItem) closeFloorItemProperties();
+				else setIsSelectionInspectorExpanded(false);
+			}
 			else if (footerToggle) {
 				footerToggle.click();
 				footerToggle.focus();
@@ -6341,7 +6526,7 @@ export function AppShell({
 		}
 		requestEditorBack();
 	};
-	const hostBackGuard = leaveFocus ? <EditorLeaveGuard focus={leaveFocus} fallback={editorHeaderMenuRef.current} onContinue={continueEditorDraft} onDiscard={() => {
+	const hostBackGuard = leaveFocus ? <EditorLeaveGuard telegram={hasTelegramEditorSheet} focus={leaveFocus} fallback={editorHeaderMenuRef.current} onContinue={continueEditorDraft} onDiscard={() => {
 		if (hasPendingEditorCommand() || controller.snapshot().kind === "persist-failed") return;
 		const exitCopy = confirmedWriterExit.current;
 		if (exitCopy && controller.writerRecoveryCopy?.() !== exitCopy) {
@@ -6351,13 +6536,14 @@ export function AppShell({
 		if (isRenameProjectOpen) cancelRenameProject();
 		if (hasRawProjectNameDraft) { setName(""); setNameError(undefined); }
 		if (hasRawDimensionDraft) { setDimensions(baselineDimensions); setDimensionError(undefined); }
-		if (hasRawSelectedItemDraft) cancelSelectedItemNumericDraft();
+		if (hasRawSelectedItemDraft || Object.keys(itemWallDrafts).length > 0) cancelSelectedItemNumericDraft();
 		if (hasRawRoomPropertyDraft || roomHeightOpeningConflict) cancelRoomHeightOpeningConflict();
 		if (hasRawPlaceholderDraft) { setPlaceholderFields(itemFields); setPlaceholderComposerError(undefined); }
 		if (hasRawWallPositionDraft) for (const item of project?.assetInstances ?? []) if (item.anchorClass === "wall") cancelWallItemPositionDraft(item);
 		if (hasRawCustomImportDraft) { cancelFbxConversion(); ++customGlbImportRequestRef.current; setCustomGlbImport({ kind: "idle" }); }
 		setItemColorVariantDraft(undefined);
 		if (openingCreationDraft) closeOpeningCreationDraft();
+		if (openingEntry) closeOpeningEntry();
 		if (openingDraft) cancelOpeningDraft();
 		if (activeTool === "item") cancelItemPlacement();
 		setWallItemDraft(undefined); setWallItemDraftFields(undefined); setCatalogWallModelDraft(undefined);
@@ -6889,7 +7075,7 @@ export function AppShell({
 				context="placement"
 				sceneTriggerRef={viewMode === "three-dimensional" ? sceneColorTriggerRef : undefined}
 				disabled={isEditorReadOnly || isMutationBlocked}
-				onSelect={({ color }) => setItemFields((current) => ({ ...current, color }))}
+				onSelect={({ color, variantId }) => setItemFields((current) => ({ ...current, color, colorVariantId: variantId }))}
 			/>
 		) : undefined;
 	const sceneAsset = project.schemaVersion === 1 && viewMode === "three-dimensional"
@@ -6912,6 +7098,191 @@ export function AppShell({
 			}}
 		/>
 	) : undefined;
+	const floorItemDimensionFields =
+		selectedItem && selectedItemFields ? (
+			<div className={styles.itemDimensions}>
+				{([
+					["widthMm", "Ширина"],
+					["depthMm", "Глубина"],
+					["heightMm", "Высота"],
+				] as const).map(([field, label]) => {
+					const error = hostNavigation ? floorDimensionErrors[field] : undefined;
+					const errorId = error ? `floor-dimension-error-${field}` : undefined;
+					return (
+						<Fragment key={field}>
+							<label>
+								<span>{label}</span>
+								<input
+									aria-label={`${label} выбранного предмета, мм`}
+									aria-describedby={errorId ?? (!hostNavigation && field === "widthMm" && dimensionError ? "dimension-error" : undefined)}
+									aria-invalid={error || (!hostNavigation && field === "widthMm" && dimensionError) ? true : undefined}
+									autoComplete="off"
+									disabled={
+										isEditorReadOnly ||
+										selectedItemLocked ||
+										(!hostNavigation && selectedItemHasFixedDimensions) ||
+										isWorking ||
+										state.kind === "persist-failed" ||
+										state.kind === "recovery-needed"
+									}
+									readOnly={(hostNavigation && selectedItemHasFixedDimensions) || undefined}
+									inputMode="numeric"
+									data-editor-blur-commit=""
+									onBlur={(event) => {
+										if (consumeSkippedNumericBlurCommit(event.currentTarget)) return;
+										void commitSelectedItem(hostNavigation ? { field, raw: event.currentTarget.value } : undefined);
+									}}
+									onChange={(event) => {
+										const raw = event.currentTarget.value;
+										if (error) setFloorDimensionError(field, undefined);
+										setSelectedItemFields((current) => current ? { ...current, [field]: raw } : current);
+									}}
+									onKeyDown={(event) => {
+										if (!cancelNumericDraftOnEscape(event, cancelSelectedItemNumericDraft)) {
+											commitOnEnter(event);
+										}
+									}}
+									value={selectedItemFields[field]}
+								/>
+							</label>
+							{error ? (
+								<p className={styles.fieldError} id={errorId} role="alert">
+									{label}. {error}
+								</p>
+							) : null}
+						</Fragment>
+					);
+				})}
+				{!onRotationStepModeChange ? (
+					<div>
+						<label data-angle-unit>
+							<span>Поворот</span>
+							<input
+								aria-label="Угол поворота выбранного предмета, градусы"
+								autoComplete="off"
+								disabled={
+									isEditorReadOnly ||
+									selectedItemLocked ||
+									isWorking ||
+									state.kind === "persist-failed" ||
+									state.kind === "recovery-needed"
+								}
+								inputMode="decimal"
+								data-editor-blur-commit=""
+								onBlur={(event) => {
+									if (!consumeSkippedNumericBlurCommit(event.currentTarget)) {
+										void commitSelectedItemAngle();
+									}
+								}}
+								onChange={(event) => setSelectedItemAngleRaw(event.target.value)}
+								onKeyDown={(event) => {
+									if (
+										!cancelNumericDraftOnEscape(
+											event,
+											cancelSelectedItemNumericDraft,
+										)
+									) {
+										if (hostNavigation && event.key === "Enter") {
+											event.preventDefault();
+											void commitSelectedItem();
+										} else commitOnEnter(event);
+									}
+								}}
+								value={selectedItemAngleRaw}
+							/>
+						</label>
+					</div>
+				) : null}
+			</div>
+		) : null;
+	const floorItemWallFields =
+		selectedItem && project.schemaVersion === 1 ? (
+			<ItemWallDistanceFields
+				key={selectedItem.assetInstanceId}
+				drafts={itemWallDrafts}
+				onDraftChange={updateItemWallDraft}
+				onFocusSide={setFocusedWallDistance}
+				skipBlurCommit={consumeSkippedNumericBlurCommit}
+				disabled={isEditorReadOnly || isMutationBlocked || selectedItemLocked}
+				distances={itemWallDistancesFor(
+					derivedRooms.filter(({ roomId }) => roomId === selectedItem.roomId),
+					selectedItem,
+				)}
+				onApply={(side, valueMm) => {
+					if (isEditorReadOnly || isMutationBlocked || selectedItemLocked)
+						return false;
+					const point = itemWallDistancePositionFor(
+						derivedRooms.filter(({ roomId }) => roomId === selectedItem.roomId),
+						selectedItem,
+						side,
+						valueMm,
+					);
+					if (!point || point.roomId !== selectedItem.roomId) return false;
+					if (point.xMm === selectedItem.xMm && point.zMm === selectedItem.zMm)
+						return true;
+					return moveItem({
+						assetInstanceId: selectedItem.assetInstanceId,
+						...point,
+					});
+				}}
+			/>
+		) : null;
+	const floorItemActions = selectedItem ? (
+		<ItemInspectorActions telegram={hostNavigation !== undefined}>
+			<button
+				disabled={
+					isEditorReadOnly ||
+					isWorking ||
+					state.kind === "persist-failed" ||
+					state.kind === "recovery-needed"
+				}
+				aria-label="Дублировать предмет"
+				onClick={duplicateSelectedItem}
+				type="button"
+			>
+				{hostNavigation ? "Дублировать" : "Дублировать предмет"}
+			</button>
+			<button
+				aria-label={
+					selectedItemLocked ? "Разблокировать предмет" : "Заблокировать предмет"
+				}
+				aria-pressed={selectedItemLocked === true}
+				disabled={isEditorReadOnly || isMutationBlocked}
+				onClick={() =>
+					void setFloorItemLock(selectedItem.assetInstanceId, !selectedItemLocked)
+				}
+				type="button"
+			>
+				{selectedItemLocked
+					? hostNavigation
+						? "Разблокировать"
+						: "Разблокировать предмет"
+					: hostNavigation
+						? "Заблокировать"
+						: "Заблокировать предмет"}
+			</button>
+
+			<button
+				className={styles.deleteAction}
+				disabled={
+					isEditorReadOnly ||
+					selectedItemLocked ||
+					isWorking ||
+					state.kind === "persist-failed" ||
+					state.kind === "recovery-needed"
+				}
+				ref={itemDeleteTriggerRef}
+				onClick={() =>
+					hostNavigation
+						? setItemDeleteConfirmation(true)
+						: void deleteSelectedItem()
+				}
+				type="button"
+			>
+				Удалить предмет
+			</button>
+		</ItemInspectorActions>
+	) : null;
 	const isStarterContourVisible =
 		project.schemaVersion === 1 &&
 		!metrics &&
@@ -6993,6 +7364,39 @@ export function AppShell({
 				</button>
 			</aside>
 		) : null;
+
+	const selectToolButton = (
+		<button
+			aria-label={hostNavigation ? "Выбор и перемещение" : "Рука и выбор"}
+			aria-pressed={activeTool === "select"}
+			className={styles.selectToolButton}
+			onClick={activateSelectTool}
+			type="button"
+		>
+			<svg
+				aria-hidden="true"
+				data-testid="select-tool-icon"
+				fill="none"
+				height="24"
+				viewBox="0 0 24 24"
+				width="24"
+			>
+				<path
+					d="M5 3.5 18.5 13l-6.2 1.8L9.8 21 5 3.5Z"
+					stroke="currentColor"
+					strokeLinejoin="round"
+					strokeWidth="2"
+				/>
+				<path
+					d="m14 15 4.2 4.2"
+					stroke="currentColor"
+					strokeLinecap="round"
+					strokeWidth="2"
+				/>
+			</svg>
+			<span>{hostNavigation ? "Выбор" : "Рука и выбор"}</span>
+		</button>
+	);
 
 	return (
 		<main
@@ -7140,6 +7544,14 @@ export function AppShell({
 				) : null}
 				{!isStarterContourVisible ? storagePressureNotice : null}
 
+				{hostNavigation && selectedItem && viewMode === "three-dimensional" && !isItemPlacementActive && !selectionBehindSheet ? (
+					<button
+						className={`${styles.tmaDuplicateAction} ${styles.tmaSceneDuplicateAction}`}
+						disabled={isEditorReadOnly || isMutationBlocked}
+						onClick={duplicateSelectedItem}
+						type="button"
+					>Дублировать</button>
+				) : null}
 				{viewMode === "three-dimensional" && threeDimensionalScene ? (
 					<RoomScene3d
 						plainLabels={hostNavigation !== undefined}
@@ -7156,7 +7568,7 @@ export function AppShell({
 								!threeDimensionalOrigin ||
 								!itemPlacementDraft
 							) {
-								return false;
+								return { kind: "invalid", reasonCode: "OUTSIDE_ROOM_HOST" };
 							}
 							const xMm = Math.round(
 								point.xM * 1000 + threeDimensionalOrigin.xMm,
@@ -7173,15 +7585,13 @@ export function AppShell({
 								xMm,
 								zMm,
 							});
-							return (
-								!!roomId &&
-								assessParametricFloorItemPlacement(project, {
-									...placement,
-									roomId,
-									xMm,
-									zMm,
-								}).kind !== "invalid"
-							);
+							if (!roomId) return { kind: "invalid", reasonCode: "OUTSIDE_ROOM_HOST" };
+							return assessParametricFloorItemPlacement(project, {
+								...placement,
+								roomId,
+								xMm,
+								zMm,
+							}, undefined, hostNavigation ? "reject" : "warn");
 						}}
 						customGlbResourceStates={customGlbResourceStates}
 						canTransformSelectedItem={!selectedItemLocked}
@@ -7257,7 +7667,12 @@ export function AppShell({
 				) : (
 					<PlanProjection
 						plainLabels={hostNavigation !== undefined}
+						reversedItemFrontIds={reversedPlanItemFrontIds}
+						rotationInspectorState={hostNavigation && selectedItem && !isEditorActionMenuOpen && !isOpeningDialogOpen && !selectedOpening
+							? selectedItemFields ? "present" : "pending"
+							: undefined}
 						showItemWallDistances={hostNavigation !== undefined}
+						focusedWallDistance={isSelectionInspectorExpanded && floorItemTab === "walls" ? focusedWallDistance : undefined}
 						onCloseItemPlacement={localGreyboxCatalog ? () => requestEditorBack(false, cancelItemPlacement) : undefined}
 						skipBlurCommit={consumeSkippedNumericBlurCommit}
 						exactFloorYaw={exactFloorYaw}
@@ -7271,22 +7686,29 @@ export function AppShell({
 						dimensionVisibility={dimensionVisibility}
 						openingMoveErrorCopy={errorCopy}
 						activeTool={activeTool}
-						isInteractionLocked={isOpeningDialogOpen}
+						isInteractionLocked={isOpeningDialogOpen && (!openingEntry || openingEntry === "add")}
 						isWallMoveMode={isWallMoveMode}
 						isWallSplitMode={isWallSplitMode}
 						isWallVertexMoveMode={isWallVertexMoveMode}
 						movableWallVertexIds={movableSelectedWallVertexIds}
 						openingCreationPreview={openingCreationPreview}
+						openingHostIds={openingEntry && openingEntry !== "add" ? openingHostIds : undefined}
+						onChooseOpeningHost={openingEntry && openingEntry !== "add" ? (wallSegmentId, offsetMm) => {
+							if (openingHostIds.has(wallSegmentId)) placeNewOpening(openingEntry, wallSegmentId, offsetMm);
+							else setDimensionError("Этот проём не помещается на выбранной стене.");
+						} : undefined}
 						keyboardItemMovement={hostNavigation !== undefined}
 						showOpeningTemplates={hostNavigation !== undefined}
 						selectedOpeningId={selectedOpeningId}
 						openingMovePreview={
-							openingDraft && (openingDraft.isMove || openingDraft.swingSide || openingDraft.hingeEnd !== undefined)
+							openingDraft && openingDraftPreviewOffset !== undefined &&
+							(openingDraft.isMove || openingDraft.swingSide || openingDraft.hingeEnd !== undefined ||
+								(hostNavigation && openingDraftPreviewOffset !== selectedOpening?.offsetMm))
 								? {
 										openingId: openingDraft.openingId,
 										swingSide: openingDraft.swingSide,
 										hingeEnd: openingDraft.hingeEnd,
-										offsetMm: Number(openingDraft.offsetMm),
+										offsetMm: openingDraftPreviewOffset,
 									}
 								: undefined
 						}
@@ -7319,6 +7741,7 @@ export function AppShell({
 						onSelectWall={selectWall}
 						onClearSelection={clearSelection}
 						onSelectOpening={selectOpening}
+						onOpeningMoveStart={hostNavigation ? () => setDimensionError(undefined) : undefined}
 						onWallMoveModeChange={setIsWallMoveMode}
 						onWallSplitModeChange={setIsWallSplitMode}
 						onWallVertexMoveModeChange={setIsWallVertexMoveMode}
@@ -7478,11 +7901,12 @@ export function AppShell({
 						onSubmit={(event) => void submitRenameProject(event)}
 						onRetry={() => void retryRenameProjectPublication()}
 						onCancel={cancelRenameProject}
+						onBackdropClose={() => requestEditorBack(false, cancelRenameProject)}
 						returnFocusRef={renameProjectTriggerRef}
 					/>
 				) : null}
 
-				{!isItemPlacementSurfaceActive && !openingCreationDraft ? (
+				{!isItemPlacementSurfaceActive && !openingCreationDraft && (!openingEntry || openingEntry === "add") ? (
 					<>
 						<nav aria-label="Инструменты редактора" className={styles.toolRail}>
 							<span
@@ -7497,7 +7921,7 @@ export function AppShell({
 								data-testid="editor-action-dock"
 								ref={editorActionDockRef}
 							>
-								{isWallOpeningDockContext ? (
+								{isWallOpeningDockContext && !hostNavigation ? (
 									<button
 										aria-label="Добавить проём"
 										className={`${styles.dockAction} ${styles.roomDockAction}`}
@@ -7566,36 +7990,7 @@ export function AppShell({
 										<span>Комната</span>
 									</button>
 								)}
-								<button
-									aria-label="Рука и выбор"
-									aria-pressed={activeTool === "select"}
-									className={styles.selectToolButton}
-									onClick={activateSelectTool}
-									type="button"
-								>
-									<svg
-										aria-hidden="true"
-										data-testid="select-tool-icon"
-										fill="none"
-										height="24"
-										viewBox="0 0 24 24"
-										width="24"
-									>
-										<path
-											d="M5 3.5 18.5 13l-6.2 1.8L9.8 21 5 3.5Z"
-											stroke="currentColor"
-											strokeLinejoin="round"
-											strokeWidth="2"
-										/>
-										<path
-											d="m14 15 4.2 4.2"
-											stroke="currentColor"
-											strokeLinecap="round"
-											strokeWidth="2"
-										/>
-									</svg>
-									<span>Рука и выбор</span>
-								</button>
+								{!hostNavigation && selectToolButton}
 								{isWallOpeningDockContext ? (
 									<button
 										aria-label="Свойства"
@@ -7665,6 +8060,22 @@ export function AppShell({
 									</button>
 								)}
 
+								{hostNavigation ? (
+									<button
+										aria-expanded={openingEntry === "add"}
+										aria-haspopup="dialog"
+										className={`${styles.dockAction} ${styles.itemDockAction}`}
+										disabled={isEditorReadOnly || isMutationBlocked}
+										onClick={() => setOpeningEntry("add")}
+										ref={addDockTriggerRef}
+										type="button"
+									>
+										<svg aria-hidden="true" data-testid="add-tool-icon" fill="none" height="24" viewBox="0 0 24 24" width="24">
+											<path d="M12 4.5v15M4.5 12h15" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+										</svg>
+										<span>Добавить</span>
+									</button>
+								) : (
 								<button
 									aria-label="Предметы интерьера"
 									aria-pressed={activeTool === "item"}
@@ -7701,12 +8112,16 @@ export function AppShell({
 									</svg>
 									<span>Предмет</span>
 								</button>
+								)}
+								{hostNavigation && selectToolButton}
 							</div>
 						</nav>
-						<dialog
+						<TelegramSheetFrame
+							as="dialog"
+							telegram={hasTelegramEditorSheet}
 							aria-label="Остальные действия редактора"
 							data-telegram-sheet={hasTelegramEditorSheet ? "menu" : undefined}
-							className={hasTelegramEditorSheet ? `${styles.editorActionMenu} ${sheetStyles.dialog} ${sheetStyles.telegramDialog}` : styles.editorActionMenu}
+							className={styles.editorActionMenu}
 							hidden={!isEditorActionMenuOpen}
 							id="editor-secondary-actions"
 							ref={editorActionMenuRef}
@@ -7714,7 +8129,7 @@ export function AppShell({
 								event.preventDefault();
 								closeEditorActionMenu();
 							}}
-							onClick={(event) => {
+							onClick={hasTelegramEditorSheet ? undefined : (event) => {
 								if (event.target !== event.currentTarget) return;
 								const bounds = event.currentTarget.getBoundingClientRect();
 								if (
@@ -7846,7 +8261,7 @@ export function AppShell({
 							>
 								Удалить проект
 							</button>
-						</dialog>
+						</TelegramSheetFrame>
 					</>
 				) : null}
 
@@ -7938,8 +8353,8 @@ export function AppShell({
 					</output>
 				) : null}
 
-				{viewMode === "plan" && selectedOpening && !isOpeningDialogOpen ? (
-					<aside
+				{viewMode === "plan" && selectedOpening && !isOpeningDialogOpen && (!hostNavigation || !hasTransientPlanEdit) ? (
+					<TelegramSheetFrame telegram={hostNavigation !== undefined} canvasAnchored
 						className={styles.openingContext}
 						aria-label={
 							selectedOpening.kind === "Window"
@@ -7970,10 +8385,113 @@ export function AppShell({
 						>
 							Удалить
 						</button>
-					</aside>
+					</TelegramSheetFrame>
 				) : null}
 
-				{viewMode === "plan" && openingCreationDraft ? (
+				{viewMode === "plan" && openingEntry === "add" ? (
+					<EditorModalSheet
+						telegramModal={canOpenTelegramEditorSheet}
+						aria-label="Добавить"
+						className={styles.openingEntrySheet}
+						onRequestClose={() => requestEditorBack(false, closeOpeningEntry)}
+						restoreFocus={() => addDockTriggerRef.current}
+						role="dialog"
+						tabIndex={-1}
+					>
+						<SheetHeader title="Добавить" closeLabel="Закрыть добавление" onClose={() => requestEditorBack(false, closeOpeningEntry)} />
+						<div className={sheetStyles.body}>
+							<div className={styles.openingAddChoices} data-opening-type-choices>
+								<button type="button" ref={doorChoiceRef} onClick={() => chooseOpeningType("Door")}>
+									<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+										<path d="M3 20h4V5" /><path d="M7 5a15 15 0 0 1 15 15" strokeDasharray="2 2" />
+									</svg>
+									Дверь
+								</button>
+								<button type="button" ref={windowChoiceRef} onClick={() => chooseOpeningType("Window")}>
+									<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2 10h20M2 14h20" /></svg>
+									Окно
+								</button>
+								<button type="button" onClick={() => {
+									setOpeningEntry(undefined);
+									openBuiltInCatalog(addDockTriggerRef.current);
+								}}>
+									<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="M7 11V6.5A2.5 2.5 0 0 1 9.5 4h5A2.5 2.5 0 0 1 17 6.5V11M5 11h14v6H5zM8 17v3M16 17v3" /></svg>
+									Предмет
+								</button>
+							</div>
+						</div>
+					</EditorModalSheet>
+				) : null}
+
+				{viewMode === "plan" && openingEntry && openingEntry !== "add" ? (
+					<EditorModalSheet
+						telegramModal={false}
+						telegramSheet
+						aria-label={openingEntry === "Door" ? "Поставить дверь" : "Поставить окно"}
+						className={styles.openingEntrySheet}
+						data-testid="opening-host-picker"
+						onRequestClose={() => requestEditorBack(false, goBackFromOpeningEntry)}
+						role="region"
+						tabIndex={-1}
+					>
+						<SheetHeader title={openingEntry === "Door" ? "Поставить дверь" : "Поставить окно"} closeLabel="Отменить выбор места" onClose={() => requestEditorBack(false, closeOpeningEntry)} />
+						<div className={sheetStyles.body}>
+							<p>{openingHostChoices.length ? "Укажите место на подсвеченной стене." : "На плане нет подходящих стен."}</p>
+							{dimensionError && <p role="alert">{dimensionError}</p>}
+							{openingHostChoices.length > 0 ? (
+								<button type="button" ref={openingWallListRef} aria-expanded={showOpeningWallList} onClick={() => setShowOpeningWallList(value => !value)}>
+									Выбрать стену
+								</button>
+							) : (
+								<button type="button" ref={openingWallListRef} onClick={() => {
+									setOpeningEntry(undefined);
+									void activateWallTool();
+								}}>Нарисовать стену</button>
+							)}
+							{showOpeningWallList && (
+								<div className={styles.openingAddChoices}>
+									{openingHostChoices.map(host => (
+										<button key={host.wallSegmentId} type="button" onClick={() => placeNewOpening(openingEntry, host.wallSegmentId)}>
+											Стена {host.ordinal} · {formatLengthMm(host.lengthMm)}
+										</button>
+									))}
+								</div>
+							)}
+						</div>
+					</EditorModalSheet>
+				) : null}
+
+				{viewMode === "plan" && openingCreationDraft && compactOpeningCreation ? (
+					<EditorModalSheet
+						telegramModal={false}
+						telegramSheet
+						aria-label={openingCreationDraft.kind === "Door" ? "Новая дверь" : "Новое окно"}
+						busy={isWorking}
+						className={styles.openingEntrySheet}
+						data-testid="opening-creation-draft"
+						onRequestClose={() => requestEditorBack(false, closeOpeningCreationDraft)}
+						role="region"
+						tabIndex={-1}
+					>
+						<SheetHeader title={openingCreationDraft.kind === "Door" ? "Новая дверь" : "Новое окно"} closeLabel="Закрыть создание проёма" closeDisabled={isWorking} onClose={() => requestEditorBack(false, closeOpeningCreationDraft)} />
+						<div className={sheetStyles.body}>
+							{openingCreationDraftError && <p role="alert">{openingCreationDraftError}</p>}
+							<div className={styles.openingCompactActions}>
+								{openingCreationDraftValidation?.kind === "invalid" && <button type="button" onClick={() => {
+									setOpeningEntry(openingCreationDraft.kind);
+									setOpeningCreationDraft(undefined);
+									setDimensionError(undefined);
+									requestAnimationFrame(() => openingWallListRef.current?.focus());
+								}}>Выбрать другое место</button>}
+								<button type="button" disabled={isWorking} onClick={() => setShowOpeningCreationDetails(true)}>Параметры</button>
+								<button type="button" disabled={isWorking} onClick={closeOpeningCreationDraft}>Отменить</button>
+								<button type="button" disabled={isMutationBlocked || !canConfirmOpeningCreationDraft} onClick={() => void confirmOpeningCreationDraft()}>Подтвердить</button>
+							</div>
+						</div>
+					</EditorModalSheet>
+				) : null}
+
+				{viewMode === "plan" && openingCreationDraft && !compactOpeningCreation ? (
 					<EditorModalSheet
 						telegramModal={canOpenTelegramEditorSheet}
 						busy={isWorking}
@@ -8014,7 +8532,7 @@ export function AppShell({
 									{formatLengthMm(openingCreationHost.lengthMm)}
 								</p>
 							) : null}
-							<fieldset className={styles.openingCreationKindPicker}>
+							{openingCreationDraft.baseRevisionId === undefined && <fieldset className={styles.openingCreationKindPicker}>
 								<legend className={styles.visuallyHidden}>Тип проёма</legend>
 								<button
 									aria-pressed={openingCreationDraft.kind === "Door"}
@@ -8032,8 +8550,23 @@ export function AppShell({
 								>
 									Окно
 								</button>
-							</fieldset>
+							</fieldset>}
 							<div className={styles.openingCreationFields}>
+								{openingCreationDraft.baseRevisionId !== undefined && (
+									<label>
+										<span>Смещение вдоль стены</span>
+										<input aria-label="Смещение вдоль стены, мм" inputMode="numeric"
+											aria-describedby={openingCreationDraftError ? "opening-creation-error" : undefined}
+											aria-invalid={!!openingCreationDraftError}
+											disabled={isWorking || isEditorReadOnly}
+											value={openingCreationDraft.offsetMm}
+											onChange={(event) => {
+												const offsetMm = event.target.value;
+												setDimensionError(undefined);
+												setOpeningCreationDraft(current => current ? { ...current, offsetMm } : current);
+											}} />
+									</label>
+								)}
 								<label>
 									<span>Ширина</span>
 									<input
@@ -8110,14 +8643,14 @@ export function AppShell({
 									}
 									type="submit"
 								>
-									Добавить
+									{openingCreationDraft.baseRevisionId === undefined ? "Добавить" : "Подтвердить"}
 								</button>
 							</div>
 						</form>
 					</EditorModalSheet>
 				) : null}
 
-				{viewMode === "plan" && openingDraft?.isMove ? (
+				{viewMode === "plan" && openingDraft?.isMove && !hostNavigation ? (
 					<ProjectConfirmationDialog
 						plainLabels={hostNavigation !== undefined}
 						label={
@@ -8184,6 +8717,17 @@ export function AppShell({
 							/>
 
 							<div className={styles.openingCreationFields}>
+								{canEditOpeningOffset(openingDraft, hostNavigation !== undefined) && <label>
+									<span>Смещение вдоль стены</span>
+									<input aria-label="Смещение вдоль стены, мм" inputMode="numeric"
+										value={openingDraft.offsetMm}
+										disabled={isWorking || isEditorReadOnly}
+										onChange={(event) => {
+											const offsetMm = event.target.value;
+											setDimensionError(undefined);
+											setOpeningDraft(current => current ? { ...current, offsetMm } : current);
+										}} />
+								</label>}
 								<label>
 									<span>Ширина</span>
 									<input
@@ -8241,6 +8785,19 @@ export function AppShell({
 										setOpeningDraft({ ...openingDraft, swingSide, hingeEnd });
 									}} />
 							)}
+							{windowAlignmentAvailable ? (
+								<div className={styles.windowAlignment}>
+									<p id="window-alignment-help">Одинаковые окна на этой стене стоят на разных отметках.</p>
+									<button
+										aria-describedby="window-alignment-help"
+										disabled={isEditorReadOnly || isMutationBlocked || windowAlignmentDirty}
+										onClick={() => void confirmOpeningDraft("align")}
+										type="button"
+									>
+										Выровнять окна
+									</button>
+								</div>
+							) : null}
 							{dimensionError ? (
 								<p id="opening-draft-error" role="alert">
 									{dimensionError}
@@ -8742,8 +9299,9 @@ export function AppShell({
 				viewMode === "plan" ? (
 					<EditorModalSheet
 						telegramModal={canOpenTelegramEditorSheet && isSelectionInspectorExpanded && !selectionBehindSheet && selectedOpening === undefined}
-						onRequestClose={() => requestEditorBack(false, () => setIsSelectionInspectorExpanded(false))}
-						restoreFocus={() => document.querySelector<HTMLButtonElement>("#selected-item-inspector button[aria-expanded=false]") ?? selectionPropertiesTriggerRef.current}
+						busy={isWorking}
+						onRequestClose={() => requestEditorBack(false, closeFloorItemProperties)}
+						restoreFocus={() => floorPropertiesTriggerRef.current ?? selectionPropertiesTriggerRef.current}
 						aria-label="Свойства выбранного предмета"
 						className={`${styles.selectionPanel} ${styles.selectionInspectorPanel}`}
 						data-item-locked={selectedItemLocked}
@@ -8762,7 +9320,7 @@ export function AppShell({
 								title={selectedItem.label}
 								closeLabel="Скрыть панель предмета"
 								protectEditorDraft={fullTransientNavigationProtection}
-								onClose={() => requestEditorBack(false, () => setIsSelectionInspectorExpanded(false))}
+								onClose={() => requestEditorBack(false, closeFloorItemProperties)}
 							/>
 						) : (
 						<div className={styles.panelHeading}>
@@ -8796,10 +9354,11 @@ export function AppShell({
 										: "Развернуть панель предмета"
 								}
 								className={styles.selectionInspectorToggle}
+								ref={floorPropertiesTriggerRef}
 								data-editor-host-back={fullTransientNavigationProtection && isSelectionInspectorExpanded ? "panel" : undefined}
 								onClick={() => {
-									if (isNavigationProtected && isSelectionInspectorExpanded) requestEditorBack(false, () => setIsSelectionInspectorExpanded(false));
-									else setIsSelectionInspectorExpanded((expanded) => !expanded);
+									if (isNavigationProtected && isSelectionInspectorExpanded) requestEditorBack(false, closeFloorItemProperties);
+									else openSelectionProperties();
 								}}
 								type="button"
 							>
@@ -8811,190 +9370,14 @@ export function AppShell({
 						)}
 
 
-						{localGreyboxCatalog && project.schemaVersion === 1 && isSelectionInspectorExpanded ? (
-							<ItemWallDistanceFields
-								key={selectedItem.assetInstanceId}
-								skipBlurCommit={consumeSkippedNumericBlurCommit}
-								disabled={isEditorReadOnly || isMutationBlocked || selectedItemLocked}
-								distances={itemWallDistancesFor(derivedRooms.filter(({ roomId }) => roomId === selectedItem.roomId), selectedItem)}
-								onApply={(side, valueMm) => {
-									if (isEditorReadOnly || isMutationBlocked || selectedItemLocked) return false;
-									const point = itemWallDistancePositionFor(derivedRooms.filter(({ roomId }) => roomId === selectedItem.roomId), selectedItem, side, valueMm);
-									if (!point || point.roomId !== selectedItem.roomId) return false;
-									if (point.xMm === selectedItem.xMm && point.zMm === selectedItem.zMm) return true;
-									return moveItem({ assetInstanceId: selectedItem.assetInstanceId, ...point });
-								}}
-							/>
-						) : null}
 						{selectedItemPlacementWarnings.length > 0 ? (
 							<p data-testid="selected-item-placement-warning" role="status">
 								Предупреждение для этого предмета:{" "}
 								{itemPlacementWarningSummary(selectedItemPlacementWarnings)}.
 							</p>
 						) : null}
-						<div className={styles.itemDimensions}>
-							<label>
-								<span>Ширина</span>
-								<input
-									aria-label="Ширина выбранного предмета, мм"
-									aria-describedby={
-										dimensionError ? "dimension-error" : undefined
-									}
-									aria-invalid={dimensionError ? true : undefined}
-									autoComplete="off"
-									disabled={
-										isEditorReadOnly ||
-										selectedItemLocked ||
-										selectedItemHasFixedDimensions ||
-										isWorking ||
-										state.kind === "persist-failed" ||
-										state.kind === "recovery-needed"
-									}
-									inputMode="numeric"
-									data-editor-blur-commit=""
-
-							onBlur={(event) => {
-										if (!consumeSkippedNumericBlurCommit(event.currentTarget)) {
-											void commitSelectedItem();
-										}
-									}}
-									onChange={(event) =>
-										setSelectedItemFields({
-											...selectedItemFields,
-											widthMm: event.target.value,
-										})
-									}
-									onKeyDown={(event) => {
-										if (
-											cancelNumericDraftOnEscape(
-												event,
-												cancelSelectedItemNumericDraft,
-											)
-										) {
-											return;
-										}
-										commitOnEnter(event);
-									}}
-									value={selectedItemFields.widthMm}
-								/>
-							</label>
-							<label>
-								<span>Глубина</span>
-								<input
-									aria-label="Глубина выбранного предмета, мм"
-									autoComplete="off"
-									disabled={
-										isEditorReadOnly ||
-										selectedItemLocked ||
-										selectedItemHasFixedDimensions ||
-										isWorking ||
-										state.kind === "persist-failed" ||
-										state.kind === "recovery-needed"
-									}
-									inputMode="numeric"
-									data-editor-blur-commit=""
-
-							onBlur={(event) => {
-										if (!consumeSkippedNumericBlurCommit(event.currentTarget)) {
-											void commitSelectedItem();
-										}
-									}}
-									onChange={(event) =>
-										setSelectedItemFields({
-											...selectedItemFields,
-											depthMm: event.target.value,
-										})
-									}
-									onKeyDown={(event) => {
-										if (
-											cancelNumericDraftOnEscape(
-												event,
-												cancelSelectedItemNumericDraft,
-											)
-										) {
-											return;
-										}
-										commitOnEnter(event);
-									}}
-									value={selectedItemFields.depthMm}
-								/>
-							</label>
-							<label>
-								<span>Высота</span>
-								<input
-									aria-label="Высота выбранного предмета, мм"
-									autoComplete="off"
-									disabled={
-										isEditorReadOnly ||
-										selectedItemLocked ||
-										selectedItemHasFixedDimensions ||
-										isWorking ||
-										state.kind === "persist-failed" ||
-										state.kind === "recovery-needed"
-									}
-									inputMode="numeric"
-									data-editor-blur-commit=""
-
-							onBlur={(event) => {
-										if (!consumeSkippedNumericBlurCommit(event.currentTarget)) {
-											void commitSelectedItem();
-										}
-									}}
-									onChange={(event) =>
-										setSelectedItemFields({
-											...selectedItemFields,
-											heightMm: event.target.value,
-										})
-									}
-									onKeyDown={(event) => {
-										if (
-											cancelNumericDraftOnEscape(
-												event,
-												cancelSelectedItemNumericDraft,
-											)
-										) {
-											return;
-										}
-										commitOnEnter(event);
-									}}
-									value={selectedItemFields.heightMm}
-								/>
-							</label>
-							{!onRotationStepModeChange ? (
-								<div>
-									<label data-angle-unit>
-										<span>Поворот</span>
-										<input
-											aria-label="Угол поворота выбранного предмета, градусы"
-											autoComplete="off"
-											disabled={
-												isEditorReadOnly ||
-												selectedItemLocked ||
-												isWorking ||
-												state.kind === "persist-failed" ||
-												state.kind === "recovery-needed"
-											}
-											inputMode="decimal"
-											data-editor-blur-commit=""
-											onBlur={(event) => {
-												if (!consumeSkippedNumericBlurCommit(event.currentTarget)) {
-													void commitSelectedItemAngle();
-												}
-											}}
-											onChange={(event) => setSelectedItemAngleRaw(event.target.value)}
-											onKeyDown={(event) => {
-												if (!cancelNumericDraftOnEscape(event, cancelSelectedItemNumericDraft)) {
-													commitOnEnter(event);
-												}
-											}}
-											value={selectedItemAngleRaw}
-										/>
-									</label>
-								</div>
-							) : null}
-						</div>
-
-						{localGreyboxCatalog || selectedItemHasNoDeclaredColorVariant ? null : (
+						{hostNavigation ? null : floorItemDimensionFields}
+						{hostNavigation || localGreyboxCatalog || selectedItemHasNoDeclaredColorVariant ? null : (
 							<fieldset className={styles.quickPalette}>
 								<legend>Цвет предмета</legend>
 								<div>
@@ -9104,52 +9487,17 @@ export function AppShell({
 								</fieldset>
 							</>
 						) : null}
-						<ItemInspectorActions telegram={hostNavigation !== undefined}>
-							<button
-								aria-label={selectedItemLocked ? "Разблокировать предмет" : "Заблокировать предмет"}
-								aria-pressed={selectedItemLocked === true}
-								disabled={isEditorReadOnly || isMutationBlocked}
-								onClick={() =>
-									void setFloorItemLock(
-										selectedItem.assetInstanceId,
-										!selectedItemLocked,
-									)
-								}
-								type="button"
-							>
-								{selectedItemLocked
-									? (hostNavigation ? "Разблокировать" : "Разблокировать предмет")
-									: (hostNavigation ? "Заблокировать" : "Заблокировать предмет")}
-							</button>
-
-							<button
-								disabled={
-									isEditorReadOnly ||
-									isWorking ||
-									state.kind === "persist-failed" ||
-									state.kind === "recovery-needed"
-								}
-								aria-label="Дублировать предмет"
-								onClick={duplicateSelectedItem}
-								type="button"
-							>
-								{hostNavigation ? "Дублировать" : "Дублировать предмет"}
-							</button>
-							<button
-								className={styles.deleteAction}
-								disabled={
-									isEditorReadOnly ||
-									selectedItemLocked ||
-									isWorking ||
-									state.kind === "persist-failed" ||
-									state.kind === "recovery-needed"
-								}
-								onClick={() => void deleteSelectedItem()}
-								type="button"
-							>
-								Удалить предмет
-							</button>
-						</ItemInspectorActions>
+						{hostNavigation ? (isSelectionInspectorExpanded ? (
+							<TmaFloorItemTabs
+								active={floorItemTab}
+								onChange={setFloorItemTab}
+								sizes={floorItemDimensionFields}
+								walls={floorItemWallFields}
+								settings={floorItemActions}
+							/>
+						) : (
+							<button className={styles.tmaDuplicateAction} disabled={isEditorReadOnly || isMutationBlocked} onClick={duplicateSelectedItem} type="button">Дублировать</button>
+						)) : floorItemActions}
 					</EditorModalSheet>
 				) : activeTool === "select" &&
 					selectedWall &&
@@ -9164,10 +9512,11 @@ export function AppShell({
 					viewMode === "plan" ? (
 					<EditorModalSheet
 						telegramModal={canOpenTelegramEditorSheet && !selectedWallItemDraft && !selectionBehindSheet && selectedOpening === undefined}
-						onRequestClose={() => requestEditorBack(false, () => setIsSelectionInspectorExpanded(false))}
+						busy={isWorking}
+						onRequestClose={() => requestEditorBack(false, closeWallProperties)}
 						restoreFocus={() => selectionPropertiesTriggerRef.current}
 						aria-label="Свойства выбранной стены"
-						className={`${styles.selectionPanel} ${styles.selectionInspectorPanel}`}
+						className={`${styles.selectionPanel} ${styles.selectionInspectorPanel}${hasTelegramEditorSheet ? ` ${styles.wallPropertiesSheet}` : ""}`}
 						data-inspector-expanded={true}
 						data-testid="selected-wall-inspector"
 						hidden={
@@ -9182,14 +9531,8 @@ export function AppShell({
 							closeLabel="Закрыть свойства стены"
 							protectEditorDraft={fullTransientNavigationProtection}
 							onClose={() => {
-								const close = () => {
-									setIsSelectionInspectorExpanded(false);
-									setWallItemDraft(undefined);
-									setWallItemDraftFields(undefined);
-									selectionPropertiesTriggerRef.current?.focus();
-								};
-								if (isNavigationProtected) requestEditorBack(false, close);
-								else close();
+								if (isNavigationProtected) requestEditorBack(false, closeWallProperties);
+								else closeWallProperties();
 							}}
 						/>
 						) : (
@@ -9437,7 +9780,7 @@ export function AppShell({
 									customGlbResourceManifest.some(
 										(definition) =>
 											definition.assetDefinitionId === item.assetDefinitionId,
-									) || localGreyboxCatalog ? null : (
+									) || hostNavigation || localGreyboxCatalog ? null : (
 										<fieldset className={styles.quickPalette}>
 											<legend>Цвет настенного предмета «{item.label}»</legend>
 											<div>
@@ -9601,7 +9944,12 @@ export function AppShell({
 						) : null}
 						{selectedWallOpenings.map((opening) => (
 							<div className={styles.openingRow} key={opening.openingId}>
-								<div>
+								{hasTelegramEditorSheet ? (
+									<dl className={styles.wallOpeningWidth} data-testid="wall-opening-width">
+										<dt>{opening.kind === "Door" ? "Ширина дверного проёма" : "Ширина окна"}</dt>
+										<dd>{formatLengthMm(opening.widthMm)}</dd>
+									</dl>
+								) : <div>
 									<span>
 										{opening.kind === "Door"
 											? "Ширина дверного проёма, мм"
@@ -9609,7 +9957,7 @@ export function AppShell({
 									</span>
 
 									<output>{formatLengthMm(opening.widthMm)}</output>
-								</div>
+								</div>}
 								<button
 									disabled={
 										isEditorReadOnly ||
@@ -10053,6 +10401,25 @@ export function AppShell({
 				) : null}
 			</section>
 
+			{itemDeleteConfirmation && selectedItem ? (
+				<ProjectConfirmationDialog
+					plainLabels
+					label="Удалить предмет?"
+					title="Удалить предмет?"
+					cancelLabel="Отменить"
+					confirmLabel="Удалить предмет"
+					busyLabel="Сохраняем…"
+					busy={isWorking}
+					error={dimensionError}
+					onCancel={() => setItemDeleteConfirmation(false)}
+					onConfirm={async () => {
+						await deleteSelectedItem();
+						if (controller.snapshot().kind !== "saving") setItemDeleteConfirmation(false);
+					}}
+					returnFocusRef={itemDeleteTriggerRef}
+					fallbackFocusRef={selectionPropertiesTriggerRef}
+				>{selectedItem.label}</ProjectConfirmationDialog>
+			) : null}
 			{isRoomDirectoryOpen ? (
 				<EditorModalSheet
 					telegramModal={canOpenTelegramEditorSheet}
@@ -10328,17 +10695,19 @@ export function AppShell({
 						protectEditorDraft={fullTransientNavigationProtection}
 						onClose={() => isNavigationProtected ? requestEditorBack(false, closeOverlay) : closeOverlay()}
 					/>
-					<input
-						accept=".glb,model/gltf-binary,application/octet-stream"
-						aria-label="Выбрать GLB-модель для размещения"
-						className={styles.visuallyHidden}
-						data-testid="custom-glb-import-input"
-						disabled={customGlbImport.kind === "checking"}
-						onChange={(event) => void importCustomGlbFile(event.currentTarget.files?.[0])}
-						ref={customGlbImportInputRef}
-						tabIndex={localGreyboxCatalog ? -1 : undefined}
-						type="file"
-					/>
+					{(!localGreyboxCatalog || isModelLibrarySelected) && (
+						<input
+							accept=".glb,model/gltf-binary,application/octet-stream"
+							aria-label="Выбрать GLB-модель для размещения"
+							className={styles.visuallyHidden}
+							data-testid="custom-glb-import-input"
+							disabled={customGlbImport.kind === "checking"}
+							onChange={(event) => void importCustomGlbFile(event.currentTarget.files?.[0])}
+							ref={customGlbImportInputRef}
+							tabIndex={localGreyboxCatalog ? -1 : undefined}
+							type="file"
+						/>
+					)}
 
 					{localGreyboxCatalog ? (
 						<TelegramGreyboxCatalog
@@ -10353,10 +10722,7 @@ export function AppShell({
 								setPlaceholderComposerError(undefined);
 								setIsPlaceholderComposerOpen((open) => !open);
 							}}
-							onImportModel={() => {
-								openOwnModelLibrary();
-								customGlbImportInputRef.current?.click();
-							}}
+							onImportModel={() => customGlbImportInputRef.current?.click()}
 						/>
 					) : null}
 					{!localGreyboxCatalog || isModelLibrarySelected ? <>

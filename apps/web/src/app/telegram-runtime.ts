@@ -203,6 +203,7 @@ export function createTelegramRuntime(
 	});
 	const shared = createSharedProjectController({
 		...ports,
+		floorItemCollisionPolicy: "reject",
 		...(context.doorHingeMode ? {
 			preserveDoorHinges: () => storage.run(async (access) => access.databaseVersion === 4),
 		} : {}),

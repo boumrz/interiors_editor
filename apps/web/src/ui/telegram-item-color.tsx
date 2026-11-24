@@ -13,6 +13,7 @@ import {
 import styles from "./AppShell.module.css";
 import { SheetHeader } from "./SheetHeader";
 import sheetStyles from "./SheetHeader.module.css";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 
 const swatchNames: Record<
 	AlphaParametricItemColorVariant["variantId"],
@@ -147,11 +148,13 @@ function SceneColorPicker({
 				<span>Цвет</span>
 			</button>
 			{open && (
-				<dialog
+				<TelegramSheetFrame
+					as="dialog"
+					telegram
 					ref={dialogRef}
 					id={dialogId}
 					aria-labelledby={titleId}
-					className={`${sheetStyles.dialog} ${sheetStyles.telegramDialog} ${sceneStyles.colorSheet}`}
+					className={sceneStyles.colorSheet}
 					data-scene-color-palette=""
 					onCancel={(event) => {
 						event.preventDefault();
@@ -159,17 +162,6 @@ function SceneColorPicker({
 					}}
 					onClose={(event) => {
 						if (!event.currentTarget.open) setOpen(false);
-					}}
-					onPointerUp={(event) => {
-						if (event.target !== event.currentTarget) return;
-						const rect = event.currentTarget.getBoundingClientRect();
-						if (
-							event.clientX < rect.left ||
-							event.clientX > rect.right ||
-							event.clientY < rect.top ||
-							event.clientY > rect.bottom
-						)
-							event.currentTarget.close();
 					}}
 				>
 					<SheetHeader
@@ -208,7 +200,7 @@ function SceneColorPicker({
 							Цвет на экране приблизительный.
 						</p>
 					</div>
-				</dialog>
+				</TelegramSheetFrame>
 			)}
 		</div>
 	);

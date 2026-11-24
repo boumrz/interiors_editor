@@ -9,7 +9,7 @@ import {
 import type { DrawingDimensionVisibility } from "./drawing-dimension-visibility";
 import styles from "./DimensionFilter.module.css";
 import { SheetHeader } from "./SheetHeader";
-import sheetStyles from "./SheetHeader.module.css";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 
 const tabs = [
 	{
@@ -98,16 +98,18 @@ export function DimensionFilter({
 		tabControls.current[next]?.focus();
 	};
 	return (
-		<dialog
+		<TelegramSheetFrame
+			as="dialog"
+			telegram={telegram}
 			aria-labelledby={`${id}-heading`}
-			className={telegram ? `${styles.dialog} ${sheetStyles.telegramDialog}` : styles.dialog}
+			className={styles.dialog}
 			data-telegram-sheet={telegram ? "dimensions" : undefined}
 			data-testid="dimension-filter"
 			onCancel={(event) => {
 				event.preventDefault();
 				onClose();
 			}}
-			onClick={(event) => {
+			onClick={telegram ? undefined : (event) => {
 				if (event.target !== event.currentTarget) return;
 				const bounds = event.currentTarget.getBoundingClientRect();
 				if (
@@ -198,6 +200,6 @@ export function DimensionFilter({
 					Готово
 				</button>
 			</footer>
-		</dialog>
+		</TelegramSheetFrame>
 	);
 }

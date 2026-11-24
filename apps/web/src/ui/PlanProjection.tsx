@@ -44,10 +44,12 @@ import {
 	type RotationDomeGesture,
 } from "./three-dimensional-rotation-gesture";
 import { degreesForYawRadians, steppedYawRadians } from "./rotation-angle";
+import { observePlanChrome, placePlanRotationEditor } from "./plan-rotation-layout";
 import { DrawingDimensions } from "./DrawingDimensions";
 import { ItemWallDistanceFields, ItemWallDistanceLines, ItemWallDistanceValues } from "./ItemWallDistances";
 import { itemWallDistancePositionFor, itemWallDistancesFor, type ItemWallDistance } from "./item-wall-distances";
 import { SheetHeader } from "./SheetHeader";
+import { TelegramSheetFrame } from "./TelegramSheetFrame";
 import { selectDrawingDimensions } from "./drawing-dimension-selection";
 import { filterDrawingDimensions } from "./drawing-dimension-visibility";
 import { drawingDimensionsFor } from "./drawing-dimensions";
@@ -123,9 +125,11 @@ const itemArrowSteps: Readonly<Partial<Record<string, { xMm: number; zMm: number
 
 export function PlanProjection({
 	plainLabels = false,
+	reversedItemFrontIds,
 	exactFloorYaw = false,
 	rotationStepMode = false,
 	onRotationStepModeChange,
+	rotationInspectorState,
 	selectedWallRun,
 	initialItemPlacementPoint,
 	onItemPlacementPointChange,
@@ -134,6 +138,7 @@ export function PlanProjection({
 	showOpeningTemplates = false,
 	selectedOpeningId,
 	showItemWallDistances = false,
+	focusedWallDistance,
 	floorItemWallSnap,
 	itemPlacementControls,
 	registerTransientBoundary,
@@ -146,6 +151,8 @@ export function PlanProjection({
 	isWallVertexMoveMode,
 	movableWallVertexIds,
 	openingCreationPreview,
+	openingHostIds,
+	onChooseOpeningHost,
 	openingMovePreview,
 	itemDraft,
 	readOnly,
@@ -165,6 +172,7 @@ export function PlanProjection({
 	onSelectItem,
 	onSelectWall,
 	onSelectOpening,
+	onOpeningMoveStart,
 	onClearSelection,
 	onWallMoveModeChange,
 	onWallSplitModeChange,
@@ -261,9 +269,7 @@ export function PlanProjection({
 		readonly start: { readonly xMm: number; readonly zMm: number };
 	}>();
 	const [canvasInsets, setCanvasInsets] = useState({ top: 116, bottom: 96 });
-	const [rotationChromeTop, setRotationChromeTop] = useState<number>(
-		initialPlanCanvasSize.canvasHeight,
-	);
+	const [rotationChrome, setRotationChrome] = useState({ top: 0, bottom: 0, ready: false });
 	const [selectedRotationEditor, setSelectedRotationEditor] =
 		useState<HTMLElement | null>(null);
 	const [selectedRotationSize, setSelectedRotationSize] = useState({ width: 0, height: 0 });
@@ -378,9 +384,9 @@ export function PlanProjection({
 							drawingDimensionsFor(dimensionProject),
 							dimensionVisibility,
 						),
-					)
+					).filter(dimension => !(showOpeningTemplates && doorOpeningDrag && dimension.openingId === doorOpeningDrag.openingId))
 				: [],
-		[dimensionProject, dimensionVisibility],
+		[dimensionProject, dimensionVisibility, doorOpeningDrag, showOpeningTemplates],
 	);
 	const hasDimensionCandidates = drawingDimensions.length > 0;
 	const [dimensionTypography, setDimensionTypography] = useState<{
@@ -739,9 +745,7 @@ export function PlanProjection({
 		const canvas = planSvgRef.current;
 		if (!canvas) return undefined;
 		const shell = canvas.closest('[data-testid="editor-workspace"]');
-		const rotationObstacles = onRotationStepModeChange
-			? Array.from(shell?.querySelectorAll("[data-plan-rotation-obstacle]") ?? [])
-			: [];
+		const selectedItemInspectorSelector = '[data-testid="selected-item-inspector"]';
 		// Selection mounts a different inspector; attach observers to that current
 		// surface without changing the fit of the plan when it opens.
 		const inspectorSelectors = [
@@ -749,9 +753,11 @@ export function PlanProjection({
 				? ['[data-testid="selected-wall-inspector"]']
 				: []),
 			...(activeTool === "select" && selectedItemId
-				? ['[data-testid="selected-item-inspector"]']
+				? [selectedItemInspectorSelector]
 				: []),
 		];
+		const rotationObstacleSelector = "[data-plan-rotation-obstacle]";
+		const visualViewport = plainLabels && onRotationStepModeChange ? window.visualViewport : undefined;
 		const syncCanvasSize = () => {
 			const bounds = canvas.getBoundingClientRect();
 			const header = shell?.querySelector('[data-testid="editor-top-bar"]');
@@ -761,17 +767,33 @@ export function PlanProjection({
 				(header?.getBoundingClientRect().bottom ?? bounds.top) - bounds.top,
 			);
 			const visibleBottom = Math.min(bounds.bottom, shell?.getBoundingClientRect().bottom ?? bounds.bottom);
+			const inspectorBoxes = inspectorSelectors.flatMap((selector) => {
+				const element = shell?.querySelector(selector);
+				const box = element && !element.closest("[hidden]") ? element.getBoundingClientRect() : undefined;
+				return box && box.width > 0 && box.height > 0 ? [{ selector, box }] : [];
+			});
 			// The plan extends behind the keyboard so its world projection does
 			// not refit. Bound the rotation panel by the visible workspace.
 			if (onRotationStepModeChange) {
-				const chromeTop = Math.min(
+				const rotationObstacles = Array.from(shell?.querySelectorAll(rotationObstacleSelector) ?? []);
+				const bottom = Math.min(
 					visibleBottom,
+					visualViewport ? visualViewport.offsetTop + visualViewport.height : visibleBottom,
 					dock?.getBoundingClientRect().top ?? visibleBottom,
 					...rotationObstacles.map((element) => element.getBoundingClientRect())
 						.filter((box) => box.width > 0 && box.height > 0)
 						.map((box) => box.top),
+					...inspectorBoxes.map(({ box }) => box.top),
 				);
-				setRotationChromeTop(Math.max(0, chromeTop - bounds.top));
+				const rotationTop = Math.max(top, (visualViewport?.offsetTop ?? bounds.top) - bounds.top);
+				const rotationBottom = Math.max(0, bottom - bounds.top);
+				const ready = rotationInspectorState !== "pending" &&
+					(rotationInspectorState !== "present" || inspectorBoxes.some(({ selector }) => selector === selectedItemInspectorSelector));
+				setRotationChrome((previous) =>
+					previous.top === rotationTop && previous.bottom === rotationBottom && previous.ready === ready
+						? previous
+						: { top: rotationTop, bottom: rotationBottom, ready },
+				);
 			}
 			const measuredBottom = Math.max(
 				0,
@@ -784,23 +806,12 @@ export function PlanProjection({
 					: measuredBottom;
 				return previous.top === top && previous.bottom === bottom ? previous : { top, bottom };
 			});
-			const obstacles = [
-				...(inspectorSelectors.length
-					? (shell?.querySelectorAll(inspectorSelectors.join(",")) ?? [])
-					: []),
-			].flatMap((element) => {
-				const box = element.getBoundingClientRect();
-				return box.width > 0 && box.height > 0
-					? [
-							{
-								x: box.left - bounds.left - 4,
-								y: box.top - bounds.top - 4,
-								width: box.width + 8,
-								height: box.height + 8,
-							},
-						]
-					: [];
-			});
+			const obstacles = inspectorBoxes.map(({ box }) => ({
+				x: box.left - bounds.left - 4,
+				y: box.top - bounds.top - 4,
+				width: box.width + 8,
+				height: box.height + 8,
+			}));
 			setAnnotationObstacles((previous) =>
 				JSON.stringify(previous) === JSON.stringify(obstacles)
 					? previous
@@ -817,26 +828,38 @@ export function PlanProjection({
 					: next,
 			);
 		};
+		const chromeSelector = [
+			'[data-testid="editor-top-bar"]',
+			'[data-testid="editor-action-dock"]',
+			...inspectorSelectors,
+		].join(",");
+		if (shell && plainLabels && onRotationStepModeChange) {
+			const disconnect = observePlanChrome(
+				shell,
+				() => [canvas, shell, ...shell.querySelectorAll(chromeSelector + "," + rotationObstacleSelector)],
+				syncCanvasSize,
+			);
+			visualViewport?.addEventListener("resize", syncCanvasSize);
+			visualViewport?.addEventListener("scroll", syncCanvasSize);
+			return () => {
+				disconnect();
+				visualViewport?.removeEventListener("resize", syncCanvasSize);
+				visualViewport?.removeEventListener("scroll", syncCanvasSize);
+			};
+		}
 		syncCanvasSize();
 		const observer = new ResizeObserver(syncCanvasSize);
 		observer.observe(canvas);
-		if (shell && onRotationStepModeChange) observer.observe(shell);
-		for (const obstacle of rotationObstacles) observer.observe(obstacle);
-		for (const target of shell?.querySelectorAll(
-			[
-				'[data-testid="editor-top-bar"]',
-				'[data-testid="editor-action-dock"]',
-				...inspectorSelectors,
-			].join(","),
-		) ?? [])
+		for (const target of shell?.querySelectorAll(chromeSelector) ?? [])
 			observer.observe(target);
 		return () => observer.disconnect();
-	}, [selectedWallId, selectedItemId, activeTool, isInteractionLocked, onRotationStepModeChange]);
+	}, [selectedWallId, selectedItemId, activeTool, isInteractionLocked, onRotationStepModeChange, plainLabels, rotationInspectorState]);
 
 	useLayoutEffect(() => {
 		if (!selectedRotationEditor) return;
 		const measure = () => {
-			const { offsetWidth: width, offsetHeight: height } = selectedRotationEditor;
+			const { clientHeight, offsetWidth: width, offsetHeight, scrollHeight } = selectedRotationEditor;
+			const height = Math.max(offsetHeight, scrollHeight + offsetHeight - clientHeight);
 			setSelectedRotationSize((previous) =>
 				previous.width === width && previous.height === height ? previous : { width, height },
 			);
@@ -844,6 +867,7 @@ export function PlanProjection({
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(selectedRotationEditor);
+		if (selectedRotationEditor.firstElementChild) observer.observe(selectedRotationEditor.firstElementChild);
 		return () => observer.disconnect();
 	}, [selectedRotationEditor]);
 
@@ -1463,7 +1487,7 @@ export function PlanProjection({
 		const assessment = assessParametricFloorItemPlacement(project, {
 			...candidate,
 			roomId,
-		});
+		}, undefined, plainLabels ? "reject" : "warn");
 		return {
 			...candidate,
 			isValid: assessment.kind !== "invalid",
@@ -1475,7 +1499,7 @@ export function PlanProjection({
 				? { warnings: assessment.warnings }
 				: {}),
 		};
-	}, [activeTool, exactFloorYaw, floorItemWallSnap, itemDraft, itemPoint, itemPointIsExact, project]);
+	}, [activeTool, exactFloorYaw, floorItemWallSnap, itemDraft, itemPoint, itemPointIsExact, plainLabels, project]);
 	const placementXMm = itemPlacementPreview?.xMm;
 	const placementZMm = itemPlacementPreview?.zMm;
 	useEffect(() => {
@@ -1564,7 +1588,7 @@ export function PlanProjection({
 		void Promise.resolve(onPlaceItem(point)).finally(() => {
 			if (itemPlacementConfirmationIdRef.current !== confirmationId) return;
 			setIsConfirmingItemPlacement(false);
-			clearItemPlacementPreview();
+			if (!plainLabels) clearItemPlacementPreview();
 		});
 	};
 
@@ -1769,7 +1793,8 @@ export function PlanProjection({
 		}
 		const hitWallId = (event.target as Element)
 			.closest("[data-wall-id]")
-			?.getAttribute("data-wall-id");
+			?.getAttribute("data-wall-id") ?? (openingHostIds ? (event.target as Element)
+				.closest("[data-door-opening-wall]")?.getAttribute("data-door-opening-wall") : undefined);
 		const wallSegmentId = activeTool === "select" && hitWallId
 			? nearestWallAtPoint({
 				x: (canvasPoint.x - viewportRef.current.panX) / viewportRef.current.zoom,
@@ -1785,6 +1810,15 @@ export function PlanProjection({
 				}] : [];
 			}), hitWallId) ?? hitWallId
 			: hitWallId;
+		if (openingHostIds) {
+			pendingCanvasSelectionRef.current = {
+				pointerId: event.pointerId,
+				pointerOrigin: canvasPoint,
+				wallSegmentId: wallSegmentId ?? undefined,
+			};
+			startPan(canvasPoint);
+			return;
+		}
 		const wallVertexId = (event.target as Element)
 			.closest("[data-wall-vertex-id]")
 			?.getAttribute("data-wall-vertex-id");
@@ -1934,11 +1968,12 @@ export function PlanProjection({
 					candidate.wallSegmentId === doorOpeningWallId,
 			);
 			if (!opening) return;
+			onOpeningMoveStart?.();
 			event.preventDefault();
 			event.stopPropagation();
 			gesture.current = undefined;
 			pendingCanvasSelectionRef.current = undefined;
-			onSelectOpening?.(opening.openingId);
+			if (!showOpeningTemplates) onSelectOpening?.(opening.openingId);
 			const drag: DoorOpeningDrag = {
 				openingId: opening.openingId,
 				wallSegmentId: opening.wallSegmentId,
@@ -2460,7 +2495,14 @@ export function PlanProjection({
 	};
 
 	const onPointerUp = async (event: ReactPointerEvent<SVGSVGElement>) => {
-		if (!isHostContactCurrent(event.pointerId)) { releaseHostContact(event.pointerId); return; }
+		if (!isHostContactCurrent(event.pointerId)) {
+			if (doorOpeningDragRef.current?.pointerId === event.pointerId) {
+				doorOpeningDragRef.current = undefined;
+				setDoorOpeningDrag(undefined);
+			}
+			releaseHostContact(event.pointerId);
+			return;
+		}
 		if (activeTool === "item" && finishPlacementContact(event.pointerId)) return;
 		if (finishRetainedHostCameraContact(event.pointerId)) return;
 		hostContacts.current.delete(event.pointerId);
@@ -2569,6 +2611,7 @@ export function PlanProjection({
 			doorOpeningDragRef.current = undefined;
 			setDoorOpeningDrag(undefined);
 			pointers.current.delete(event.pointerId);
+			if (showOpeningTemplates) onSelectOpening?.(activeDoorOpeningDrag.openingId);
 			if (
 				!readOnlyRef.current &&
 				activeDoorOpeningDrag.base === liveProjectRef.current &&
@@ -2755,7 +2798,18 @@ export function PlanProjection({
 				if (
 					distance(pendingSelection.pointerOrigin, canvasPointFor(event)) <= 6
 				) {
-					if (pendingSelection.wallSegmentId) {
+					if (openingHostIds && onChooseOpeningHost) {
+						const wall = project.level.wallSegments.find(candidate => candidate.wallSegmentId === pendingSelection.wallSegmentId);
+						const start = project.level.vertices.find(vertex => vertex.vertexId === wall?.startVertexId);
+						const end = project.level.vertices.find(vertex => vertex.vertexId === wall?.endVertexId);
+						if (wall && start && end && !readOnlyRef.current) {
+							const dx = end.xMm - start.xMm;
+							const dz = end.zMm - start.zMm;
+							const point = projectPointFor(event);
+							const offsetMm = Math.round(((point.xMm - start.xMm) * dx + (point.zMm - start.zMm) * dz) / Math.hypot(dx, dz));
+							if (Number.isSafeInteger(offsetMm)) onChooseOpeningHost(wall.wallSegmentId, offsetMm);
+						}
+					} else if (pendingSelection.wallSegmentId) {
 						onSelectWall(pendingSelection.wallSegmentId);
 					} else {
 						onClearSelection?.();
@@ -3144,7 +3198,11 @@ export function PlanProjection({
 		yawRadians: itemRotation?.yawRadians ?? yawRadiansForEditorFloorAsset(transformItem),
 		continuousYaw: true as const,
 	} : undefined;
-	const wallDistanceFootprint = itemPlacementPreview ?? transformFootprint;
+	const inspectedDistanceAsset = focusedWallDistance
+		? project.assetInstances.find((item) => item.assetInstanceId === selectedItemId)
+		: undefined;
+	const wallDistanceFootprint = itemPlacementPreview ?? transformFootprint ??
+		(inspectedDistanceAsset && isFloorEditorAsset(inspectedDistanceAsset) ? inspectedDistanceAsset : undefined);
 	const wallDistances = showItemWallDistances && !readOnly && derivedPlan && wallDistanceFootprint
 		? itemWallDistancesFor(derivedPlan.rooms, wallDistanceFootprint)
 		: [];
@@ -3185,28 +3243,16 @@ export function PlanProjection({
 	const rotationRadius = (item: EditorFloorAsset) => plainLabels
 		? Math.max(36 / viewport.zoom, (Math.hypot(item.widthMm, item.depthMm) * drawingScale) / 2 + 24 / viewport.zoom)
 		: Math.max(24, (Math.max(item.widthMm, item.depthMm) * drawingScale) / 2 + 18);
-	const selectedRotationStyle = (item: EditorFloorAsset) => {
-		const center = dimensionScreenPoint(renderedItemPosition(item));
-		const ringRadius = rotationRadius(item) * viewport.zoom;
-		const gap = 12;
-		const { width, height: panelHeight } = selectedRotationSize;
-		const topLimit = canvasInsets.top + gap;
-		const dockTop = rotationChromeTop - gap;
-		const inspectorTop = annotationObstacles[0]?.y;
-		const bottomLimit = inspectorTop !== undefined && inspectorTop - topLimit >= panelHeight
-			? Math.min(dockTop, inspectorTop)
-			: dockTop;
-		const maxHeight = Math.max(0, bottomLimit - topLimit);
-		const height = Math.min(panelHeight, maxHeight);
-		const below = center.y + ringRadius + gap;
-		const above = center.y - ringRadius - gap - height;
-		const top = below + height > bottomLimit && above >= topLimit ? above : below;
-		return {
-			left: `clamp(${gap}px, ${center.x - width / 2}px, calc(100% - ${width + gap}px))`,
-			top: Math.max(topLimit, Math.min(top, bottomLimit - height)),
-			maxHeight,
-		};
-	};
+	const selectedRotationPlacement = rotationItem ? placePlanRotationEditor({
+		center: dimensionScreenPoint(renderedItemPosition(rotationItem)),
+		ringRadius: rotationRadius(rotationItem) * viewport.zoom,
+		panel: selectedRotationSize,
+		space: {
+			...rotationChrome,
+			width: canvasSize.canvasWidth,
+			ready: rotationChrome.ready && rotationInspectorState !== "pending",
+		},
+	}) : undefined;
 	const selectedRotationDisabled =
 		readOnly || isConfirmingItemTransform || itemRotation !== undefined ||
 		itemDrag !== undefined || retainedHostTransform !== undefined;
@@ -3233,6 +3279,7 @@ export function PlanProjection({
 				data-active-tool={activeTool}
 				data-interaction-locked={isInteractionLocked ? "true" : undefined}
 				data-testid="plan-canvas"
+				data-opening-dragging={showOpeningTemplates && !!doorOpeningDrag || undefined}
 				onPointerCancel={onPointerCancel}
 				onLostPointerCapture={(event) => {
 					// Normal release has already cleared these refs. Only unexpected
@@ -3546,6 +3593,7 @@ export function PlanProjection({
 								<path
 									className={styles.wallHitArea}
 									data-testid="wall-segment"
+									data-opening-host={openingHostIds?.has(wall.wallSegmentId) || undefined}
 									data-wall-id={wall.wallSegmentId}
 									data-wall-kind={isExterior ? "exterior" : "interior"}
 									d={wallHitPath(startPoint, endPoint, wallHitTarget)}
@@ -3582,6 +3630,8 @@ export function PlanProjection({
 											openingEnd.x - openingStart.x,
 											openingEnd.y - openingStart.y,
 										);
+										const dimensionOffset = 16 / viewport.zoom;
+										const isDraggedOpening = doorOpeningDrag?.openingId === opening.openingId;
 										const windowPaneNormal =
 											opening.kind === "Window" &&
 											openingLength > Number.EPSILON
@@ -3682,7 +3732,23 @@ export function PlanProjection({
 													/>
 												)}
 												</>}
-												{!readOnly && activeTool === "select" ? (
+												{showOpeningTemplates && (openingPreview?.openingId === opening.openingId || openingMovePreview?.openingId === opening.openingId) ? (
+													<g data-testid="opening-preview-edges" className={styles.openingPreviewEdges} pointerEvents="none">
+														<circle cx={openingStart.x} cy={openingStart.y} r={3 / viewport.zoom} />
+														<circle cx={openingEnd.x} cy={openingEnd.y} r={3 / viewport.zoom} />
+														{isDraggedOpening && openingLength > 0 ? (
+															<text
+																data-testid="opening-drag-dimension"
+																x={(openingStart.x + openingEnd.x) / 2 + (openingEnd.y - openingStart.y) / openingLength * dimensionOffset}
+																y={(openingStart.y + openingEnd.y) / 2 - (openingEnd.x - openingStart.x) / openingLength * dimensionOffset}
+																fontSize={13 / viewport.zoom}
+																textAnchor="middle"
+																dominantBaseline="central"
+															>{opening.widthMm}</text>
+														) : null}
+													</g>
+												) : null}
+												{!readOnly && activeTool === "select" && !openingHostIds ? (
 													<g>
 														{/* biome-ignore lint/a11y/useSemanticElements: SVG handle must stay in plan coordinates; arrow keys provide keyboard movement. */}
 														<circle
@@ -3950,6 +4016,8 @@ export function PlanProjection({
 						const silhouettePaths = planItemSilhouettePathsFor(
 							planItemSilhouetteKindFor(item.label),
 						);
+						const reversedFront = reversedItemFrontIds?.has(item.assetInstanceId);
+						const silhouetteRotation = reversedFront ? " rotate(180 50 50)" : "";
 						const frontLength = Math.max(
 							5,
 							Math.min(12, (item.depthMm * drawingScale) / 2 - 2),
@@ -4027,7 +4095,7 @@ export function PlanProjection({
 										<g
 											className={styles.schematicItemDetail}
 											data-testid="plan-item-silhouette"
-											transform={`translate(${start.x} ${start.y}) scale(${(item.widthMm * drawingScale) / 100} ${(item.depthMm * drawingScale) / 100})`}
+											transform={`translate(${start.x} ${start.y}) scale(${(item.widthMm * drawingScale) / 100} ${(item.depthMm * drawingScale) / 100})${silhouetteRotation}`}
 										>
 											{silhouettePaths.map((path) => (
 												<path
@@ -4042,6 +4110,7 @@ export function PlanProjection({
 										d={`M ${center.x} ${center.y + frontLength} l -4 -6 h 8 z`}
 										data-testid="schematic-item-front"
 										pointerEvents="none"
+										transform={reversedFront ? `rotate(180 ${center.x} ${center.y})` : undefined}
 									/>
 								</g>
 								{selected ? (
@@ -4430,6 +4499,7 @@ export function PlanProjection({
 				{wallDistances.length > 0 ? (
 					<ItemWallDistanceLines
 						distances={wallDistances}
+						focusedSide={focusedWallDistance}
 						projectPoint={dimensionScreenPoint}
 						bounds={wallDistanceBounds}
 						obstacles={dimensionLayouts.flatMap((layout) => layout.kind === "placed" ? [layout.labelBounds] : [])}
@@ -4439,10 +4509,12 @@ export function PlanProjection({
 			{rotationItem && onRotationStepModeChange ? (
 				<aside
 					aria-label="Поворот выбранного предмета"
+					aria-hidden={!selectedRotationPlacement || undefined}
 					className={styles.planRotationEditor}
 					data-testid="two-dimensional-rotation-editor"
+					inert={!selectedRotationPlacement || undefined}
 					ref={setSelectedRotationEditor}
-					style={selectedRotationStyle(rotationItem)}
+					style={selectedRotationPlacement ?? { visibility: "hidden", top: 0, left: 12 }}
 				>
 					<div className={rotationStyles.row} data-rotation-target="selected">
 						{selectedRotationButton(rotationItem, 1)}
@@ -4471,7 +4543,7 @@ export function PlanProjection({
 				</div>
 			) : null}
 			{activeTool === "item" && itemDraft ? (
-				<aside
+				<TelegramSheetFrame telegram={plainLabels} canvasAnchored
 					aria-label="Размещение предмета"
 					className={styles.itemPlacementDock}
 					data-placement-tier={itemPlacementPreview?.tier}
@@ -4594,7 +4666,7 @@ export function PlanProjection({
 							{isConfirmingItemPlacement ? "Сохраняем…" : plainLabels ? "Подтвердить" : "Поставить"}
 						</button>
 					</div>
-				</aside>
+				</TelegramSheetFrame>
 			) : null}
 			{retainedHostTransform ? <aside className={styles.wallMoveDraftActions} role="status" style={{ pointerEvents: "none" }}>
 				{retainedHostTransform.kind === "move" ? "Продолжите перемещение или отмените правку." : "Продолжите поворот или отмените правку."}
@@ -4660,7 +4732,7 @@ export function PlanProjection({
 				</aside>
 			) : null}
 			{wallMoveDraft?.phase === "ready" ? (
-				<aside
+				<TelegramSheetFrame telegram={plainLabels} canvasAnchored
 					aria-live="polite"
 					className={styles.wallMoveDraftActions}
 					data-testid="wall-move-draft"
@@ -4683,10 +4755,10 @@ export function PlanProjection({
 							{plainLabels ? "Отменить" : "Отменить перенос"}
 						</button>
 					</div>
-				</aside>
+				</TelegramSheetFrame>
 			) : null}
 			{wallVertexMoveDraft?.phase === "ready" ? (
-				<aside
+				<TelegramSheetFrame telegram={plainLabels} canvasAnchored
 					aria-live="polite"
 					className={styles.wallMoveDraftActions}
 					data-testid="wall-vertex-move-draft"
@@ -4709,10 +4781,10 @@ export function PlanProjection({
 							{plainLabels ? "Отменить" : "Отменить перенос вершины"}
 						</button>
 					</div>
-				</aside>
+				</TelegramSheetFrame>
 			) : null}
 			{wallSplitDraft && !wallSplitHostConflict ? (
-				<aside
+				<TelegramSheetFrame telegram={plainLabels} canvasAnchored
 					aria-live="polite"
 					className={styles.wallMoveDraftActions}
 					data-testid="wall-split-draft"
@@ -4738,7 +4810,7 @@ export function PlanProjection({
 							{plainLabels ? "Отменить" : "Отменить разделение"}
 						</button>
 					</div>
-				</aside>
+				</TelegramSheetFrame>
 			) : null}
 			{wallSplitHostConflict && plainLabels ? (
 				<EditorConsequenceSheet
@@ -4844,7 +4916,7 @@ export function PlanProjection({
 				</aside>
 			) : null}
 			{wallDraft?.phase === "ready" ? (
-				<aside
+				<TelegramSheetFrame telegram={plainLabels} canvasAnchored
 					aria-live="polite"
 					className={styles.wallDraftActions}
 					data-testid="wall-draft-actions"
@@ -4881,7 +4953,7 @@ export function PlanProjection({
 							{plainLabels ? "Отменить" : "Отменить стену"}
 						</button>
 					</div>
-				</aside>
+				</TelegramSheetFrame>
 			) : null}
 		</>
 	);

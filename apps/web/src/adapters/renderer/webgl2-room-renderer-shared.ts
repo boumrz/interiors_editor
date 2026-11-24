@@ -3,6 +3,7 @@ import type { Object3D } from "three";
 import { greyboxShapeTemplates, type AdditionalGreyboxKind } from "./greybox-shape-templates";
 
 import type {
+	ExteriorCutawayEdge,
 	RectangularRoomWebGlScene,
 	SceneBox,
 } from "./rectangular-room-projection";
@@ -29,7 +30,12 @@ export interface WebGl2OrbitCamera {
 
 export type WebGl2Camera = WebGl2OrbitCamera;
 
-export type WebGl2CutawayMode = "auto" | "show-all";
+export type WebGl2CutawayMode = "auto" | "auto-sector" | "show-all";
+
+export interface WebGl2WallCutaway {
+	readonly hiddenWallSegmentIds: ReadonlySet<string>;
+	readonly sector?: number;
+}
 
 /** Rendering quality is an ephemeral projection setting, never Project state. */
 export type WebGl2RendererQualityTier = "standard" | "reduced";
@@ -56,13 +62,188 @@ const CUTAWAY_FACADE_NORMAL_SIMILARITY = 0.999;
 const CUTAWAY_FACADE_SUPPORT_TOLERANCE_M = 0.025;
 
 interface CutawayFacadeCandidate {
-	readonly facingDot: number;
 	readonly normal: {
 		readonly x: number;
 		readonly z: number;
 	};
 	readonly supportM: number;
+	readonly vertexIds?: readonly [string, string];
 	readonly wallSegmentId: string;
+}
+
+const SECTOR_SIZE = Math.PI / 4;
+const SECTOR_HYSTERESIS = Math.PI / 60;
+const SECTOR_SUPPORT_ROUNDING_M = 0.000_001;
+
+/**
+ * View state belongs to a renderer instance. Remember the last classified sector
+ * even when an irregular plan offers no wall to hide in that sector.
+ */
+export function wallCutawayForCamera(
+	scene: RectangularRoomWebGlScene,
+	camera: WebGl2Camera,
+	mode: WebGl2CutawayMode,
+	previous?: WebGl2WallCutaway,
+): WebGl2WallCutaway {
+	if (mode !== "auto-sector") {
+		return { hiddenWallSegmentIds: hiddenWallSegmentIdsForCutaway(scene, camera, previous?.hiddenWallSegmentIds, mode) };
+	}
+	const { eye } = cameraEyeAndTargetFor(scene, camera);
+	const x = eye[0] - scene.cameraBounds.centerXM;
+	const z = eye[2] - scene.cameraBounds.centerZM;
+	if (Math.hypot(x, z) <= Number.EPSILON) {
+		return { hiddenWallSegmentIds: new Set() };
+	}
+	const sector = orbitSectorFor(Math.atan2(z, x), previous?.sector);
+	return {
+		hiddenWallSegmentIds: scene.exteriorCutawayEdges
+			? frontContourForSector(scene.exteriorCutawayEdges, sector)
+			: new Set(sectorFacadesFor(cutawayFacadesFor(scene), sector).map(facade => facade.wallSegmentId)),
+		sector,
+	};
+}
+
+function orbitSectorFor(angle: number, previous: number | undefined): number {
+	if (previous !== undefined) {
+		const delta = angle - previous * SECTOR_SIZE;
+		const distance = Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta)));
+		if (distance <= SECTOR_SIZE / 2 + SECTOR_HYSTERESIS) return previous;
+	}
+	// Resolve exact half-way values in the same direction despite trigonometric round-off.
+	return Math.floor(angle / SECTOR_SIZE + 0.5 + Number.EPSILON);
+}
+
+interface ProjectedExteriorEdge {
+	readonly min: number;
+	readonly max: number;
+	readonly depthAtMin: number;
+	readonly depthAtMax: number;
+	readonly wallSegmentId: string;
+}
+
+const frontContourCache = new WeakMap<
+	readonly ExteriorCutawayEdge[],
+	Map<number, ReadonlySet<string>>
+>();
+
+function frontContourForSector(
+	edges: readonly ExteriorCutawayEdge[],
+	sector: number,
+): ReadonlySet<string> {
+	const bySector = frontContourCache.get(edges) ?? new Map<number, ReadonlySet<string>>();
+	frontContourCache.set(edges, bySector);
+	const cached = bySector.get(sector);
+	if (cached) return cached;
+
+	const directionX = Math.cos(sector * SECTOR_SIZE);
+	const directionZ = Math.sin(sector * SECTOR_SIZE);
+	const lateral = ({ xM, zM }: ExteriorCutawayEdge["start"]) => zM * directionX - xM * directionZ;
+	const depth = ({ xM, zM }: ExteriorCutawayEdge["start"]) => xM * directionX + zM * directionZ;
+	const front = edges.flatMap(edge => {
+		const facing = edge.normal.x * directionX + edge.normal.z * directionZ;
+		if (facing <= CUTAWAY_ENTER_FACING_DOT * Math.hypot(edge.normal.x, edge.normal.z)) return [];
+		const startLateral = lateral(edge.start);
+		const endLateral = lateral(edge.end);
+		if (Math.abs(startLateral - endLateral) <= SECTOR_SUPPORT_ROUNDING_M) return [];
+		const startsAtMin = startLateral < endLateral;
+		return [{
+			min: startsAtMin ? startLateral : endLateral,
+			max: startsAtMin ? endLateral : startLateral,
+			depthAtMin: depth(startsAtMin ? edge.start : edge.end),
+			depthAtMax: depth(startsAtMin ? edge.end : edge.start),
+			wallSegmentId: edge.wallSegmentId,
+		}];
+	});
+	const hidden = new Set(
+		front.filter(edge => hasExposedSpan(edge, front)).map(edge => edge.wallSegmentId),
+	);
+	bySector.set(sector, hidden);
+	return hidden;
+}
+
+function hasExposedSpan(
+	edge: ProjectedExteriorEdge,
+	front: readonly ProjectedExteriorEdge[],
+): boolean {
+	const covered = front.flatMap(other => {
+		if (other === edge) return [];
+		const min = Math.max(edge.min, other.min);
+		const max = Math.min(edge.max, other.max);
+		if (max - min <= SECTOR_SUPPORT_ROUNDING_M) return [];
+		// Canonical centerlines never cross inside their intervals. Depth order at
+		// the midpoint therefore holds throughout an overlap of positive length.
+		const midpoint = (min + max) / 2;
+		return edgeDepthAt(other, midpoint) > edgeDepthAt(edge, midpoint) + SECTOR_SUPPORT_ROUNDING_M
+			? [{ min, max }]
+			: [];
+	}).sort((first, second) => first.min - second.min);
+
+	let exposedFrom = edge.min;
+	for (const { min, max } of covered) {
+		if (min > exposedFrom + SECTOR_SUPPORT_ROUNDING_M) return true;
+		exposedFrom = Math.max(exposedFrom, max);
+	}
+	return edge.max > exposedFrom + SECTOR_SUPPORT_ROUNDING_M;
+}
+
+function edgeDepthAt(edge: ProjectedExteriorEdge, position: number): number {
+	const t = (position - edge.min) / (edge.max - edge.min);
+	return edge.depthAtMin + t * (edge.depthAtMax - edge.depthAtMin);
+}
+
+function sectorFacadesFor(
+	candidates: readonly CutawayFacadeCandidate[],
+	sector: number,
+): readonly CutawayFacadeCandidate[] {
+	if (sector % 2 !== 0) {
+		const first = facingFacade(candidates, sector - 1);
+		const second = facingFacade(candidates, sector + 1);
+		const firstVertices = new Set(first.flatMap((facade) => facade.vertexIds ?? []));
+		if (second.some((facade) => facade.vertexIds?.some((vertex) => firstVertices.has(vertex)))) {
+			return [...first, ...second];
+		}
+	}
+	return facingFacade(candidates, sector);
+}
+
+function facingFacade(
+	candidates: readonly CutawayFacadeCandidate[],
+	sector: number,
+): readonly CutawayFacadeCandidate[] {
+	const x = Math.cos(sector * SECTOR_SIZE);
+	const z = Math.sin(sector * SECTOR_SIZE);
+	const facing = (facade: CutawayFacadeCandidate) => facade.normal.x * x + facade.normal.z * z;
+	const best = candidates.reduce<CutawayFacadeCandidate | undefined>((winner, candidate) => {
+		const score = facing(candidate);
+		if (score <= CUTAWAY_ENTER_FACING_DOT) return winner;
+		if (!winner) return candidate;
+		const difference = score - facing(winner);
+		if (Math.abs(difference) > CUTAWAY_FACING_TIE_EPSILON) return difference > 0 ? candidate : winner;
+		// For parallel outward normals only the forward support plane is eligible.
+		if (sameExteriorDirection(candidate, winner)) {
+			return candidate.supportM > winner.supportM ? candidate : winner;
+		}
+		// A tie between different directions cannot depend on segment order.
+		const axisDifference = candidate.normal.x - winner.normal.x || candidate.normal.z - winner.normal.z;
+		return axisDifference > 0 ? candidate : winner;
+	}, undefined);
+	return best ? candidates.filter((candidate) => sameCutawayFacade(candidate, best, SECTOR_SUPPORT_ROUNDING_M)) : [];
+}
+
+function cutawayFacadesFor(
+	scene: RectangularRoomWebGlScene,
+): CutawayFacadeCandidate[] {
+	return scene.walls.flatMap((wall) => {
+		const identity = wall.wall;
+		const normal = normalizedExteriorNormal(identity?.exteriorNormal);
+		if (!identity || !normal) return [];
+		return [{
+			normal,
+			supportM: exteriorSupportFor(wall, normal),
+			vertexIds: identity.vertexIds,
+			wallSegmentId: identity.wallSegmentId,
+		}];
+	});
 }
 
 /**
@@ -73,7 +254,7 @@ export function hiddenWallSegmentIdsForCutaway(
 	scene: RectangularRoomWebGlScene,
 	camera: WebGl2Camera,
 	previousHiddenWallSegmentIds: ReadonlySet<string> = new Set<string>(),
-	cutawayMode: WebGl2CutawayMode = "auto",
+	cutawayMode: Exclude<WebGl2CutawayMode, "auto-sector"> = "auto",
 ): ReadonlySet<string> {
 	if (cutawayMode === "show-all") {
 		return new Set<string>();
@@ -94,25 +275,14 @@ export function hiddenWallSegmentIdsForCutaway(
 		x: cameraToPlanCentre.x / cameraToPlanCentreLength,
 		z: cameraToPlanCentre.z / cameraToPlanCentreLength,
 	};
-	const candidates = scene.walls.flatMap((wall) => {
-		const wallIdentity = wall.wall;
-		const normal = normalizedExteriorNormal(wallIdentity?.exteriorNormal);
-		if (!wallIdentity || !normal) return [];
-		return [
-			{
-				facingDot: normal.x * cameraDirection.x + normal.z * cameraDirection.z,
-				normal,
-				supportM: exteriorSupportFor(wall, normal),
-				wallSegmentId: wallIdentity.wallSegmentId,
-			},
-		];
-	});
+	const candidates = cutawayFacadesFor(scene).map((facade) => ({
+		...facade,
+		facingDot: facade.normal.x * cameraDirection.x + facade.normal.z * cameraDirection.z,
+	}));
 	const previousCandidate = candidates.find((candidate) =>
 		previousHiddenWallSegmentIds.has(candidate.wallSegmentId),
 	);
-	const nearestCandidate = candidates.reduce<
-		CutawayFacadeCandidate | undefined
-	>((winner, candidate) => {
+	const nearestCandidate = candidates.reduce<(typeof candidates)[number] | undefined>((winner, candidate) => {
 		if (candidate.facingDot <= CUTAWAY_ENTER_FACING_DOT) return winner;
 		if (!winner) return candidate;
 		return candidate.facingDot >
@@ -170,13 +340,18 @@ function exteriorSupportFor(
 function sameCutawayFacade(
 	first: CutawayFacadeCandidate,
 	second: CutawayFacadeCandidate,
+	supportToleranceM = CUTAWAY_FACADE_SUPPORT_TOLERANCE_M,
 ): boolean {
-	return (
-		first.normal.x * second.normal.x + first.normal.z * second.normal.z >=
-			CUTAWAY_FACADE_NORMAL_SIMILARITY &&
-		Math.abs(first.supportM - second.supportM) <=
-			CUTAWAY_FACADE_SUPPORT_TOLERANCE_M
-	);
+	return sameExteriorDirection(first, second) &&
+		Math.abs(first.supportM - second.supportM) <= supportToleranceM;
+}
+
+function sameExteriorDirection(
+	first: CutawayFacadeCandidate,
+	second: CutawayFacadeCandidate,
+): boolean {
+	return first.normal.x * second.normal.x + first.normal.z * second.normal.z >=
+		CUTAWAY_FACADE_NORMAL_SIMILARITY;
 }
 
 export function cameraEyeAndTargetFor(

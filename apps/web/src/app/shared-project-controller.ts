@@ -72,6 +72,7 @@ import {
 	type RegisteredProjectTransferExporter,
 } from "./project-controller";
 import type { BackupFeasibilityPolicyPort } from "../application/backup-feasibility-policy";
+import type { FloorItemCollisionPolicy } from "../domain/parametric-item";
 
 export type SharedProjectRepository = ProjectRepositoryPort &
 	ProjectRevisionPublicationPort &
@@ -90,6 +91,7 @@ export interface SharedProjectControllerDependencies {
 	readonly clock: ClockPort;
 	readonly ids: IdPort;
 	readonly storageEstimate: StorageEstimatePort;
+	readonly floorItemCollisionPolicy?: FloorItemCollisionPolicy;
 	readonly preserveDoorHinges?: () => Promise<boolean>;
 	readonly portable: {
 		readonly feasibility?: BackupFeasibilityPolicyPort;
@@ -138,6 +140,7 @@ export function createSharedProjectController(
 	const mutationDependencies = {
 		checksum,
 		clock,
+		floorItemCollisionPolicy: dependencies.floorItemCollisionPolicy,
 		ids,
 		preserveDoorHinges: dependencies.preserveDoorHinges,
 		repository: publicationRepository,

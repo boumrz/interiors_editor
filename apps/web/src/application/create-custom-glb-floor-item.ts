@@ -12,7 +12,10 @@ import {
 } from "../domain/static-glb-import";
 import { PROJECT_SCHEMA_VERSION, type Revision } from "../domain/project";
 import type { ParametricWallItemPlacementWarning } from "../domain/parametric-wall-item";
-import type { ParametricFloorItemPlacementWarning } from "../domain/parametric-item";
+import type {
+	FloorItemCollisionPolicy,
+	ParametricFloorItemPlacementWarning,
+} from "../domain/parametric-item";
 import {
 	assessBackupFeasibility,
 	type BackupFeasibilityPolicyPort,
@@ -93,6 +96,7 @@ export type CreateCustomGlbFloorItemUseCaseResult =
 
 interface CreateCustomGlbFloorItemDependencies {
 	readonly backupFeasibility?: BackupFeasibilityPolicyPort;
+	readonly floorItemCollisionPolicy?: FloorItemCollisionPolicy;
 	readonly binaryChecksum: BinaryChecksumPort;
 	readonly checksum: ChecksumPort;
 	readonly clock: ClockPort;
@@ -152,6 +156,7 @@ export class CreateCustomGlbFloorItemUseCase {
 					input,
 					this.dependencies.ids,
 					this.dependencies.clock.now(),
+					this.dependencies.floorItemCollisionPolicy,
 				);
 		if (updated.kind === "rejected") return updated;
 

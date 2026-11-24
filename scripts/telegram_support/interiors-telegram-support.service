@@ -1,0 +1,29 @@
+[Unit]
+Description=InteriorsEditor Telegram support
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=interiors-telegram-support
+Group=interiors-telegram-support
+StateDirectory=interiors-telegram-support
+StateDirectoryMode=0700
+LoadCredential=bot-token:/etc/interiors-editor/telegram-support/bot-token
+LoadCredential=owner-chat-id:/etc/interiors-editor/telegram-support/owner-chat-id
+LoadCredential=accept-from:/etc/interiors-editor/telegram-support/accept-from
+ExecStart=/usr/bin/python3 -B /usr/local/lib/interiors-telegram-support/current/service.py run
+Restart=on-failure
+RestartSec=5s
+RestartPreventExitStatus=78
+TimeoutStopSec=35s
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

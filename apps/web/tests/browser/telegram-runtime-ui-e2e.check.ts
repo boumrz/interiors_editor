@@ -156,6 +156,63 @@ test("TMA-ADD-OPENING: the ordinary plan adds a door or window at the specified 
 });
 
 for (const [kind, width] of [["Дверь", 900], ["Окно", 1200]] as const) {
+test(`TMA-ADD-OPENING: ${kind} moves by touch before creation is confirmed`, async ({ page }) => {
+	await page.setViewportSize({ width: 320, height: 740 });
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring"));
+	await createRoom(page, "Черновик проёма");
+	await page.getByTestId("wall-segment").first().tap();
+	await page.getByTestId("editor-action-dock").getByRole("button", { name: "Добавить", exact: true }).tap();
+	await page.getByRole("dialog", { name: "Добавить", exact: true }).getByRole("button", { name: kind, exact: true }).tap();
+	const sheet = page.getByTestId("opening-creation-draft");
+	await expect(sheet).toBeVisible();
+	const handle = page.getByRole("button", { name: `Переместить ${kind === "Дверь" ? "дверь" : "окно"} вдоль стены` });
+	await expect(handle).toBeVisible();
+	const start = await handle.boundingBox();
+	if (!start) throw new Error("Missing opening draft handle");
+	const touch = { x: start.x + start.width / 2, y: start.y + start.height / 2 };
+	const moved = { ...touch, x: touch.x + 26 };
+	const centreX = async () => {
+		const rect = await handle.boundingBox();
+		return rect ? rect.x + rect.width / 2 : 0;
+	};
+	const outsideWall = { ...touch, x: touch.x + 125 };
+	const before = await rows(page, "a");
+	const cdp = await page.context().newCDPSession(page);
+	try {
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [touch] });
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [moved] });
+		await expect.poll(centreX).toBeGreaterThan(touch.x + 10);
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+		await expect.poll(centreX).toBeCloseTo(touch.x);
+
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [touch] });
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [outsideWall] });
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+		await expect(sheet.getByRole("alert")).toHaveText("Проём не помещается в свободный участок стены.");
+		await expect.poll(centreX).toBeCloseTo(touch.x);
+
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [touch] });
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [moved] });
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+	} finally {
+		await cdp.detach();
+	}
+	await expect.poll(centreX).toBeGreaterThan(touch.x + 10);
+	const draftPosition = await centreX();
+	await expect(sheet.getByRole("alert")).toHaveCount(0);
+	await expect(sheet.getByRole("button", { name: "Параметры", exact: true })).toBeVisible();
+	expect(await rows(page, "a")).toEqual(before);
+	expect((await currentProject(page)).level.openings).toEqual([]);
+
+	await sheet.getByRole("button", { name: "Подтвердить", exact: true }).tap();
+	await saved(page);
+	await expect.poll(centreX).toBeCloseTo(draftPosition);
+	expect((await currentProject(page)).level.openings).toEqual([
+		expect.objectContaining({ kind: kind === "Дверь" ? "Door" : "Window", widthMm: width }),
+	]);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
+});
+
 test(`TMA-MOVE-OPENING: ${kind} follows its dimension and saves one revision at release`, async ({ page }, info) => {
 	await page.setViewportSize({ width: 320, height: 740 });
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring"));
@@ -1224,7 +1281,7 @@ test("TMA-UI-PLAN-RING: selected floor item exposes its rotation track and handl
 	}
 });
 
-test("TMA-ENCRYPTED-DOWNLOAD: Android explains invalid passwords and offers a separate, retryable file download", async ({ page }) => {
+test("TMA-ENCRYPTED-DOWNLOAD: Android starts a retryable native download in one tap with a six-character password", async ({ page }) => {
 	await page.evaluate(async () => {
 		await window.__telegramRuntimeUi.mountNavigable("a");
 		window.__telegramRuntimeUi.enableEncryptedDownload();
@@ -1233,41 +1290,61 @@ test("TMA-ENCRYPTED-DOWNLOAD: Android explains invalid passwords and offers a se
 	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
 	await page.getByRole("button", { name: "Экспортировать проект", exact: true }).click();
 	const panel = page.getByRole("complementary", { name: "Передача файла" });
-	const prepare = panel.getByRole("button", { name: /^Подготовить/ });
+	const download = panel.getByRole("button", { name: "Скачать", exact: true });
 	const password = panel.getByLabel("Пароль для копии", { exact: true });
-	const confirmation = panel.getByLabel("Повторите пароль", { exact: true });
+	const info = panel.getByRole("button", { name: "Как работает скачивание", exact: true });
+	const tooltip = panel.getByRole("tooltip");
 	const counts = () => page.evaluate(() => window.__telegramRuntimeUi.encryptedTransferCounts());
-	await expect(panel.getByText("Придумайте пароль от 12 до 256 символов и сохраните его для импорта.")).toBeVisible();
+	await expect(panel.getByText("Пароль должен состоять из 6 символов.")).toBeVisible();
+	await expect(panel.getByLabel("Повторите пароль", { exact: true })).toHaveCount(0);
+	await expect(tooltip).toBeHidden();
+	const passwordBox = await password.boundingBox();
+	await info.click();
+	await expect(tooltip).toContainText("15 минут");
+	expect(await password.boundingBox()).toEqual(passwordBox);
+	await info.click();
+	await expect(tooltip).toBeHidden();
 	await expect(password).not.toHaveAttribute("aria-invalid", "true");
-	await expect(prepare).toBeDisabled();
-	await password.fill("abc");
-	await confirmation.fill("abc");
-	await expect(password).toHaveAttribute("aria-invalid", "true");
-	await expect(prepare).toBeDisabled();
+	await expect(download).toBeDisabled();
+	for (const invalid of ["12345", "1234567"]) {
+		await password.fill(invalid);
+		await expect(password).toHaveAttribute("aria-invalid", "true");
+		await expect(download).toBeDisabled();
+	}
 	expect(await counts()).toEqual({ uploads: 0, requests: 0 });
-
-	await password.fill("двенадцать-символов");
-	await expect(panel.getByText("Пароли не совпадают.")).toBeVisible();
-	await expect(prepare).toBeDisabled();
-	await panel.locator("form").dispatchEvent("submit");
-	await expect(panel.getByText("Пароли не совпадают.")).toBeVisible();
-	expect(await counts()).toEqual({ uploads: 0, requests: 0 });
-	await confirmation.clear();
-	await expect(confirmation).not.toHaveAttribute("aria-invalid", "true");
-	await expect(prepare).toBeDisabled();
-	await confirmation.fill("двенадцать-символов");
-	await expect(prepare).toBeEnabled();
-	await prepare.click();
-
-	const download = panel.getByRole("button", { name: "Скачать файл", exact: true });
-	await expect(download).toBeFocused();
-	await expect(panel.getByText("project.interiors", { exact: true })).toBeVisible();
-	expect(await counts()).toEqual({ uploads: 1, requests: 0 });
+	await password.fill("фай🔑лы");
+	await expect(download).toBeEnabled();
 	await download.click();
 	await expect(panel.getByRole("status")).toContainText("Скачивание отменено");
+	await expect(download).toBeFocused();
+	await expect(panel.getByText("project.interiors", { exact: true })).toBeVisible();
+	expect(await counts()).toEqual({ uploads: 1, requests: 1 });
 	await download.click();
 	await expect(panel.getByRole("status")).toContainText("Проверьте файл project.interiors в загрузках");
 	expect(await counts()).toEqual({ uploads: 1, requests: 2 });
+});
+
+test("TMA-ENCRYPTED-DOWNLOAD: keyboard submission stages a copy until a fresh download tap", async ({ page }) => {
+	await page.evaluate(async () => {
+		await window.__telegramRuntimeUi.mountNavigable("a");
+		window.__telegramRuntimeUi.enableEncryptedDownload();
+	});
+	await createRoom(page, "Android keyboard backup");
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("button", { name: "Экспортировать проект", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Передача файла" });
+	const password = panel.getByLabel("Пароль для копии", { exact: true });
+	const download = panel.getByRole("button", { name: "Скачать", exact: true });
+	const counts = () => page.evaluate(() => window.__telegramRuntimeUi.encryptedTransferCounts());
+	await password.fill("123456");
+	await password.press("Enter");
+	await expect(panel.getByRole("status")).toContainText("Копия готова");
+	expect(await counts()).toEqual({ uploads: 1, requests: 0 });
+	await download.press("Enter");
+	expect(await counts()).toEqual({ uploads: 1, requests: 0 });
+	await download.tap();
+	await expect(panel.getByRole("status")).toContainText("Скачивание отменено");
+	expect(await counts()).toEqual({ uploads: 1, requests: 1 });
 });
 
 test("TMA-UI-05: actual export prepares a local File before a fresh handoff gesture and reselects it through the registered importer", async ({
@@ -1917,7 +1994,7 @@ for (const format of ["plain", "encrypted"] as const) {
 		await open(page, "Uppercase local model");
 		const project = await currentProject(page);
 		const archive = Uint8Array.from(await page.evaluate(() => window.__telegramRuntimeUi.currentBackupBytes()));
-		const password = "backup-fixture-password";
+		const password = "фай🔑лы";
 		const backup = format === "encrypted" ? await encryptProjectTransfer(archive, password) : { kind: "plain" as const, bytes: archive };
 		if (backup.kind === "rejected") throw new Error("Expected an encrypted backup fixture");
 
@@ -1934,7 +2011,7 @@ for (const format of ["plain", "encrypted"] as const) {
 			const restore = dialog.getByRole("button", { name: "Восстановить", exact: true });
 			await expect(dialog).toBeVisible();
 			await expect(chooser).not.toHaveAttribute("accept");
-			await field.fill("incorrect-fixture-password");
+			await field.fill("wrong1");
 			await restore.click();
 			await expect(dialog.getByRole("alert")).toContainText("Пароль неверен");
 			expect(await rows(page, "a")).toEqual(before);
@@ -2574,6 +2651,45 @@ test("TMA-UI-SCENE-02: 3D updates at fixed viewport size preserve the drawing bu
 			Math.abs(after.backingHeight - Math.floor(after.logicalHeight * pixelRatio)) <= 1;
 	}).toBe(true);
 	expect(await rows(page, "a")).toEqual(durableRows);
+});
+
+test("TMA-SCENE-WALL-PICK: visible facades and partitions block item selection", async ({ page }) => {
+	await selectExactChair(page, "Выбор за стеной");
+	const project = await currentProject(page);
+	const item = project.assetInstances.find((asset) => asset.anchorClass === "floor");
+	if (item?.anchorClass !== "floor") throw new Error("Expected a durable chair");
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	const canvas = page.getByTestId("three-dimensional-canvas");
+	const bounds = await canvas.boundingBox();
+	if (!bounds) throw new Error("Expected an interactive canvas");
+	const start = { x: bounds.x + 22, y: bounds.y + bounds.height * 0.39 };
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(start.x, start.y - 100, { steps: 6 });
+	await page.mouse.up();
+	await expect(page.getByTestId("three-dimensional-camera")).toContainText(":0.220:");
+	const selection = page.getByRole("button", { name: "Дублировать", exact: true });
+	await expect(selection).toBeHidden();
+	const contact = await currentSceneFloorContact(page, item.xMm, item.zMm);
+	await page.getByRole("button", { name: "Показать все стены", exact: true }).click();
+	await page.touchscreen.tap(contact.x, contact.y);
+	await expect(selection).toBeHidden();
+	await page.getByRole("button", { name: "Авто cutaway", exact: true }).click();
+	await page.touchscreen.tap(contact.x, contact.y);
+	await expect(selection).toBeVisible();
+
+	const depths = project.level.vertices.map((vertex) => vertex.zMm);
+	await page.evaluate(({ start, end }) => window.__telegramRuntimeUi.addWall({ start, end, thicknessMm: 100 }), {
+		start: { xMm: 2900, zMm: Math.min(...depths) },
+		end: { xMm: 2900, zMm: Math.max(...depths) },
+	});
+	await saved(page);
+	expect((await currentProject(page)).level.rooms).toHaveLength(2);
+	await page.touchscreen.tap(start.x, start.y);
+	await expect(selection).toBeHidden();
+	const partitionContact = await currentSceneFloorContact(page, item.xMm, item.zMm);
+	await page.touchscreen.tap(partitionContact.x, partitionContact.y);
+	await expect(selection).toBeHidden();
 });
 
 test("TMA-ITEM-PALETTE: a legacy wall light has concise dimension labels and reflowing color choices", async ({ page }) => {

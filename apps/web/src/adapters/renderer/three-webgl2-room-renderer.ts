@@ -171,6 +171,7 @@ export function createThreeWebGl2RoomSceneRenderer(
 	syncItems(scene.items, itemGroup, itemNodes, activeRuntimeModels);
 
 	return {
+		hiddenWallSegmentIds: () => cutaway?.hiddenWallSegmentIds,
 		dispose: () => {
 			for (const node of itemNodes.values()) disposeItemNode(node);
 			itemNodes.clear();

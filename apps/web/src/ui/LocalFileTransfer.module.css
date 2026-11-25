@@ -6,6 +6,23 @@
 .panel button:disabled { cursor: wait; opacity: .6; }
 .panel button:focus-visible { outline:3px solid var(--editor-host-primary, var(--blue)); outline-offset: 3px; }
 .panel.passwordDialog { padding: 16px; }
+.panel .encryptedHeading { align-items: center; flex-wrap: nowrap; justify-content: space-between; position: relative; }
+.panel .encryptedInfo { color: var(--editor-host-primary, var(--blue)); flex: 0 0 44px; font-size: 1.25em; min-width: 44px; padding: 0; }
+.panel .encryptedInfoText {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px var(--shadow);
+  font-size: .875rem;
+  inline-size: max-content;
+  inset-block-start: calc(100% + 6px);
+  inset-inline-end: 0;
+  max-inline-size: min(100%, 22rem);
+  padding: 8px 12px;
+  position: absolute;
+  z-index: 1;
+}
+.panel .passwordHint { font-size: .875rem; }
 .passwordForm, .passwordForm label { display: grid; gap: 8px; }
 .passwordForm { gap: 12px; }
 .passwordForm input { background: var(--canvas, var(--surface)); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; font-size: max(16px, 1rem); min-height: 44px; min-width: 0; padding: 8px 12px; }

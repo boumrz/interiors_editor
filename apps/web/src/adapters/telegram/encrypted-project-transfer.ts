@@ -5,6 +5,7 @@ const saltEnd = magic.byteLength + 16;
 const headerBytes = saltEnd + 12;
 const tagBytes = 16;
 const overheadBytes = headerBytes + tagBytes;
+const exportPasswordLength = 6;
 
 export const MAX_PROJECT_TRANSFER_PLAINTEXT_BYTES = alphaBackupFeasibilityLimits.maxContainerBytes;
 export const MAX_ENCRYPTED_PROJECT_TRANSFER_BYTES = MAX_PROJECT_TRANSFER_PLAINTEXT_BYTES + overheadBytes;
@@ -29,15 +30,25 @@ export function isEncryptedProjectTransfer(bytes: Uint8Array): boolean {
 	return bytes.byteLength >= magic.byteLength && magic.every((byte, index) => bytes[index] === byte);
 }
 
-export function isProjectTransferPasswordValid(password: string): boolean {
+function projectTransferPasswordLength(password: string): number {
 	let codePoints = 0;
 	for (const character of password) {
 		const point = character.codePointAt(0) ?? 0;
 		// TextEncoder replaces lone surrogates. Reject them to keep the password mapping exact.
-		if (point >= 0xd800 && point <= 0xdfff) return false;
-		if (++codePoints > 256) return false;
+		if (point >= 0xd800 && point <= 0xdfff) return 0;
+		if (++codePoints > 256) return 0;
 	}
-	return codePoints >= 12;
+	return codePoints;
+}
+
+export function isProjectTransferExportPasswordValid(password: string): boolean {
+	return projectTransferPasswordLength(password) === exportPasswordLength;
+}
+
+export function isProjectTransferPasswordValid(password: string): boolean {
+	const length = projectTransferPasswordLength(password);
+	// Earlier version 1 archives used 12 to 256 code points.
+	return length === exportPasswordLength || length >= 12;
 }
 
 async function deriveTransferKey(
@@ -74,7 +85,7 @@ export async function encryptProjectTransfer(
 	if (signal?.aborted) return rejected("TRANSFER_CANCELLED");
 	if (bytes.byteLength > MAX_PROJECT_TRANSFER_PLAINTEXT_BYTES) return rejected("TRANSFER_TOO_LARGE");
 	if (bytes.byteLength === 0) return rejected("INVALID_ENCRYPTED_TRANSFER");
-	if (!isProjectTransferPasswordValid(password)) return rejected("INVALID_TRANSFER_PASSWORD");
+	if (!isProjectTransferExportPasswordValid(password)) return rejected("INVALID_TRANSFER_PASSWORD");
 	const { crypto } = globalThis;
 	if (!crypto?.subtle) return rejected("TRANSFER_CRYPTO_UNAVAILABLE");
 

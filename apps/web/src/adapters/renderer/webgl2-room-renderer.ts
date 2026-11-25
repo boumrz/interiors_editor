@@ -203,6 +203,10 @@ export class WebGl2RoomRendererController {
 		return this.state;
 	}
 
+	public hiddenWallSegmentIds(): ReadonlySet<string> | undefined {
+		return this.renderer?.hiddenWallSegmentIds?.();
+	}
+
 	public dispose(): void {
 		this.renderer?.dispose();
 		this.renderer = undefined;
@@ -680,6 +684,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 	};
 
 	return {
+		hiddenWallSegmentIds: () => cutaway?.hiddenWallSegmentIds,
 		dispose: () => {
 			context.deleteBuffer(vertexBuffer);
 			context.deleteBuffer(floorPolygonBuffer);

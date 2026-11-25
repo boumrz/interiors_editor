@@ -107,7 +107,7 @@ import {
 	type WallMoveAxis,
 	type WallVertexMoveDraft,
 	type WallSplitDraft,
-	type DoorOpeningDrag,
+	type OpeningDrag,
 	type ItemPlacementDrag,
 	type ItemPlacementPoint,
 	initialPlanCanvasSize,
@@ -151,6 +151,7 @@ export function PlanProjection({
 	isWallVertexMoveMode,
 	movableWallVertexIds,
 	openingCreationPreview,
+	onMoveOpeningCreationDraft,
 	openingHostIds,
 	onChooseOpeningHost,
 	openingMovePreview,
@@ -334,11 +335,13 @@ export function PlanProjection({
 	>(undefined);
 	const splitBaseRef = useRef(project);
 	const [splitUnavailable, setSplitUnavailable] = useState(false);
-	const [doorOpeningDrag, setDoorOpeningDrag] = useState<DoorOpeningDrag>();
-	const doorOpeningDragRef = useRef<DoorOpeningDrag | undefined>(undefined);
+	const [doorOpeningDrag, setDoorOpeningDrag] = useState<OpeningDrag>();
+	const doorOpeningDragRef = useRef<OpeningDrag | undefined>(undefined);
+	const canDragOpeningCreation = onMoveOpeningCreationDraft !== undefined;
+	const openingCreationDrag = doorOpeningDrag?.openingId === undefined ? doorOpeningDrag : undefined;
 	const openingDragAssessment = useMemo(
 		() =>
-			project.schemaVersion === 1 && doorOpeningDrag
+			project.schemaVersion === 1 && doorOpeningDrag?.openingId !== undefined
 				? moveDoorOpeningInProject(
 						project,
 						{
@@ -358,7 +361,7 @@ export function PlanProjection({
 		readonly openingId: string;
 		readonly offsetMm: number;
 	}>();
-	const openingPreview = doorOpeningDrag ?? pendingDoorOpeningMove;
+	const openingPreview = doorOpeningDrag?.openingId !== undefined ? doorOpeningDrag : pendingDoorOpeningMove;
 	const dimensionProject = useMemo(
 		() =>
 			project.schemaVersion === 1 && openingPreview
@@ -726,7 +729,7 @@ export function PlanProjection({
 			setWallSplitHostConflict(undefined);
 			setSplitUnavailable(false);
 		};
-		if (readOnly || activeTool !== "select") cancel();
+		if ((readOnly && !canDragOpeningCreation) || activeTool !== "select") cancel();
 		const onKey = (event: KeyboardEvent) => {
 			if (hostEnabledRef.current && !hostGateRef.current.canBegin()) return;
 			if (event.key === "Escape") cancel();
@@ -735,6 +738,7 @@ export function PlanProjection({
 		return () => window.removeEventListener("keydown", onKey);
 	}, [
 		readOnly,
+		canDragOpeningCreation,
 		activeTool,
 		resetDirectManipulationContacts,
 		isConfirmingWallSplit,
@@ -1651,27 +1655,36 @@ export function PlanProjection({
 		}
 	};
 
-	const publishOpeningMove = async (drag: DoorOpeningDrag) => {
-		if (
-			readOnlyRef.current ||
-			drag.base !== liveProjectRef.current ||
-			drag.offsetMm === drag.originalOffsetMm
-		)
-			return;
-		setPendingDoorOpeningMove({
-			openingId: drag.openingId,
-			offsetMm: drag.offsetMm,
-		});
+	const publishOpeningMove = async (openingId: string, offsetMm: number) => {
+		setPendingDoorOpeningMove({ openingId, offsetMm });
 		setIsConfirmingDoorOpeningMove(true);
 		try {
-			await onMoveDoorOpening({
-				openingId: drag.openingId,
-				offsetMm: drag.offsetMm,
-			});
+			await onMoveDoorOpening({ openingId, offsetMm });
 		} finally {
 			setPendingDoorOpeningMove(undefined);
 			setIsConfirmingDoorOpeningMove(false);
 		}
+	};
+	const startOpeningDrag = (
+		opening: Pick<OpeningDrag, "openingId" | "wallSegmentId" | "offsetMm">,
+		event: ReactPointerEvent<SVGSVGElement>,
+		canvasPoint: PointerPosition,
+	) => {
+		gesture.current = undefined;
+		pendingCanvasSelectionRef.current = undefined;
+		const drag: OpeningDrag = {
+			openingId: opening.openingId,
+			wallSegmentId: opening.wallSegmentId,
+			offsetMm: opening.offsetMm,
+			originalOffsetMm: opening.offsetMm,
+			pointerStart: projectPointFor(event),
+			pointerOrigin: canvasPoint,
+			base: project,
+			pointerId: event.pointerId,
+		};
+		doorOpeningDragRef.current = drag;
+		markHostDraftContact(event.pointerId);
+		setDoorOpeningDrag(drag);
 	};
 
 	const cancelPlacementForPinch = () => {
@@ -1720,6 +1733,14 @@ export function PlanProjection({
 		pointers.current.set(event.pointerId, canvasPoint);
 		if (isInteractionLocked) {
 			event.preventDefault();
+			if (pointers.current.size > 1) {
+				doorOpeningDragRef.current = undefined;
+				setDoorOpeningDrag(undefined);
+				return;
+			}
+			if (openingCreationPreview && canDragOpeningCreation && (event.target as Element).closest("[data-opening-creation-handle]")) {
+				startOpeningDrag(openingCreationPreview, event, canvasPoint);
+			}
 			return;
 		}
 		const activePointers = [...pointers.current.values()];
@@ -1971,22 +1992,8 @@ export function PlanProjection({
 			onOpeningMoveStart?.();
 			event.preventDefault();
 			event.stopPropagation();
-			gesture.current = undefined;
-			pendingCanvasSelectionRef.current = undefined;
 			if (!showOpeningTemplates) onSelectOpening?.(opening.openingId);
-			const drag: DoorOpeningDrag = {
-				openingId: opening.openingId,
-				wallSegmentId: opening.wallSegmentId,
-				offsetMm: opening.offsetMm,
-				originalOffsetMm: opening.offsetMm,
-				pointerStart: projectPointFor(event),
-				pointerOrigin: canvasPoint,
-				base: project,
-				pointerId: event.pointerId,
-			};
-			doorOpeningDragRef.current = drag;
-			markHostDraftContact(event.pointerId);
-			setDoorOpeningDrag(drag);
+			startOpeningDrag(opening, event, canvasPoint);
 			return;
 		}
 		if (
@@ -2387,7 +2394,7 @@ export function PlanProjection({
 		) {
 			if (
 				activeDoorOpeningDrag.base !== liveProjectRef.current ||
-				readOnlyRef.current
+				(activeDoorOpeningDrag.openingId === undefined ? !canDragOpeningCreation : readOnlyRef.current)
 			) {
 				doorOpeningDragRef.current = undefined;
 				setDoorOpeningDrag(undefined);
@@ -2611,13 +2618,16 @@ export function PlanProjection({
 			doorOpeningDragRef.current = undefined;
 			setDoorOpeningDrag(undefined);
 			pointers.current.delete(event.pointerId);
-			if (showOpeningTemplates) onSelectOpening?.(activeDoorOpeningDrag.openingId);
+			const { openingId, offsetMm } = activeDoorOpeningDrag;
+			if (showOpeningTemplates && openingId !== undefined) onSelectOpening?.(openingId);
 			if (
-				!readOnlyRef.current &&
 				activeDoorOpeningDrag.base === liveProjectRef.current &&
+				offsetMm !== activeDoorOpeningDrag.originalOffsetMm &&
 				distance(activeDoorOpeningDrag.pointerOrigin, canvasPointFor(event)) > 6
-			)
-				await publishOpeningMove(activeDoorOpeningDrag);
+			) {
+				if (openingId === undefined) onMoveOpeningCreationDraft?.(offsetMm);
+				else if (!readOnlyRef.current) await publishOpeningMove(openingId, offsetMm);
+			}
 			return;
 		}
 		const activeItemDrag = itemDragRef.current;
@@ -3279,7 +3289,7 @@ export function PlanProjection({
 				data-active-tool={activeTool}
 				data-interaction-locked={isInteractionLocked ? "true" : undefined}
 				data-testid="plan-canvas"
-				data-opening-dragging={showOpeningTemplates && !!doorOpeningDrag || undefined}
+				data-opening-dragging={showOpeningTemplates && doorOpeningDrag?.openingId !== undefined || undefined}
 				onPointerCancel={onPointerCancel}
 				onLostPointerCapture={(event) => {
 					// Normal release has already cleared these refs. Only unexpected
@@ -3474,15 +3484,16 @@ export function PlanProjection({
 						const hasPlacementCollision = itemPlacementCollisionIds.walls.has(
 							wall.wallSegmentId,
 						);
+						const lengthMm = Math.hypot(end.xMm - start.xMm, end.zMm - start.zMm);
+						const pointAt = (offsetMm: number) => pointFor(
+							start.xMm + ((end.xMm - start.xMm) * offsetMm) / lengthMm,
+							start.zMm + ((end.zMm - start.zMm) * offsetMm) / lengthMm,
+						);
 						const openingSegments = project.level.openings.flatMap(
 							(opening) => {
 								if (opening.wallSegmentId !== wall.wallSegmentId) {
 									return [];
 								}
-								const lengthMm = Math.hypot(
-									end.xMm - start.xMm,
-									end.zMm - start.zMm,
-								);
 								if (!Number.isFinite(lengthMm) || lengthMm <= 0) {
 									return [];
 								}
@@ -3500,11 +3511,6 @@ export function PlanProjection({
 													...(opening.kind === "Door" && openingMovePreview.hingeEnd !== undefined ? { hingeEnd: openingMovePreview.hingeEnd ?? undefined } : {}) }
 												: opening;
 								const interval = wallOpeningIntervalMm(renderedOpening);
-								const pointAt = (offsetMm: number) =>
-									pointFor(
-										start.xMm + ((end.xMm - start.xMm) * offsetMm) / lengthMm,
-										start.zMm + ((end.zMm - start.zMm) * offsetMm) / lengthMm,
-									);
 								return [
 									{
 										end: pointAt(interval.endMm),
@@ -3515,29 +3521,17 @@ export function PlanProjection({
 							},
 						);
 						const openingCreationInterval =
-							openingCreationPreview?.wallSegmentId === wall.wallSegmentId
-								? wallOpeningIntervalMm(openingCreationPreview)
+							openingCreationPreview?.wallSegmentId === wall.wallSegmentId && lengthMm > 0
+								? wallOpeningIntervalMm({
+									widthMm: openingCreationPreview.widthMm,
+									offsetMm: openingCreationDrag?.offsetMm ?? openingCreationPreview.offsetMm,
+								})
 								: undefined;
 						const openingCreationSegment = openingCreationInterval
 							? {
-									end: pointFor(
-										start.xMm +
-											((end.xMm - start.xMm) * openingCreationInterval.endMm) /
-												Math.hypot(end.xMm - start.xMm, end.zMm - start.zMm),
-										start.zMm +
-											((end.zMm - start.zMm) * openingCreationInterval.endMm) /
-												Math.hypot(end.xMm - start.xMm, end.zMm - start.zMm),
-									),
-									start: pointFor(
-										start.xMm +
-											((end.xMm - start.xMm) *
-												openingCreationInterval.startMm) /
-												Math.hypot(end.xMm - start.xMm, end.zMm - start.zMm),
-										start.zMm +
-											((end.zMm - start.zMm) *
-												openingCreationInterval.startMm) /
-												Math.hypot(end.xMm - start.xMm, end.zMm - start.zMm),
-									),
+										start: pointAt(openingCreationInterval.startMm),
+										end: pointAt(openingCreationInterval.endMm),
+										centre: pointAt((openingCreationInterval.startMm + openingCreationInterval.endMm) / 2),
 								}
 							: undefined;
 						return (
@@ -3604,6 +3598,31 @@ export function PlanProjection({
 										<OpeningPlanSymbol {...openingCreationSegment} kind={openingCreationPreview.kind}
 												swingSide={openingCreationPreview.swingSide} hingeEnd={openingCreationPreview.hingeEnd} thickness={wall.thicknessMm * drawingScale}
 											divided={openingCreationPreview.widthMm >= DIVIDED_WINDOW_MIN_WIDTH_MM} />
+										{onMoveOpeningCreationDraft ? (
+											<g data-opening-creation-handle style={{ cursor: "grab" }}>
+												<line x1={openingCreationSegment.start.x} y1={openingCreationSegment.start.y}
+													x2={openingCreationSegment.end.x} y2={openingCreationSegment.end.y}
+													stroke="transparent" strokeWidth={MINIMUM_TOUCH_TARGET_PX / viewport.zoom} pointerEvents="stroke" />
+												{/* biome-ignore lint/a11y/useSemanticElements: SVG handle follows plan coordinates and supports arrow keys. */}
+												<circle
+													aria-label={`Переместить ${openingCreationPreview.kind === "Door" ? "дверь" : "окно"} вдоль стены`}
+													cx={openingCreationSegment.centre.x} cy={openingCreationSegment.centre.y}
+													r={MINIMUM_TOUCH_TARGET_PX / (2 * viewport.zoom)} fill="transparent" stroke="none" pointerEvents="all"
+													role="button" tabIndex={0}
+													onKeyDown={(event) => {
+														if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+														event.preventDefault();
+														event.stopPropagation();
+														if (!openingCreationDrag && hostGateRef.current.canBegin()) {
+															onMoveOpeningCreationDraft(openingCreationPreview.offsetMm + (event.key === "ArrowLeft" ? -100 : 100));
+														}
+													}}
+												/>
+												<circle className={styles.openingMoveDot}
+													cx={openingCreationSegment.centre.x} cy={openingCreationSegment.centre.y}
+													r={5 / viewport.zoom} pointerEvents="none" />
+											</g>
+										) : null}
 									</g>
 								) : openingCreationSegment ? (
 									<line

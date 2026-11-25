@@ -1,4 +1,5 @@
 import type { RectangularRoomWebGlScene, SceneBox } from "../adapters/renderer/rectangular-room-projection";
+import { cameraEyeAndTargetFor } from "../adapters/renderer/webgl2-room-renderer-shared";
 import type { ThreeDimensionalViewport } from "./three-dimensional-viewport";
 
 export interface CanvasSize {
@@ -35,14 +36,7 @@ export function floorPointForCanvas(
 ): ThreeDimensionalFloorPoint | undefined {
 	if (size.width <= 0 || size.height <= 0) return undefined;
 	const basis = cameraBasis(scene, camera);
-	const ndcX = (point.x / size.width) * 2 - 1;
-	const ndcY = 1 - (point.y / size.height) * 2;
-	const aspect = size.width / size.height;
-	const tangent = Math.tan(Math.PI / 6);
-	const direction = normalize(add(
-		basis.forward,
-		add(scale(basis.right, ndcX * aspect * tangent), scale(basis.up, ndcY * tangent)),
-	));
+	const direction = rayForCanvasPoint(basis, size, point);
 	if (Math.abs(direction.y) < 1e-9) return undefined;
 	const floorDistance = -basis.eye.y / direction.y;
 	if (!Number.isFinite(floorDistance) || floorDistance < 0) return undefined;
@@ -50,6 +44,91 @@ export function floorPointForCanvas(
 		xM: basis.eye.x + direction.x * floorDistance,
 		zM: basis.eye.z + direction.z * floorDistance,
 	};
+}
+
+/** Shares the foreground-wall check across every item picking fallback for a contact. */
+export function visibleItemFilterAtCanvasPoint(
+	scene: RectangularRoomWebGlScene,
+	camera: ThreeDimensionalViewport,
+	size: CanvasSize,
+	point: CanvasPoint,
+	hiddenWallSegmentIds?: ReadonlySet<string>,
+): (item: SceneBox) => boolean {
+	if (scene.items.length === 0 || size.width <= 0 || size.height <= 0) return () => true;
+	const occluders = scene.walls.filter((wall) =>
+		!wall.wall || !hiddenWallSegmentIds?.has(wall.wall.wallSegmentId),
+	);
+	for (const part of scene.openingParts ?? []) {
+		if (part.role !== "glass" && !hiddenWallSegmentIds?.has(part.wallSegmentId)) {
+			occluders.push(part.box);
+		}
+	}
+	if (occluders.length === 0) return () => true;
+	const basis = cameraBasis(scene, camera);
+	const ray = rayForCanvasPoint(basis, size, point);
+	const nearestWall = (direction: Vector3) =>
+		occluders.reduce((distance, wall) =>
+			Math.min(distance, rayDistanceToBox(basis.eye, direction, wall)),
+			Infinity,
+		);
+	const wallDistance = nearestWall(ray);
+	return (item) => {
+		const hitDistance = rayDistanceToBox(basis.eye, ray, item);
+		if (Number.isFinite(hitDistance)) return hitDistance < wallDistance;
+
+		// Floor/radius fallback can select a visible item from a nearby point.
+		// Check both the contact ray and the item's centre before using that margin.
+		const toItem = {
+			x: item.centerXM - basis.eye.x,
+			y: item.centerYM - basis.eye.y,
+			z: item.centerZM - basis.eye.z,
+		};
+		const depthAtContact = dot(toItem, basis.forward) / dot(ray, basis.forward);
+		if (wallDistance <= depthAtContact) return false;
+		return nearestWall(normalize(toItem)) > Math.hypot(toItem.x, toItem.y, toItem.z);
+	};
+}
+
+function rayDistanceToBox(origin: Vector3, direction: Vector3, box: SceneBox): number {
+	let enters = 0;
+	let exits = Infinity;
+	const clip = (offset: number, rate: number) => {
+		if (Math.abs(rate) < 1e-9) return offset >= 0;
+		const distance = -offset / rate;
+		if (rate > 0) enters = Math.max(enters, distance);
+		else exits = Math.min(exits, distance);
+		return enters <= exits;
+	};
+	const clipAxis = (position: number, rate: number, halfSize: number) =>
+		clip(halfSize + position, rate) && clip(halfSize - position, -rate);
+	if (!clipAxis(origin.y - box.centerYM, direction.y, box.heightM / 2)) {
+		return Infinity;
+	}
+	if (box.wallFootprintM) {
+		// Wall body projection and opening clipping preserve a convex, CCW footprint.
+		let from = box.wallFootprintM.at(-1);
+		if (!from) return Infinity;
+		for (const to of box.wallFootprintM) {
+			const dx = to.xM - from.xM;
+			const dz = to.zM - from.zM;
+			const offset = dx * (origin.z - from.zM) - dz * (origin.x - from.xM);
+			const rate = dx * direction.z - dz * direction.x;
+			if (!clip(offset, rate)) {
+				return Infinity;
+			}
+			from = to;
+		}
+		return enters;
+	}
+	const yaw = box.yawRadians ?? 0;
+	const cos = Math.cos(yaw);
+	const sin = Math.sin(yaw);
+	const rotateToLocal = (x: number, z: number) => [cos * x - sin * z, sin * x + cos * z] as const;
+	const [x, z] = rotateToLocal(origin.x - box.centerXM, origin.z - box.centerZM);
+	const [dx, dz] = rotateToLocal(direction.x, direction.z);
+	return clipAxis(x, dx, box.widthM / 2) && clipAxis(z, dz, box.depthM / 2)
+		? enters
+		: Infinity;
 }
 
 /** Projects a ground point for a CSS overlay anchored to a selected 3D item. */
@@ -116,6 +195,7 @@ export function projectedItemFootprintFor(
 export function floorItemAtPoint(
 	items: readonly SceneBox[],
 	point: ThreeDimensionalFloorPoint,
+	isVisible?: (item: SceneBox) => boolean,
 ): SceneBox | undefined {
 	return [...items]
 		.reverse()
@@ -126,7 +206,7 @@ export function floorItemAtPoint(
 			const dz = point.zM - item.centerZM;
 			const localX = Math.cos(yaw) * dx - Math.sin(yaw) * dz;
 			const localZ = Math.sin(yaw) * dx + Math.cos(yaw) * dz;
-			return Math.abs(localX) <= item.widthM / 2 && Math.abs(localZ) <= item.depthM / 2;
+			return Math.abs(localX) <= item.widthM / 2 && Math.abs(localZ) <= item.depthM / 2 && (isVisible?.(item) ?? true);
 		});
 }
 
@@ -159,6 +239,7 @@ export function floorItemAtScreenPoint(
 	camera: ThreeDimensionalViewport,
 	size: CanvasSize,
 	point: { readonly x: number; readonly y: number },
+	isVisible?: (item: SceneBox) => boolean,
 ): SceneBox | undefined {
 	return [...items].reverse().find((item) => {
 		if (!item.assetInstanceId) return false;
@@ -169,7 +250,8 @@ export function floorItemAtScreenPoint(
 		return (
 			centre !== undefined &&
 			Math.hypot(point.x - centre.x, point.y - centre.y) <=
-				projectedItemTouchRadius(item, scene, camera, size, centre)
+				projectedItemTouchRadius(item, scene, camera, size, centre) &&
+			(isVisible?.(item) ?? true)
 		);
 	});
 }
@@ -181,6 +263,7 @@ export function wallItemAtScreenPoint(
 	camera: ThreeDimensionalViewport,
 	size: CanvasSize,
 	point: CanvasPoint,
+	isVisible?: (item: SceneBox) => boolean,
 ): SceneBox | undefined {
 	return [...items].reverse().find((item) => {
 		if (!item.assetInstanceId || item.assetAnchor !== "wall") return false;
@@ -192,27 +275,31 @@ export function wallItemAtScreenPoint(
 			z: item.centerZM + item.depthM / 2,
 		});
 		const radius = edge ? Math.max(22, Math.hypot(edge.x - center.x, edge.y - center.y)) : 22;
-		return Math.hypot(point.x - center.x, point.y - center.y) <= radius;
+		return Math.hypot(point.x - center.x, point.y - center.y) <= radius && (isVisible?.(item) ?? true);
 	});
 }
 
 function cameraBasis(scene: RectangularRoomWebGlScene, camera: ThreeDimensionalViewport) {
-	const extent = Math.max(scene.cameraBounds.widthM, scene.cameraBounds.depthM);
-	const target = {
-		x: scene.cameraBounds.centerXM + camera.panXM,
-		y: (scene.dimensions.heightMm / 1000) * 0.22,
-		z: scene.cameraBounds.centerZM + camera.panZM,
-	};
-	const horizontalDistance = extent * camera.distance * Math.cos(camera.elevationRadians);
-	const eye = {
-		x: target.x + Math.cos(camera.azimuthRadians) * horizontalDistance,
-		y: target.y + extent * camera.distance * Math.sin(camera.elevationRadians),
-		z: target.z + Math.sin(camera.azimuthRadians) * horizontalDistance,
-	};
-	const forward = normalize({ x: target.x - eye.x, y: target.y - eye.y, z: target.z - eye.z });
+	const { eye: [x, y, z], target } = cameraEyeAndTargetFor(scene, camera);
+	const eye = { x, y, z };
+	const forward = normalize({ x: target[0] - x, y: target[1] - y, z: target[2] - z });
 	const right = normalize(cross(forward, { x: 0, y: 1, z: 0 }));
 	const up = cross(right, forward);
 	return { eye, forward, right, up };
+}
+
+function rayForCanvasPoint(
+	basis: ReturnType<typeof cameraBasis>,
+	size: CanvasSize,
+	point: CanvasPoint,
+): Vector3 {
+	const ndcX = (point.x / size.width) * 2 - 1;
+	const ndcY = 1 - (point.y / size.height) * 2;
+	const tangent = Math.tan(Math.PI / 6);
+	return normalize(add(basis.forward, add(
+		scale(basis.right, ndcX * (size.width / size.height) * tangent),
+		scale(basis.up, ndcY * tangent),
+	)));
 }
 
 function projectedItemTouchRadius(

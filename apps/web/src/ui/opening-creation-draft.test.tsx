@@ -510,6 +510,7 @@ describe("opening creation draft", () => {
 			validateOpeningCreationDraft(project, {
 				...draft,
 				wallSegmentId: "missing",
+				widthMm: "",
 			}),
 		).toEqual({
 			kind: "invalid",

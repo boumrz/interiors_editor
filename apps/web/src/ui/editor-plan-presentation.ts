@@ -266,6 +266,7 @@ export interface PlanProjectionProps {
 				readonly widthMm: number;
 		  }
 		| undefined;
+	readonly onMoveOpeningCreationDraft?: (offsetMm: number) => void;
 	readonly openingHostIds?: ReadonlySet<string>;
 	readonly onChooseOpeningHost?: (wallSegmentId: string, offsetMm: number) => void;
 	readonly onItemPlacementYawChange: (yawRadians: number) => void;
@@ -417,12 +418,12 @@ export type WallSplitHostConflictResolutionResult =
 	| "rejected"
 	| "stale-base";
 
-export interface DoorOpeningDrag {
+export interface OpeningDrag {
 	readonly originalOffsetMm: number;
 	readonly pointerStart: WallDraftPoint;
 	readonly pointerOrigin: PointerPosition;
 	readonly base: EditorProject;
-	readonly openingId: string;
+	readonly openingId?: string;
 	readonly pointerId: number;
 	readonly wallSegmentId: string;
 	readonly offsetMm: number;

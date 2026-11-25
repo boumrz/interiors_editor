@@ -6027,6 +6027,16 @@ export function AppShell({
 		}
 	};
 
+	const moveOpeningCreationDraft = (offsetMm: number) => {
+		if (project?.schemaVersion !== 1 || !openingCreationDraft) return;
+		const latest = controller.snapshot();
+		if (latest.kind !== "saved" || latest.revisionId !== openingCreationDraft.baseRevisionId) return;
+		const candidate = { ...openingCreationDraft, offsetMm: String(offsetMm) };
+		const validation = validateOpeningCreationDraft(project, candidate, windowSillPolicy);
+		setDimensionError(validation.kind === "invalid" ? validation.message : undefined);
+		if (validation.kind === "valid") setOpeningCreationDraft(candidate);
+	};
+
 	const confirmOpeningCreationDraft = async () => {
 		if (project?.schemaVersion !== 1 || !openingCreationDraft) return;
 		const latest = controller.snapshot();
@@ -7832,6 +7842,7 @@ export function AppShell({
 						isWallVertexMoveMode={isWallVertexMoveMode}
 						movableWallVertexIds={movableSelectedWallVertexIds}
 						openingCreationPreview={openingCreationPreview}
+						onMoveOpeningCreationDraft={compactOpeningCreation && !isEditorReadOnly && !isMutationBlocked && !wallAddHostConflict ? moveOpeningCreationDraft : undefined}
 						openingHostIds={openingEntry && openingEntry !== "add" ? openingHostIds : undefined}
 						onChooseOpeningHost={openingEntry && openingEntry !== "add" ? (wallSegmentId, offsetMm) => {
 							if (openingHostIds.has(wallSegmentId)) placeNewOpening(openingEntry, wallSegmentId, offsetMm);

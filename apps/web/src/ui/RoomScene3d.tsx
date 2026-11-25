@@ -50,6 +50,7 @@ import {
 	floorPointForCanvas,
 	projectedItemFootprintFor,
 	type ThreeDimensionalFloorPoint,
+	visibleItemFilterAtCanvasPoint,
 	wallItemAtScreenPoint,
 } from "./three-dimensional-floor-interaction";
 import {
@@ -1275,8 +1276,9 @@ export function RoomScene3d({
 		const activePointers = [...pointers.current.values()];
 		if (activePointers.length === 1 && activePointers[0]) {
 			const point = canvasPoint(event);
+			const size = interactionCanvasSize();
 			const floorPoint = point
-				? floorPointForCanvas(scene, camera, interactionCanvasSize(), point)
+				? floorPointForCanvas(scene, camera, size, point)
 				: undefined;
 			if (!readOnly && itemPlacementDraft && floorPoint) {
 				onClearSelection?.();
@@ -1285,22 +1287,16 @@ export function RoomScene3d({
 				gesture.current = { kind: "place-item", pointerId: event.pointerId };
 				return;
 			}
-			const itemAtPointer = floorPoint
-				? floorItemAtPoint(renderedScene.items, floorPoint)
+			const isVisible = plainLabels && point
+				? visibleItemFilterAtCanvasPoint(renderedScene, camera, size, point, controllerRef.current?.hiddenWallSegmentIds())
 				: undefined;
-			const screenItemAtPointer = point
-				? floorItemAtScreenPoint(
-						renderedScene.items,
-						renderedScene,
-						camera,
-						interactionCanvasSize(),
-						point,
-					)
-				: undefined;
-			const wallItem = plainLabels && point
-				? wallItemAtScreenPoint(renderedScene.items, renderedScene, camera, interactionCanvasSize(), point)
-				: undefined;
-			const item = wallItem ?? itemAtPointer ?? screenItemAtPointer;
+			const item = (plainLabels && point
+				? wallItemAtScreenPoint(renderedScene.items, renderedScene, camera, size, point, isVisible)
+				: undefined) ?? (floorPoint
+				? floorItemAtPoint(renderedScene.items, floorPoint, isVisible)
+				: undefined) ?? (point
+				? floorItemAtScreenPoint(renderedScene.items, renderedScene, camera, size, point, isVisible)
+				: undefined);
 			if (!item) onClearSelection?.();
 			if (item?.assetInstanceId) onSelectItem?.(item.assetInstanceId);
 			if (

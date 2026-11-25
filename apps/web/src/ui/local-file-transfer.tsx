@@ -1,7 +1,7 @@
-import { type FormEvent, useId, useLayoutEffect, useRef, useState } from "react";
+import { type FormEvent, type MouseEvent, type PointerEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import {
 	encryptProjectTransfer,
-	isProjectTransferPasswordValid,
+	isProjectTransferExportPasswordValid,
 } from "../adapters/telegram/encrypted-project-transfer";
 import {
 	projectDownloadLifetimeMs,
@@ -42,8 +42,14 @@ type Archive = {
 	readonly fileKind: HostFileKind;
 };
 type PrepareArchive = (signal: AbortSignal) => Promise<Archive | undefined>;
+// Android Telegram ignores download requests more than 10 seconds after the last tap.
+const automaticDownloadWindowMs = 9_000;
 
-/** A fresh button gesture starts the system operation after asynchronous preparation. */
+function hasFreshDownloadTap(tappedAt: number | undefined): boolean {
+	return tappedAt !== undefined && performance.now() - tappedAt < automaticDownloadWindowMs;
+}
+
+/** Prepares an archive and manages user-initiated system transfer and retries. */
 export class LocalFileTransferSession {
 	private state: LocalFileTransferState = { kind: "idle" };
 	private operation = new AbortController();
@@ -97,30 +103,36 @@ export class LocalFileTransferSession {
 	public usesEncryptedDownload(prepared: PreparedHostFile): boolean {
 		return prepared.fileKind === "portable-backup" && this.port.encryptedDownload?.available() === true;
 	}
-	public async stageEncrypted(password: string): Promise<void> {
+	public async startEncryptedDownload(password: string, tappedAt: number | undefined): Promise<void> {
 		const state = this.state;
 		const relay = this.port.encryptedDownload;
 		if ((state.kind !== "prepared" && state.kind !== "encrypted-failed") ||
 			!state.prepared || !this.usesEncryptedDownload(state.prepared) || !relay ||
-			!isProjectTransferPasswordValid(password)) return;
+			!isProjectTransferExportPasswordValid(password)) return;
 		const { prepared } = state;
 		const { signal } = this.operation;
+		let path: string;
 		this.update({ kind: "encrypting", prepared });
 		try {
 			const encrypted = await encryptProjectTransfer(new Uint8Array(await prepared.file.arrayBuffer()), password, signal);
 			signal.throwIfAborted();
 			if (encrypted.kind !== "encrypted") throw new Error("Backup encryption did not finish");
 			const expiresAt = Date.now() + projectDownloadLifetimeMs;
-			const path = await relay.stage(encrypted.bytes, signal);
+			path = await relay.stage(encrypted.bytes, signal);
 			signal.throwIfAborted();
 			this.encryptedHandle = { path, expiresAt };
-			this.update({ kind: "encrypted-ready", prepared });
 		} catch {
 			if (!signal.aborted) this.update({
 				kind: "encrypted-failed", prepared,
 				notice: "Не удалось подготовить копию. Проверьте подключение и введите пароль ещё раз.",
 			});
+			return;
 		}
+		if (!hasFreshDownloadTap(tappedAt)) {
+			this.update({ kind: "encrypted-ready", prepared, notice: "Копия готова. Коснитесь кнопки «Скачать»." });
+			return;
+		}
+		await this.requestEncryptedDownload(prepared, relay, path);
 	}
 	public async downloadEncrypted(): Promise<void> {
 		const state = this.state;
@@ -132,19 +144,22 @@ export class LocalFileTransferSession {
 			this.encryptedHandle = undefined;
 			this.update({
 				kind: "encrypted-failed", prepared,
-				notice: "Срок скачивания истёк. Подготовьте копию заново.",
+				notice: "Срок скачивания истёк. Введите пароль, чтобы скачать новую копию.",
 			});
 			return;
 		}
+		await this.requestEncryptedDownload(prepared, relay, handle.path);
+	}
+	private async requestEncryptedDownload(prepared: PreparedHostFile, relay: TelegramProjectDownload, path: string): Promise<void> {
 		const { signal } = this.operation;
 		this.update({ kind: "encrypted-downloading", prepared });
-		const result = await relay.download(handle.path, signal).catch(() => "unavailable");
+		const result = await relay.download(path, signal).catch(() => "unavailable");
 		if (!signal.aborted) this.update({
 			kind: "encrypted-ready", prepared,
 			notice: result === "requested"
 				? `Telegram принял запрос. Проверьте файл ${telegramProjectDownloadFilename} в загрузках.`
 				: result === "cancelled"
-					? "Скачивание отменено. Нажмите «Скачать файл», чтобы повторить."
+					? "Скачивание отменено. Коснитесь «Скачать», чтобы повторить."
 					: "Telegram не открыл скачивание. Попробуйте ещё раз.",
 		});
 	}
@@ -249,79 +264,89 @@ export function LocalFileTransferPanel({
 	);
 }
 
-type ExportPasswordStatus = "empty" | "invalid" | "unconfirmed" | "mismatch" | "ready";
-
-function readExportPassword(form: HTMLFormElement): { password: string; status: ExportPasswordStatus } {
-	const fields = new FormData(form);
-	const password = String(fields.get("password") ?? "");
-	const confirmation = fields.get("confirmation");
-	if (!password) return { password, status: "empty" };
-	if (!isProjectTransferPasswordValid(password)) return { password, status: "invalid" };
-	if (!confirmation) return { password, status: "unconfirmed" };
-	return { password, status: password === confirmation ? "ready" : "mismatch" };
-}
-
 function EncryptedDownloadPanel({ session, prepared, state }: {
 	readonly session: LocalFileTransferSession;
 	readonly prepared: PreparedHostFile;
 	readonly state: Extract<LocalFileTransferState, { readonly prepared?: PreparedHostFile }>;
 }) {
-	const [passwordStatus, setPasswordStatus] = useState<ExportPasswordStatus>("empty");
+	const [passwordValid, setPasswordValid] = useState<boolean>();
+	const [infoOpen, setInfoOpen] = useState(false);
 	const passwordHintId = useId();
-	const mismatchId = useId();
+	const infoId = useId();
 	const downloadButton = useRef<HTMLButtonElement>(null);
+	const downloadTap = useRef<number | undefined>(undefined);
 	const encrypting = state.kind === "encrypting";
 	const downloading = state.kind === "encrypted-downloading";
-	const ready = state.kind === "encrypted-ready" || downloading;
+	const ready = state.kind === "encrypted-ready";
 	useLayoutEffect(() => {
 		if (ready) downloadButton.current?.focus({ preventScroll: true });
 	}, [ready]);
+	// Telegram Android measures its gesture window from the native touch down.
+	const recordDownloadTap = (event: PointerEvent<HTMLButtonElement>) => {
+		downloadTap.current = event.isTrusted && event.isPrimary && event.button === 0 ? event.timeStamp : undefined;
+	};
+	const clearDownloadTap = () => { downloadTap.current = undefined; };
+	const rejectKeyboardClick = (event: MouseEvent<HTMLButtonElement>) => {
+		if (!event.isTrusted || event.detail === 0) clearDownloadTap();
+	};
 	const submit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
-		const { password, status } = readExportPassword(event.currentTarget);
-		if (status !== "ready") {
-			setPasswordStatus(status);
-			return;
-		}
+		const tappedAt = downloadTap.current;
+		clearDownloadTap();
+		const password = String(new FormData(event.currentTarget).get("password") ?? "");
+		if (!isProjectTransferExportPasswordValid(password)) return;
 		event.currentTarget.reset();
-		setPasswordStatus("empty");
-		void session.stageEncrypted(password);
+		setPasswordValid(undefined);
+		setInfoOpen(false);
+		void session.startEncryptedDownload(password, tappedAt);
 	};
 	return <TelegramSheetFrame telegram canvasAnchored className={styles.panel}
 		aria-label="Передача файла" aria-busy={encrypting || downloading}>
-		<h2>Файл проекта</h2>
-		<p>{ready ? telegramProjectDownloadFilename : prepared.file.name}</p>
-		{ready ? <>
-			<p role="status">{state.notice ?? "Копия готова. Нажмите «Скачать файл» и подтвердите скачивание в Telegram."}</p>
+		<div className={styles.encryptedHeading}>
+			<h2>Файл проекта</h2>
+			<button type="button" className={styles.encryptedInfo} aria-label="Как работает скачивание"
+				aria-expanded={infoOpen} aria-controls={infoId} aria-describedby={infoOpen ? infoId : undefined}
+				onClick={() => setInfoOpen(!infoOpen)} onKeyDown={(event) => {
+					if (event.key === "Escape" && infoOpen) {
+						event.stopPropagation();
+						setInfoOpen(false);
+					}
+				}}>
+				<span aria-hidden="true">ⓘ</span>
+			</button>
+			<p id={infoId} role="tooltip" className={styles.encryptedInfoText} hidden={!infoOpen}>
+				Копия шифруется на телефоне. Подтвердите скачивание в Telegram. Сервер удалит копию через 15 минут. Пароль понадобится для импорта.
+			</p>
+		</div>
+		<p>{ready || downloading ? telegramProjectDownloadFilename : prepared.file.name}</p>
+		{ready || downloading ? <>
+			<p role="status">{downloading ? "Открытие Telegram…" : state.notice}</p>
 			<div>
-				<button type="button" onClick={() => session.close()}>Закрыть</button>
+				<button type="button" onClick={() => session.close()}>{downloading ? "Отменить" : "Закрыть"}</button>
 				<button ref={downloadButton} type="button" className={styles.handoff} disabled={downloading}
-					onClick={() => void session.downloadEncrypted()}>
-					{downloading ? "Открытие Telegram…" : "Скачать файл"}
-				</button>
+					onPointerDown={recordDownloadTap} onPointerCancel={clearDownloadTap} onClick={(event) => {
+						rejectKeyboardClick(event);
+						const tappedAt = downloadTap.current;
+						clearDownloadTap();
+						if (hasFreshDownloadTap(tappedAt)) void session.downloadEncrypted();
+					}}>Скачать</button>
 			</div>
-		</> : <form className={styles.passwordForm} onSubmit={submit}
-			onInput={(event) => setPasswordStatus(readExportPassword(event.currentTarget).status)}>
-			<p>Копия шифруется на телефоне. После подготовки появится кнопка «Скачать файл». Сервер удалит копию через 15 минут.</p>
+		</> : <form className={styles.passwordForm} onSubmit={submit}>
 			<label>Пароль для копии
 				<input name="password" type="password" autoComplete="new-password" required disabled={encrypting}
-					aria-describedby={passwordHintId} aria-invalid={passwordStatus === "invalid" || undefined} />
+					aria-describedby={passwordHintId} aria-invalid={passwordValid === false || undefined}
+					onChange={(event) => {
+						const password = event.currentTarget.value;
+						setPasswordValid(password ? isProjectTransferExportPasswordValid(password) : undefined);
+					}} />
 			</label>
-			<p id={passwordHintId} aria-live="polite">{passwordStatus === "invalid"
-				? "Введите пароль от 12 до 256 символов."
-				: "Придумайте пароль от 12 до 256 символов и сохраните его для импорта."}</p>
-			<label>Повторите пароль
-				<input name="confirmation" type="password" autoComplete="new-password" required disabled={encrypting}
-					aria-describedby={passwordStatus === "mismatch" ? mismatchId : undefined}
-					aria-invalid={passwordStatus === "mismatch" || undefined} />
-			</label>
-			{passwordStatus === "mismatch" ? <p id={mismatchId} role="status">Пароли не совпадают.</p> : null}
+			<p id={passwordHintId} className={styles.passwordHint}>Пароль должен состоять из 6 символов.</p>
 			{state.notice ? <p role="alert">{state.notice}</p> : null}
+			{encrypting ? <p role="status">Подготовка скачивания…</p> : null}
 			<div>
 				<button type="button" onClick={() => session.close()}>{encrypting ? "Отменить" : "Закрыть"}</button>
-				<button type="submit" disabled={encrypting || passwordStatus !== "ready"} className={styles.handoff}>
-					{encrypting ? "Подготовка…" : "Подготовить копию"}
-				</button>
+				<button type="submit" disabled={encrypting || passwordValid !== true} className={styles.handoff}
+					onPointerDown={recordDownloadTap} onPointerCancel={clearDownloadTap} onClick={rejectKeyboardClick}>Скачать</button>
 			</div>
 		</form>}
 	</TelegramSheetFrame>;

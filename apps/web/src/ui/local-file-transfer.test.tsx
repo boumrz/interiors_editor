@@ -12,10 +12,17 @@ const archive = () => ({
 	fileKind: "portable-backup" as const,
 });
 
+function deferred<T>() {
+	let resolve: (value: T) => void = () => undefined;
+	const promise = new Promise<T>((accept) => { resolve = accept; });
+	return { promise, resolve };
+}
+
 describe("explicit local file handoff", () => {
-	it("requires an explicit password before uploading a private Android copy", async () => {
+	it("starts the native download on the same action that encrypts a private Android copy", async () => {
 		const stage = rstest.fn(async () => "/download-capability");
-		const download = rstest.fn(async () => "requested" as const);
+		let attempts = 0;
+		const download = rstest.fn(async () => ++attempts === 1 ? "cancelled" as const : "requested" as const);
 		const session = new LocalFileTransferSession({
 			...createHostFileBridge({ maximumBytes: 20, system: {} }),
 			encryptedDownload: { available: () => true, stage, download },
@@ -23,16 +30,165 @@ describe("explicit local file handoff", () => {
 		await session.prepare(async () => archive());
 		const markup = renderToStaticMarkup(<LocalFileTransferPanel session={session} state={session.snapshot()} telegram />);
 		expect(markup).toContain("Пароль для копии");
-		expect(markup).toContain("15 минут");
 		expect(stage).not.toHaveBeenCalled();
-		await session.stageEncrypted("short");
+		await session.startEncryptedDownload("short", performance.now());
+		await session.startEncryptedDownload("надёжный пароль", performance.now());
 		expect(stage).not.toHaveBeenCalled();
-		await session.stageEncrypted("надёжный пароль");
+		await session.startEncryptedDownload("фай🔑лы", performance.now());
 		expect(stage).toHaveBeenCalledTimes(1);
-		expect(download).not.toHaveBeenCalled();
-		expect(session.snapshot().kind).toBe("encrypted-ready");
-		await session.downloadEncrypted();
 		expect(download).toHaveBeenCalledWith("/download-capability", expect.any(AbortSignal));
+		expect(session.snapshot()).toMatchObject({ notice: expect.stringContaining("Скачивание отменено") });
+		await session.downloadEncrypted();
+		expect(stage).toHaveBeenCalledTimes(1);
+		expect(download).toHaveBeenCalledTimes(2);
+		expect(session.snapshot()).toMatchObject({ notice: expect.stringContaining("Проверьте файл project.interiors") });
+	});
+
+	it.each([8_999, 9_000])("reuses the staged Android copy after %d ms of work", async (elapsed) => {
+		const start = 100;
+		let now = start;
+		const clock = rstest.spyOn(performance, "now").mockImplementation(() => now);
+		const stage = rstest.fn(async () => {
+			now = start + elapsed;
+			return "/download-capability";
+		});
+		const download = rstest.fn(async () => "requested" as const);
+		try {
+			const session = new LocalFileTransferSession({
+				...createHostFileBridge({ maximumBytes: 20, system: {} }),
+				encryptedDownload: { available: () => true, stage, download },
+			}, () => undefined);
+			await session.prepare(async () => archive());
+			await session.startEncryptedDownload("фай🔑лы", performance.now());
+			expect(download).toHaveBeenCalledTimes(elapsed === 8_999 ? 1 : 0);
+			if (elapsed === 9_000) {
+				expect(session.snapshot()).toMatchObject({ notice: expect.stringContaining("Копия готова") });
+			}
+			await session.downloadEncrypted();
+			expect(download).toHaveBeenCalledTimes(elapsed === 8_999 ? 2 : 1);
+			expect(stage).toHaveBeenCalledTimes(1);
+		} finally {
+			clock.mockRestore();
+		}
+	});
+
+	it("blocks duplicate submits and retries after a relay upload failure", async () => {
+		const started = deferred<void>();
+		const failedUpload = deferred<void>();
+		const stage = rstest.fn(async () => "/download-capability").mockImplementationOnce(async () => {
+			started.resolve();
+			await failedUpload.promise;
+			throw new Error("Network unavailable");
+		});
+		const download = rstest.fn(async () => "requested" as const);
+		const session = new LocalFileTransferSession({
+			...createHostFileBridge({ maximumBytes: 20, system: {} }),
+			encryptedDownload: { available: () => true, stage, download },
+		}, () => undefined);
+		await session.startEncryptedDownload("фай🔑лы", performance.now());
+		await session.prepare(async () => ({ ...archive(), fileKind: "unverified-source" }));
+		await session.startEncryptedDownload("фай🔑лы", performance.now());
+		expect(stage).not.toHaveBeenCalled();
+		await session.prepare(async () => archive());
+		const transfer = session.startEncryptedDownload("фай🔑лы", performance.now());
+		try {
+			await Promise.race([started.promise, transfer.then(() => { throw new Error("No upload started"); })]);
+			expect(session.snapshot().kind).toBe("encrypting");
+			await session.startEncryptedDownload("фай🔑лы", performance.now());
+			await session.downloadEncrypted();
+			expect(stage).toHaveBeenCalledTimes(1);
+			expect(download).not.toHaveBeenCalled();
+		} finally {
+			failedUpload.resolve();
+			await transfer;
+		}
+		expect(session.snapshot()).toMatchObject({ kind: "encrypted-failed", notice: expect.stringContaining("Проверьте подключение") });
+		await session.startEncryptedDownload("фай🗝лы", performance.now());
+		expect(stage).toHaveBeenCalledTimes(2);
+		expect(download).toHaveBeenCalledTimes(1);
+	});
+
+	it("starts no relay operation if the device cannot encrypt the backup", async () => {
+		const stage = rstest.fn(async () => "/download-capability");
+		const download = rstest.fn(async () => "requested" as const);
+		const session = new LocalFileTransferSession({
+			...createHostFileBridge({ maximumBytes: 20, system: {} }),
+			encryptedDownload: { available: () => true, stage, download },
+		}, () => undefined);
+		await session.prepare(async () => archive());
+		rstest.stubGlobal("crypto", undefined);
+		try {
+			await session.startEncryptedDownload("фай🔑лы", performance.now());
+			expect(session.snapshot().kind).toBe("encrypted-failed");
+			expect(stage).not.toHaveBeenCalled();
+			expect(download).not.toHaveBeenCalled();
+		} finally {
+			rstest.unstubAllGlobals();
+		}
+	});
+
+	it.each(["upload", "native prompt"])("ignores a late result after closing during %s", async (phase) => {
+		const started = deferred<AbortSignal>();
+		const released = deferred<void>();
+		const stage = rstest.fn(async (_bytes: Uint8Array, signal: AbortSignal) => {
+			if (phase === "upload") { started.resolve(signal); await released.promise; }
+			return "/download-capability";
+		});
+		const download = rstest.fn(async (_path: string, signal: AbortSignal) => {
+			started.resolve(signal);
+			await released.promise;
+			return "requested" as const;
+		});
+		const session = new LocalFileTransferSession({
+			...createHostFileBridge({ maximumBytes: 20, system: {} }),
+			encryptedDownload: { available: () => true, stage, download },
+		}, () => undefined);
+		await session.prepare(async () => archive());
+		const transfer = session.startEncryptedDownload("фай🔑лы", performance.now());
+		let duplicate: Promise<void> | undefined;
+		try {
+			const signal = await Promise.race([started.promise, transfer.then(() => { throw new Error("No transfer started"); })]);
+			if (phase === "native prompt") {
+				expect(session.snapshot().kind).toBe("encrypted-downloading");
+				duplicate = session.downloadEncrypted();
+				expect(download).toHaveBeenCalledTimes(1);
+			}
+			session.close();
+			expect(signal.aborted).toBe(true);
+		} finally {
+			released.resolve();
+			await Promise.all([transfer, duplicate]);
+		}
+		expect(session.snapshot().kind).toBe("idle");
+		expect(download).toHaveBeenCalledTimes(phase === "upload" ? 0 : 1);
+	});
+
+	it("reuses the copy after the SDK is unavailable and requires a new password after expiry", async () => {
+		const started = 175_000;
+		const clock = rstest.spyOn(Date, "now").mockReturnValue(started);
+		const stage = rstest.fn(async () => "/download-capability");
+		const download = rstest.fn(async () => "unavailable" as const);
+		try {
+			const session = new LocalFileTransferSession({
+				...createHostFileBridge({ maximumBytes: 20, system: {} }),
+				encryptedDownload: { available: () => true, stage, download },
+			}, () => undefined);
+			await session.prepare(async () => archive());
+			await session.startEncryptedDownload("фай🔑лы", performance.now());
+			expect(session.snapshot()).toMatchObject({ notice: expect.stringContaining("Telegram не открыл скачивание") });
+			clock.mockReturnValue(started + 15 * 60_000 - 1);
+			await session.downloadEncrypted();
+			expect(download).toHaveBeenCalledTimes(2);
+			clock.mockReturnValue(started + 15 * 60_000);
+			await session.downloadEncrypted();
+			expect(session.snapshot()).toMatchObject({ kind: "encrypted-failed", notice: expect.stringContaining("Срок скачивания истёк") });
+			expect(download).toHaveBeenCalledTimes(2);
+			await session.startEncryptedDownload("фай🔑лы", performance.now());
+			expect(stage).toHaveBeenCalledTimes(2);
+			expect(download).toHaveBeenCalledTimes(3);
+		} finally {
+			clock.mockRestore();
+		}
 	});
 
 	it("shows preparation and active handoff separately, blocks duplicate actions, and notifies its view", async () => {

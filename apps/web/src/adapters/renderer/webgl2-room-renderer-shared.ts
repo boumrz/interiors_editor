@@ -15,6 +15,8 @@ export interface WebGl2SceneRenderer {
 		cutawayMode?: WebGl2CutawayMode,
 		scene?: RectangularRoomWebGlScene,
 	): void;
+	/** Reports wall visibility from the most recent frame, including cutaway hysteresis. */
+	hiddenWallSegmentIds?(): ReadonlySet<string> | undefined;
 	/** Replaces only decoded local model roots; shell/camera state stays live. */
 	updateRuntimeModels?(runtimeModels: WebGl2RuntimeModels): void;
 	dispose(): void;

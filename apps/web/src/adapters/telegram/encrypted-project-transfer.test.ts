@@ -10,6 +10,7 @@ import {
 } from "./encrypted-project-transfer";
 
 const password = " кафе 🧩 café ";
+const exportPassword = "кафе 🧩";
 const archive = new Uint8Array([0x50, 0x4b, 3, 4, 7, 8, 0, 255]);
 const magic = new TextEncoder().encode("INTENC1\n");
 
@@ -22,8 +23,8 @@ const knownAnswer = Uint8Array.from(
 describe("Android encrypted project transfer", () => {
 	it("encrypts portable backup bytes with independent salt and IV for every export", async () => {
 		const [first, second] = await Promise.all([
-			encryptProjectTransfer(archive, password),
-			encryptProjectTransfer(archive, password),
+			encryptProjectTransfer(archive, exportPassword),
+			encryptProjectTransfer(archive, exportPassword),
 		]);
 		if (first.kind !== "encrypted" || second.kind !== "encrypted") {
 			throw new Error("The archive could not be encrypted");
@@ -35,10 +36,23 @@ describe("Android encrypted project transfer", () => {
 		expect(first.bytes.slice(8, 24)).not.toEqual(second.bytes.slice(8, 24));
 		expect(first.bytes.slice(24, 36)).not.toEqual(second.bytes.slice(24, 36));
 		expect(first.bytes.slice(36, 44)).not.toEqual(archive);
-		expect(await decryptProjectTransfer(first.bytes, password)).toEqual({
+		expect(await decryptProjectTransfer(first.bytes, exportPassword)).toEqual({
 			kind: "decrypted",
 			bytes: archive,
 		});
+		expect(await decryptProjectTransfer(first.bytes, "кафе 🗝")).toEqual({
+			kind: "rejected",
+			reasonCode: "TRANSFER_AUTHENTICATION_FAILED",
+		});
+	});
+
+	it("rejects new exports with shorter, longer or invalid Unicode passwords", async () => {
+		for (const invalid of ["🔑".repeat(5), "🔑".repeat(7), password, `${"🔑".repeat(5)}\uD800`]) {
+			expect(await encryptProjectTransfer(archive, invalid)).toEqual({
+				kind: "rejected",
+				reasonCode: "INVALID_TRANSFER_PASSWORD",
+			});
+		}
 	});
 
 	it("reads the independent AES-GCM vector and requires the exact UTF-8 password", async () => {
@@ -107,6 +121,9 @@ describe("Android encrypted project transfer", () => {
 	});
 
 	it("counts Unicode code points and rejects strings that have no exact UTF-8 representation", () => {
+		expect(isProjectTransferPasswordValid("🔑".repeat(5))).toBe(false);
+		expect(isProjectTransferPasswordValid("🔑".repeat(6))).toBe(true);
+		expect(isProjectTransferPasswordValid("🔑".repeat(7))).toBe(false);
 		expect(isProjectTransferPasswordValid("🔑".repeat(11))).toBe(false);
 		expect(isProjectTransferPasswordValid("🔑".repeat(12))).toBe(true);
 		expect(isProjectTransferPasswordValid("я".repeat(256))).toBe(true);
@@ -126,7 +143,7 @@ describe("Android encrypted project transfer", () => {
 		rstest.stubGlobal("crypto", undefined);
 		try {
 			for (const result of await Promise.all([
-				encryptProjectTransfer(archive, password),
+				encryptProjectTransfer(archive, exportPassword),
 				decryptProjectTransfer(knownAnswer, password),
 			])) {
 				expect(result).toEqual({ kind: "rejected", reasonCode: "TRANSFER_CRYPTO_UNAVAILABLE" });
@@ -138,7 +155,7 @@ describe("Android encrypted project transfer", () => {
 		const decrypt = rstest.spyOn(crypto.subtle, "decrypt").mockRejectedValue(new TypeError());
 		try {
 			for (const result of await Promise.all([
-				encryptProjectTransfer(archive, password),
+				encryptProjectTransfer(archive, exportPassword),
 				decryptProjectTransfer(knownAnswer, password),
 			])) {
 				expect(result).toEqual({ kind: "rejected", reasonCode: "TRANSFER_CRYPTO_UNAVAILABLE" });
@@ -152,11 +169,11 @@ describe("Android encrypted project transfer", () => {
 	it("does not hand late encryption or decryption results to a cancelled caller", async () => {
 		const aborted = AbortSignal.abort();
 		const active = new AbortController();
-		const encrypting = encryptProjectTransfer(archive, password, active.signal);
+		const encrypting = encryptProjectTransfer(archive, exportPassword, active.signal);
 		const decrypting = decryptProjectTransfer(knownAnswer, password, active.signal);
 		active.abort();
 		for (const result of await Promise.all([
-			encryptProjectTransfer(archive, password, aborted),
+			encryptProjectTransfer(archive, exportPassword, aborted),
 			decryptProjectTransfer(knownAnswer, password, aborted),
 			encrypting,
 			decrypting,

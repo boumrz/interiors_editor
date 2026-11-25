@@ -50,8 +50,6 @@ import {
 	floorPointForCanvas,
 	projectedItemFootprintFor,
 	type ThreeDimensionalFloorPoint,
-	visibleItemFilterAtCanvasPoint,
-	wallItemAtScreenPoint,
 } from "./three-dimensional-floor-interaction";
 import {
 	beginRotationDomeGesture,
@@ -148,6 +146,7 @@ interface SceneViewportInsets {
 type RotationGesture = RotationDomeGesture & {
 	readonly target: "item" | "placement";
 	readonly placementKey?: string;
+	readonly itemTap?: { readonly assetInstanceId: string; readonly start: Point } | undefined;
 };
 
 interface RotationPointerListeners {
@@ -161,6 +160,7 @@ const ROTATION_GIZMO_CENTER = 100;
 const ROTATION_GIZMO_RADIUS = 73;
 const ROTATION_GIZMO_SIZE = 200;
 const ROTATION_DOME_HEIGHT = 128;
+const ROTATION_TAP_MOVE_LIMIT_PX = 6;
 
 export type CustomGlbPresentation = "loading" | "rendered" | "unavailable";
 
@@ -1046,6 +1046,14 @@ export function RoomScene3d({
 			: { height: canvasSize.y, width: canvasSize.x };
 	};
 
+	const pickRenderedItem = (point: Point | undefined, size: { readonly width: number; readonly height: number }) => {
+		if (!point || size.width <= 0 || size.height <= 0) return undefined;
+		return controllerRef.current?.pickItem({
+			x: 2 * point.x / size.width - 1,
+			y: 1 - 2 * point.y / size.height,
+		});
+	};
+
 	function retainedHostItemTransform(): typeof itemPreview {
 		if (!hostEnabledRef.current) return undefined;
 		if (hostRetainedItemPreview.current) return hostRetainedItemPreview.current;
@@ -1181,11 +1189,14 @@ export function RoomScene3d({
 			gesture.current = undefined;
 			return;
 		}
-		const nextRotation: RotationGesture = { ...moveRotationDomeGesture(
-			activeRotation,
-			point,
-			rotationCentre(gizmoBounds),
-		), target: activeRotation.target, placementKey: activeRotation.placementKey };
+		const itemTap = activeRotation.itemTap;
+		if (itemTap && distance(itemTap.start, point) <= ROTATION_TAP_MOVE_LIMIT_PX) return;
+		const nextRotation: RotationGesture = {
+			...moveRotationDomeGesture(activeRotation, point, rotationCentre(gizmoBounds)),
+			target: activeRotation.target,
+			placementKey: activeRotation.placementKey,
+			itemTap: undefined,
+		};
 		publishRotationPreview(nextRotation);
 	};
 
@@ -1253,6 +1264,7 @@ export function RoomScene3d({
 		hostRetainedItemPreview.current = undefined;
 		setRotation(undefined);
 		clearRotationPointerListeners();
+		if (activeRotation.itemTap) onSelectItem?.(activeRotation.itemTap.assetInstanceId);
 	};
 
 	const onPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1287,16 +1299,11 @@ export function RoomScene3d({
 				gesture.current = { kind: "place-item", pointerId: event.pointerId };
 				return;
 			}
-			const isVisible = plainLabels && point
-				? visibleItemFilterAtCanvasPoint(renderedScene, camera, size, point, controllerRef.current?.hiddenWallSegmentIds())
-				: undefined;
-			const item = (plainLabels && point
-				? wallItemAtScreenPoint(renderedScene.items, renderedScene, camera, size, point, isVisible)
-				: undefined) ?? (floorPoint
-				? floorItemAtPoint(renderedScene.items, floorPoint, isVisible)
-				: undefined) ?? (point
-				? floorItemAtScreenPoint(renderedScene.items, renderedScene, camera, size, point, isVisible)
-				: undefined);
+			const pickedId = plainLabels ? pickRenderedItem(point, size) : undefined;
+			const item = plainLabels
+				? (pickedId === undefined ? undefined : renderedScene.items.find((entry) => entry.assetInstanceId === pickedId))
+				: (floorPoint ? floorItemAtPoint(renderedScene.items, floorPoint) : undefined) ??
+					(point ? floorItemAtScreenPoint(renderedScene.items, renderedScene, camera, size, point) : undefined);
 			if (!item) onClearSelection?.();
 			if (item?.assetInstanceId) onSelectItem?.(item.assetInstanceId);
 			if (
@@ -1530,15 +1537,24 @@ export function RoomScene3d({
 		} catch {
 			/* Window listeners retain capture on WebKit. */
 		}
+		const start = { x: event.clientX, y: event.clientY };
+		// A tap on another mesh can land on the rotation ring's wider hit area.
+		// A drag from the same spot still belongs to the rotation control.
+		const pickedId = plainLabels && target === "item" && pointers.current.size === 0
+			? pickRenderedItem(canvasPoint(event), interactionCanvasSize())
+			: undefined;
+		const itemTap = pickedId !== undefined && pickedId !== item.assetInstanceId
+			? { assetInstanceId: pickedId, start }
+			: undefined;
 		const nextRotation: RotationGesture = { ...beginRotationDomeGesture({
 			assetInstanceId: target === "placement" ? "placement-preview" : item.assetInstanceId ?? "",
 			pointerId: event.pointerId,
 			yawRadians: item.yawRadians ?? 0,
-			point: { x: event.clientX, y: event.clientY },
+			point: start,
 			centre: rotationCentre(gizmoBounds),
 			exact: exactFloorYaw,
 			snapToStep: rotationStepMode || !exactFloorYaw,
-		}), target, placementKey };
+		}), target, placementKey, itemTap };
 		rotationBaseSceneRef.current = scene;
 		rotationRef.current = nextRotation;
 		pointers.current.set(event.pointerId, {

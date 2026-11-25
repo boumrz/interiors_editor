@@ -1708,28 +1708,59 @@ test("TMA-OPENING-SAVE-FOCUS: publishing a new opening retains keyboard focus in
 	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
 });
 
-/** Uses the actual current Project, camera and layout; no synthetic scene/controller. */async function currentSceneFloorContact(page: Page, xMm: number, zMm: number) {
- await expect(page.getByTestId("three-dimensional-renderer-diagnostics")).toContainText("стандартное качество");
- await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
- const [project, cameraText, bounds] = await Promise.all([
-  currentProject(page), page.getByTestId("three-dimensional-camera").textContent(), page.getByTestId("three-dimensional-canvas").boundingBox(),
- ]);
- const scene = projectRectangularRoomForWebGl(project);
- const values = cameraText?.split(":").map(Number);
- if (!scene || !bounds || !values || values.length !== 5 || !values.every(Number.isFinite)) throw new Error("No actual current 3D floor projection");
- const [azimuthRadians, elevationRadians, distance, panXM, panZM] = values;
- const originX = Math.min(...project.level.vertices.map((vertex) => vertex.xMm));
- const originZ = Math.min(...project.level.vertices.map((vertex) => vertex.zMm));
- const point = canvasPointForFloor(scene, { azimuthRadians, elevationRadians, distance, panXM, panZM }, bounds, { xM: (xMm - originX) / 1000, zM: (zMm - originZ) / 1000 });
- if (!point) throw new Error("No visible projected floor contact");
- return { x: bounds.x + point.x, y: bounds.y + point.y };
+/** Reads the actual Project and the mounted editor camera and canvas. */
+async function currentSceneProjection(page: Page) {
+	await expect(page.getByTestId("three-dimensional-renderer-diagnostics")).toContainText("стандартное качество");
+	await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+	const [project, cameraText, bounds] = await Promise.all([
+		currentProject(page), page.getByTestId("three-dimensional-camera").textContent(), page.getByTestId("three-dimensional-canvas").boundingBox(),
+	]);
+	const scene = projectRectangularRoomForWebGl(project);
+	const values = cameraText?.split(":").map(Number);
+	if (!scene || !bounds || !values || values.length !== 5 || !values.every(Number.isFinite)) throw new Error("Expected the current 3D projection");
+	const [azimuthRadians, elevationRadians, distance, panXM, panZM] = values;
+	return {
+		scene,
+		bounds,
+		camera: { azimuthRadians, elevationRadians, distance, panXM, panZM },
+		originX: Math.min(...project.level.vertices.map((vertex) => vertex.xMm)),
+		originZ: Math.min(...project.level.vertices.map((vertex) => vertex.zMm)),
+	};
 }
+
+function sceneContact(point: { x: number; y: number } | undefined, bounds: { x: number; y: number }) {
+	if (!point) throw new Error("Expected a projected scene contact");
+	return { x: bounds.x + point.x, y: bounds.y + point.y };
+}
+
+async function currentChairSeatContact(page: Page, assetInstanceId: string) {
+	const { scene, camera, bounds } = await currentSceneProjection(page);
+	const item = scene.items.find((item) => item.assetInstanceId === assetInstanceId);
+	if (!item) throw new Error("Expected the chair in the current 3D scene");
+	// The chair's center at half-height lies inside the solid seat.
+	return sceneContact(canvasPointForSceneItem(scene, camera, bounds, item), bounds);
+}
+
 async function beginActualSceneMove(page: Page, from: { xMm: number; zMm: number }, to: { xMm: number; zMm: number }) {
- const start = await currentSceneFloorContact(page, from.xMm, from.zMm);
- const end = await currentSceneFloorContact(page, to.xMm, to.zMm);
- expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), start)).toBe("three-dimensional-canvas");
- await page.mouse.move(start.x, start.y); await page.mouse.down(); await page.mouse.move(end.x, end.y, { steps: 5 });
- await expect(page.getByTestId("three-dimensional-item-preview")).toContainText("перемещение:");
+	const { scene, camera, bounds, originX, originZ } = await currentSceneProjection(page);
+	const model = scene.items[0];
+	if (!model) throw new Error("Expected the triangle model in the current 3D scene");
+	// The fixture triangle has two base vertices and one upper vertex. Its
+	// centroid lies on the rendered surface, inside the normalized GLB envelope.
+	const start = sceneContact(canvasPointForSceneItem(scene, camera, bounds, {
+		...model,
+		centerXM: (from.xMm - originX) / 1000 - model.widthM / 6,
+		centerYM: model.heightM / 3,
+		centerZM: (from.zMm - originZ) / 1000 - model.depthM / 6,
+	}), bounds);
+	const end = sceneContact(canvasPointForFloor(scene, camera, bounds, {
+		xM: (to.xMm - originX) / 1000, zM: (to.zMm - originZ) / 1000,
+	}), bounds);
+	expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), start)).toBe("three-dimensional-canvas");
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(end.x, end.y, { steps: 5 });
+	await expect(page.getByTestId("three-dimensional-item-preview")).toContainText("перемещение:");
 }
 
 test("TMA-UI-SCENE-01: actual scoped 3D move is suspended by Root Back, retains world pose on Continue and publishes only a fresh contact", async ({ page }) => {
@@ -2670,7 +2701,7 @@ test("TMA-SCENE-WALL-PICK: visible facades and partitions block item selection",
 	await expect(page.getByTestId("three-dimensional-camera")).toContainText(":0.220:");
 	const selection = page.getByRole("button", { name: "Дублировать", exact: true });
 	await expect(selection).toBeHidden();
-	const contact = await currentSceneFloorContact(page, item.xMm, item.zMm);
+	const contact = await currentChairSeatContact(page, item.assetInstanceId);
 	await page.getByRole("button", { name: "Показать все стены", exact: true }).click();
 	await page.touchscreen.tap(contact.x, contact.y);
 	await expect(selection).toBeHidden();
@@ -2687,9 +2718,57 @@ test("TMA-SCENE-WALL-PICK: visible facades and partitions block item selection",
 	expect((await currentProject(page)).level.rooms).toHaveLength(2);
 	await page.touchscreen.tap(start.x, start.y);
 	await expect(selection).toBeHidden();
-	const partitionContact = await currentSceneFloorContact(page, item.xMm, item.zMm);
+	const partitionContact = await currentChairSeatContact(page, item.assetInstanceId);
 	await page.touchscreen.tap(partitionContact.x, partitionContact.y);
 	await expect(selection).toBeHidden();
+});
+
+test("TMA-SCENE-ITEM-PICK: overlapping furniture selects the visible surface at a shallow oblique angle", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, "Выбор перекрывающихся предметов");
+	for (const [label, position] of [
+		[/^Пуф /, { x: 0.68, y: 0.52 }],
+		[/^Напольный кухонный шкаф /, { x: 0.49, y: 0.45 }],
+	] as const) {
+		await openEditorCatalog(page);
+		await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: label }).click();
+		await clickRectangularRoomPoint(page, position);
+		await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+		await saved(page);
+	}
+	await clickRectangularRoomPoint(page, { x: 0.15, y: 0.16 });
+	const project = await currentProject(page);
+	expect(project.assetInstances.map((item) => item.label)).toEqual(["Пуф", "Напольный кухонный шкаф"]);
+	const scene = projectRectangularRoomForWebGl(project);
+	const [ottoman, cabinet] = scene?.items ?? [];
+	if (!scene || !ottoman || !cabinet) throw new Error("Expected both furniture models");
+	const before = await rows(page, "a");
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await expect(page.getByTestId("three-dimensional-renderer-diagnostics")).toContainText("стандартное качество");
+	const canvas = page.getByTestId("three-dimensional-canvas");
+	const bounds = await canvas.boundingBox();
+	if (!bounds) throw new Error("Expected the 3D canvas");
+	const start = { x: bounds.x + 22, y: bounds.y + bounds.height * 0.39 };
+	await page.mouse.move(start.x, start.y);
+	await page.mouse.down();
+	await page.mouse.move(start.x + 27, start.y - 100, { steps: 6 });
+	await page.mouse.up();
+	const cameraOutput = page.getByTestId("three-dimensional-camera");
+	await expect(cameraOutput).toHaveText(/^0\.270:0\.220:/);
+	const { camera, bounds: frame } = await currentSceneProjection(page);
+	const selectedColor = page.getByTestId("tma-selected-item-color").getByRole("button", { name: /^Цвет/ });
+	for (const [surface, expectedTarget, expectedColor] of [
+		[{ ...ottoman, centerXM: ottoman.centerXM + ottoman.widthM / 2 }, "three-dimensional-canvas", /Терракота/],
+		[{ ...cabinet, centerYM: cabinet.centerYM + cabinet.heightM * 0.16 }, "three-dimensional-rotation-hit-area", /Тёплое дерево/],
+	] as const) {
+		const contact = sceneContact(canvasPointForSceneItem(scene, camera, frame, surface), frame);
+		const target = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), contact);
+		expect(target).toBe(expectedTarget);
+		await page.touchscreen.tap(contact.x, contact.y);
+		await expect(selectedColor).toHaveAccessibleName(expectedColor);
+		await expect(page.getByTestId("three-dimensional-item-preview")).toHaveText("нет");
+	}
+	expect(await rows(page, "a")).toEqual(before);
 });
 
 test("TMA-ITEM-PALETTE: a legacy wall light has concise dimension labels and reflowing color choices", async ({ page }) => {

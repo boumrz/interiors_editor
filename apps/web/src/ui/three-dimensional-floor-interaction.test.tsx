@@ -1,18 +1,14 @@
 import { describe, expect, it } from "@rstest/core";
 
-import type { RectangularRoomWebGlScene, SceneBox } from "../adapters/renderer/rectangular-room-projection";
-import { clipWallBodyToInterval, wallBodiesForProjection } from "../adapters/renderer/wall-body-projection";
+import type { RectangularRoomWebGlScene } from "../adapters/renderer/rectangular-room-projection";
 import { initialThreeDimensionalViewport } from "./three-dimensional-viewport";
 import {
 	canvasPointForFloor,
-	canvasPointForSceneItem,
 	floorItemAtScreenPoint,
 	floorItemAtPoint,
 	floorPointForCanvas,
 	projectedItemFootprintFor,
 	roomIdAtFloorPoint,
-	visibleItemFilterAtCanvasPoint,
-	wallItemAtScreenPoint,
 } from "./three-dimensional-floor-interaction";
 
 const scene: RectangularRoomWebGlScene = {
@@ -177,91 +173,5 @@ describe("three-dimensional floor interaction", () => {
 		expect(roomIdAtFloorPoint(floors, { xM: 0.5, zM: 1 })).toBe("room-left");
 		expect(roomIdAtFloorPoint(floors, { xM: 3.5, zM: 1 })).toBe("room-right");
 		expect(roomIdAtFloorPoint(floors, { xM: 4.5, zM: 1 })).toBeUndefined();
-	});
-});
-
-describe("3D item selection against visible walls", () => {
-	const camera = { ...initialThreeDimensionalViewport, elevationRadians: 0.22 };
-	const size = { height: 600, width: 800 };
-	const wall = {
-		centerXM: 3,
-		centerYM: 1.5,
-		centerZM: 1.5,
-		depthM: 1,
-		heightM: 3,
-		wall: { wallSegmentId: "opaque-wall" },
-		wallFootprintM: [
-			{ xM: 2.9, zM: 1 }, { xM: 3.1, zM: 1 },
-			{ xM: 3.1, zM: 2 }, { xM: 2.9, zM: 2 },
-		],
-		widthM: 0.2,
-	} satisfies SceneBox;
-	const item = scene.items[0];
-	if (!item) throw new Error("Expected an item");
-	const centre = canvasPointForSceneItem(scene, camera, size, item);
-	if (!centre) throw new Error("Expected a projectable item");
-
-	it("uses the drawn wall footprint, depth, and cutaway membership", () => {
-		const walledScene = { ...scene, walls: [wall] };
-		const rearWall = { ...wall, wallFootprintM: wall.wallFootprintM.map((point) => ({ ...point, xM: point.xM - 2 })) };
-		const lowWall = { ...wall, centerYM: 0.2, heightM: 0.4 };
-		expect(visibleItemFilterAtCanvasPoint(walledScene, camera, size, centre)(item)).toBe(false);
-		expect(visibleItemFilterAtCanvasPoint(walledScene, camera, size, centre, new Set(["opaque-wall"]))(item)).toBe(true);
-		expect(visibleItemFilterAtCanvasPoint({ ...scene, walls: [rearWall] }, camera, size, centre)(item)).toBe(true);
-		expect(visibleItemFilterAtCanvasPoint({ ...scene, walls: [lowWall] }, camera, size, centre)(item)).toBe(true);
-	});
-
-	it("takes a projected diagonal wall and its clipped jamb through the same half-planes", () => {
-		const [body] = wallBodiesForProjection({
-			vertices: [
-				{ vertexId: "start", xMm: 2300, zMm: 900 },
-				{ vertexId: "end", xMm: 3800, zMm: 2400 },
-			],
-			wallSegments: [{ wallSegmentId: "diagonal", startVertexId: "start", endVertexId: "end", thicknessMm: 100 }],
-		});
-		if (!body) throw new Error("Expected a physical diagonal wall body");
-		const canPick = (polygon: typeof body.polygonMm) => visibleItemFilterAtCanvasPoint({
-			...scene,
-			walls: [{ ...wall, wallFootprintM: polygon.map((point) => ({ xM: point.xMm / 1000, zM: point.zMm / 1000 })) }],
-		}, camera, size, centre)(item);
-		expect(canPick(body.polygonMm)).toBe(false);
-		expect(canPick(clipWallBodyToInterval(body, 1300, body.lengthMm))).toBe(true);
-	});
-
-	it("keeps forgiving tap targets for visible floor items but excludes a hidden centre", () => {
-		const contact = { x: centre.x + 70, y: centre.y };
-		const offsetWall = {
-			...wall,
-			wallFootprintM: wall.wallFootprintM.map((point) => ({ xM: point.xM - 1.05, zM: point.zM - 0.94 })),
-		};
-		const rearWall = { ...offsetWall, wallFootprintM: offsetWall.wallFootprintM.map((point) => ({ ...point, xM: point.xM - 1 })) };
-		const matchingItem = (blocker: SceneBox) => {
-			const walledScene = { ...scene, walls: [blocker] };
-			return floorItemAtScreenPoint(
-				scene.items, walledScene, camera, size, contact,
-				visibleItemFilterAtCanvasPoint(walledScene, camera, size, contact),
-			);
-		};
-		expect(matchingItem(wall)).toBeUndefined();
-		expect(matchingItem(offsetWall)).toBeUndefined();
-		expect(matchingItem(rearWall)).toBe(item);
-	});
-
-	it("keeps a wall item selectable through a glazed gap and blocks an opaque opening part", () => {
-		const wallItem = { ...item, assetAnchor: "wall" as const };
-		const opening = {
-			wallSegmentId: "opaque-wall",
-			box: { centerXM: 3, centerYM: 0.95, centerZM: 1.9, depthM: 0.08, heightM: 1.5, widthM: 1.2, yawRadians: Math.PI / 4 },
-		};
-		const parapet = { ...wall, centerYM: 0.1, heightM: 0.2 };
-		const lintel = { ...wall, centerYM: 2.5, heightM: 1 };
-		const matchingItem = (role: "glass" | "leaf") => {
-			const sceneWithOpening = { ...scene, items: [wallItem], walls: [parapet, lintel], openingParts: [{ ...opening, role }] };
-			return wallItemAtScreenPoint(sceneWithOpening.items, sceneWithOpening, camera, size, centre,
-				visibleItemFilterAtCanvasPoint(sceneWithOpening, camera, size, centre),
-			);
-		};
-		expect(matchingItem("glass")).toBe(wallItem);
-		expect(matchingItem("leaf")).toBeUndefined();
 	});
 });

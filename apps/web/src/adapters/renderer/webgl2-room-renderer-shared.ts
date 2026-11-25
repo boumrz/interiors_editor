@@ -15,11 +15,17 @@ export interface WebGl2SceneRenderer {
 		cutawayMode?: WebGl2CutawayMode,
 		scene?: RectangularRoomWebGlScene,
 	): void;
-	/** Reports wall visibility from the most recent frame, including cutaway hysteresis. */
-	hiddenWallSegmentIds?(): ReadonlySet<string> | undefined;
+	/** Selects an item from the most recently drawn frame. */
+	pickItem?(point: NormalizedCanvasPoint): string | undefined;
 	/** Replaces only decoded local model roots; shell/camera state stays live. */
 	updateRuntimeModels?(runtimeModels: WebGl2RuntimeModels): void;
 	dispose(): void;
+}
+
+/** Clip-space coordinates where the canvas spans [-1, 1] on both axes. */
+export interface NormalizedCanvasPoint {
+	readonly x: number;
+	readonly y: number;
 }
 
 export interface WebGl2OrbitCamera {

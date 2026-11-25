@@ -6,6 +6,7 @@ import type {
 } from "./rectangular-room-projection";
 import { createThreeWebGl2RoomSceneRenderer } from "./three-webgl2-room-renderer";
 import { THREE_DIMENSIONAL_ROOM_SURFACE_COLORS } from "./three-dimensional-room-palette";
+import { pickProceduralSceneItem } from "./webgl2-item-picking";
 
 import {
 	cameraEyeAndTargetFor,
@@ -13,6 +14,7 @@ import {
 	sceneBoxYawRadians,
 	wallCutawayForCamera,
 	type FurnitureGreyboxPart,
+	type NormalizedCanvasPoint,
 	type WebGl2Camera,
 	type WebGl2CutawayMode,
 	type WebGl2RendererQualityTier,
@@ -203,8 +205,8 @@ export class WebGl2RoomRendererController {
 		return this.state;
 	}
 
-	public hiddenWallSegmentIds(): ReadonlySet<string> | undefined {
-		return this.renderer?.hiddenWallSegmentIds?.();
+	public pickItem(point: NormalizedCanvasPoint): string | undefined {
+		return this.renderer?.pickItem?.(point);
 	}
 
 	public dispose(): void {
@@ -611,6 +613,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 	);
 	let cutaway: WebGl2WallCutaway | undefined;
 	let activeScene = scene;
+	let lastCamera = initialWebGl2Camera;
 
 	const drawBox = (
 		box: SceneBox,
@@ -684,7 +687,14 @@ function createProceduralWebGl2RoomSceneRenderer(
 	};
 
 	return {
-		hiddenWallSegmentIds: () => cutaway?.hiddenWallSegmentIds,
+		pickItem: (point) => pickProceduralSceneItem(
+			activeScene,
+			lastCamera,
+			context.canvas.width / context.canvas.height,
+			point,
+			cutaway?.hiddenWallSegmentIds,
+			shouldUseDetailedFurniture(activeScene.items.length),
+		),
 		dispose: () => {
 			context.deleteBuffer(vertexBuffer);
 			context.deleteBuffer(floorPolygonBuffer);
@@ -696,6 +706,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 			sceneOverride = scene,
 		) => {
 			activeScene = sceneOverride;
+			lastCamera = camera;
 			const canvas = context.canvas as HTMLCanvasElement;
 			const pixelRatio = Math.min(
 				qualityTier === "reduced" ? 1 : 2,

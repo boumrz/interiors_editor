@@ -46,91 +46,6 @@ export function floorPointForCanvas(
 	};
 }
 
-/** Shares the foreground-wall check across every item picking fallback for a contact. */
-export function visibleItemFilterAtCanvasPoint(
-	scene: RectangularRoomWebGlScene,
-	camera: ThreeDimensionalViewport,
-	size: CanvasSize,
-	point: CanvasPoint,
-	hiddenWallSegmentIds?: ReadonlySet<string>,
-): (item: SceneBox) => boolean {
-	if (scene.items.length === 0 || size.width <= 0 || size.height <= 0) return () => true;
-	const occluders = scene.walls.filter((wall) =>
-		!wall.wall || !hiddenWallSegmentIds?.has(wall.wall.wallSegmentId),
-	);
-	for (const part of scene.openingParts ?? []) {
-		if (part.role !== "glass" && !hiddenWallSegmentIds?.has(part.wallSegmentId)) {
-			occluders.push(part.box);
-		}
-	}
-	if (occluders.length === 0) return () => true;
-	const basis = cameraBasis(scene, camera);
-	const ray = rayForCanvasPoint(basis, size, point);
-	const nearestWall = (direction: Vector3) =>
-		occluders.reduce((distance, wall) =>
-			Math.min(distance, rayDistanceToBox(basis.eye, direction, wall)),
-			Infinity,
-		);
-	const wallDistance = nearestWall(ray);
-	return (item) => {
-		const hitDistance = rayDistanceToBox(basis.eye, ray, item);
-		if (Number.isFinite(hitDistance)) return hitDistance < wallDistance;
-
-		// Floor/radius fallback can select a visible item from a nearby point.
-		// Check both the contact ray and the item's centre before using that margin.
-		const toItem = {
-			x: item.centerXM - basis.eye.x,
-			y: item.centerYM - basis.eye.y,
-			z: item.centerZM - basis.eye.z,
-		};
-		const depthAtContact = dot(toItem, basis.forward) / dot(ray, basis.forward);
-		if (wallDistance <= depthAtContact) return false;
-		return nearestWall(normalize(toItem)) > Math.hypot(toItem.x, toItem.y, toItem.z);
-	};
-}
-
-function rayDistanceToBox(origin: Vector3, direction: Vector3, box: SceneBox): number {
-	let enters = 0;
-	let exits = Infinity;
-	const clip = (offset: number, rate: number) => {
-		if (Math.abs(rate) < 1e-9) return offset >= 0;
-		const distance = -offset / rate;
-		if (rate > 0) enters = Math.max(enters, distance);
-		else exits = Math.min(exits, distance);
-		return enters <= exits;
-	};
-	const clipAxis = (position: number, rate: number, halfSize: number) =>
-		clip(halfSize + position, rate) && clip(halfSize - position, -rate);
-	if (!clipAxis(origin.y - box.centerYM, direction.y, box.heightM / 2)) {
-		return Infinity;
-	}
-	if (box.wallFootprintM) {
-		// Wall body projection and opening clipping preserve a convex, CCW footprint.
-		let from = box.wallFootprintM.at(-1);
-		if (!from) return Infinity;
-		for (const to of box.wallFootprintM) {
-			const dx = to.xM - from.xM;
-			const dz = to.zM - from.zM;
-			const offset = dx * (origin.z - from.zM) - dz * (origin.x - from.xM);
-			const rate = dx * direction.z - dz * direction.x;
-			if (!clip(offset, rate)) {
-				return Infinity;
-			}
-			from = to;
-		}
-		return enters;
-	}
-	const yaw = box.yawRadians ?? 0;
-	const cos = Math.cos(yaw);
-	const sin = Math.sin(yaw);
-	const rotateToLocal = (x: number, z: number) => [cos * x - sin * z, sin * x + cos * z] as const;
-	const [x, z] = rotateToLocal(origin.x - box.centerXM, origin.z - box.centerZM);
-	const [dx, dz] = rotateToLocal(direction.x, direction.z);
-	return clipAxis(x, dx, box.widthM / 2) && clipAxis(z, dz, box.depthM / 2)
-		? enters
-		: Infinity;
-}
-
 /** Projects a ground point for a CSS overlay anchored to a selected 3D item. */
 export function canvasPointForFloor(
 	scene: RectangularRoomWebGlScene,
@@ -195,7 +110,6 @@ export function projectedItemFootprintFor(
 export function floorItemAtPoint(
 	items: readonly SceneBox[],
 	point: ThreeDimensionalFloorPoint,
-	isVisible?: (item: SceneBox) => boolean,
 ): SceneBox | undefined {
 	return [...items]
 		.reverse()
@@ -206,7 +120,7 @@ export function floorItemAtPoint(
 			const dz = point.zM - item.centerZM;
 			const localX = Math.cos(yaw) * dx - Math.sin(yaw) * dz;
 			const localZ = Math.sin(yaw) * dx + Math.cos(yaw) * dz;
-			return Math.abs(localX) <= item.widthM / 2 && Math.abs(localZ) <= item.depthM / 2 && (isVisible?.(item) ?? true);
+			return Math.abs(localX) <= item.widthM / 2 && Math.abs(localZ) <= item.depthM / 2;
 		});
 }
 
@@ -239,7 +153,6 @@ export function floorItemAtScreenPoint(
 	camera: ThreeDimensionalViewport,
 	size: CanvasSize,
 	point: { readonly x: number; readonly y: number },
-	isVisible?: (item: SceneBox) => boolean,
 ): SceneBox | undefined {
 	return [...items].reverse().find((item) => {
 		if (!item.assetInstanceId) return false;
@@ -250,32 +163,8 @@ export function floorItemAtScreenPoint(
 		return (
 			centre !== undefined &&
 			Math.hypot(point.x - centre.x, point.y - centre.y) <=
-				projectedItemTouchRadius(item, scene, camera, size, centre) &&
-			(isVisible?.(item) ?? true)
+				projectedItemTouchRadius(item, scene, camera, size, centre)
 		);
-	});
-}
-
-/** A wall asset is picked at its visible height, not at its floor projection. */
-export function wallItemAtScreenPoint(
-	items: readonly SceneBox[],
-	scene: RectangularRoomWebGlScene,
-	camera: ThreeDimensionalViewport,
-	size: CanvasSize,
-	point: CanvasPoint,
-	isVisible?: (item: SceneBox) => boolean,
-): SceneBox | undefined {
-	return [...items].reverse().find((item) => {
-		if (!item.assetInstanceId || item.assetAnchor !== "wall") return false;
-		const center = canvasPointForSceneItem(scene, camera, size, item);
-		if (!center) return false;
-		const edge = canvasPointForWorld(scene, camera, size, {
-			x: item.centerXM + item.widthM / 2,
-			y: item.centerYM + item.heightM / 2,
-			z: item.centerZM + item.depthM / 2,
-		});
-		const radius = edge ? Math.max(22, Math.hypot(edge.x - center.x, edge.y - center.y)) : 22;
-		return Math.hypot(point.x - center.x, point.y - center.y) <= radius && (isVisible?.(item) ?? true);
 	});
 }
 

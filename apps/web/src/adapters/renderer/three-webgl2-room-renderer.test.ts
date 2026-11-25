@@ -5,6 +5,8 @@ import {
 	Group,
 	Mesh,
 	MeshStandardMaterial,
+	PerspectiveCamera,
+	Vector3,
 	Texture,
 } from "three";
 
@@ -17,6 +19,7 @@ import {
 import {
 	cloneRuntimeRootAsNeutralClay,
 	createThreeGreyboxItemGroup,
+	pickThreeSceneItem,
 	THREE_DIMENSIONAL_RUNTIME_CLAY,
 	threeDimensionalShadowFlagsFor,
 } from "./three-webgl2-room-renderer";
@@ -259,5 +262,66 @@ describe("createThreeGreyboxItemGroup", () => {
 		expect(mesh.material.color.getHexString()).toBe(
 			new Color("#b8b4aa").getHexString(),
 		);
+	});
+});
+
+describe("picking drawn 3D surfaces", () => {
+	const view = new PerspectiveCamera(60, 1.2, 0.1, 100);
+	view.position.set(0, 0, 8);
+	view.lookAt(0, 0, 0);
+	view.updateMatrixWorld();
+
+	const boxAt = (x: number, z: number) => {
+		const mesh = new Mesh(new BoxGeometry(1, 1, 0.5), new MeshStandardMaterial());
+		mesh.position.set(x, 0, z);
+		mesh.updateMatrixWorld();
+		return mesh;
+	};
+
+	it("picks the closest visible mesh across asset order and also selects an exposed rear surface", () => {
+		const front = { root: boxAt(0, 3), assetInstanceId: "front" };
+		const rear = { root: boxAt(0.65, 0), assetInstanceId: "rear" };
+		const overlap = new Vector3(0.18, 0, 3.25).project(view);
+		const exposed = new Vector3(1.04, 0, 0.25).project(view);
+
+		expect(pickThreeSceneItem(view, overlap, [rear, front])).toBe("front");
+		expect(pickThreeSceneItem(view, overlap, [front, rear])).toBe("front");
+		expect(pickThreeSceneItem(view, exposed, [rear, front])).toBe("rear");
+		expect(pickThreeSceneItem(view, { x: 0.7, y: 0 }, [rear, front])).toBeUndefined();
+	});
+
+	it("respects near and far planes towards the sides of the image", () => {
+		const camera = new PerspectiveCamera(60, 1.2, 0.5, 5);
+		camera.updateMatrixWorld();
+		const beforeNear = { root: boxAt(0, -0.2), assetInstanceId: "clipped" };
+		const nearHit = { root: boxAt(0, -0.8), assetInstanceId: "after-near" };
+		const side = { root: boxAt(2.5, -4.9), assetInstanceId: "within-far" };
+		const contact = new Vector3(2.5, 0, -4.65).project(camera);
+		expect(pickThreeSceneItem(camera, { x: 0, y: 0 }, [beforeNear, nearHit])).toBe("after-near");
+		expect(pickThreeSceneItem(camera, contact, [side])).toBe("within-far");
+		side.root.position.z -= 0.7;
+		side.root.updateMatrixWorld();
+		expect(pickThreeSceneItem(camera, contact, [side])).toBeUndefined();
+	});
+
+	it("passes through an empty gap in a nested item and rejects depth-writing walls", () => {
+		const frontGroup = new Group();
+		frontGroup.position.z = 3;
+		frontGroup.add(boxAt(-0.8, 0), boxAt(0.8, 0));
+		frontGroup.updateMatrixWorld();
+		const rear = boxAt(0, 0);
+		const wall = boxAt(0, 5);
+		const wallGroup = new Group();
+		wallGroup.add(wall);
+		wallGroup.updateMatrixWorld();
+		const surfaces = [{ root: frontGroup, assetInstanceId: "shelf" }, { root: rear, assetInstanceId: "visible-through-gap" }, { root: wallGroup }];
+		const centre = { x: 0, y: 0 };
+
+		expect(pickThreeSceneItem(view, centre, surfaces)).toBeUndefined();
+		wall.material.depthWrite = false;
+		expect(pickThreeSceneItem(view, centre, surfaces)).toBe("visible-through-gap");
+		wall.material.depthWrite = true;
+		wallGroup.visible = false;
+		expect(pickThreeSceneItem(view, centre, surfaces)).toBe("visible-through-gap");
 	});
 });

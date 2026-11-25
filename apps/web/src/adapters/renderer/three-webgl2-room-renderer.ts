@@ -13,6 +13,7 @@ import {
 	MeshStandardMaterial,
 	PCFSoftShadowMap,
 	PerspectiveCamera,
+	Raycaster,
 	Scene,
 	SRGBColorSpace,
 	Shape,
@@ -37,6 +38,7 @@ import {
 	cameraEyeAndTargetFor,
 	furnitureGreyboxPartsFor,
 	wallCutawayForCamera,
+	type NormalizedCanvasPoint,
 	type WebGl2Camera,
 	type WebGl2CutawayMode,
 	type WebGl2RendererQualityTier,
@@ -47,6 +49,7 @@ import {
 } from "./webgl2-room-renderer-shared";
 
 interface ItemNode {
+	readonly assetInstanceId: string | undefined;
 	readonly greyboxAppearanceKey: string | undefined;
 	readonly assetDefinitionId: string | undefined;
 	readonly group: Group;
@@ -171,7 +174,13 @@ export function createThreeWebGl2RoomSceneRenderer(
 	syncItems(scene.items, itemGroup, itemNodes, activeRuntimeModels);
 
 	return {
-		hiddenWallSegmentIds: () => cutaway?.hiddenWallSegmentIds,
+		pickItem: (point) => pickThreeSceneItem(camera, point, [
+			{ root: roomGroup },
+			...Array.from(itemNodes.values(), (node) => ({
+				root: node.group,
+				assetInstanceId: node.assetInstanceId,
+			})),
+		]),
 		dispose: () => {
 			for (const node of itemNodes.values()) disposeItemNode(node);
 			itemNodes.clear();
@@ -225,6 +234,29 @@ export function createThreeWebGl2RoomSceneRenderer(
 	};
 }
 
+/** Pick rendered meshes, including nested GLB transforms and opaque room geometry. */
+export function pickThreeSceneItem(
+	camera: PerspectiveCamera,
+	point: NormalizedCanvasPoint,
+	surfaces: readonly { readonly root: Object3D; readonly assetInstanceId?: string | undefined }[],
+): string | undefined {
+	const ownerByMesh = new Map<Object3D, string | undefined>();
+	for (const { root, assetInstanceId } of surfaces) {
+		root.traverseVisible((node) => {
+			if (node instanceof Mesh && asMaterials(node.material).some((material) => material.visible && material.depthWrite)) {
+				ownerByMesh.set(node, assetInstanceId);
+			}
+		});
+	}
+	const raycaster = new Raycaster();
+	raycaster.setFromCamera(new Vector2(point.x, point.y), camera);
+	const forwardComponent = camera.getWorldDirection(new Vector3()).dot(raycaster.ray.direction);
+	raycaster.near = camera.near / forwardComponent;
+	raycaster.far = camera.far / forwardComponent;
+	const closest = raycaster.intersectObjects([...ownerByMesh.keys()], false)[0];
+	return closest ? ownerByMesh.get(closest.object) : undefined;
+}
+
 const initialWebGl2Camera: WebGl2Camera = {
 	azimuthRadians: 0,
 	distance: 2.1,
@@ -264,6 +296,7 @@ function syncItems(
 				: createThreeGreyboxItemGroup(item);
 			itemGroup.add(group);
 			itemNodes.set(id, {
+				assetInstanceId: item.assetInstanceId,
 				greyboxAppearanceKey,
 				assetDefinitionId: item.assetDefinitionId,
 				group,

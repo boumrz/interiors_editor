@@ -495,6 +495,38 @@ describe("WebGl2RoomRendererController", () => {
 		expect(depthFunction).toBe(context.LESS);
 		expect(background).toEqual(THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.background);
 		expect([...enabled]).toEqual([8]);
+		resetProceduralWebGl2Frame(context as unknown as WebGL2RenderingContext, 350, 480, {
+			colorScheme: "dark",
+			background: "#1d252c",
+		});
+		expect(background).toEqual([29 / 255, 37 / 255, 44 / 255, 1]);
+	});
+
+	it("keeps the same scene, camera and cutaway while changing theme and restoring WebGL", () => {
+		const port = canvas({});
+		const renders: unknown[] = [];
+		let rendererCount = 0;
+		const controller = new WebGl2RoomRendererController(port, () => {
+			rendererCount++;
+			return {
+				dispose: () => undefined,
+				render: (camera, cutaway, scene, theme) => renders.push([camera, cutaway, scene, theme]),
+			};
+		});
+		const camera = { azimuthRadians: 1, elevationRadians: 0.8, distance: 4, panXM: 2, panZM: 1 };
+		const light = { colorScheme: "light", background: "#fdfdfc" } as const;
+		const dark = { colorScheme: "dark", background: "#1d252c" } as const;
+		controller.start(scene);
+		controller.render(camera, "show-all", scene, light);
+		controller.render(camera, "show-all", scene, dark);
+		expect(renders.slice(-2)).toEqual([[camera, "show-all", scene, light], [camera, "show-all", scene, dark]]);
+		expect(rendererCount).toBe(1);
+		port.emit("webglcontextlost");
+		controller.updateTheme(light);
+		port.emit("webglcontextrestored");
+		expect(rendererCount).toBe(2);
+		expect(renders.at(-1)).toEqual([camera, "show-all", scene, light]);
+		controller.dispose();
 	});
 
 	it("draws a distinct vertical contour at an equal-thickness inner wall corner", () => {

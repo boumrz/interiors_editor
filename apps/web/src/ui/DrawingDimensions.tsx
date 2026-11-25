@@ -1,17 +1,34 @@
+import { copy } from "./editor-language";
 import type { DrawingDimensionLayout } from "./drawing-dimension-layout";
 import styles from "./AppShell.module.css";
 
 const referenceCopy = {
-	axis: "по осям",
-	clear: "в чистоте",
-	outer: "наружный габарит",
+	get axis() {
+		return copy("по осям", "centerline");
+	},
+	get clear() {
+		return copy("в чистоте", "clear");
+	},
+	get outer() {
+		return copy("наружный габарит", "outer");
+	},
 } as const;
 const kindCopy = {
-	wall: "Стена",
-	opening: "Проём",
-	pier: "Простенок",
-	overall: "Общий размер",
-	"room-clear": "Помещение",
+	get wall() {
+		return copy("Стена", "Wall");
+	},
+	get opening() {
+		return copy("Проём", "Opening");
+	},
+	get pier() {
+		return copy("Простенок", "Wall pier");
+	},
+	get overall() {
+		return copy("Общий размер", "Overall dimension");
+	},
+	get "room-clear"() {
+		return copy("Помещение", "Room");
+	},
 } as const;
 
 /** Screen-space annotations cannot capture a wall, opening or camera gesture. */
@@ -44,7 +61,10 @@ export function DrawingDimensions({
 						data-dimension-id={dimension.id}
 						data-dimension-crowded={layout.crowded || undefined}
 						data-dimension-clipped={layout.clipped || undefined}
-						aria-label={`${kindCopy[dimension.kind]} ${referenceCopy[dimension.reference]}: ${dimension.label} мм`}
+						aria-label={copy(
+							`${kindCopy[dimension.kind]} ${referenceCopy[dimension.reference]}: ${dimension.label} мм`,
+							`${kindCopy[dimension.kind]} (${referenceCopy[dimension.reference]}): ${dimension.label} mm`,
+						)}
 					>
 						{[
 							...new Map(

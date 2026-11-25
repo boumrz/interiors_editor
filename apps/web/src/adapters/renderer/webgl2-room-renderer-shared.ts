@@ -7,6 +7,7 @@ import type {
 	RectangularRoomWebGlScene,
 	SceneBox,
 } from "./rectangular-room-projection";
+import type { RoomRenderTheme } from "./three-dimensional-room-palette";
 
 /** Shared disposable projection calculations; independent of either renderer implementation. */
 export interface WebGl2SceneRenderer {
@@ -14,6 +15,7 @@ export interface WebGl2SceneRenderer {
 		camera?: WebGl2Camera,
 		cutawayMode?: WebGl2CutawayMode,
 		scene?: RectangularRoomWebGlScene,
+		theme?: RoomRenderTheme,
 	): void;
 	/** Selects an item from the most recently drawn frame. */
 	pickItem?(point: NormalizedCanvasPoint): string | undefined;

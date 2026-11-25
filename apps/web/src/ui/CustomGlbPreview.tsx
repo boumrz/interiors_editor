@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useEffect, useRef, useState } from "react";
 import {
 	Box3,
@@ -210,19 +211,28 @@ export function CustomGlbPreview({
 			}`}
 		>
 			<canvas
-				aria-label={`Предпросмотр модели: ${label}`}
+				aria-label={copy(
+					`Предпросмотр модели: ${label}`,
+					`Model preview: ${label}`,
+				)}
 				data-testid="custom-glb-preview"
 				ref={canvasRef}
 				style={{ touchAction: "none" }}
 			>
-				Предпросмотр модели требует WebGL.
+				{copy(
+					"Предпросмотр модели требует WebGL.",
+					"The model preview requires WebGL.",
+				)}
 			</canvas>
 			<output aria-live="polite">
 				{state === "loading"
-					? "Подготавливаем 3D-предпросмотр"
+					? copy("Подготавливаем 3D-предпросмотр", "Preparing 3D preview")
 					: state === "ready"
 						? ""
-						: "Не удалось открыть 3D-предпросмотр. Модель не добавлена."}
+						: copy(
+								"Не удалось открыть 3D-предпросмотр. Модель не добавлена.",
+								"Could not open the 3D preview. The model was not added.",
+							)}
 			</output>
 		</div>
 	);

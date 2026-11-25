@@ -6,9 +6,15 @@ import secrets
 import sqlite3
 import time
 
+if __package__:
+    from .messages import copy
+else:
+    from messages import copy
+
 
 EDITOR_URL = "https://t.me/InteriorsEditorBot?startapp"
 POLICY_URL = "https://domiknote.ru/legal/2026-11-24.2/telegram-support-privacy.html"
+ENGLISH_POLICY_URL = "https://domiknote.ru/legal/2026-11-24.2/en/telegram-support-privacy.html"
 DRAFT_LIFETIME = 24 * 60 * 60
 PHOTO_WINDOW = 15 * 60
 TICKET_LIFETIME = 30 * 24 * 60 * 60
@@ -58,6 +64,23 @@ CREATE TABLE IF NOT EXISTS outbox (
     created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS outbox_ready ON outbox(state, ready_at, id);
+CREATE TABLE IF NOT EXISTS language_preferences (
+    chat_id INTEGER PRIMARY KEY,
+    language TEXT NOT NULL CHECK(language IN ('ru', 'en')),
+    revision INTEGER NOT NULL CHECK(revision > 0)
+);
+CREATE TABLE IF NOT EXISTS language_menu_jobs (
+    chat_id INTEGER PRIMARY KEY REFERENCES language_preferences(chat_id) ON DELETE CASCADE,
+    job_id INTEGER NOT NULL REFERENCES outbox(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS ticket_languages (
+    ticket TEXT PRIMARY KEY REFERENCES tickets(number) ON DELETE CASCADE,
+    language TEXT NOT NULL CHECK(language IN ('ru', 'en'))
+);
+CREATE TABLE IF NOT EXISTS owner_languages (
+    chat_id INTEGER PRIMARY KEY,
+    language TEXT NOT NULL CHECK(language IN ('ru', 'en'))
+);
 """
 
 
@@ -100,17 +123,22 @@ def _private_chat(message, actor):
     ) else None
 
 
-def _editor_keyboard(include_support=False):
-    rows = [[{"text": "Открыть редактор", "url": EDITOR_URL}]]
+def _telegram_language(actor):
+    tag = actor.get("language_code")
+    return "ru" if isinstance(tag, str) and tag.lower().partition("-")[0] == "ru" else "en"
+
+
+def _editor_keyboard(language, url, include_support=False):
+    rows = [[{"text": copy(language, "editor"), "url": url}]]
     if include_support:
-        rows.append([{"text": "Написать в поддержку", "url": "https://t.me/InteriorsEditorBot?start=support"}])
+        rows.append([{"text": copy(language, "support"), "url": "https://t.me/InteriorsEditorBot?start=support"}])
     return {"inline_keyboard": rows}
 
 
-def _draft_keyboard(token):
+def _draft_keyboard(language, token):
     return {"inline_keyboard": [[
-        {"text": "Отправить", "callback_data": f"support:send:{token}"},
-        {"text": "Отмена", "callback_data": f"support:cancel:{token}"},
+        {"text": copy(language, "send"), "callback_data": f"support:send:{token}"},
+        {"text": copy(language, "cancel"), "callback_data": f"support:cancel:{token}"},
     ]]}
 
 
@@ -131,12 +159,14 @@ def _largest_photo(value):
 class Support:
     """Handles updates and reconciles delivery under the service's singleton lock."""
 
-    def __init__(self, db_path, owner_id, *, clock=time.time, bot_started_at=None, recover_inflight=True):
+    def __init__(self, db_path, owner_id, *, clock=time.time, bot_started_at=None,
+                 recover_inflight=True, language_token=None):
         if not _positive(owner_id):
             raise ValueError("Invalid owner identity")
         self.owner_id = owner_id
         self.clock = clock
         self.bot_started_at = bot_started_at
+        self.language_token = language_token
         self.db = sqlite3.connect(db_path)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA foreign_keys = ON")
@@ -145,6 +175,10 @@ class Support:
         self.db.executescript(SCHEMA)
         if recover_inflight:
             with self.db:
+                self.db.execute("""
+                    UPDATE outbox SET state = 'queued', code = NULL
+                    WHERE state = 'sending' AND purpose = 'language-menu'
+                """)
                 self.db.execute("""
                     UPDATE outbox SET state = 'uncertain', code = 'interrupted'
                     WHERE state = 'sending'
@@ -209,27 +243,73 @@ class Support:
     def _direct_support(self, chat_id):
         return self.db.execute("SELECT * FROM direct_support WHERE chat_id = ?", (chat_id,)).fetchone()
 
-    def _help(self, chat_id, now):
+    def _preference(self, chat_id):
+        return self.db.execute("SELECT language, revision FROM language_preferences WHERE chat_id = ?",
+                               (chat_id,)).fetchone()
+
+    def _language(self, chat_id, fallback):
+        preference = self._preference(chat_id)
+        return preference["language"] if preference is not None else fallback
+
+    def _actor_language(self, chat_id, actor):
+        language = _telegram_language(actor)
+        if chat_id == self.owner_id:
+            self.db.execute("INSERT OR REPLACE INTO owner_languages VALUES (?, ?)", (chat_id, language))
+        return self._language(chat_id, language)
+
+    def _owner_language(self):
+        observed = self.db.execute("SELECT language FROM owner_languages WHERE chat_id = ?",
+                                   (self.owner_id,)).fetchone()
+        return self._language(self.owner_id, observed["language"] if observed is not None else "en")
+
+    def _editor_url(self, chat_id):
+        preference = self._preference(chat_id)
+        if self.language_token is not None and preference is not None:
+            token = self.language_token(chat_id, preference["language"], preference["revision"])
+            if token is not None:
+                return f"{EDITOR_URL}={token}"
+        return EDITOR_URL
+
+    def _choose_language(self, chat_id, language, now):
+        self._text(chat_id, copy(language, "choose_language"), now, markup={"inline_keyboard": [[
+            {"text": "Русский", "callback_data": "language:ru"},
+            {"text": "English", "callback_data": "language:en"},
+        ]]})
+
+    def _set_language(self, chat_id, language, now):
+        self.db.execute("""
+            INSERT INTO language_preferences VALUES (?, ?, 1)
+            ON CONFLICT(chat_id) DO UPDATE SET language = excluded.language, revision = revision + 1
+            WHERE language != excluded.language
+        """, (chat_id, language))
+        # A stale menu retry must never replace the latest selection.
+        self.db.execute("DELETE FROM outbox WHERE id = (SELECT job_id FROM language_menu_jobs WHERE chat_id = ?)",
+                        (chat_id,))
+        url = self._editor_url(chat_id)
+        if url != EDITOR_URL:
+            job = self._job("setChatMenuButton", {
+                "chat_id": chat_id,
+                "menu_button": {"type": "web_app", "text": copy(language, "editor"), "web_app": {"url": url}},
+            }, "language-menu", now)
+            self.db.execute("INSERT INTO language_menu_jobs VALUES (?, ?)", (chat_id, job))
+        message = "language_saved" if url != EDITOR_URL else "language_editor_pending"
+        self._text(chat_id, copy(language, message), now, markup=_editor_keyboard(language, url))
+
+    def _help(self, chat_id, language, now):
         self._text(
-            chat_id,
-            "Доступные команды\n"
-            "/start — открыть редактор\n"
-            "/support — сообщить о проблеме\n"
-            "/help — показать команды",
-            now, markup=_editor_keyboard(include_support=True),
+            chat_id, copy(language, "help"), now,
+            markup=_editor_keyboard(language, self._editor_url(chat_id), include_support=True),
         )
 
-    def _begin(self, chat_id, now):
+    def _begin(self, chat_id, language, now):
         draft = self._draft(chat_id)
         direct = self._direct_support(chat_id)
         if draft is not None and not _is_direct_draft(draft, direct):
             self._text(
-                chat_id,
-                "У вас есть черновик. Чтобы передать его владельцу, нажмите «Отправить» под этим сообщением. "
-                "Для нового обращения отмените черновик и снова откройте /support.",
-                now, markup=_draft_keyboard(draft["token"]),
+                chat_id, copy(language, "old_draft"), now,
+                markup=_draft_keyboard(language, draft["token"]),
             )
-            self._progress(chat_id, draft["token"], draft["description"], json.loads(draft["photos"]), now)
+            self._progress(chat_id, language, draft["token"], draft["description"], json.loads(draft["photos"]), now)
             return
         if draft is None:
             token = secrets.token_hex(8)
@@ -239,12 +319,7 @@ class Support:
             token = draft["token"]
             self.db.execute("UPDATE drafts SET touched_at = ? WHERE chat_id = ?", (now, chat_id))
         notice = self._text(
-            chat_id,
-            "Напишите, что случилось, и отправьте сообщение обычной кнопкой Telegram. "
-            "Описание и до пяти скриншотов получит владелец InteriorsEditor в личный чат. "
-            "Скриншоты отправляйте как фото. Их можно добавить до описания или в течение 15 минут после него. "
-            "Уберите из обращения адреса, пароли и коды. Для отмены используйте /cancel. Условия обработки\n"
-            + POLICY_URL,
+            chat_id, copy(language, "support_intro", policy=POLICY_URL if language == "ru" else ENGLISH_POLICY_URL),
             now, purpose="support-intro",
         )
         intro_job = None if direct is not None and direct["intro_job"] is None else notice
@@ -253,13 +328,14 @@ class Support:
             VALUES (?, ?, ?, ?)
         """, (chat_id, token, intro_job, now + DRAFT_LIFETIME))
 
-    def _progress(self, chat_id, token, description, photos, now):
-        text = f"Принято фото: {len(photos)} из {MAX_PHOTOS}. "
-        text += "Проверьте вложения и нажмите «Отправить»." if description else "Добавьте описание проблемы."
-        self._text(chat_id, text, now, markup=_draft_keyboard(token))
+    def _progress(self, chat_id, language, token, description, photos, now):
+        text = copy(language, "progress", count=len(photos), limit=MAX_PHOTOS)
+        text += copy(language, "check_attachments" if description else "add_description")
+        self._text(chat_id, text, now, markup=_draft_keyboard(language, token))
 
     def _message(self, message, now):
-        chat_id = _private_chat(message, _object(message.get("from")))
+        actor = _object(message.get("from"))
+        chat_id = _private_chat(message, actor)
         if chat_id is None:
             return
         message_date = message.get("date")
@@ -269,109 +345,118 @@ class Support:
         text = text.strip() if isinstance(text, str) else ""
         if text.startswith("/start support_bind_"):
             return
+        language = self._actor_language(chat_id, actor)
         if text in ("/support", "/start support"):
-            self._begin(chat_id, now)
+            self._begin(chat_id, language, now)
         elif text == "/start" or text.startswith("/start "):
             self._text(
-                chat_id,
-                "Создайте план комнаты в 2D, расставьте мебель и посмотрите результат в 3D. "
-                "Проекты хранятся на вашем устройстве. Для обращения воспользуйтесь /support.",
-                now, markup=_editor_keyboard(include_support=True),
+                chat_id, copy(language, "welcome"), now,
+                markup=_editor_keyboard(language, self._editor_url(chat_id), include_support=True),
             )
         elif text == "/help":
-            self._help(chat_id, now)
+            self._help(chat_id, language, now)
+        elif text == "/language":
+            self._choose_language(chat_id, language, now)
         elif text == "/cancel":
-            self._cancel(chat_id, now)
+            self._cancel(chat_id, language, now)
         elif chat_id == self.owner_id and isinstance(message.get("reply_to_message"), dict):
-            self._owner_reply(message["reply_to_message"], text, now)
+            self._owner_reply(language, message["reply_to_message"], text, now)
         else:
             draft = self._draft(chat_id)
             direct = self._direct_support(chat_id)
             if draft is not None:
                 direct_draft = direct if _is_direct_draft(draft, direct) else None
-                self._edit_draft(chat_id, draft, direct_draft, message, text, now)
+                self._edit_draft(chat_id, language, draft, direct_draft, message, text, now)
             else:
                 photo = _largest_photo(message.get("photo"))
                 if (direct is not None and direct["ticket"] and photo is not None
                         and _sent_at(message, now) < direct["expires_at"]):
-                    self._attach_photo(chat_id, direct, photo, now)
+                    self._attach_photo(chat_id, language, direct, photo, now)
                 else:
-                    self._help(chat_id, now)
+                    self._help(chat_id, language, now)
 
-    def _cancel(self, chat_id, now):
+    def _cancel(self, chat_id, language, now):
         closed = self.db.execute("DELETE FROM direct_support WHERE chat_id = ?", (chat_id,)).rowcount
         if self.db.execute("DELETE FROM drafts WHERE chat_id = ?", (chat_id,)).rowcount:
-            self._text(chat_id, "Черновик обращения отменён.", now)
+            self._text(chat_id, copy(language, "draft_cancelled"), now)
         elif closed:
-            self._text(chat_id, "Приём фото к обращению закрыт.", now)
+            self._text(chat_id, copy(language, "photo_window_closed"), now)
         else:
-            self._help(chat_id, now)
+            self._help(chat_id, language, now)
 
-    def _edit_draft(self, chat_id, draft, direct, message, text, now):
+    def _edit_draft(self, chat_id, language, draft, direct, message, text, now):
         if text.startswith("/"):
-            self._help(chat_id, now)
+            self._help(chat_id, language, now)
             return
         if direct is not None and direct["intro_job"] is not None:
-            self._text(chat_id, "Дождитесь инструкции от бота и отправьте сообщение ещё раз.", now)
+            self._text(chat_id, copy(language, "wait_for_intro"), now)
             return
         token = draft["token"]
-        markup = _draft_keyboard(token) if direct is None else None
+        markup = _draft_keyboard(language, token) if direct is None else None
         photos = json.loads(draft["photos"])
         photo = _largest_photo(message.get("photo"))
         if not text and photo is None:
-            self._text(chat_id, "Добавьте описание текстом, а скриншот отправьте как фото.", now, markup=markup)
+            self._text(chat_id, copy(language, "invalid_attachment"), now, markup=markup)
             return
         if photo is not None and not text and isinstance(message.get("caption"), str):
             text = message["caption"].strip()
         if len(text) > MAX_TEXT:
-            self._text(chat_id, f"Сократите описание до {MAX_TEXT} символов.", now, markup=markup)
+            self._text(chat_id, copy(language, "description_limit", limit=MAX_TEXT), now, markup=markup)
             return
         if photo is not None and len(photos) >= MAX_PHOTOS:
-            self._text(chat_id, f"Уже принято максимальное число фото — {MAX_PHOTOS}.", now, markup=markup)
+            self._text(chat_id, copy(language, "photo_limit", limit=MAX_PHOTOS), now, markup=markup)
             if direct is None or not text:
                 return
         elif photo is not None:
             photos.append(photo)
         if direct is not None and text:
-            self._submit(chat_id, text, photos, now, direct_sent_at=_sent_at(message, now))
+            self._submit(chat_id, language, text, photos, now, direct_sent_at=_sent_at(message, now))
             return
         description = text or draft["description"]
         self.db.execute("""
             UPDATE drafts SET description = ?, photos = ?, touched_at = ? WHERE chat_id = ?
         """, (description, json.dumps(photos), now, chat_id))
         if direct is None:
-            self._progress(chat_id, token, description, photos, now)
+            self._progress(chat_id, language, token, description, photos, now)
         else:
             self.db.execute("UPDATE direct_support SET expires_at = ? WHERE chat_id = ?",
                             (now + DRAFT_LIFETIME, chat_id))
-            self._text(chat_id, f"Получено фото: {len(photos)} из {MAX_PHOTOS}. Теперь пришлите описание проблемы.", now)
+            self._text(chat_id, copy(language, "photo_before_description", count=len(photos), limit=MAX_PHOTOS), now)
 
     def _callback(self, callback, now):
-        chat_id = _private_chat(_object(callback.get("message")), _object(callback.get("from")))
+        actor = _object(callback.get("from"))
+        chat_id = _private_chat(_object(callback.get("message")), actor)
         identifier, data = callback.get("id"), callback.get("data")
         if chat_id is None or not isinstance(identifier, str) or not isinstance(data, str):
             return
+        match_language = re.fullmatch(r"language:(ru|en)", data)
+        if match_language:
+            self._job("answerCallbackQuery", {"callback_query_id": identifier}, "callback", now)
+            self._set_language(chat_id, match_language[1], now)
+            return
+        language = self._actor_language(chat_id, actor)
         match = re.fullmatch(r"support:(send|cancel):([0-9a-f]{16})", data)
         if not match:
             return
         draft = self._draft(chat_id)
         if draft is None or draft["token"] != match[2] or _is_direct_draft(draft, self._direct_support(chat_id)):
-            notice = "Этот черновик уже закрыт. Для нового обращения используйте /support."
+            notice = "already_closed"
         elif match[1] == "cancel":
-            self._cancel(chat_id, now)
-            notice = "Черновик обращения отменён."
+            self._cancel(chat_id, language, now)
+            notice = "draft_cancelled"
         elif not draft["description"]:
-            notice = "Добавьте описание проблемы."
+            notice = "add_description"
         else:
-            self._submit(chat_id, draft["description"], json.loads(draft["photos"]), now)
-            notice = "Обращение принято."
-        self._job("answerCallbackQuery", {"callback_query_id": identifier, "text": notice}, "callback", now)
+            self._submit(chat_id, language, draft["description"], json.loads(draft["photos"]), now)
+            notice = "received"
+        self._job("answerCallbackQuery", {"callback_query_id": identifier, "text": copy(language, notice)}, "callback", now)
 
-    def _submit(self, chat_id, description, photos, now, *, direct_sent_at=None):
+    def _submit(self, chat_id, language, description, photos, now, *, direct_sent_at=None):
         number = secrets.token_hex(8).upper()
         self.db.execute("INSERT INTO tickets VALUES (?, ?, ?)", (number, chat_id, now))
+        self.db.execute("INSERT INTO ticket_languages VALUES (?, ?)", (number, language))
         self.db.execute("DELETE FROM drafts WHERE chat_id = ?", (chat_id,))
-        receipt = f"Обращение №{number} принято. Ответ придёт в этот чат."
+        receipt = copy(language, "receipt", number=number)
         if direct_sent_at is None:
             self.db.execute("DELETE FROM direct_support WHERE chat_id = ?", (chat_id,))
         else:
@@ -381,47 +466,51 @@ class Support:
                 WHERE chat_id = ?
             """, (number, len(photos), deadline, chat_id))
             if len(photos) < MAX_PHOTOS and now < deadline:
-                receipt += (" Скриншоты можно добавить в течение 15 минут после отправки описания. "
-                            "Чтобы закрыть приём фото, отправьте /cancel.")
+                receipt += copy(language, "receipt_photos")
         self._text(chat_id, receipt, now, purpose="receipt", ticket=number)
+        owner_language = self._owner_language()
         self._text(
-            self.owner_id, f"Обращение №{number}\n\n{description}\n\n"
-            "Чтобы ответить автору, ответьте на это сообщение или на скриншот обращения.",
+            self.owner_id, copy(owner_language, "owner_report", number=number, description=description),
             now, purpose="owner-anchor", ticket=number,
         )
         for photo in photos:
             self._send_photo(number, photo, now)
 
-    def _attach_photo(self, chat_id, direct, photo, now):
+    def _attach_photo(self, chat_id, language, direct, photo, now):
         count = direct["photo_count"]
         if count >= MAX_PHOTOS:
-            self._text(chat_id, f"Уже принято максимальное число фото — {MAX_PHOTOS}.", now)
+            self._text(chat_id, copy(language, "photo_limit", limit=MAX_PHOTOS), now)
             return
         number = direct["ticket"]
         self.db.execute("UPDATE direct_support SET photo_count = ? WHERE chat_id = ?", (count + 1, chat_id))
         self._send_photo(number, photo, now)
-        self._text(chat_id, f"Фото добавлено к обращению №{number}. Получено {count + 1} из {MAX_PHOTOS}.", now)
+        self._text(chat_id, copy(language, "photo_receipt", number=number, count=count + 1, limit=MAX_PHOTOS), now)
 
     def _send_photo(self, number, photo, now):
+        language = self._owner_language()
         self._job("sendPhoto", {
-            "chat_id": self.owner_id, "photo": photo, "caption": f"Скриншот к обращению №{number}",
+            "chat_id": self.owner_id, "photo": photo, "caption": copy(language, "owner_photo", number=number),
         }, "owner-anchor", now, number)
 
-    def _owner_reply(self, quoted, text, now):
+    def _owner_reply(self, owner_language, quoted, text, now):
         message_id = quoted.get("message_id")
         ticket = self.db.execute("""
-            SELECT tickets.number, tickets.author FROM tickets JOIN owner_messages
-            ON tickets.number = owner_messages.ticket WHERE owner_messages.message_id = ?
+            SELECT tickets.number, tickets.author, ticket_languages.language
+            FROM tickets JOIN owner_messages ON tickets.number = owner_messages.ticket
+            LEFT JOIN ticket_languages ON tickets.number = ticket_languages.ticket
+            WHERE owner_messages.message_id = ?
         """, (message_id,)).fetchone() if _positive(message_id) else None
         if ticket is None:
-            self._text(self.owner_id, "Привязка к обращению не найдена или срок ответа истёк.", now)
+            self._text(self.owner_id, copy(owner_language, "owner_ticket_missing"), now)
             return
         if not text or len(text) > MAX_TEXT:
-            self._text(self.owner_id, f"Ответьте текстом длиной до {MAX_TEXT} символов.", now)
+            self._text(self.owner_id, copy(owner_language, "owner_reply_limit", limit=MAX_TEXT), now)
             return
         number = ticket["number"]
         self.db.execute("UPDATE tickets SET touched_at = ? WHERE number = ?", (now, number))
-        self._text(ticket["author"], f"Ответ по обращению №{number}\n\n{text}", now, purpose="reply", ticket=number)
+        language = self._language(ticket["author"], ticket["language"] or "ru")
+        self._text(ticket["author"], copy(language, "reply", number=number, text=text), now,
+                   purpose="reply", ticket=number)
 
     def deliver_one(self, send):
         now = self._time()
@@ -437,9 +526,11 @@ class Support:
         try:
             result = send(job["method"], json.loads(job["payload"]))
             message_id = _object(result).get("message_id")
-            if job["method"] == "answerCallbackQuery" and result is not True:
-                raise DeliveryError("unknown", code="invalid_ack")
-            if job["method"] != "answerCallbackQuery" and not _positive(message_id):
+            if job["method"] in ("answerCallbackQuery", "setChatMenuButton"):
+                accepted = result is True
+            else:
+                accepted = _positive(message_id)
+            if not accepted:
                 raise DeliveryError("unknown", code="invalid_ack")
         except DeliveryError as error:
             self._delivery_failed(job, error)
@@ -460,14 +551,16 @@ class Support:
             if job["purpose"] in ("owner-anchor", "reply"):
                 self.db.execute("UPDATE tickets SET touched_at = ? WHERE number = ?", (now, number))
             if job["purpose"] == "reply":
-                self._text(self.owner_id, f"Ответ по обращению №{number} доставлен.", now, ticket=number)
+                language = self._owner_language()
+                self._text(self.owner_id, copy(language, "reply_delivered", number=number), now, ticket=number)
             self.db.execute("DELETE FROM outbox WHERE id = ?", (job["id"],))
 
     def _delivery_failed(self, job, error):
         now = self._time()
         attempts = job["attempts"] + 1
         with self.db:
-            if error.kind == "retry" and attempts < 8:
+            repeatable = job["purpose"] == "language-menu" and error.kind == "unknown"
+            if (error.kind == "retry" or repeatable) and attempts < 8:
                 delay = max(error.delay, min(2**attempts, 300))
                 self.db.execute("""
                     UPDATE outbox SET state = 'queued', code = ?, ready_at = ? WHERE id = ?
@@ -479,12 +572,9 @@ class Support:
             self.db.execute("UPDATE outbox SET state = ?, code = ? WHERE id = ?", (state, error.code, job["id"]))
             if job["purpose"] == "reply":
                 number = job["ticket"]
-                text = (
-                    f"Статус ответа по обращению №{number} неизвестен. Проверьте отправку."
-                    if state == "uncertain" else
-                    f"Бот не смог доставить ответ по обращению №{number}."
-                )
-                self._text(self.owner_id, text, now, ticket=number)
+                language = self._owner_language()
+                message = "reply_uncertain" if state == "uncertain" else "reply_rejected"
+                self._text(self.owner_id, copy(language, message, number=number), now, ticket=number)
 
     def summary(self):
         counts = {row["state"]: row["count"] for row in self.db.execute(

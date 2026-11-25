@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import type { ReactNode } from "react";
 import type { RegisterEditorTransientBoundary } from "./editor-host-boundary";
 import type { DrawingDimensionVisibility } from "./drawing-dimension-visibility";
@@ -75,17 +76,17 @@ export function wallDraftDirectionCopy(
 	switch (direction) {
 		case "E":
 		case "W":
-			return "Направление: горизонтально";
+			return copy("Направление: горизонтально", "Direction: horizontal");
 		case "N":
 		case "S":
-			return "Направление: вертикально";
+			return copy("Направление: вертикально", "Direction: vertical");
 		case "NE":
 		case "NW":
 		case "SE":
 		case "SW":
-			return "Направление: диагональ 45°";
+			return copy("Направление: диагональ 45°", "Direction: 45° diagonal");
 		default:
-			return "Направление: уточняется";
+			return copy("Направление: уточняется", "Direction: pending");
 	}
 }
 
@@ -100,10 +101,16 @@ export function itemPlacementWarningSummary(
 		...new Set(
 			warnings.map((warning) =>
 				warning.kind === "item"
-					? "пересечение с другим предметом"
+					? copy("пересечение с другим предметом", "overlap with another item")
 					: warning.kind === "wall-item"
-						? "пересечение с другим настенным предметом"
-						: "перекрытие зоны открывания двери",
+						? copy(
+								"пересечение с другим настенным предметом",
+								"overlap with another wall-mounted item",
+							)
+						: copy(
+								"перекрытие зоны открывания двери",
+								"overlap with the door swing area",
+							),
 			),
 		),
 	].join("; ");
@@ -118,23 +125,38 @@ export function itemPlacementPreviewFeedback(
 	options?: { readonly isPreparingResource?: boolean },
 ): string {
 	if (options?.isPreparingResource) {
-		return "Подготавливаем модель…";
+		return copy("Подготавливаем модель…", "Preparing model…");
 	}
 	if (preview.warnings && preview.warnings.length > 0) {
-		return `Предупреждение: ${itemPlacementWarningSummary(preview.warnings)}.`;
+		return copy(
+			`Предупреждение: ${itemPlacementWarningSummary(preview.warnings)}.`,
+			`Warning: ${itemPlacementWarningSummary(preview.warnings)}.`,
+		);
 	}
 	if (preview.isValid) {
 		return "";
 	}
 	switch (preview.reasonCode) {
 		case "ITEM_COLLISION":
-			return "Предмет пересекается с другим предметом. Выберите другое место.";
+			return copy(
+				"Предмет пересекается с другим предметом. Выберите другое место.",
+				"The item overlaps another item. Choose a different location.",
+			);
 		case "WALL_ITEM_COLLISION":
-			return "Предпросмотр пересекает стену.";
+			return copy(
+				"Предпросмотр пересекает стену.",
+				"The preview intersects a wall.",
+			);
 		case "OUTSIDE_ROOM_HOST":
-			return "Предпросмотр выходит за границы комнаты.";
+			return copy(
+				"Предпросмотр выходит за границы комнаты.",
+				"The preview extends outside the room.",
+			);
 		default:
-			return "Это размещение пока недоступно.";
+			return copy(
+				"Это размещение пока недоступно.",
+				"This placement is unavailable.",
+			);
 	}
 }
 

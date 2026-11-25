@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import {
 	type KeyboardEvent,
 	type RefObject,
@@ -10,18 +11,6 @@ import type { DrawingDimensionVisibility } from "./drawing-dimension-visibility"
 import styles from "./DimensionFilter.module.css";
 import { SheetHeader } from "./SheetHeader";
 import { TelegramSheetFrame } from "./TelegramSheetFrame";
-
-const tabs = [
-	{
-		id: "rooms",
-		label: "Помещения",
-		options: [
-			["room-clear", "Внутренние размеры"],
-			["overall", "Внешние габариты"],
-		],
-	},
-	{ id: "openings", label: "Проёмы", options: [["opening", "Ширина проёмов"]] },
-] as const;
 
 export function DimensionFilter({
 	telegram = false,
@@ -36,6 +25,21 @@ export function DimensionFilter({
 	readonly onClose: () => void;
 	readonly returnFocusRef: RefObject<HTMLElement | null>;
 }) {
+	const tabs = [
+		{
+			id: "rooms",
+			label: copy("Помещения", "Rooms"),
+			options: [
+				["room-clear", copy("Внутренние размеры", "Interior dimensions")],
+				["overall", copy("Внешние габариты", "Overall dimensions")],
+			],
+		},
+		{
+			id: "openings",
+			label: copy("Проёмы", "Openings"),
+			options: [["opening", copy("Ширина проёмов", "Opening widths")]],
+		},
+	] as const;
 	const dialog = useRef<HTMLDialogElement>(null);
 	const heading = useRef<HTMLHeadingElement>(null);
 	const id = useId();
@@ -124,15 +128,29 @@ export function DimensionFilter({
 			ref={dialog}
 		>
 			<SheetHeader
-				title={<>Размеры <span aria-hidden="true" className={styles.unit}>мм</span></>}
+				title={
+					<>
+						{copy("Размеры ", "Dimensions ")}
+						<span aria-hidden="true" className={styles.unit}>
+							{copy("мм", "mm")}
+						</span>
+					</>
+				}
 				titleId={`${id}-heading`}
 				titleRef={heading}
 				titleTabIndex={-1}
-				closeLabel="Закрыть настройки размеров"
+				closeLabel={copy(
+					"Закрыть настройки размеров",
+					"Close dimension settings",
+				)}
 				className={styles.dialogHeader}
 				onClose={onClose}
 			/>
-			<div aria-label="Группы размеров" className={styles.tabs} role="tablist">
+			<div
+				aria-label={copy("Группы размеров", "Dimension groups")}
+				className={styles.tabs}
+				role="tablist"
+			>
 				{tabs.map((tab, index) => (
 					<button
 						aria-controls={`${id}-${tab.id}-panel`}
@@ -189,15 +207,15 @@ export function DimensionFilter({
 			</div>
 			<div className={styles.quickActions}>
 				<button onClick={() => setAll(true)} type="button">
-					Показать всё
+					{copy("Показать всё", "Show all")}
 				</button>
 				<button onClick={() => setAll(false)} type="button">
-					Скрыть всё
+					{copy("Скрыть всё", "Hide all")}
 				</button>
 			</div>
 			<footer className={styles.footer}>
 				<button onClick={onClose} type="button">
-					Готово
+					{copy("Готово", "Done")}
 				</button>
 			</footer>
 		</TelegramSheetFrame>

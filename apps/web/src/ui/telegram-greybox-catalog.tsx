@@ -13,6 +13,7 @@ import {
 	type ItemColorVariantId,
 } from "../domain/item-color-variant";
 import styles from "./AppShell.module.css";
+import { copy } from "./editor-language";
 import {
 	greyboxFurniturePresets,
 	type GreyboxFurniturePreset,
@@ -28,6 +29,57 @@ const categories = {
 };
 
 type Category = keyof typeof categories;
+
+const englishCategories: Record<Category, string> = {
+	furniture: "Furniture",
+	plumbing: "Plumbing",
+	appliances: "Appliances",
+	lighting: "Lighting",
+	accessories: "Accessories",
+};
+
+const englishPresetNames = new Map([
+	["bed", "Bed"],
+	["bedside-table", "Bedside table"],
+	["chair", "Chair"],
+	["dresser", "Dresser"],
+	["sofa", "Sofa"],
+	["table", "Table"],
+	["wardrobe", "Wardrobe"],
+	["bath", "Bathtub"],
+	["washer", "Washing machine"],
+	["sconce", "Wall light"],
+	["mirror", "Mirror"],
+	["armchair", "Armchair"],
+	["corner-sofa", "Corner sofa"],
+	["single-bed", "Single bed"],
+	["coffee-table", "Coffee table"],
+	["desk", "Desk"],
+	["open-shelf", "Open shelving"],
+	["tv-stand", "TV stand"],
+	["ottoman", "Ottoman"],
+	["kitchen-floor-unit", "Kitchen base cabinet"],
+	["kitchen-wall-unit", "Kitchen wall cabinet"],
+	["toilet", "Toilet"],
+	["basin", "Sink"],
+	["shower", "Shower enclosure"],
+	["vanity", "Bathroom vanity"],
+	["fridge", "Refrigerator"],
+	["dishwasher", "Dishwasher"],
+	["stove", "Stove"],
+	["slim-washer", "Slim washing machine"],
+	["dryer", "Dryer"],
+	["range-hood", "Range hood"],
+	["floor-lamp", "Floor lamp"],
+	["mirror-light", "Mirror light"],
+	["wall-spotlight", "Wall spotlight"],
+	["rug", "Rug"],
+	["planter", "Planter"],
+	["coat-rack", "Coat rack"],
+	["picture", "Framed picture"],
+	["wall-shelf", "Wall shelf"],
+	["full-length-mirror", "Full-length mirror"],
+]);
 
 export type TelegramGreyboxPreset = {
 	readonly id: string;
@@ -297,6 +349,15 @@ export function telegramGreyboxKindForLabel(
 	return presets.find((preset) => preset.label === label)?.shape;
 }
 
+export function telegramGreyboxLabelForDisplay(label: string): string {
+	const preset = presets.find((candidate) => candidate.label === label);
+	return preset ? greyboxDisplayName(preset) : label;
+}
+
+function greyboxDisplayName(preset: TelegramGreyboxPreset): string {
+	return copy(preset.label, englishPresetNames.get(preset.id) ?? preset.label);
+}
+
 const thumbnailCache: Record<string, string> = {};
 const THUMBNAIL_WIDTH = 144;
 const THUMBNAIL_HEIGHT = 104;
@@ -482,7 +543,12 @@ export function TelegramGreyboxCatalog({
 				preset.anchorClass === "floor" &&
 				(category === "all" || category === preset.category) &&
 				catalogSearchText(
-					`${preset.label} ${categories[preset.category]}`,
+					[
+						preset.label,
+						englishPresetNames.get(preset.id),
+						categories[preset.category],
+						englishCategories[preset.category],
+					].join(" "),
 				).includes(search),
 		);
 	}, [category, query, ownModels]);
@@ -493,7 +559,7 @@ export function TelegramGreyboxCatalog({
 				<div
 					className={styles.tmaCatalogSections}
 					role="tablist"
-					aria-label="Разделы каталога"
+					aria-label={copy("Разделы каталога", "Catalog sections")}
 				>
 					{(["presets", "models"] as const).map((section) => {
 						const isOwn = section === "models";
@@ -526,15 +592,17 @@ export function TelegramGreyboxCatalog({
 								tabIndex={selected ? 0 : -1}
 								type="button"
 							>
-								{isOwn ? "Мои модели" : "Предметы"}
+								{isOwn
+									? copy("Мои модели", "My models")
+									: copy("Предметы", "Items")}
 							</button>
 						);
 					})}
 				</div>
 				<div className={styles.tmaGreyboxSearch}>
 					<input
-						aria-label="Найти предмет"
-						placeholder="Найти предмет"
+						aria-label={copy("Найти предмет", "Search items")}
+						placeholder={copy("Найти предмет", "Search items")}
 						value={query}
 						onChange={(event) => {
 							onQueryChange(event.target.value);
@@ -550,21 +618,23 @@ export function TelegramGreyboxCatalog({
 								setPlacementUnavailable(false);
 							}}
 						>
-							Очистить поиск
+							{copy("Очистить поиск", "Clear search")}
 						</button>
 					)}
 				</div>
 				{ownModels && (
 					<div className={styles.tmaGreyboxActions}>
 						<button type="button" onClick={onImportModel} disabled={importBusy}>
-							Импортировать свой GLB
+							{copy("Импортировать свой GLB", "Import a GLB")}
 						</button>
 						<button
 							type="button"
 							aria-expanded={composerOpen}
 							onClick={onToggleComposer}
 						>
-							{composerOpen ? "Скрыть параметры" : "Создать макетный предмет"}
+							{composerOpen
+								? copy("Скрыть параметры", "Hide settings")
+								: copy("Создать макетный предмет", "Create a placeholder item")}
 						</button>
 					</div>
 				)}
@@ -577,30 +647,35 @@ export function TelegramGreyboxCatalog({
 				hidden={ownModels}
 			>
 				<fieldset className={styles.catalogCategoryTabs}>
-					<legend className={styles.visuallyHidden}>Категории предметов</legend>
+					<legend className={styles.visuallyHidden}>
+						{copy("Категории предметов", "Item categories")}
+					</legend>
 					<button
 						type="button"
 						aria-pressed={category === "all"}
 						onClick={() => setCategory("all")}
 					>
-						Все
+						{copy("Все", "All")}
 					</button>
-					{Object.entries(categories).map(([value, label]) => (
+					{categoryIds.map((value) => (
 						<button
 							key={value}
 							type="button"
 							aria-pressed={category === value}
 							onClick={() => {
-								if (isCategory(value)) setCategory(value);
+								setCategory(value);
 							}}
 						>
-							{label}
+							{copy(categories[value], englishCategories[value])}
 						</button>
 					))}
 				</fieldset>
 				{placementUnavailable && (
 					<p role="alert" className={styles.fieldError}>
-						Сейчас разместить предмет нельзя. Попробуйте снова после сохранения.
+						{copy(
+							"Сейчас разместить предмет нельзя. Попробуйте снова после сохранения.",
+							"The item cannot be placed yet. Try again after saving.",
+						)}
 					</p>
 				)}
 				<div className={styles.catalogGrid} ref={gridRef}>
@@ -629,15 +704,18 @@ export function TelegramGreyboxCatalog({
 								/>
 							)}
 							<div className={styles.catalogCardDetails}>
-								<strong>{preset.label}</strong>
+								<strong>{greyboxDisplayName(preset)}</strong>
 								<small>
-									{preset.widthMm} × {preset.depthMm} × {preset.heightMm} мм
+									{preset.widthMm} × {preset.depthMm} × {preset.heightMm}
+									{copy(" мм", " mm")}
 								</small>
 							</div>
 						</button>
 					))}
 					{matchingPresets.length === 0 && (
-						<p role="status">Подходящих предметов нет.</p>
+						<p role="status">
+							{copy("Подходящих предметов нет.", "No matching items.")}
+						</p>
 					)}
 				</div>
 			</div>

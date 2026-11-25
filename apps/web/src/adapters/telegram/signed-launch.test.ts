@@ -22,7 +22,7 @@ describe("signed Telegram bootstrap", () => {
 		const expectedScope = `tma-v1-${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 		expect(
 			await verifyTelegramLaunch(signedExample, configuration, { nowEpochMs }),
-		).toEqual({ kind: "verified", scope: expectedScope, authenticatedAt: 1733584787 });
+		).toEqual({ kind: "verified", scope: expectedScope, authenticatedAt: 1733584787, languageCode: "ru" });
 	});
 
 	it("accepts reordered pairs, equivalent single query decoding, optional hash and base64url padding", async () => {
@@ -333,6 +333,7 @@ it("accepts known signed launch parameters without exposing a dedicated analytic
 		"metrica_check_other",
 		"",
 		"METRICA_CHECK",
+		`lang1_en_1_${"A".repeat(86)}`,
 	]) {
 		const fields = new URLSearchParams(signedExample);
 		fields.set("start_param", value);
@@ -360,6 +361,7 @@ it("accepts known signed launch parameters without exposing a dedicated analytic
 		);
 		expect(result.kind).toBe("verified");
 		expect("measurementCheck" in result).toBe(false);
+		if (value.startsWith("lang1_")) expect(result).toMatchObject({ startParameter: value });
 	}
 	const modified = await verifyTelegramLaunch(
 		`${signedExample}&start_param=metrica_check`,

@@ -1,5 +1,6 @@
+import { copy } from "./editor-language";
 import { useId, useState } from "react";
-import { formatLengthMm } from "../domain/measurement-format";
+import { formatLengthMm } from "./editor-measurement-format";
 import styles from "./AppShell.module.css";
 import type { ScreenPoint, ScreenRect } from "./drawing-dimension-layout";
 import type { ItemWallDistance } from "./item-wall-distances";
@@ -7,15 +8,23 @@ import type { ItemWallDistance } from "./item-wall-distances";
 type Side = ItemWallDistance["side"];
 
 const sideLabels = {
-	left: "Слева",
-	right: "Справа",
-	top: "Сверху",
-	bottom: "Снизу",
+	get left() {
+		return copy("Слева", "Left");
+	},
+	get right() {
+		return copy("Справа", "Right");
+	},
+	get top() {
+		return copy("Сверху", "Top");
+	},
+	get bottom() {
+		return copy("Снизу", "Bottom");
+	},
 } as const;
 
 function measurementLabel(distanceMm: number): string {
 	return distanceMm < -1e-7
-		? "Пересечение стены"
+		? copy("Пересечение стены", "Intersects wall")
 		: formatLengthMm(Math.max(0, distanceMm));
 }
 
@@ -113,7 +122,7 @@ export function ItemWallDistanceValues({
 }) {
 	return (
 		<ul
-			aria-label="Расстояния до стен"
+			aria-label={copy("Расстояния до стен", "Wall clearances")}
 			className={styles.itemWallDistanceValues}
 		>
 			{distances.map(({ side, distanceMm }) => (
@@ -147,7 +156,9 @@ export function ItemWallDistanceFields({
 	const [pending, setPending] = useState(false);
 	return (
 		<fieldset className={styles.itemWallDistanceFields}>
-			<legend className={styles.visuallyHidden}>Расстояния до стен, мм</legend>
+			<legend className={styles.visuallyHidden}>
+				{copy("Расстояния до стен, мм", "Wall clearances, mm")}
+			</legend>
 			<div className={styles.itemWallDistanceGrid}>
 				{(Object.keys(sideLabels) as ItemWallDistance["side"][]).map((side) => {
 					const distance = distances.find((entry) => entry.side === side);
@@ -190,11 +201,19 @@ export function ItemWallDistanceFields({
 				})}
 			</div>
 			{distances.length < 4 ? (
-				<p id={`${errorId}-unavailable`}>В этом направлении внутренняя граница комнаты недоступна.</p>
+				<p id={`${errorId}-unavailable`}>
+					{copy(
+						"В этом направлении внутренняя граница комнаты недоступна.",
+						"The room boundary is unavailable in this direction.",
+					)}
+				</p>
 			) : null}
 			{errorSide ? (
 				<p id={errorId} className={styles.fieldError} role="alert">
-					Укажите доступное расстояние целым числом в мм.
+					{copy(
+						"Укажите доступное расстояние целым числом в мм.",
+						"Enter a valid clearance in whole millimetres.",
+					)}
 				</p>
 			) : null}
 		</fieldset>
@@ -236,7 +255,7 @@ function WallDistanceInput({
 			id={id}
 			aria-describedby={errorId ?? labelHint}
 			aria-invalid={errorId ? true : undefined}
-			aria-label={`${label}, мм`}
+			aria-label={copy(`${label}, мм`, `${label}, mm`)}
 			data-editor-blur-commit=""
 			disabled={disabled}
 			inputMode="numeric"

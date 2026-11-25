@@ -169,7 +169,8 @@ describe("Telegram entry bootstrap boundary", () => {
 			throw new Error("Expected verified public fixture");
 		expect(result.scope).toMatch(/^tma-v1-[a-f0-9]{64}$/);
 		expect(result.authenticatedAt).toBe(1733584787);
-		expect(Object.keys(result).sort()).toEqual(["authenticatedAt","kind", "scope"]);
+		expect(Object.keys(result).sort()).toEqual(["authenticatedAt", "kind", "languageCode", "scope"]);
+		expect(result.languageCode).toBe("ru");
 		expect(sdk.effects.ready).toBe(0);
 		expect(fixture.bootstrap.ready()).toBe(true);
 		expect(sdk.effects.ready).toBe(1);

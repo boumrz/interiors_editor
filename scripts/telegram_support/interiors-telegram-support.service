@@ -11,6 +11,7 @@ StateDirectoryMode=0700
 LoadCredential=bot-token:/etc/interiors-editor/telegram-support/bot-token
 LoadCredential=owner-chat-id:/etc/interiors-editor/telegram-support/owner-chat-id
 LoadCredential=accept-from:/etc/interiors-editor/telegram-support/accept-from
+LoadCredential=interiors-telegram-language-key
 ExecStart=/usr/bin/python3 -B /usr/local/lib/interiors-telegram-support/current/service.py run
 Restart=on-failure
 RestartSec=5s

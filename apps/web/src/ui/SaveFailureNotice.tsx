@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useEffect, useRef } from "react";
 import styles from "./ProjectSafety.module.css";
 
@@ -41,16 +42,19 @@ export function SaveFailureNotice({
 	}, []);
 	return (
 		<aside
-			aria-label="Ошибка сохранения"
+			aria-label={copy("Ошибка сохранения", "Save failed")}
 			className={`${styles.card} ${styles.floating} ${styles.saveFailure}`}
 			data-testid="persistence-failure-notice"
 		>
 			<div className={styles.message} role="alert">
-				<h2>Не удалось сохранить</h2>
+				<h2>{copy("Не удалось сохранить", "Could not save")}</h2>
 				<p>{description}</p>
 			</div>
 			<p className={styles.context}>
-                Открыта последняя сохранённая версия. Несохранённую правку можно скачать отдельным файлом для восстановления.
+				{copy(
+					"Открыта последняя сохранённая версия. Несохранённую правку можно скачать отдельным файлом для восстановления.",
+					"The last saved version is open. Download the unsaved edit as a separate recovery file.",
+				)}
 			</p>
 			<div className={styles.actions}>
 				<button
@@ -61,9 +65,13 @@ export function SaveFailureNotice({
 				>
 					{actionLabel}
 				</button>
-                {onRecoveryExport ? <button onClick={onRecoveryExport} type="button">Скачать несохранённую правку</button> : null}
+				{onRecoveryExport ? (
+					<button onClick={onRecoveryExport} type="button">
+						{copy("Скачать несохранённую правку", "Download unsaved edit")}
+					</button>
+				) : null}
 				<button onClick={onExport} type="button">
-					Скачать сохранённую версию
+					{copy("Скачать сохранённую версию", "Download saved version")}
 				</button>
 			</div>
 			{exportError ? (

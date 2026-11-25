@@ -1,6 +1,6 @@
-import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import type { TelegramHostEnvironment } from "../adapters/telegram/host-environment";
-import { licenseEditionLabel } from "../app/license-receipt";
+import { licenseEditionLabel, licenseRevision } from "../app/license-receipt";
 import type { TelegramEntryState } from "../app/telegram-editor-app";
 import { TelegramUsageDialog } from "./telegram-usage-dialog";
 import type { UsageMetrics } from "../app/telegram-usage-metrics";
@@ -9,32 +9,36 @@ import {
 	LegalDocumentLink,
 } from "./LegalDocumentLink";
 import type { HostNavigationPort } from "./editor-host-boundary";
+import { copy } from "./editor-language";
 import { SheetHeader } from "./SheetHeader";
 import sheetStyles from "./SheetHeader.module.css";
 import { TelegramSheetFrame } from "./TelegramSheetFrame";
 import styles from "./browser-legal-access.module.css";
 import entryStyles from "./telegram-legal-entry.module.css";
 
+const unsubscribe = () => undefined;
+const subscribeWithoutTheme = () => unsubscribe;
+const noTheme = () => undefined;
+
 function LegalStatus() {
 	return (
 		<p>
-			{licenseEditionLabel}. Соглашение действует для вас с момента
-			принятия.
+			{copy(licenseEditionLabel, `License edition ${licenseRevision}`)}. {copy("Соглашение действует для вас с момента принятия.", "The agreement takes effect when you accept it.")}
 		</p>
 	);
 }
 
 export function TelegramLegalDocuments() {
 	return (
-		<nav className={styles.links} aria-label="Документы приложения">
+		<nav className={styles.links} aria-label={copy("Документы приложения", "App documents")}>
 			<LegalDocumentLink telegram documentName="privacy-policy">
-				Политика конфиденциальности
+				{copy("Политика конфиденциальности", "Privacy policy")}
 			</LegalDocumentLink>
 			<LegalDocumentLink telegram documentName="license-agreement">
-				Лицензионное соглашение
+				{copy("Лицензионное соглашение", "License agreement")}
 			</LegalDocumentLink>
 			<LegalDocumentLink telegram documentName="analytics-consent">
-				Согласие на дополнительную статистику
+				{copy("Согласие на дополнительную статистику", "Optional analytics consent")}
 			</LegalDocumentLink>
 		</nav>
 	);
@@ -59,6 +63,12 @@ export function TelegramSettings({
 	const trigger = useRef<HTMLElement | null>(null);
 	const wantedBack = useRef(false);
 	const underlyingBack = useRef(new Set<() => void>());
+	const theme = host?.theme;
+	const themeSnapshot = useSyncExternalStore(
+		theme?.subscribe ?? subscribeWithoutTheme,
+		theme?.snapshot ?? noTheme,
+		theme?.snapshot ?? noTheme,
+	);
 	const open = useCallback((restoreFocus?: HTMLElement) => {
 		if (onExitBeforeEntry) {
 			restoreFocus?.focus({ preventScroll: true });
@@ -158,14 +168,30 @@ export function TelegramSettings({
 					}}
 				>
 					<SheetHeader
-						title="Настройки"
+						title={copy("Настройки", "Settings")}
 						titleId="telegram-settings-heading"
 						titleRef={heading}
 						titleTabIndex={-1}
-						closeLabel="Закрыть настройки"
+						closeLabel={copy("Закрыть настройки", "Close settings")}
 						onClose={() => dialog.current?.close()}
 					/>
 					<div className={`${sheetStyles.body} ${entryStyles.settingsContent}`}>
+						{theme && themeSnapshot && (
+							<label className={entryStyles.themeSetting}>
+								<span>{copy("Тема", "Theme")}</span>
+								<select
+									value={themeSnapshot.preference}
+									onChange={(event) => {
+										const { value } = event.currentTarget;
+										if (value === "auto" || value === "light" || value === "dark") theme.setPreference(value);
+									}}
+								>
+									<option value="auto">{copy("Автоматически", "Automatic")}</option>
+									<option value="light">{copy("Светлая", "Light")}</option>
+									<option value="dark">{copy("Тёмная", "Dark")}</option>
+								</select>
+							</label>
+						)}
 						<LegalStatus />
 						<TelegramLegalDocuments />
 					</div>
@@ -179,7 +205,7 @@ export function TelegramSettings({
 									void analytics.openSettings();
 								}}
 							>
-								Настройки статистики
+								{copy("Настройки статистики", "Analytics settings")}
 							</button>
 						</footer>
 					)}
@@ -208,29 +234,29 @@ export function TelegramLegalEntry({
 			{(open) => (
 				<main className={styles.entry}>
 					<section aria-labelledby="telegram-legal-heading">
-						<h1 id="telegram-legal-heading">Перед началом работы</h1>
+						<h1 id="telegram-legal-heading">{copy("Перед началом работы", "Before you start")}</h1>
 						<LegalStatus />
 						<p>
-							Для создания и изменения проектов примите лицензионное соглашение.
+							{copy("Для создания и изменения проектов примите лицензионное соглашение.", "Accept the license agreement to create and edit projects.")}
 						</p>
 						<TelegramLegalDocuments />
 						{analytics && (
 							<div className={entryStyles.preferences}>
-								<p>Статистика помогает улучшать сервис.</p>
+								<p>{copy("Статистика помогает улучшать сервис.", "Analytics help improve the app.")}</p>
 								<button
 									type="button"
 									className={entryStyles.preferenceButton}
 									onClick={(event) => open(event.currentTarget)}
 								>
-									Настройки статистики
+									{copy("Настройки статистики", "Analytics settings")}
 								</button>
 							</div>
 						)}
 						{state.error && (
 							<p role="alert">
 								{state.error === "text"
-									? "Текст действующей редакции недоступен. Сохранённые проекты можно посмотреть и скачать."
-									: "Не удалось сохранить принятие соглашения. Попробуйте ещё раз или скачайте копии своих проектов."}
+									? copy("Текст действующей редакции недоступен. Сохранённые проекты можно посмотреть и скачать.", "The current agreement is unavailable. You can still view and download your saved projects.")
+									: copy("Не удалось сохранить принятие соглашения. Попробуйте ещё раз или скачайте копии своих проектов.", "The app couldn’t save your acceptance. Try again or download copies of your projects.")}
 							</p>
 						)}
 						<button
@@ -239,17 +265,17 @@ export function TelegramLegalEntry({
 							disabled={state.error === "text"}
 							onClick={() => void state.proceed()}
 						>
-							Принять лицензионное соглашение
+							{copy("Принять лицензионное соглашение", "Accept the license agreement")}
 						</button>
 						<details className={entryStyles.savedProjects}>
-							<summary>Уже есть сохранённые проекты?</summary>
-							<p>Без принятия соглашения можно посмотреть свои проекты и скачать их копии.</p>
+							<summary>{copy("Уже есть сохранённые проекты?", "Already have saved projects?")}</summary>
+							<p>{copy("Без принятия соглашения можно посмотреть свои проекты и скачать их копии.", "You can view your saved projects and download copies before accepting the agreement.")}</p>
 							<button type="button" onClick={() => void state.readOnly()}>
-								Посмотреть сохранённые проекты
+								{copy("Посмотреть сохранённые проекты", "View saved projects")}
 							</button>
 						</details>
 						<button type="button" onClick={onExit}>
-							Выйти
+							{copy("Выйти", "Exit")}
 						</button>
 					</section>
 				</main>

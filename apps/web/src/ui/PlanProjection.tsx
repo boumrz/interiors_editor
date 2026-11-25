@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { OpeningPlanSymbol } from "./opening-plan-symbol";
 import { DIVIDED_WINDOW_MIN_WIDTH_MM } from "../adapters/renderer/opening-template";
 import { createEditorInteractionGate, type EditorContactEpoch } from "./editor-host-boundary";
@@ -17,7 +18,7 @@ import { roomTypeLabels } from "./room-type-labels";
 import { wallItemPlanFootprintForProjection } from "../adapters/renderer/rectangular-room-projection";
 import { moveDoorOpeningInProject } from "../domain/door-opening-project";
 import { PLAN_GRID_STEP_MM } from "../domain/constrained-partition";
-import { formatAreaMm2, formatLengthMm } from "../domain/measurement-format";
+import { formatAreaMm2, formatLengthMm } from "./editor-measurement-format";
 import {
 	assessParametricFloorItemPlacement,
 	findParametricFloorItemCollisionTargets,
@@ -1070,7 +1071,7 @@ export function PlanProjection({
 			const sizeLabel =
 				measurement.kind === "rectangular"
 					? `${formatLengthMm(measurement.widthMm)} × ${formatLengthMm(measurement.depthMm)}`
-					: "По внутреннему контуру";
+					: copy("По внутреннему контуру", "Along the interior boundary");
 			const width = end.x - start.x;
 			const height = end.y - start.y;
 			return {
@@ -3134,7 +3135,7 @@ export function PlanProjection({
 	if (!Number.isFinite(drawingScale) || !visibleBounds) {
 		return (
 			<div className={styles.emptyCanvas} data-testid="empty-plan">
-				Контур ещё не создан
+				{copy("Контур ещё не создан", "No outline yet")}
 			</div>
 		);
 	}
@@ -3268,7 +3269,7 @@ export function PlanProjection({
 		itemDrag !== undefined || retainedHostTransform !== undefined;
 	const selectedRotationButton = (item: EditorFloorAsset, direction: 1 | -1) => (
 		<button
-			aria-label={`Повернуть выбранный предмет ${direction === 1 ? "влево" : "вправо"} на ${rotationStep}°`}
+			aria-label={copy(`Повернуть выбранный предмет ${direction === 1 ? "влево" : "вправо"} на ${rotationStep}°`, `Rotate the selected item ${direction === 1 ? "left" : "right"} by ${rotationStep}°`)}
 			className={rotationStyles.step}
 			disabled={selectedRotationDisabled || hasSelectedAngleDraft}
 			onClick={() => void persistItemRotation({
@@ -3284,7 +3285,7 @@ export function PlanProjection({
 	return (
 		<>
 			<svg
-				aria-label="План помещения"
+				aria-label={copy("План помещения", "Floor plan")}
 				className={styles.planSvg}
 				data-active-tool={activeTool}
 				data-interaction-locked={isInteractionLocked ? "true" : undefined}
@@ -3605,7 +3606,7 @@ export function PlanProjection({
 													stroke="transparent" strokeWidth={MINIMUM_TOUCH_TARGET_PX / viewport.zoom} pointerEvents="stroke" />
 												{/* biome-ignore lint/a11y/useSemanticElements: SVG handle follows plan coordinates and supports arrow keys. */}
 												<circle
-													aria-label={`Переместить ${openingCreationPreview.kind === "Door" ? "дверь" : "окно"} вдоль стены`}
+													aria-label={copy(`Переместить ${openingCreationPreview.kind === "Door" ? "дверь" : "окно"} вдоль стены`, `Move the ${openingCreationPreview.kind === "Door" ? "door" : "window"} along the wall`)}
 													cx={openingCreationSegment.centre.x} cy={openingCreationSegment.centre.y}
 													r={MINIMUM_TOUCH_TARGET_PX / (2 * viewport.zoom)} fill="transparent" stroke="none" pointerEvents="all"
 													role="button" tabIndex={0}
@@ -3780,7 +3781,7 @@ export function PlanProjection({
 															fill="transparent"
 															pointerEvents="all"
 															style={{ cursor: "grab" }}
-															aria-label={`Переместить ${opening.kind === "Door" ? "дверь" : "окно"} вдоль стены`}
+															aria-label={copy(`Переместить ${opening.kind === "Door" ? "дверь" : "окно"} вдоль стены`, `Move the ${opening.kind === "Door" ? "door" : "window"} along the wall`)}
 															role="button"
 															tabIndex={0}
 															onKeyDown={(event) => {
@@ -3831,7 +3832,7 @@ export function PlanProjection({
 									return [
 										<g key={`vertex-handle-${vertexId}`}>
 											<circle
-												aria-label="Переместить вершину стены"
+												aria-label={copy("Переместить вершину стены", "Move wall endpoint")}
 												className={styles.wallVertexMoveHandleHitArea}
 												cx={point.x}
 												cy={point.y}
@@ -3898,7 +3899,7 @@ export function PlanProjection({
 										data-placement-tier={itemPlacementPreview.tier}
 										data-placement-valid={itemPlacementPreview.isValid}
 										data-testid="item-placement-preview"
-										aria-label={`Предпросмотр размещения: ${itemDraft?.label ?? "Предмет"}`}
+										aria-label={copy(`Предпросмотр размещения: ${itemDraft?.label ?? "Предмет"}`, `Placement preview: ${itemDraft?.label ?? "Item"}`)}
 									>
 										{hostTilesForPartialPreview.length > 0 ? (
 											<defs>
@@ -3962,7 +3963,7 @@ export function PlanProjection({
 													!itemPlacementPreview.isValid ||
 													isConfirmingItemPlacement
 												}
-												aria-label="Подтвердить размещение предмета"
+												aria-label={copy("Подтвердить размещение предмета", "Confirm item placement")}
 												className={styles.itemPlacementConfirm}
 												data-testid="legacy-item-placement-confirm"
 												onClick={(event) => {
@@ -3989,12 +3990,12 @@ export function PlanProjection({
 													x={81}
 													y={(actionHeight - actionGap * 2) / 2}
 												>
-													{plainLabels ? "Подтвердить" : "Подтвердить ✓"}
+													{plainLabels ? copy("Подтвердить", "Confirm") : copy("Подтвердить ✓", "Confirm ✓")}
 												</text>
 											</g>
 											{/* biome-ignore lint/a11y/useSemanticElements: the SVG coordinate system needs positioned touch controls. */}
 											<g
-												aria-label="Отменить размещение предмета"
+												aria-label={copy("Отменить размещение предмета", "Cancel item placement")}
 												className={styles.itemPlacementCancel}
 												data-testid="legacy-item-placement-cancel"
 												onClick={(event) => {
@@ -4079,7 +4080,7 @@ export function PlanProjection({
 										}
 										{...(keyboardSelectable ? {
 											role: "button",
-											"aria-label": `Выбрать предмет «${item.label}»`,
+											"aria-label": copy(`Выбрать предмет «${item.label}»`, `Select item “${item.label}”`),
 											"aria-pressed": selected,
 											"aria-keyshortcuts": "Enter Space ArrowLeft ArrowRight ArrowUp ArrowDown",
 											tabIndex: 0,
@@ -4134,7 +4135,7 @@ export function PlanProjection({
 								</g>
 								{selected ? (
 									<g
-										aria-label={`Выделение предмета: ${item.label}`}
+										aria-label={copy(`Выделение предмета: ${item.label}`, `Selected item: ${item.label}`)}
 										className={styles.itemSelectionFrame}
 										data-testid="two-dimensional-item-selection-frame"
 										pointerEvents="none"
@@ -4193,7 +4194,7 @@ export function PlanProjection({
 										style={rotationBlocked ? { opacity: 0.45 } : undefined}
 									>
 										<circle
-											aria-label="Кольцо поворота предмета"
+											aria-label={copy("Кольцо поворота предмета", "Item rotation ring")}
 											cx={gizmoCenter.x}
 											cy={gizmoCenter.y}
 											data-testid="two-dimensional-rotation-track"
@@ -4257,7 +4258,7 @@ export function PlanProjection({
 								if (!footprint) return null;
 								return (
 									<polygon
-										aria-label={`Настенный предмет: ${item.label}`}
+										aria-label={copy(`Настенный предмет: ${item.label}`, `Wall-mounted item: ${item.label}`)}
 										className={styles.schematicItem}
 										data-item-id={item.assetInstanceId}
 										data-testid="wall-schematic-item"
@@ -4281,13 +4282,13 @@ export function PlanProjection({
 						const sizeLabel =
 							measurement.kind === "rectangular"
 								? `${formatLengthMm(measurement.widthMm)} × ${formatLengthMm(measurement.depthMm)}`
-								: "По внутреннему контуру";
-						const perimeterLabel = `Периметр: ${formatLengthMm(measurement.perimeterMm)}`;
+								: copy("По внутреннему контуру", "Along the interior boundary");
+						const perimeterLabel = copy(`Периметр: ${formatLengthMm(measurement.perimeterMm)}`, `Perimeter: ${formatLengthMm(measurement.perimeterMm)}`);
 						const layout = roomMeasurementLayouts.get(roomId);
 						if (!layout) return null;
 						return (
 							<g
-								aria-label={`Комната: ${sizeLabel}, ${formatAreaMm2(measurement.areaMm2)}, ${perimeterLabel}`}
+								aria-label={copy(`Комната: ${sizeLabel}, ${formatAreaMm2(measurement.areaMm2)}, ${perimeterLabel}`, `Room: ${sizeLabel}, ${formatAreaMm2(measurement.areaMm2)}, ${perimeterLabel}`)}
 								className={styles.roomMeasurement}
 								data-room-id={roomId}
 								data-testid="room-measurement"
@@ -4527,7 +4528,7 @@ export function PlanProjection({
 			</svg>
 			{rotationItem && onRotationStepModeChange ? (
 				<aside
-					aria-label="Поворот выбранного предмета"
+					aria-label={copy("Поворот выбранного предмета", "Rotate selected item")}
 					aria-hidden={!selectedRotationPlacement || undefined}
 					className={styles.planRotationEditor}
 					data-testid="two-dimensional-rotation-editor"
@@ -4538,7 +4539,7 @@ export function PlanProjection({
 					<div className={rotationStyles.row} data-rotation-target="selected">
 						{selectedRotationButton(rotationItem, 1)}
 						<FloorRotationAngleField
-							ariaLabel="Угол поворота выбранного предмета, градусы"
+							ariaLabel={copy("Угол поворота выбранного предмета, градусы", "Selected item angle, degrees")}
 							className={rotationStyles.angle}
 							disabled={selectedRotationDisabled}
 							explicit
@@ -4563,7 +4564,7 @@ export function PlanProjection({
 			) : null}
 			{activeTool === "item" && itemDraft ? (
 				<TelegramSheetFrame telegram={plainLabels} canvasAnchored
-					aria-label="Размещение предмета"
+					aria-label={copy("Размещение предмета", "Item placement")}
 					className={styles.itemPlacementDock}
 					data-placement-tier={itemPlacementPreview?.tier}
 					data-testid="item-placement-action-dock"
@@ -4572,7 +4573,7 @@ export function PlanProjection({
 					{plainLabels ? (
 						<SheetHeader
 							title={<span data-testid="item-placement-identity">{itemDraft.label}</span>}
-							closeLabel="Закрыть размещение предмета"
+							closeLabel={copy("Закрыть размещение предмета", "Close item placement")}
 							closeDisabled={isConfirmingItemPlacement || hasPlacementRotationContact}
 							onClose={onCloseItemPlacement ?? cancelItemPlacement}
 							protectEditorDraft={onCloseItemPlacement !== undefined}
@@ -4611,7 +4612,7 @@ export function PlanProjection({
 						data-rotation-target={plainLabels ? "placement" : undefined}
 					>
 						<button
-							aria-label={`Повернуть размещаемый предмет влево на ${rotationStep}°`}
+							aria-label={copy(`Повернуть размещаемый предмет влево на ${rotationStep}°`, `Rotate item left by ${rotationStep}°`)}
 							className={plainLabels ? rotationStyles.step : undefined}
 							disabled={
 								readOnly ||
@@ -4627,7 +4628,7 @@ export function PlanProjection({
 						</button>
 						{exactFloorYaw ? (
 							<FloorRotationAngleField
-								ariaLabel="Угол размещаемого предмета, градусы"
+								ariaLabel={copy("Угол размещаемого предмета, градусы", "Placement angle, degrees")}
 								className={plainLabels ? rotationStyles.angle : undefined}
 								yawRadians={itemDraft.yawRadians}
 								disabled={readOnly || isConfirmingItemPlacement || hasPlacementRotationContact}
@@ -4639,7 +4640,7 @@ export function PlanProjection({
 							{degreesForYawRadians(itemDraft.yawRadians)}°
 						</output>}
 						<button
-							aria-label={`Повернуть размещаемый предмет вправо на ${rotationStep}°`}
+							aria-label={copy(`Повернуть размещаемый предмет вправо на ${rotationStep}°`, `Rotate item right by ${rotationStep}°`)}
 							className={plainLabels ? rotationStyles.step : undefined}
 							disabled={
 								readOnly ||
@@ -4657,13 +4658,13 @@ export function PlanProjection({
 					</div>
 					<div className={styles.itemPlacementDockActions}>
 						<button data-editor-action="cancel"
-							aria-label="Отменить размещение предмета"
+							aria-label={copy("Отменить размещение предмета", "Cancel item placement")}
 							className={styles.itemPlacementCancel}
 							data-testid="item-placement-cancel"
 							onClick={cancelItemPlacement}
 							type="button"
 						>
-							{plainLabels ? "Отменить" : "Отмена"}
+							{plainLabels ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 						</button>
 						<button data-editor-action="confirm"
 							aria-disabled={
@@ -4671,7 +4672,7 @@ export function PlanProjection({
 								isConfirmingItemPlacement ||
 								hasPlacementRotationContact
 							}
-							aria-label="Подтвердить размещение предмета"
+							aria-label={copy("Подтвердить размещение предмета", "Confirm item placement")}
 							className={styles.itemPlacementConfirm}
 							data-testid="item-placement-confirm"
 							disabled={
@@ -4682,13 +4683,13 @@ export function PlanProjection({
 							onClick={confirmItemPlacement}
 							type="button"
 						>
-							{isConfirmingItemPlacement ? "Сохраняем…" : plainLabels ? "Подтвердить" : "Поставить"}
+							{isConfirmingItemPlacement ? copy("Сохраняем…", "Saving…") : plainLabels ? copy("Подтвердить", "Confirm") : copy("Поставить", "Place")}
 						</button>
 					</div>
 				</TelegramSheetFrame>
 			) : null}
 			{retainedHostTransform ? <aside className={styles.wallMoveDraftActions} role="status" style={{ pointerEvents: "none" }}>
-				{retainedHostTransform.kind === "move" ? "Продолжите перемещение или отмените правку." : "Продолжите поворот или отмените правку."}
+				{retainedHostTransform.kind === "move" ? copy("Продолжите перемещение или отмените правку.", "Continue moving or cancel the edit.") : copy("Продолжите поворот или отмените правку.", "Continue rotating or cancel the edit.")}
 			</aside> : null}
 			{doorOpeningDrag && openingDragError ? (
 				<aside
@@ -4703,12 +4704,12 @@ export function PlanProjection({
 			) : null}
 			<fieldset
 				className={styles.planZoomControls}
-				aria-label="Масштаб плана"
+				aria-label={copy("Масштаб плана", "Plan zoom")}
 				data-plan-rotation-obstacle
 			>
 				<button
 					type="button"
-					aria-label="Приблизить"
+					aria-label={copy("Приблизить", "Zoom in")}
 					disabled={viewport.zoom >= maximumViewportZoom}
 					onClick={() =>
 						setViewport((current) =>
@@ -4725,7 +4726,7 @@ export function PlanProjection({
 				</button>
 				<button
 					type="button"
-					aria-label="Отдалить"
+					aria-label={copy("Отдалить", "Zoom out")}
 					disabled={viewport.zoom <= 0.55}
 					onClick={() =>
 						setViewport((current) =>
@@ -4747,7 +4748,7 @@ export function PlanProjection({
 					role="status"
 					data-testid="door-opening-move-draft"
 				>
-					Сохраняем положение проёма…
+					{copy("Сохраняем положение проёма…", "Saving the opening position…")}
 				</aside>
 			) : null}
 			{wallMoveDraft?.phase === "ready" ? (
@@ -4757,21 +4758,21 @@ export function PlanProjection({
 					data-testid="wall-move-draft"
 					role="status"
 				>
-					<strong>Черновик переноса стены</strong>
+					<strong>{copy("Черновик переноса стены", "Wall move preview")}</strong>
 					<div>
 						<button data-editor-action="confirm"
 							disabled={isConfirmingWallMove}
 							onClick={() => void confirmWallMoveDraft()}
 							type="button"
 						>
-							{plainLabels ? "Подтвердить" : "Подтвердить перенос"}
+							{plainLabels ? copy("Подтвердить", "Confirm") : copy("Подтвердить перенос", "Confirm move")}
 						</button>
 						<button data-editor-action="cancel"
 							disabled={isConfirmingWallMove}
 							onClick={cancelWallMoveDraft}
 							type="button"
 						>
-							{plainLabels ? "Отменить" : "Отменить перенос"}
+							{plainLabels ? copy("Отменить", "Cancel") : copy("Отменить перенос", "Cancel move")}
 						</button>
 					</div>
 				</TelegramSheetFrame>
@@ -4783,21 +4784,21 @@ export function PlanProjection({
 					data-testid="wall-vertex-move-draft"
 					role="status"
 				>
-					<strong>Черновик переноса вершины</strong>
+					<strong>{copy("Черновик переноса вершины", "Wall endpoint move preview")}</strong>
 					<div>
 						<button data-editor-action="confirm"
 							disabled={isConfirmingWallVertexMove}
 							onClick={() => void confirmWallVertexMoveDraft()}
 							type="button"
 						>
-							{plainLabels ? "Подтвердить" : "Подтвердить перенос вершины"}
+							{plainLabels ? copy("Подтвердить", "Confirm") : copy("Подтвердить перенос вершины", "Confirm endpoint move")}
 						</button>
 						<button data-editor-action="cancel"
 							disabled={isConfirmingWallVertexMove}
 							onClick={cancelWallVertexMoveDraft}
 							type="button"
 						>
-							{plainLabels ? "Отменить" : "Отменить перенос вершины"}
+							{plainLabels ? copy("Отменить", "Cancel") : copy("Отменить перенос вершины", "Cancel endpoint move")}
 						</button>
 					</div>
 				</TelegramSheetFrame>
@@ -4809,9 +4810,9 @@ export function PlanProjection({
 					data-testid="wall-split-draft"
 					role="status"
 				>
-					<strong>Разделение стены</strong>
+					<strong>{copy("Разделение стены", "Wall split")}</strong>
 					{splitUnavailable ? (
-						<span role="alert">Выберите точку внутри стены.</span>
+						<span role="alert">{copy("Выберите точку внутри стены.", "Choose a point between the wall endpoints.")}</span>
 					) : null}
 					<div>
 						<button data-editor-action="confirm"
@@ -4819,36 +4820,36 @@ export function PlanProjection({
 							onClick={() => void confirmWallSplitDraft()}
 							type="button"
 						>
-							{plainLabels ? "Подтвердить" : "Подтвердить разделение"}
+							{plainLabels ? copy("Подтвердить", "Confirm") : copy("Подтвердить разделение", "Confirm split")}
 						</button>
 						<button data-editor-action="cancel"
 							disabled={isConfirmingWallSplit}
 							onClick={cancelWallSplitDraft}
 							type="button"
 						>
-							{plainLabels ? "Отменить" : "Отменить разделение"}
+							{plainLabels ? copy("Отменить", "Cancel") : copy("Отменить разделение", "Cancel split")}
 						</button>
 					</div>
 				</TelegramSheetFrame>
 			) : null}
 			{wallSplitHostConflict && plainLabels ? (
 				<EditorConsequenceSheet
-					title="Разделить стену"
-					closeLabel="Закрыть разделение стены"
-					confirmLabel="Разделить и удалить"
+					title={copy("Разделить стену", "Split wall")}
+					closeLabel={copy("Закрыть разделение стены", "Close wall split")}
+					confirmLabel={copy("Разделить и удалить", "Split and remove")}
 					testId="wall-split-host-conflict"
 					busy={isResolvingWallSplitHostConflict}
 					blocked={readOnly}
 					onCancel={cancelWallSplitDraft}
 					onConfirm={() => void resolveWallSplitHostConflict()}
 				>
-					<p>В точке разделения находятся объекты. Они будут удалены вместе с разделением стены.</p>
+					<p>{copy("В точке разделения находятся объекты. Они будут удалены вместе с разделением стены.", "Objects at the split point will be removed when the wall is split.")}</p>
 					<ul>
 						{wallSplitHostConflict.openingIds.map(id => (
-							<li key={id}>{project.level.openings.find(opening => opening.openingId === id)?.kind === "Window" ? "Окно" : "Дверной проём"}</li>
+							<li key={id}>{project.level.openings.find(opening => opening.openingId === id)?.kind === "Window" ? copy("Окно", "Window") : copy("Дверной проём", "Doorway")}</li>
 						))}
 						{wallSplitHostConflict.itemIds.map(id => (
-							<li key={id}>{project.assetInstances.find(item => item.assetInstanceId === id)?.label ?? "Настенный предмет"}</li>
+							<li key={id}>{project.assetInstances.find(item => item.assetInstanceId === id)?.label ?? copy("Настенный предмет", "Wall-mounted item")}</li>
 						))}
 					</ul>
 				</EditorConsequenceSheet>
@@ -4859,14 +4860,14 @@ export function PlanProjection({
 					data-testid="wall-split-host-conflict"
 					role="alert"
 				>
-					<strong>Разрез затрагивает размещённые данные</strong>
+					<strong>{copy("Разрез затрагивает размещённые данные", "The split affects attached objects")}</strong>
 					{wallSplitHostConflict.openingIds.length > 0 ? (
 						<span>
 							{wallSplitHostConflict.openingIds.length}{" "}
 							{wallSplitHostConflict.openingIds.length === 1
-								? "проём"
-								: "проёма"}{" "}
-							попадёт в разрез и не сможет сохранить один адрес стены.
+								? copy("проём", "opening")
+								: copy("проёма", "openings")}{" "}
+							{copy("попадёт в разрез и не сможет сохранить один адрес стены.", "will cross the split and lose their wall attachment.")}
 						</span>
 					) : null}
 					{wallSplitHostConflict.itemIds.length > 0 ? (
@@ -4874,9 +4875,9 @@ export function PlanProjection({
 							<span>
 								{wallSplitHostConflict.itemIds.length}{" "}
 								{wallSplitHostConflict.itemIds.length === 1
-									? "настенный предмет"
-									: "настенных предмета"}{" "}
-								попадёт в разрез и не сможет сохранить один адрес стены.
+									? copy("настенный предмет", "wall-mounted item")
+									: copy("настенных предмета", "wall-mounted items")}{" "}
+								{copy("попадёт в разрез и не сможет сохранить один адрес стены.", "will cross the split and lose their wall attachment.")}
 							</span>
 							<ul data-testid="wall-split-conflicting-items">
 								{wallSplitHostConflict.itemIds.map((assetInstanceId) => {
@@ -4886,7 +4887,7 @@ export function PlanProjection({
 									);
 									return (
 										<li key={assetInstanceId}>
-											{item?.label ?? "Настенный предмет"}{" "}
+											{item?.label ?? copy("Настенный предмет", "Wall-mounted item")}{" "}
 											<code>{assetInstanceId}</code>
 										</li>
 									);
@@ -4900,26 +4901,26 @@ export function PlanProjection({
 							onClick={() => void resolveWallSplitHostConflict()}
 							type="button"
 						>
-							{plainLabels ? "Подтвердить" : <>
-							Разделить стену и удалить{" "}
+							{plainLabels ? copy("Подтвердить", "Confirm") : <>
+							{copy("Разделить стену и удалить", "Split the wall and remove")}{" "}
 							{wallSplitHostConflict.openingIds.length > 0 ? (
 								<>
 									{wallSplitHostConflict.openingIds.length}{" "}
 									{wallSplitHostConflict.openingIds.length === 1
-										? "проём"
-										: "проёма"}
+										? copy("проём", "opening")
+										: copy("проёма", "openings")}
 								</>
 							) : null}
 							{wallSplitHostConflict.openingIds.length > 0 &&
 							wallSplitHostConflict.itemIds.length > 0
-								? " и "
+								? copy(" и ", " and ")
 								: null}
 							{wallSplitHostConflict.itemIds.length > 0 ? (
 								<>
 									{wallSplitHostConflict.itemIds.length}{" "}
 									{wallSplitHostConflict.itemIds.length === 1
-										? "настенный предмет"
-										: "настенных предмета"}
+										? copy("настенный предмет", "wall-mounted item")
+										: copy("настенных предмета", "wall-mounted items")}
 								</>
 							) : null}
 							</>}
@@ -4929,7 +4930,7 @@ export function PlanProjection({
 							onClick={cancelWallSplitDraft}
 							type="button"
 						>
-							{plainLabels ? "Отменить" : "Отмена"}
+							{plainLabels ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 						</button>
 					</div>
 				</aside>
@@ -4942,7 +4943,7 @@ export function PlanProjection({
 					role="status"
 				>
 					<strong>
-						Стена:{" "}
+						{copy("Стена:", "Wall:")}{" "}
 						{formatLengthMm(
 							Math.hypot(
 								wallDraft.end.xMm - wallDraft.start.xMm,
@@ -4953,7 +4954,7 @@ export function PlanProjection({
 					<span>{wallDraftDirectionCopy(wallDraft.direction)}</span>
 					{!wallDraftIsConfirmable ? (
 						<span data-testid="wall-draft-error">
-							Стена должна быть длиннее своей толщины.
+							{copy("Стена должна быть длиннее своей толщины.", "The wall must be longer than it is thick.")}
 						</span>
 					) : null}
 					<div>
@@ -4962,14 +4963,14 @@ export function PlanProjection({
 							onClick={() => void confirmWallDraft()}
 							type="button"
 						>
-							{isConfirmingWallDraft ? "Добавляем стену…" : plainLabels ? "Подтвердить" : "Подтвердить стену"}
+							{isConfirmingWallDraft ? copy("Добавляем стену…", "Adding wall…") : plainLabels ? copy("Подтвердить", "Confirm") : copy("Подтвердить стену", "Confirm wall")}
 						</button>
 						<button data-editor-action="cancel"
 							disabled={isConfirmingWallDraft}
 							onClick={clearWallDraft}
 							type="button"
 						>
-							{plainLabels ? "Отменить" : "Отменить стену"}
+							{plainLabels ? copy("Отменить", "Cancel") : copy("Отменить стену", "Cancel wall")}
 						</button>
 					</div>
 				</TelegramSheetFrame>

@@ -41,6 +41,7 @@ import { FloorRotationAngleField, RotationModeToggle } from "./FloorRotationAngl
 import rotationStyles from "./FloorRotationControls.module.css";
 import { degreesForYawRadians, steppedYawRadians } from "./rotation-angle";
 import { itemCountCopy } from "./item-count-copy";
+import { copy } from "./editor-language";
 import { itemPlacementPreviewFeedback } from "./editor-plan-presentation";
 import sceneStyles from "./RoomScene3d.module.css";
 import {
@@ -68,9 +69,11 @@ import {
 	zoomThreeDimensionalViewport,
 } from "./three-dimensional-viewport";
 import { disposeThreeObject3D } from "./three-resource-disposal";
+import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
 
 interface RoomScene3dProps {
 	readonly plainLabels?: boolean;
+	readonly roomTheme?: RoomRenderTheme | undefined;
 	readonly resizeDrawingBufferOnChangeOnly?: boolean;
 	readonly registerTransientBoundary?: RegisterEditorTransientBoundary;
 	readonly scene: RectangularRoomWebGlScene;
@@ -212,15 +215,15 @@ function statusCopy(state: WebGl2RendererState): string | undefined {
 		case "ready":
 			return undefined;
 		case "unavailable":
-			return "WebGL2 недоступен. Точный 2D-план остаётся доступен.";
+			return copy("WebGL2 недоступен. Точный 2D-план остаётся доступен.", "WebGL2 is unavailable. You can still use the 2D plan.");
 		case "failed":
-			return "3D-сцена не инициализировалась. Данные проекта не изменены.";
+			return copy("3D-сцена не инициализировалась. Данные проекта не изменены.", "The 3D view couldn’t start. Your project is unchanged.");
 		case "context-lost":
-			return "Графический контекст потерян. Данные проекта не изменены.";
+			return copy("Графический контекст потерян. Данные проекта не изменены.", "The graphics context was lost. Your project is unchanged.");
 		case "retryable":
-			return "3D готов к повторной инициализации.";
+			return copy("3D готов к повторной инициализации.", "The 3D view is ready to retry.");
 		case "two-dimensional-fallback":
-			return "3D не удалось восстановить в облегчённом режиме. Точный 2D-план остаётся доступен; данные проекта не изменены.";
+			return copy("3D не удалось восстановить в облегчённом режиме. Точный 2D-план остаётся доступен; данные проекта не изменены.", "The 3D view couldn’t recover in reduced quality. You can still use the 2D plan. Your project is unchanged.");
 	}
 }
 
@@ -229,18 +232,18 @@ export function rendererDiagnosticsCopy(state: WebGl2RendererState): string {
 	switch (state.kind) {
 		case "ready":
 			return state.qualityTier === "reduced"
-				? "Диагностика 3D: WebGL2 · облегчённое качество; геометрия и данные проекта не изменены."
-				: "Диагностика 3D: WebGL2 · стандартное качество.";
+				? copy("Диагностика 3D: WebGL2 · облегчённое качество; геометрия и данные проекта не изменены.", "3D diagnostics: WebGL2 · reduced quality. Your project is unchanged.")
+				: copy("Диагностика 3D: WebGL2 · стандартное качество.", "3D diagnostics: WebGL2 · standard quality.");
 		case "unavailable":
-			return "Диагностика 3D: WebGL2 недоступен; точный Plan 2D остаётся доступен.";
+			return copy("Диагностика 3D: WebGL2 недоступен; точный Plan 2D остаётся доступен.", "3D diagnostics: WebGL2 is unavailable. The 2D plan is available.");
 		case "failed":
-			return "Диагностика 3D: инициализация renderer не удалась; данные проекта не изменены.";
+			return copy("Диагностика 3D: инициализация renderer не удалась; данные проекта не изменены.", "3D diagnostics: the renderer couldn’t start. Your project is unchanged.");
 		case "context-lost":
-			return "Диагностика 3D: графический контекст потерян; выполняется безопасное восстановление.";
+			return copy("Диагностика 3D: графический контекст потерян; выполняется безопасное восстановление.", "3D diagnostics: recovering from graphics context loss.");
 		case "retryable":
-			return "Диагностика 3D: renderer ожидает инициализации.";
+			return copy("Диагностика 3D: renderer ожидает инициализации.", "3D diagnostics: waiting for the renderer to start.");
 		case "two-dimensional-fallback":
-			return "Диагностика 3D: восстановление исчерпано; доступен точный Plan 2D.";
+			return copy("Диагностика 3D: восстановление исчерпано; доступен точный Plan 2D.", "3D diagnostics: recovery failed. The 2D plan is available.");
 	}
 }
 
@@ -258,6 +261,7 @@ function centre(first: Point, second: Point): Point {
 
 export function RoomScene3d({
 	plainLabels = false,
+	roomTheme,
 	resizeDrawingBufferOnChangeOnly = false,
 	registerTransientBoundary,
 	scene,
@@ -296,6 +300,8 @@ export function RoomScene3d({
 	const controllerRef = useRef<WebGl2RoomRendererController | undefined>(
 		undefined,
 	);
+	const roomThemeRef = useRef(roomTheme);
+	roomThemeRef.current = roomTheme;
 	const startedRendererKeyRef = useRef<string | undefined>(undefined);
 	const hostGateRef = useRef(createEditorInteractionGate());
 	const hostGateDisposed = useRef(false);
@@ -695,7 +701,7 @@ export function RoomScene3d({
 			: "choose-another-point";
 	const invalidPlacementCopy = threeDimensionalItemPlacementPreview?.reasonCode === "ITEM_COLLISION"
 		? itemPlacementPreviewFeedback(threeDimensionalItemPlacementPreview)
-		: "Выберите другое место";
+		: copy("Выберите другое место", "Choose another spot");
 
 	const renderedScene = useMemo(() => {
 		const renderedItems = scene.items.map((item) =>
@@ -790,6 +796,7 @@ export function RoomScene3d({
 				setState(nextState);
 			},
 		);
+		controller.updateTheme(roomThemeRef.current);
 		controllerRef.current = controller;
 		return () => {
 			controller.dispose();
@@ -929,6 +936,10 @@ export function RoomScene3d({
 	}, [canvasSize.x, canvasSize.y, plainLabels, scene, selectedItemId]);
 
 	useEffect(() => {
+		controllerRef.current?.updateTheme(roomTheme);
+	}, [roomTheme]);
+
+	useEffect(() => {
 		const controller = controllerRef.current;
 		if (!controller) return;
 		if (startedRendererKeyRef.current === rendererStartKey) return;
@@ -953,8 +964,8 @@ export function RoomScene3d({
 		controller.updateScene(renderedScene);
 		if (drawingBufferSize && (drawingBufferSize.x <= 0 || drawingBufferSize.y <= 0)) return;
 		if (state.kind !== "ready") return;
-		controller.render(renderedCamera, renderedCutawayMode, renderedScene);
-	}, [drawingBufferSize, renderedCamera, renderedCutawayMode, renderedScene, state.kind]);
+		controller.render(renderedCamera, renderedCutawayMode, renderedScene, roomTheme);
+	}, [drawingBufferSize, renderedCamera, renderedCutawayMode, renderedScene, roomTheme, state.kind]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -1801,8 +1812,8 @@ export function RoomScene3d({
 	const rendererDiagnostics = rendererDiagnosticsCopy(state);
 	const cutawayCopy =
 		cutawayMode === "auto"
-			? "Авто: ближние внешние стены скрываются"
-			: "Все стены показаны";
+			? copy("Авто: ближние внешние стены скрываются", "Auto: near exterior walls are hidden")
+			: copy("Все стены показаны", "All walls are visible");
 	const selectedItem = selectedItemId === undefined ? undefined : renderedScene.items.find(
 		(item) => item.assetInstanceId === selectedItemId,
 	);
@@ -1894,12 +1905,12 @@ export function RoomScene3d({
 	const rotationDisabled = !rendererReady || readOnly || isConfirmingItemTransform || isRotationActive || rotationBlocked;
 	const rotationControls = (
 		<fieldset
-			aria-label="Поворот предмета"
+			aria-label={copy("Поворот предмета", "Item rotation")}
 			className={rotationRowClass}
 			data-rotation-target={plainLabels ? (itemPlacementDraft ? "placement" : "selected") : undefined}
 		>
 			<button
-				aria-label={`Повернуть предмет на ${step}° против часовой стрелки`}
+				aria-label={copy(`Повернуть предмет на ${step}° против часовой стрелки`, `Rotate item ${step}° counterclockwise`)}
 				className={rotationStepClass}
 				disabled={rotationDisabled}
 				onClick={() => applyControlAngle(rotationStepYaw(1))}
@@ -1909,12 +1920,12 @@ export function RoomScene3d({
 			</button>
 			{isRotationActive ? (
 				<button type="button" className={plainLabels ? rotationStyles.cancel : sceneStyles.rotationCancel} onClick={cancelActiveRotation}>
-					{itemPlacementDraft ? placementAngle : null}<span>Отменить поворот</span>
+					{itemPlacementDraft ? placementAngle : null}<span>{copy("Отменить поворот", "Cancel rotation")}</span>
 				</button>
 			) : exactFloorYaw ? (
 				<FloorRotationAngleField
 					key={`${itemPlacementDraft ? placementKey : selectedItemId}:${angleDraftEpoch}`}
-					ariaLabel="Поворот предмета в 3D, градусы"
+					ariaLabel={copy("Поворот предмета в 3D, градусы", "3D item rotation, degrees")}
 					className={plainLabels ? rotationStyles.angle : undefined}
 					disabled={rotationDisabled}
 					explicit={onRotationStepModeChange !== undefined}
@@ -1923,9 +1934,9 @@ export function RoomScene3d({
 					skipBlurCommit={skipBlurCommit}
 					yawRadians={currentRotationYaw}
 				/>
-			) : itemPlacementDraft ? placementAngle : <span className={plainLabels ? rotationStyles.value : sceneStyles.rotationCaption}>Поворот</span>}
+			) : itemPlacementDraft ? placementAngle : <span className={plainLabels ? rotationStyles.value : sceneStyles.rotationCaption}>{copy("Поворот", "Rotation")}</span>}
 			<button
-				aria-label={`Повернуть предмет на ${step}° по часовой стрелке`}
+				aria-label={copy(`Повернуть предмет на ${step}° по часовой стрелке`, `Rotate item ${step}° clockwise`)}
 				className={rotationStepClass}
 				disabled={rotationDisabled}
 				onClick={() => applyControlAngle(rotationStepYaw(-1))}
@@ -1954,7 +1965,7 @@ export function RoomScene3d({
 	};
 	return (
 		<section
-			aria-label="3D вид комнаты"
+			aria-label={copy("3D вид комнаты", "3D room view")}
 			className={styles.scenePanel}
 			ref={scenePanelRef}
 		>
@@ -1966,7 +1977,7 @@ export function RoomScene3d({
 				}}
 			>
 				<canvas
-					aria-label="3D вид комнаты"
+					aria-label={copy("3D вид комнаты", "3D room view")}
 					className={styles.sceneCanvas}
 					data-testid="three-dimensional-canvas"
 					onPointerCancel={onPointerCancel}
@@ -1977,7 +1988,7 @@ export function RoomScene3d({
 					role="img"
 					style={{ touchAction: "none" }}
 				>
-					3D-визуализация требует WebGL2.
+					{copy("3D-визуализация требует WebGL2.", "The 3D view requires WebGL2.")}
 				</canvas>
 				{selectedItemFootprint ? (
 					<svg
@@ -2017,7 +2028,7 @@ export function RoomScene3d({
 							{angleDisplay}°
 						</output> : null}
 						<svg
-							aria-label={plainLabels ? "Кольцо поворота предмета в 3D" : "Полусфера поворота предмета в 3D"}
+							aria-label={plainLabels ? copy("Кольцо поворота предмета в 3D", "3D item rotation ring") : copy("Полусфера поворота предмета в 3D", "3D item rotation dome")}
 							className={sceneStyles.rotationGizmo}
 							data-rotation-active={isRotationActive ? "true" : "false"}
 							data-testid="three-dimensional-rotation-gizmo"
@@ -2044,7 +2055,7 @@ export function RoomScene3d({
 								d="M100 27 C68 48 68 79 100 100 C132 79 132 48 100 27 M43 55 Q100 78 157 55"
 							/>}
 							<path
-								aria-label="Вращать предмет в 3D"
+								aria-label={copy("Вращать предмет в 3D", "Rotate item in 3D")}
 								className={sceneStyles.rotationHitArea}
 								data-testid="three-dimensional-rotation-hit-area"
 								aria-disabled={rotationBlocked || undefined}
@@ -2075,7 +2086,7 @@ export function RoomScene3d({
 			</div>
 			{hasUserCameraView && rendererReady && !isItemPlacementActive ? (
 				<button
-					aria-label="Вернуть обзор 3D"
+					aria-label={copy("Вернуть обзор 3D", "Reset 3D view")}
 					className={sceneStyles.overviewReset}
 					onClick={resetOverview}
 					type="button"
@@ -2089,7 +2100,7 @@ export function RoomScene3d({
 							strokeWidth="1.9"
 						/>
 					</svg>
-					<span>Обзор</span>
+					<span>{copy("Обзор", "Reset view")}</span>
 				</button>
 			) : null}
 			<output data-testid="three-dimensional-camera" hidden>
@@ -2107,7 +2118,7 @@ export function RoomScene3d({
 			</output>
 			{itemPlacementDraft ? (
 				<TelegramSheetFrame telegram={plainLabels} canvasAnchored
-					aria-label="Размещение предмета"
+					aria-label={copy("Размещение предмета", "Place item")}
 					className={sceneStyles.itemPlacementMenu}
 					data-placement-state={itemPlacementState}
 					data-full-ring={plainLabels || undefined}
@@ -2125,7 +2136,7 @@ export function RoomScene3d({
 					{onCloseItemPlacement ? (
 						<SheetHeader
 							title={<span data-testid="three-dimensional-item-placement-identity">{itemPlacementDraft.label}</span>}
-							closeLabel="Закрыть размещение предмета"
+							closeLabel={copy("Закрыть размещение предмета", "Close item placement")}
 							protectEditorDraft
 							onClose={onCloseItemPlacement}
 						/>
@@ -2174,14 +2185,14 @@ export function RoomScene3d({
 							hidden
 						>
 							{threeDimensionalItemPlacementPreview.isValid
-								? "Можно поставить"
-								: "Нельзя поставить здесь"}
+								? copy("Можно поставить", "Ready to place")
+								: copy("Нельзя поставить здесь", "Can’t place here")}
 						</output>
 					) : null}
 					{hasPlacementYawControl ? rotationControls : null}
 					<div className={sceneStyles.itemPlacementActions}>
 						<button data-editor-action="cancel"
-							aria-label="Отменить размещение предмета"
+							aria-label={copy("Отменить размещение предмета", "Cancel item placement")}
 							className={sceneStyles.itemPlacementCancel}
 							onClick={() => {
 								if (hostEnabledRef.current && !hostGateRef.current.canBegin()) return;
@@ -2190,10 +2201,10 @@ export function RoomScene3d({
 							}}
 							type="button"
 						>
-							{plainLabels ? "Отменить" : "Отмена"}
+							{plainLabels ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 						</button>
 						<button data-editor-action="confirm"
-							aria-label="Подтвердить размещение предмета"
+							aria-label={copy("Подтвердить размещение предмета", "Confirm item placement")}
 							className={sceneStyles.itemPlacementConfirm}
 							disabled={
 								!rendererReady ||
@@ -2230,14 +2241,14 @@ export function RoomScene3d({
 							}}
 							type="button"
 						>
-							{plainLabels ? "Подтвердить" : "Поставить"}
+							{plainLabels ? copy("Подтвердить", "Confirm") : copy("Поставить", "Place")}
 						</button>
 					</div>
 				</TelegramSheetFrame>
 			) : null}
 			{!itemPlacementDraft ? withSelectedRotationEditor(
 				<section
-					aria-label="Управление видом 3D"
+					aria-label={copy("Управление видом 3D", "3D view controls")}
 					className={sceneStyles.viewControls}
 					data-testid="three-dimensional-view-controls"
 					data-scene-color-dock={selectedItem && !readOnly && selectedItemControls ? "selected" : undefined}
@@ -2249,7 +2260,7 @@ export function RoomScene3d({
 					>
 						{onOpenItemCatalog ? (
 							<button
-								aria-label="Предметы интерьера"
+								aria-label={copy("Предметы интерьера", "Interior items")}
 								className={sceneStyles.threeDimensionalCatalogButton}
 								disabled={readOnly}
 								onClick={(event) => onOpenItemCatalog(event.currentTarget)}
@@ -2269,15 +2280,15 @@ export function RoomScene3d({
 										strokeWidth="1.9"
 									/>
 								</svg>
-								<span>Предмет</span>
+								<span>{copy("Предмет", "Item")}</span>
 							</button>
 						) : null}
 						<fieldset className={sceneStyles.cutawayControls}>
 							<legend className={sceneStyles.cutawayLegend}>
-								Режим стен 3D
+								{copy("Режим стен 3D", "3D wall visibility")}
 							</legend>
 							<button
-								aria-label="Авто cutaway"
+								aria-label={copy("Авто cutaway", "Automatic cutaway")}
 								aria-pressed={cutawayMode === "auto"}
 								className={sceneStyles.cutawayButton}
 								onClick={() => setCutawayMode("auto")}
@@ -2303,10 +2314,10 @@ export function RoomScene3d({
 										strokeWidth="1.8"
 									/>
 								</svg>
-								<span>Авто</span>
+								<span>{copy("Авто", "Auto")}</span>
 							</button>
 							<button
-								aria-label="Показать все стены"
+								aria-label={copy("Показать все стены", "Show all walls")}
 								aria-pressed={cutawayMode === "show-all"}
 								className={sceneStyles.cutawayButton}
 								onClick={() => setCutawayMode("show-all")}
@@ -2332,16 +2343,16 @@ export function RoomScene3d({
 										strokeWidth="1.8"
 									/>
 								</svg>
-								<span>Все стены</span>
+								<span>{copy("Все стены", "All walls")}</span>
 							</button>
 						</fieldset>
 						{selectedItem && !readOnly ? selectedItemControls : null}
 						<fieldset
-							aria-label="Масштаб 3D"
+							aria-label={copy("Масштаб 3D", "3D zoom")}
 							className={sceneStyles.scaleControls}
 						>
 							<button
-								aria-label="Приблизить 3D"
+								aria-label={copy("Приблизить 3D", "Zoom in 3D")}
 								className={sceneStyles.scaleButton}
 								onClick={() => {
 									markUserCameraView();
@@ -2354,7 +2365,7 @@ export function RoomScene3d({
 								+
 							</button>
 							<button
-								aria-label="Отдалить 3D"
+								aria-label={copy("Отдалить 3D", "Zoom out 3D")}
 								className={sceneStyles.scaleButton}
 								onClick={() => {
 									markUserCameraView();
@@ -2371,7 +2382,7 @@ export function RoomScene3d({
 				</section>,
 			) : null}
 			<output hidden>
-				{itemCountCopy(scene.items.length)} в плане
+				{itemCountCopy(scene.items.length)} {copy("в плане", "in the plan")}
 			</output>
 			<output data-testid="three-dimensional-cutaway" hidden>
 				{cutawayCopy}
@@ -2382,11 +2393,11 @@ export function RoomScene3d({
 			{message || customGlbRuntimeUnavailableDefinitionIds.length > 0 || retainedHostTransform ? (
 				<div className={styles.sceneRecoveryNotices}>
 					{retainedHostTransform ? <aside className={styles.sceneRecovery} role="status" style={{ pointerEvents: "none" }}>
-						{retainedHostTransform.kind === "move" ? "Продолжите перемещение или отмените правку." : "Продолжите поворот или отмените правку."}
+						{retainedHostTransform.kind === "move" ? copy("Продолжите перемещение или отмените правку.", "Continue moving the item or cancel the edit.") : copy("Продолжите поворот или отмените правку.", "Continue rotating the item or cancel the edit.")}
 					</aside> : null}
 					{message ? (
 						<aside className={styles.sceneRecovery} role="status">
-							<strong>3D недоступен</strong>
+							<strong>{copy("3D недоступен", "3D unavailable")}</strong>
 							<span>{message}</span>
 							{state.kind === "two-dimensional-fallback" ? (
 								<button
@@ -2394,7 +2405,7 @@ export function RoomScene3d({
 									onClick={onOpenPlan}
 									type="button"
 								>
-									Открыть точный план 2D
+									{copy("Открыть точный план 2D", "Open 2D plan")}
 								</button>
 							) : (
 								<button
@@ -2402,25 +2413,23 @@ export function RoomScene3d({
 									onClick={retry}
 									type="button"
 								>
-									Повторить 3D
+									{copy("Повторить 3D", "Retry 3D")}
 								</button>
 							)}
 						</aside>
 					) : null}
 					{customGlbRuntimeUnavailableDefinitionIds.length > 0 ? (
 						<aside className={styles.sceneRecovery} role="status">
-							<strong>Модель не открылась в 3D</strong>
+							<strong>{copy("Модель не открылась в 3D", "Couldn’t open the model in 3D")}</strong>
 							<span>
-								Пользовательский GLB не удалось подготовить для 3D-сцены. Проект
-								не изменён; повторите подготовку или повторно импортируйте
-								исходный GLB.
+								{copy("Пользовательский GLB не удалось подготовить для 3D-сцены. Проект не изменён; повторите подготовку или повторно импортируйте исходный GLB.", "Your GLB couldn’t load in 3D. Your project is unchanged. Try again or reimport the original GLB.")}
 							</span>
 							<button
 								className={styles.retryButton}
 								onClick={retryCustomGlbRuntime}
 								type="button"
 							>
-								Повторить подготовку модели
+								{copy("Повторить подготовку модели", "Retry loading the model")}
 							</button>
 						</aside>
 					) : null}

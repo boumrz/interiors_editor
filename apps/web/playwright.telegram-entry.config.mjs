@@ -14,6 +14,7 @@ export default defineConfig({
 		...devices["iPhone 13"],
 		browserName: "chromium",
 		channel: "chrome",
+		locale: "ru-RU",
 		baseURL,
 		trace: "retain-on-failure",
 		screenshot: "only-on-failure",

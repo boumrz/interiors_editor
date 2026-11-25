@@ -69,14 +69,10 @@ type RectangularFace = {
 	readonly insets: FaceInsets;
 	/** A polygon keeps its derived envelope only for deterministic ordering. */
 	readonly key: string;
+	readonly kind: "polygonal" | "rectangular";
+	readonly source: DerivedOrthogonalFace;
 	readonly thicknessMm: number;
-} & (
-	| {
-			readonly kind: "polygonal";
-			readonly source: DerivedOrthogonalFace;
-	  }
-	| { readonly kind: "rectangular"; readonly source?: never }
-);
+};
 
 interface SourceRoom {
 	readonly face: RectangularFace;
@@ -548,7 +544,22 @@ export function addGeneralWallToProject(
 	if (planned.kind === "rejected") {
 		return planned;
 	}
-	if (!itemsFitExactlyOneTarget(source.assetInstances, planned.faces)) {
+	// The source inspection already proved the full footprint of items whose Room stays intact.
+	const retainedFloorHostRoomIds = new Set<string>();
+	for (const {
+		contributors: [previous],
+		face,
+	} of planned.faces) {
+		if (previous && sameFace(previous.face, face)) {
+			retainedFloorHostRoomIds.add(previous.room.roomId);
+		}
+	}
+	const itemsWithChangedRooms = source.assetInstances.filter(
+		(item) =>
+			isFloorSchematicAssetInstance(item) &&
+			!retainedFloorHostRoomIds.has(item.roomId),
+	);
+	if (!itemsFitExactlyOneTarget(itemsWithChangedRooms, planned.faces)) {
 		return reject("ITEM_HOST_UNRESOLVABLE");
 	}
 
@@ -587,6 +598,7 @@ export function addGeneralWallToProject(
 		applied.graph,
 		rooms,
 		updatedAt,
+		retainedFloorHostRoomIds,
 	);
 }
 
@@ -1559,25 +1571,36 @@ function materializeMovedWallProject(
 	if (targetFaces.kind === "rejected") {
 		return targetFaces;
 	}
-	if (!targetFaces.faces.every(hasUsableFloorArea)) {
+	if (hasReversedWallDirection(graphOf(source), graph)) {
+		return reject("INVALID_RESULTING_PROJECT");
+	}
+	const planned = reconcileParallelWallMoveFaces(
+		sourceFaces,
+		targetFaces.faces,
+	);
+	if (!planned) return reject("INVALID_RESULTING_PROJECT");
+	const rooms = materializeThicknessChangedRooms(planned);
+	if (rooms.kind === "rejected") {
+		return rooms;
+	}
+	const accepted = acceptedProjectByRoomLineage(
+		source,
+		graph,
+		sourceFaces,
+		planned,
+		rooms.rooms,
+		updatedAt,
+	);
+	if (accepted.kind !== "accepted") return accepted;
+	if (
+		rooms.rooms.length > 0 &&
+		resolveOrthogonalPlanFaces(accepted.project).kind === "rejected"
+	) {
 		return reject("ROOM_USABLE_AREA_COLLAPSE");
 	}
 	if (!wallSegmentsRemainUsable(graph, graphOf(source))) {
 		return reject("TOO_SHORT_WALL");
 	}
-	const planned = planMovedFaces(sourceFaces, targetFaces.faces);
-	if (planned.kind === "rejected") {
-		return planned;
-	}
-	if (!itemsFitExactlyOneTarget(source.assetInstances, planned.faces)) {
-		return reject("ITEM_HOST_UNRESOLVABLE");
-	}
-	const rooms = materializeThicknessChangedRooms(planned.faces);
-	if (rooms.kind === "rejected") {
-		return rooms;
-	}
-	const accepted = acceptedProject(source, graph, rooms.rooms, updatedAt);
-	if (accepted.kind !== "accepted") return accepted;
 	if (!movedProjectItemHostsRemainValid(accepted.project)) {
 		return reject("ITEM_HOST_UNRESOLVABLE");
 	}
@@ -2525,6 +2548,31 @@ function incidentWallSegmentsRemainAlphaConstrained(
 	);
 }
 
+function hasReversedWallDirection(
+	source: PlanGraph,
+	target: PlanGraph,
+): boolean {
+	const sourceVertices = new Map(
+		source.vertices.map((vertex) => [vertex.vertexId, vertex]),
+	);
+	const targetVertices = new Map(
+		target.vertices.map((vertex) => [vertex.vertexId, vertex]),
+	);
+	return source.wallSegments.some(({ startVertexId, endVertexId }) => {
+		const sourceStart = sourceVertices.get(startVertexId);
+		const sourceEnd = sourceVertices.get(endVertexId);
+		const targetStart = targetVertices.get(startVertexId);
+		const targetEnd = targetVertices.get(endVertexId);
+		if (!sourceStart || !sourceEnd || !targetStart || !targetEnd) return true;
+		// A negative dot product means the endpoints now point back across their former wall direction.
+		return (
+			(sourceEnd.xMm - sourceStart.xMm) * (targetEnd.xMm - targetStart.xMm) +
+				(sourceEnd.zMm - sourceStart.zMm) * (targetEnd.zMm - targetStart.zMm) <
+			0
+		);
+	});
+}
+
 function wallSegmentsRemainUsable(
 	graph: PlanGraph,
 	source: PlanGraph,
@@ -2826,6 +2874,7 @@ function rectangleFor(
 		insets,
 		kind: "rectangular",
 		key: faceKey(bounds, insets),
+		source: face,
 		thicknessMm: Math.max(
 			insets.minXMm,
 			insets.maxXMm,
@@ -2946,10 +2995,17 @@ function planAddedFaces(
 ):
 	| { readonly kind: "accepted"; readonly faces: readonly PlannedTargetFace[] }
 	| RejectedMutation {
+	const unchangedSources = new Set(
+		sourceFaces.filter(({ face }) =>
+			targetFaces.some((target) => sameFace(face, target)),
+		),
+	);
 	const faces: PlannedTargetFace[] = [];
 	for (const target of targetFaces) {
 		const contributors = sourceFaces.filter((source) =>
-			containsFace(source.face, target),
+			unchangedSources.has(source)
+				? sameFace(source.face, target)
+				: containsFace(source.face, target),
 		);
 		if (contributors.length > 1) {
 			return reject("INVALID_RESULTING_PROJECT");
@@ -2966,12 +3022,30 @@ function planAddedFaces(
 	return { faces, kind: "accepted" };
 }
 
-/**
- * A parallel wall move changes the bounds of neighbouring faces without
- * splitting or merging them. Reconcile each resulting face to the one source
- * face with the unique greatest positive overlap; no ambiguous rehome may
- * silently turn into an ID transfer.
- */
+/** A parallel wall move keeps the segment IDs that identify each room boundary. */
+function reconcileParallelWallMoveFaces(
+	sourceFaces: readonly SourceRoom[],
+	targetFaces: readonly RectangularFace[],
+): readonly PlannedTargetFace[] | undefined {
+	if (sourceFaces.length !== targetFaces.length) return undefined;
+	// The derived face exposes its unique boundary IDs in canonical order.
+	const boundaryKey = (face: RectangularFace) =>
+		JSON.stringify(face.source.boundaryWallSegmentIds);
+	const unmatchedByBoundary = new Map(
+		sourceFaces.map((source) => [boundaryKey(source.face), source]),
+	);
+	const planned: PlannedTargetFace[] = [];
+	for (const face of targetFaces) {
+		const key = boundaryKey(face);
+		const previous = unmatchedByBoundary.get(key);
+		if (!previous) return undefined;
+		unmatchedByBoundary.delete(key);
+		planned.push({ contributors: [previous], face });
+	}
+	return planned;
+}
+
+/** Reconcile edits that can change boundary segment IDs using unique greatest face overlap. */
 function planMovedFaces(
 	sourceFaces: readonly SourceRoom[],
 	targetFaces: readonly RectangularFace[],
@@ -3406,12 +3480,16 @@ function acceptedProject(
 	graph: PlanGraph,
 	rooms: readonly MaterializedTargetFace[],
 	updatedAt: string,
+	retainedFloorHostRoomIds?: ReadonlySet<string>,
 ): GeneralWallProjectMutationResult {
 	const roomByFaceKey = new Map(
 		rooms.map((entry) => [entry.face.key, entry.room]),
 	);
 	const assetInstances = source.assetInstances.map((asset) => {
-		if (!isFloorSchematicAssetInstance(asset)) {
+		if (
+			!isFloorSchematicAssetInstance(asset) ||
+			retainedFloorHostRoomIds?.has(asset.roomId)
+		) {
 			return asset;
 		}
 		const hosts = rooms.filter((entry) => footprintFitsFace(asset, entry.face));

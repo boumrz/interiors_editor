@@ -1,5 +1,6 @@
 import { licenseRevision } from "./license-receipt";
 import { privacyRevision } from "./privacy-revision";
+import { editorLanguage } from "../ui/editor-language";
 
 export type LegalDocumentName =
 	| "privacy-policy"
@@ -7,13 +8,14 @@ export type LegalDocumentName =
 	| "analytics-consent";
 
 export const legalArchivePath = (name: LegalDocumentName) =>
-	`/legal/${name === "privacy-policy" ? privacyRevision : licenseRevision}/${name}.html`;
+	`/legal/${name === "privacy-policy" ? privacyRevision : licenseRevision}${editorLanguage() === "en" ? "/en" : ""}/${name}.html`;
 
 export function bundledLegalDocument(
 	name: LegalDocumentName,
 ): string | undefined {
 	if (typeof document === "undefined") return;
-	const source = document.getElementById(`legal-documents-${licenseRevision}`);
+	const languagePart = editorLanguage() === "en" ? "en-" : "";
+	const source = document.getElementById(`legal-documents-${languagePart}${licenseRevision}`);
 	if (!source) return;
 	const json = source.textContent;
 	try {

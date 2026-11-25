@@ -302,6 +302,51 @@ class OwnerBindingTests(unittest.TestCase):
 
 
 class OperationTests(unittest.TestCase):
+    def test_language_credential_signs_the_same_account_bound_vector_as_the_editor(self):
+        # RFC 8032 test key, never used by the running bot.
+        key = bytes.fromhex("302e020100300506032b657004220420"
+                            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)
+            self.assertIsNone(service.read_language_token(config))
+            file = config / "interiors-telegram-language-key"
+            pem = subprocess.run(["openssl", "pkey", "-inform", "DER", "-outform", "PEM"],
+                                 input=key, capture_output=True, check=True).stdout
+            file.write_bytes(pem)
+            file.chmod(0o600)
+            token = service.read_language_token(config)
+            self.assertEqual(token(410002, "en", 3),
+                             "lang1_en_3_OBb2b1eaEuYS4XY7ZTwGyeG0RUVEGSFiityH78dCxdw-"
+                             "xcr7tOYFoxkaxOeQNf04MAP5U_CdM3d68IZ6hT3nCA")
+            self.assertNotEqual(token(410003, "en", 3), token(410002, "en", 3))
+            file.chmod(0o644)
+            with self.assertRaisesRegex(OpsError, "credential-permissions"):
+                service.read_language_token(config)
+
+    def test_language_credential_rejects_a_non_signing_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory)
+            file = config / "interiors-telegram-language-key"
+            subprocess.run(["openssl", "genpkey", "-algorithm", "X25519", "-out", str(file)],
+                           capture_output=True, check=True)
+            file.chmod(0o600)
+            with self.assertRaisesRegex(OpsError, "invalid-language-signing-key"):
+                service.read_language_token(config)
+
+    def test_publish_commands_updates_only_private_chat_commands_in_both_languages(self):
+        bot = {"id": EXPECTED_BOT_ID, "username": EXPECTED_BOT_USERNAME, "is_bot": True}
+        api = Api(getMe=bot, getWebhookInfo={"url": ""}, setMyCommands=True)
+        stdout = io.StringIO()
+        with (patch.object(service, "read_api", return_value=api), contextlib.redirect_stdout(stdout)):
+            self.assertEqual(main(["publish-commands"]), 0)
+        self.assertEqual(json.loads(stdout.getvalue()), {"commands_published": True})
+        english, russian = [body for method, body, _ in api.calls if method == "setMyCommands"]
+        self.assertEqual(english["language_code"], "")
+        self.assertEqual(russian["language_code"], "ru")
+        for body, description in ((english, "Change language"), (russian, "Изменить язык")):
+            self.assertEqual(body["scope"], {"type": "all_private_chats"})
+            self.assertIn({"command": "language", "description": description}, body["commands"])
+
     def test_only_systemd_credential_directory_accepts_readable_root_group(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
@@ -394,7 +439,7 @@ class OperationTests(unittest.TestCase):
             lib = root / "usr/local/lib/interiors-telegram-support/current"
             self.assertTrue(lib.is_symlink())
             self.assertTrue(all((lib / name).is_file() for name in
-                                ("service.py", "support.py", "telegram_api.py")))
+                                ("service.py", "support.py", "telegram_api.py", "messages.py")))
             self.assertEqual((root / str(DEFAULT_CONFIG).strip("/")).stat().st_mode & 0o777,
                              0o700)
             self.assertFalse((root / str(DEFAULT_CONFIG).strip("/") / "bot-token").exists())
@@ -403,6 +448,7 @@ class OperationTests(unittest.TestCase):
             content = unit.read_text()
             self.assertIn("LoadCredential=bot-token:", content)
             self.assertIn("LoadCredential=owner-chat-id:", content)
+            self.assertIn("LoadCredential=interiors-telegram-language-key\n", content)
             self.assertIn("LoadCredential=accept-from:", content)
             self.assertIn("ProtectSystem=strict", content)
             self.assertIn("LimitCORE=0", content)

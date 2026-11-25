@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useRef } from "react";
 import styles from "./ProjectSafety.module.css";
 
@@ -11,13 +12,68 @@ export function ResourceRepairControls({ busy, error, onGlbFiles, onBackupFile, 
 }) {
 	const models = useRef<HTMLInputElement>(null);
 	const backup = useRef<HTMLInputElement>(null);
-	return <div className={styles.actions}>
-		<input hidden ref={models} type="file" accept=".glb,model/gltf-binary" multiple aria-label="Выбрать исходные GLB-модели для восстановления" disabled={busy}
-			onChange={event => { onGlbFiles(event.currentTarget.files); event.currentTarget.value = ""; }} />
-		<input hidden ref={backup} type="file" accept={telegram ? undefined : ".interiors,application/zip,application/octet-stream"} aria-label="Выбрать резервную копию для восстановления моделей" disabled={busy}
-			onChange={event => { onBackupFile(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
-		<button className={styles.primary} disabled={busy} onClick={() => models.current?.click()} type="button">{busy ? "Проверяем модели…" : "Восстановить исходные GLB"}</button>
-		<button disabled={busy} onClick={() => backup.current?.click()} type="button">Восстановить модели из резервной копии</button>
-		{error ? <p className={styles.error} role="alert">{error}</p> : null}
-	</div>;
+	return (
+		<div className={styles.actions}>
+			<input
+				hidden
+				ref={models}
+				type="file"
+				accept=".glb,model/gltf-binary"
+				multiple
+				aria-label={copy(
+					"Выбрать исходные GLB-модели для восстановления",
+					"Choose original GLB files for recovery",
+				)}
+				disabled={busy}
+				onChange={(event) => {
+					onGlbFiles(event.currentTarget.files);
+					event.currentTarget.value = "";
+				}}
+			/>
+			<input
+				hidden
+				ref={backup}
+				type="file"
+				accept={
+					telegram
+						? undefined
+						: ".interiors,application/zip,application/octet-stream"
+				}
+				aria-label={copy(
+					"Выбрать резервную копию для восстановления моделей",
+					"Choose a backup to recover models",
+				)}
+				disabled={busy}
+				onChange={(event) => {
+					onBackupFile(event.currentTarget.files?.[0]);
+					event.currentTarget.value = "";
+				}}
+			/>
+			<button
+				className={styles.primary}
+				disabled={busy}
+				onClick={() => models.current?.click()}
+				type="button"
+			>
+				{busy
+					? copy("Проверяем модели…", "Checking models…")
+					: copy("Восстановить исходные GLB", "Recover original GLB files")}
+			</button>
+			<button
+				disabled={busy}
+				onClick={() => backup.current?.click()}
+				type="button"
+			>
+				{copy(
+					"Восстановить модели из резервной копии",
+					"Recover models from a backup",
+				)}
+			</button>
+			{error ? (
+				<p className={styles.error} role="alert">
+					{error}
+				</p>
+			) : null}
+		</div>
+	);
 }

@@ -26,8 +26,26 @@ export interface TelegramHostEnvironmentDependencies {
 	readonly readBrowser: () => TelegramBrowserLayout;
 	readonly subscribeBrowser: (listener: () => void) => () => void;
 	readonly readCurrentSdk: () => unknown;
+	readonly readSystemColorScheme?: () => TelegramColorScheme | undefined;
+	readonly subscribeSystemColorScheme?: (listener: () => void) => () => void;
+	readonly themePreference?: {
+		readonly read: () => unknown;
+		readonly write: (preference: TelegramThemePreference) => void;
+	};
 	/** An observable replacement requires a NEW signed bootstrap, not activation-based identity. */
 	readonly onContextChanged: () => void;
+}
+type TelegramColorScheme = "light" | "dark";
+export type TelegramThemePreference = "auto" | TelegramColorScheme;
+interface TelegramThemeSnapshot {
+	readonly preference: TelegramThemePreference;
+	readonly colorScheme: TelegramColorScheme;
+	readonly background: string;
+}
+interface TelegramThemePort {
+	readonly snapshot: () => TelegramThemeSnapshot;
+	readonly subscribe: (listener: () => void) => () => void;
+	readonly setPreference: (preference: TelegramThemePreference) => void;
 }
 type Insets = Readonly<{
 	top: number;
@@ -45,9 +63,10 @@ export interface TelegramHostLayout {
 	}>;
 	readonly safeArea: Insets;
 	readonly contentSafeArea: Insets;
-	readonly colorScheme: "light" | "dark";
+	readonly colorScheme: TelegramColorScheme;
 }
 export interface TelegramHostEnvironment {
+	readonly theme?: TelegramThemePort;
 	readonly showSettings?: (listener:()=>void)=>()=>void;
 	readonly navigation: HostNavigationPort;
 	readonly lifecycle: HostLifecyclePort;
@@ -166,6 +185,10 @@ const hostDark = {
 	warning: "#f4c96a",
 	"warning-soft": "color-mix(in srgb, #f4c96a 16%, #1f2c36)",
 };
+
+function colorScheme(value: unknown): TelegramColorScheme | undefined {
+	return value === "light" || value === "dark" ? value : undefined;
+}
 
 type Styles = Map<string, string>;
 type StyleOwner = { values: Styles };
@@ -303,6 +326,7 @@ export function captureTelegramHostSdk(
 			});
 			const removers: (() => void)[] = [],
 				listeners = new Set<() => void>(),
+				themeListeners = new Set<() => void>(),
 				backListeners = new Set<() => void>();
 			let disposed = false,
 				contextChanged = false,
@@ -317,6 +341,8 @@ export function captureTelegramHostSdk(
 					positive(read(sdk, "viewportStableHeight")) ??
 					positive(read(sdk, "viewportHeight"));
 			let css: ReturnType<typeof ownStyles> | undefined;
+			let theme: TelegramThemeSnapshot;
+			let preference: TelegramThemePreference = "auto";
 			const contextMatches = () => matchesCurrent(dependencies.readCurrentSdk);
 			const notify = () => {
 				for (const listener of [...listeners]) {
@@ -353,6 +379,7 @@ export function captureTelegramHostSdk(
 					notify();
 				}
 				listeners.clear();
+				themeListeners.clear();
 			};
 			const current = () => {
 				if (disposed) return false;
@@ -393,6 +420,17 @@ export function captureTelegramHostSdk(
 				drawingHeight = prior?.width === width && (browser.textEntryFocused || closingKeyboard)
 					? Math.max(drawingHeight, visibleHeight)
 					: visibleHeight;
+				const effectiveScheme = colorScheme(preference) ?? colorScheme(read(sdk, "colorScheme")) ??
+					dependencies.readSystemColorScheme?.() ?? "light";
+				const hostPalette = effectiveScheme === "dark" ? hostDark : hostLight;
+				const themeChanged = theme?.preference !== preference || theme.colorScheme !== effectiveScheme;
+				if (themeChanged) {
+					theme = Object.freeze({
+						preference,
+						colorScheme: effectiveScheme,
+						background: hostPalette["plan-canvas"],
+					});
+				}
 				const next: TelegramHostLayout = Object.freeze({
 					viewport: Object.freeze({
 						liveHeight,
@@ -409,7 +447,7 @@ export function captureTelegramHostSdk(
 							? read(sdk, "contentSafeAreaInset")
 							: undefined,
 					),
-					colorScheme: read(sdk, "colorScheme") === "dark" ? "dark" : "light",
+					colorScheme: effectiveScheme,
 				});
 				const layoutChanged =
 					layout !== undefined &&
@@ -426,9 +464,7 @@ export function captureTelegramHostSdk(
 				const values: Styles = new Map(
 					Object.entries(next.colorScheme === "dark" ? dark : light),
 				);
-				for (const [name, value] of Object.entries(
-					next.colorScheme === "dark" ? hostDark : hostLight,
-				))
+				for (const [name, value] of Object.entries(hostPalette))
 					values.set(`--editor-host-${name}`, value);
 				values.set("color-scheme", next.colorScheme);
 				values.set("--editor-host-radius", "12px");
@@ -447,6 +483,7 @@ export function captureTelegramHostSdk(
 					);
 				css?.update(values);
 				if (changed) notify();
+				if (themeChanged) for (const listener of [...themeListeners]) safely(listener);
 			};
 			const subscribeEvent = (
 				name: string,
@@ -467,7 +504,14 @@ export function captureTelegramHostSdk(
 			};
 			if (!contextMatches()) throw new Error("Telegram host context changed");
 			css = ownStyles(dependencies.style);
+			safely(() => { preference = colorScheme(dependencies.themePreference?.read()) ?? "auto"; });
 			refresh();
+			safely(() => {
+				const remove = dependencies.subscribeSystemColorScheme?.(() => refresh());
+				if (!remove) return;
+				if (disposed) safely(remove);
+				else removers.push(remove);
+			});
 			if (events) {
 				subscribeEvent("themeChanged", () => refresh());
 				subscribeEvent("viewportChanged", (value) =>
@@ -552,6 +596,20 @@ export function captureTelegramHostSdk(
 					}
 				}:{}),
 				navigation,
+				theme: Object.freeze({
+					snapshot: () => theme,
+					subscribe(listener: () => void) {
+						if (disposed) return () => undefined;
+						themeListeners.add(listener);
+						return () => { themeListeners.delete(listener); };
+					},
+					setPreference(next: TelegramThemePreference) {
+						if (!current() || next === preference) return;
+						preference = next;
+						safely(() => dependencies.themePreference?.write(next));
+						refresh();
+					},
+				}),
 				lifecycle: Object.freeze({
 					snapshot: () => snapshot,
 					subscribe(listener: () => void) {
@@ -576,11 +634,17 @@ export function createTelegramBrowserSignals(context: {
 	readonly document: Document;
 }): Pick<
 	TelegramHostEnvironmentDependencies,
-	"style" | "readBrowser" | "subscribeBrowser"
+	"style" | "readBrowser" | "subscribeBrowser" | "readSystemColorScheme" | "subscribeSystemColorScheme"
 > {
 	const { window, document } = context;
+	const systemTheme = window.matchMedia?.("(prefers-color-scheme: dark)");
 	return {
 		style: document.documentElement.style,
+		readSystemColorScheme: () => systemTheme?.matches ? "dark" : "light",
+		subscribeSystemColorScheme(listener) {
+			systemTheme?.addEventListener?.("change", listener);
+			return () => systemTheme?.removeEventListener?.("change", listener);
+		},
 		readBrowser: () => ({
 			height: window.innerHeight,
 			width: window.innerWidth,

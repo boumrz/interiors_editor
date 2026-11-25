@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { type ReactNode, useId } from "react";
 import { EditorModalSheet } from "./EditorModalSheet";
 import { SheetHeader } from "./SheetHeader";
@@ -46,8 +47,23 @@ export function EditorConsequenceSheet({
 				{error ? <p role="alert">{error}</p> : null}
 			</div>
 			<footer className={`${styles.footer} ${styles.consequenceActions}`}>
-				<button type="button" data-editor-action="cancel" data-sheet-initial-focus="" disabled={busy} onClick={cancel}>Отменить</button>
-				<button type="button" data-editor-action="confirm" disabled={busy || blocked} onClick={onConfirm}>{confirmLabel}</button>
+				<button
+					type="button"
+					data-editor-action="cancel"
+					data-sheet-initial-focus=""
+					disabled={busy}
+					onClick={cancel}
+				>
+					{copy("Отменить", "Cancel")}
+				</button>
+				<button
+					type="button"
+					data-editor-action="confirm"
+					disabled={busy || blocked}
+					onClick={onConfirm}
+				>
+					{confirmLabel}
+				</button>
 			</footer>
 		</EditorModalSheet>
 	);

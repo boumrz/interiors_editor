@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import {
 	type RefObject,
 	useId,
@@ -19,14 +20,34 @@ const swatchNames: Record<
 	AlphaParametricItemColorVariant["variantId"],
 	string
 > = {
-	"alpha-warm-wood": "Дерево",
-	"alpha-blue": "Синий",
-	"alpha-violet": "Фиолетовый",
-	"alpha-walnut": "Орех",
-	"alpha-terracotta": "Терракота",
-	"alpha-forest": "Зелёный",
-	"alpha-berry": "Ягодный",
+	get "alpha-warm-wood"() {
+		return copy("Дерево", "Wood");
+	},
+	get "alpha-blue"() {
+		return copy("Синий", "Blue");
+	},
+	get "alpha-violet"() {
+		return copy("Фиолетовый", "Violet");
+	},
+	get "alpha-walnut"() {
+		return copy("Орех", "Walnut");
+	},
+	get "alpha-terracotta"() {
+		return copy("Терракота", "Terracotta");
+	},
+	get "alpha-forest"() {
+		return copy("Зелёный", "Green");
+	},
+	get "alpha-berry"() {
+		return copy("Ягодный", "Berry");
+	},
 };
+
+export function telegramItemColorLabelForDisplay(
+	variant: AlphaParametricItemColorVariant,
+): string {
+	return copy(variant.label, swatchNames[variant.variantId]);
+}
 
 type TelegramItemColorProps = {
 	readonly color: string;
@@ -68,15 +89,28 @@ export function TelegramItemColor({
 					className={styles.itemColorSwatch}
 					style={{ backgroundColor: color }}
 				/>
-				<span>Цвет{current ? ` · ${current.label}` : ""}</span>
+				<span>
+					{copy("Цвет", "Color")}
+					{current
+						? ` · ${telegramItemColorLabelForDisplay(current)}`
+						: ""}
+				</span>
 			</summary>
 			<fieldset className={styles.quickPalette} disabled={disabled}>
-				<legend>Цвет предмета</legend>
-				<p className={styles.catalogNote}>Цвет на экране приблизительный.</p>
+				<legend>{copy("Цвет предмета", "Item color")}</legend>
+				<p className={styles.catalogNote}>
+					{copy(
+						"Цвет на экране приблизительный.",
+						"Colors are approximate on screen.",
+					)}
+				</p>
 				<div>
 					{alphaParametricItemColorVariants.map((variant) => (
 						<button
-							aria-label={`Выбрать вариант цвета ${context === "wall-item" ? "настенного предмета" : "предмета"} ${variant.label}`}
+							aria-label={copy(
+								`Выбрать вариант цвета ${context === "wall-item" ? "настенного предмета" : "предмета"} ${variant.label}`,
+								`Select ${swatchNames[variant.variantId]} for this ${context === "wall-item" ? "wall-mounted item" : "item"}`,
+							)}
 							aria-pressed={color === variant.color}
 							disabled={color === variant.color}
 							key={variant.variantId}
@@ -135,7 +169,14 @@ function SceneColorPicker({
 				aria-haspopup="dialog"
 				aria-controls={dialogId}
 				aria-expanded={open}
-				aria-label={current ? `Цвет · ${current.label}` : "Цвет"}
+				aria-label={
+					current
+						? copy(
+								`Цвет · ${current.label}`,
+								`Color · ${swatchNames[current.variantId]}`,
+							)
+						: copy("Цвет", "Color")
+				}
 				type="button"
 				disabled={disabled}
 				onClick={() => setOpen(true)}
@@ -145,7 +186,7 @@ function SceneColorPicker({
 					className={styles.itemColorSwatch}
 					style={{ backgroundColor: color }}
 				/>
-				<span>Цвет</span>
+				<span>{copy("Цвет", "Color")}</span>
 			</button>
 			{open && (
 				<TelegramSheetFrame
@@ -165,10 +206,14 @@ function SceneColorPicker({
 					}}
 				>
 					<SheetHeader
-						title="Цвет предмета"
+						title={copy("Цвет предмета", "Item color")}
 						titleId={titleId}
-						subtitle={current?.label}
-						closeLabel="Закрыть палитру"
+						subtitle={
+							current
+								? telegramItemColorLabelForDisplay(current)
+								: undefined
+						}
+						closeLabel={copy("Закрыть палитру", "Close color palette")}
 						onClose={() => dialogRef.current?.close()}
 					/>
 					<div className={sheetStyles.body}>
@@ -176,7 +221,7 @@ function SceneColorPicker({
 							{alphaParametricItemColorVariants.map((variant) => (
 								<button
 									key={variant.variantId}
-									aria-label={variant.label}
+									aria-label={telegramItemColorLabelForDisplay(variant)}
 									aria-pressed={color === variant.color}
 									disabled={disabled}
 									type="button"
@@ -197,7 +242,10 @@ function SceneColorPicker({
 							))}
 						</div>
 						<p className={sceneStyles.colorNote}>
-							Цвет на экране приблизительный.
+							{copy(
+								"Цвет на экране приблизительный.",
+								"Colors are approximate on screen.",
+							)}
 						</p>
 					</div>
 				</TelegramSheetFrame>

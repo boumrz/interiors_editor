@@ -35,6 +35,32 @@
 
 .settingsContent nav { margin: 12px 0 0; }
 
+.themeSetting {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	font-weight: 600;
+	gap: 8px;
+	justify-content: space-between;
+	margin-block-end: 16px;
+}
+
+.themeSetting select {
+	background: var(--editor-host-canvas, var(--canvas));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--editor-host-ink, var(--ink));
+	font: inherit;
+	max-width: 100%;
+	min-height: 44px;
+	padding: 6px 10px;
+}
+
+.themeSetting select:focus-visible {
+	outline: 2px solid var(--editor-host-focus, #0b5d8e);
+	outline-offset: -2px;
+}
+
 .settingsContent nav a {
 	border-block-start: 1px solid var(--editor-host-line, var(--line));
 	line-height: 1.35;

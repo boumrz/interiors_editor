@@ -1,6 +1,30 @@
 <!doctype html>
 <html lang="ru">
-<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" /><meta name="theme-color" content="#f4f1ea" /><link rel="icon" type="image/png" sizes="192x192" href="/interiors-lamp-v1.png" /><title>InteriorsEditor · Telegram</title></head>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#17212b" media="(prefers-color-scheme: dark)" />
+<meta name="theme-color" content="#f4f1ea" />
+<link rel="icon" type="image/png" sizes="192x192" href="/interiors-lamp-v1.png" />
+<title>InteriorsEditor · Telegram</title>
+<style>
+html:root {
+	color-scheme: light;
+	background-color: var(--canvas, #f4f1ea);
+	color: var(--ink, #172033);
+}
+@media (prefers-color-scheme: dark) {
+	html:root {
+		color-scheme: dark;
+		--canvas: #17212b;
+		--surface: #1f2c36;
+		--ink: #f5f7fa;
+		--muted: #a7b6c2;
+		--blue: #68bfff;
+	}
+}
+</style>
+</head>
 <body>
 <script id="telegram-loaded-release" type="application/json">__TELEGRAM_RELEASE_CAPSULE__</script>
 <script id="telegram-deployment" type="application/json">__TELEGRAM_DEPLOYMENT__</script>

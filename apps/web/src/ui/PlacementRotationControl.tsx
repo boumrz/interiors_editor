@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { degreesForYawRadians, steppedYawRadians } from "./rotation-angle";
 import styles from "./AppShell.module.css";
 
@@ -63,7 +64,10 @@ export function PlacementRotationControl({
 				/>
 			) : null}
 			<circle
-				aria-label="Повернуть размещаемый предмет"
+				aria-label={copy(
+					"Повернуть размещаемый предмет",
+					"Rotate item being placed",
+				)}
 				aria-disabled={disabled}
 				aria-valuemin={0}
 				aria-valuemax={exact ? 359.999 : 315}

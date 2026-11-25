@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Operate the single Telegram support worker without logging message data."""
 import argparse
+from base64 import urlsafe_b64encode
 from contextlib import contextmanager
 import fcntl
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
@@ -11,15 +13,18 @@ import re
 import secrets
 import signal
 import stat
+import subprocess
 import sys
 import tempfile
 import threading
 import time
 
 if __package__:
+    from .messages import bot_commands
     from .support import DeliveryError, Support
     from .telegram_api import TelegramApi
 else:
+    from messages import bot_commands
     from support import DeliveryError, Support
     from telegram_api import TelegramApi
 
@@ -30,6 +35,7 @@ SERVICE_USER = "interiors-telegram-support"
 DEFAULT_CONFIG = Path("/etc/interiors-editor/telegram-support")
 DEFAULT_STATE = Path("/var/lib/interiors-telegram-support")
 SYSTEMD_CREDENTIALS = Path("/run/credentials/interiors-telegram-support.service")
+LANGUAGE_CREDENTIAL = "interiors-telegram-language-key"
 UPDATE_LIMIT = 100
 LONG_POLL_SECONDS = 12
 BIND_SECONDS = 300
@@ -51,6 +57,17 @@ def check_bot(api):
     webhook = api.call("getWebhookInfo")
     if not isinstance(webhook, dict) or webhook.get("url") != "":
         raise OpsError("webhook-present-or-unverifiable")
+
+
+def publish_commands(api):
+    check_bot(api)
+    for language_code in ("", "ru"):
+        if api.call("setMyCommands", {
+            "scope": {"type": "all_private_chats"},
+            "language_code": language_code,
+            "commands": bot_commands(language_code),
+        }) is not True:
+            raise OpsError("bot-commands-not-published")
 
 
 def get_updates(api, *, timeout, offset=None):
@@ -202,6 +219,51 @@ def read_api(config):
     return TelegramApi(token)
 
 
+def read_language_token(config):
+    try:
+        read_credential(config, LANGUAGE_CREDENTIAL)
+    except OpsError as error:
+        if str(error) == "credential-missing":
+            return None
+        raise
+    key_path = str(config / LANGUAGE_CREDENTIAL)
+    try:
+        public_key = subprocess.run(
+            ["openssl", "pkey", "-in", key_path, "-passin", "pass:", "-pubout", "-outform", "DER"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            timeout=2, check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        raise OpsError("invalid-language-signing-key") from None
+    # Ed25519 SubjectPublicKeyInfo has this algorithm identifier and 32 raw bytes.
+    ed25519_prefix = bytes.fromhex("302a300506032b6570032100")
+    if len(public_key) != len(ed25519_prefix) + 32 or not public_key.startswith(ed25519_prefix):
+        raise OpsError("invalid-language-signing-key")
+
+    def language_token(chat_id, language, revision):
+        digest = sha256(f"tma-v1:production:{EXPECTED_BOT_ID}:{chat_id}".encode()).hexdigest()
+        payload = f"interiors-language/1\ntma-v1-{digest}\n{language}\n{revision}".encode()
+        try:
+            # OpenSSL Ed25519 requires a seekable input of known length.
+            with tempfile.NamedTemporaryFile() as source:
+                source.write(payload)
+                source.flush()
+                result = subprocess.run(
+                    ["openssl", "pkeyutl", "-sign", "-rawin", "-inkey", key_path, "-passin", "pass:",
+                     "-in", source.name],
+                    stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    timeout=2, check=True,
+                )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if len(result.stdout) != 64:
+            return None
+        signature = urlsafe_b64encode(result.stdout).decode("ascii").rstrip("=")
+        return f"lang1_{language}_{revision}_{signature}"
+
+    return language_token
+
+
 def bind_configured_owner(config, state):
     if (config / "owner-chat-id").exists():
         raise OpsError("owner-already-bound")
@@ -238,7 +300,13 @@ def run_service(config, state):
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     with poll_lock(state / "poll.lock"):
         check_bot(api)
-        support = Support(state / "support.sqlite3", owner, bot_started_at=activation)
+        try:
+            language_token = read_language_token(config)
+        except OpsError:
+            print("language-signing-credential-unavailable", file=sys.stderr)
+            language_token = None
+        support = Support(state / "support.sqlite3", owner, bot_started_at=activation,
+                          language_token=language_token)
         try:
             run_worker(api, support, stopping=stop.is_set, wait=stop.wait)
         finally:
@@ -270,7 +338,7 @@ def main(arguments=None):
                         default=Path(os.environ.get("CREDENTIALS_DIRECTORY", DEFAULT_CONFIG)))
     parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE)
     commands = parser.add_subparsers(dest="action", required=True)
-    for command in ("check", "bind-owner", "run", "status"):
+    for command in ("check", "bind-owner", "run", "status", "publish-commands"):
         commands.add_parser(command)
     commands.add_parser("retry-uncertain").add_argument("job")
     args = parser.parse_args(arguments)
@@ -284,6 +352,9 @@ def main(arguments=None):
         elif args.action == "run":
             run_service(args.config_dir, args.state_dir)
             return 0
+        elif args.action == "publish-commands":
+            publish_commands(read_api(args.config_dir))
+            result = {"commands_published": True}
         else:
             result = admin_action(args.action, getattr(args, "job", None),
                                   args.config_dir, args.state_dir)

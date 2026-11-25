@@ -1,3 +1,8 @@
+:global(html[lang="en"]) {
+	--editor-mm-unit: "mm";
+	--editor-catalog-preparing: "Preparing for offline use…";
+}
+
 .startShell { align-items: center; background:var(--canvas); display: grid; min-height: var(--editor-viewport-height, 100dvh); padding: max(24px, var(--editor-safe-area-top, env(safe-area-inset-top))) 20px max(24px, var(--editor-safe-area-bottom, env(safe-area-inset-bottom))); }
 .createCard { background:var(--surface); border:1px solid var(--line); box-shadow: 8px 9px 0 var(--shadow); display: grid; gap: 15px; margin: 0 auto; max-width: 460px; padding: 28px 23px; width: 100%; }
 .startMark, .editorMark { align-items: center; background:var(--ink); color:var(--surface); display: inline-flex; font-family: var(--font-display); font-weight: 800; justify-content: center; letter-spacing: -0.08em; text-decoration: none; }
@@ -1336,7 +1341,7 @@
 
 .editorShell .windowDraftPanel label::after {
 	color:var(--muted);
-	content: "мм";
+	content: var(--editor-mm-unit, "мм");
 	font: 700 0.66rem/1 var(--font-mono);
 	pointer-events: none;
 	position: absolute;
@@ -1464,7 +1469,7 @@
 	.selectionInspectorPanel[data-testid="selected-item-inspector"] .itemDimensions label::after {
 		bottom: 13px;
 		color:var(--muted);
-		content: "мм";
+		content: var(--editor-mm-unit, "мм");
 		font: 800 0.57rem/1 var(--font-mono);
 		pointer-events: none;
 		position: absolute;
@@ -1561,7 +1566,7 @@
 	.selectionInspectorPanel[data-testid="selected-wall-inspector"] .selectedWallThicknessControl::after {
 		bottom: 39px;
 		color:var(--muted);
-		content: "мм";
+		content: var(--editor-mm-unit, "мм");
 		font: 800 0.57rem/1 var(--font-mono);
 		pointer-events: none;
 		position: absolute;
@@ -2126,7 +2131,7 @@
 	}
 
 	.catalogPlacementBar .catalogModelLoadingStatus span::after {
-		content: "Готовим для офлайн…";
+		content: var(--editor-catalog-preparing, "Готовим для офлайн…");
 		font: 800 0.55rem/1.15 var(--font-mono);
 	}
 
@@ -3061,7 +3066,7 @@
 
 .editorShell .openingCreationFields label::after {
 	color:var(--muted);
-	content: "мм";
+	content: var(--editor-mm-unit, "мм");
 	font: 750 0.66rem/1 var(--font-mono);
 	pointer-events: none;
 	position: absolute;

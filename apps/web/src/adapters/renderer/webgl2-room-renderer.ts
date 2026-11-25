@@ -5,7 +5,12 @@ import type {
 	SceneFloorPolygon,
 } from "./rectangular-room-projection";
 import { createThreeWebGl2RoomSceneRenderer } from "./three-webgl2-room-renderer";
-import { THREE_DIMENSIONAL_ROOM_SURFACE_COLORS } from "./three-dimensional-room-palette";
+import {
+	DARK_ROOM_SURFACE_COLORS,
+	THREE_DIMENSIONAL_ROOM_SURFACE_COLORS,
+	type RoomRenderTheme,
+	type RoomSurfaceColors,
+} from "./three-dimensional-room-palette";
 import { pickProceduralSceneItem } from "./webgl2-item-picking";
 
 import {
@@ -92,6 +97,7 @@ export class WebGl2RoomRendererController {
 	private lastCamera: WebGl2Camera | undefined;
 	private lastCutawayMode: WebGl2CutawayMode | undefined;
 	private lastScene: RectangularRoomWebGlScene | undefined;
+	private lastTheme: RoomRenderTheme | undefined;
 	private lastRuntimeModels: WebGl2RuntimeModels = {};
 	private renderer: WebGl2SceneRenderer | undefined;
 	private rendererQualityTier: WebGl2RendererQualityTier = "standard";
@@ -144,6 +150,7 @@ export class WebGl2RoomRendererController {
 				this.lastCamera,
 				this.lastCutawayMode,
 				this.lastScene,
+				this.lastTheme,
 			);
 			this.setState(
 				qualityTier === "reduced"
@@ -172,6 +179,10 @@ export class WebGl2RoomRendererController {
 		this.lastScene = scene;
 	}
 
+	public updateTheme(theme: RoomRenderTheme | undefined): void {
+		this.lastTheme = theme;
+	}
+
 	/**
 	 * A parsed GLB is a presentation resource. Hand it to the live renderer
 	 * without discarding the room shell, current cutaway, or camera pose.
@@ -183,6 +194,7 @@ export class WebGl2RoomRendererController {
 			this.lastCamera,
 			this.lastCutawayMode,
 			this.lastScene,
+			this.lastTheme,
 		);
 	}
 
@@ -190,14 +202,16 @@ export class WebGl2RoomRendererController {
 		camera: WebGl2Camera,
 		cutawayMode: WebGl2CutawayMode = "auto",
 		scene?: RectangularRoomWebGlScene,
+		theme: RoomRenderTheme | undefined = this.lastTheme,
 	): void {
 		this.lastCamera = camera;
 		this.lastCutawayMode = cutawayMode;
+		this.updateTheme(theme);
 		if (scene) {
 			this.updateScene(scene);
 		}
 		const renderStartedAt = this.now();
-		this.renderer?.render(camera, cutawayMode, scene);
+		this.renderer?.render(camera, cutawayMode, scene, theme);
 		this.recordRenderDuration(this.now() - renderStartedAt);
 	}
 
@@ -560,6 +574,7 @@ export function resetProceduralWebGl2Frame(
 	context: WebGL2RenderingContext,
 	width: number,
 	height: number,
+	theme?: RoomRenderTheme,
 ): void {
 	context.bindFramebuffer(context.FRAMEBUFFER, null);
 	context.bindVertexArray(null);
@@ -576,7 +591,7 @@ export function resetProceduralWebGl2Frame(
 	context.clearDepth(1);
 	context.viewport(0, 0, width, height);
 	context.enable(context.DEPTH_TEST);
-	context.clearColor(...THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.background);
+	context.clearColor(...(theme ? colorFor(theme.background) : THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.background));
 	context.clear(context.COLOR_BUFFER_BIT | context.DEPTH_BUFFER_BIT);
 }
 
@@ -704,6 +719,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 			camera = initialWebGl2Camera,
 			cutawayMode: WebGl2CutawayMode = "auto",
 			sceneOverride = scene,
+			theme,
 		) => {
 			activeScene = sceneOverride;
 			lastCamera = camera;
@@ -718,7 +734,8 @@ function createProceduralWebGl2RoomSceneRenderer(
 				canvas.width = width;
 				canvas.height = height;
 			}
-			resetProceduralWebGl2Frame(context, width, height);
+			const surfaceColors = theme?.colorScheme === "dark" ? DARK_ROOM_SURFACE_COLORS : THREE_DIMENSIONAL_ROOM_SURFACE_COLORS;
+			resetProceduralWebGl2Frame(context, width, height, theme);
 			context.useProgram(program);
 			context.bindBuffer(context.ARRAY_BUFFER, vertexBuffer);
 			context.enableVertexAttribArray(positionLocation);
@@ -731,12 +748,12 @@ function createProceduralWebGl2RoomSceneRenderer(
 				0,
 			);
 			activeScene.floors.forEach((floor) => {
-				drawWoodFloor(floor, drawBox, camera);
+				drawWoodFloor(floor, drawBox, camera, surfaceColors);
 			});
 			activeScene.floorPolygons?.forEach((floor) => {
 				drawFloorPolygon(
 					floor,
-					THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.floorLightBoard,
+					surfaceColors.floorLightBoard,
 					camera,
 				);
 			});
@@ -755,11 +772,12 @@ function createProceduralWebGl2RoomSceneRenderer(
 					useDetailedWallFinish,
 					drawBox,
 					camera,
+					surfaceColors,
 				);
 				wallCornerOutlineDrawsFor(wall).forEach((outline) => {
 					drawBox(
 						outline,
-						THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.wallOutline,
+						surfaceColors.wallOutline,
 						camera,
 					);
 				});
@@ -767,7 +785,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 			wallJointOutlineDrawsFor(visibleWalls).forEach((outline) => {
 				drawBox(
 					outline,
-					THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.wallOutline,
+					surfaceColors.wallOutline,
 					camera,
 				);
 			});
@@ -986,8 +1004,9 @@ function drawWallFinish(
 	detailed: boolean,
 	drawBox: DrawBox,
 	camera: WebGl2Camera,
+	surfaceColors: RoomSurfaceColors,
 ): void {
-	wallFinishDrawsFor(wall, exterior, detailed).forEach((draw) => {
+	wallFinishDrawsFor(wall, exterior, detailed, surfaceColors).forEach((draw) => {
 		drawBox(draw.box, draw.color, camera);
 	});
 }
@@ -997,6 +1016,7 @@ export function wallFinishDrawsFor(
 	wall: SceneBox,
 	exterior: boolean,
 	detailed: boolean,
+	surfaceColors: RoomSurfaceColors = THREE_DIMENSIONAL_ROOM_SURFACE_COLORS,
 ): readonly WallFinishDraw[] {
 	if (!detailed) {
 		return [
@@ -1005,13 +1025,14 @@ export function wallFinishDrawsFor(
 				color: colorForWallFinish(
 					"plaster",
 					exterior ? "exterior" : "interior",
+					surfaceColors,
 				),
 			},
 		];
 	}
 	return wallFinishPartsFor(wall, exterior).map((part) => ({
 		box: part.box,
-		color: colorForWallFinish(part.role, part.tone),
+		color: colorForWallFinish(part.role, part.tone, surfaceColors),
 	}));
 }
 
@@ -1026,16 +1047,17 @@ function wallFinishPart(
 function colorForWallFinish(
 	role: WallFinishRole,
 	tone: WallFinishPart["tone"],
+	surfaceColors: RoomSurfaceColors,
 ): readonly [number, number, number, number] {
 	if (role === "baseboard") {
-		return THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.baseboard;
+		return surfaceColors.baseboard;
 	}
 	if (role === "upper-wash") {
-		return THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.wallUpperWash;
+		return surfaceColors.wallUpperWash;
 	}
 	return tone === "exterior"
-		? THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.exteriorWall
-		: THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.interiorWall;
+		? surfaceColors.exteriorWall
+		: surfaceColors.interiorWall;
 }
 
 export interface WoodFloorDraw {
@@ -1049,8 +1071,9 @@ export function drawWoodFloor(
 	floor: SceneBox,
 	drawBox: DrawBox,
 	camera: WebGl2Camera,
+	surfaceColors?: RoomSurfaceColors,
 ): void {
-	woodFloorDrawsFor(floor).forEach((draw) => {
+	woodFloorDrawsFor(floor, surfaceColors).forEach((draw) => {
 		drawBox(draw.box, draw.color, camera);
 	});
 }
@@ -1060,7 +1083,10 @@ export function drawWoodFloor(
  * procedural default read as one continuous floor; a future Room surface
  * assignment can replace it without changing plan geometry.
  */
-export function woodFloorDrawsFor(floor: SceneBox): readonly WoodFloorDraw[] {
+export function woodFloorDrawsFor(
+	floor: SceneBox,
+	surfaceColors: RoomSurfaceColors = THREE_DIMENSIONAL_ROOM_SURFACE_COLORS,
+): readonly WoodFloorDraw[] {
 	const minimumZM = floor.centerZM - floor.depthM / 2;
 	const maximumZM = floor.centerZM + floor.depthM / 2;
 	const firstBoard = Math.floor(minimumZM / WOOD_BOARD_DEPTH_M);
@@ -1084,8 +1110,8 @@ export function woodFloorDrawsFor(floor: SceneBox): readonly WoodFloorDraw[] {
 			},
 			color:
 				board % 2 === 0
-					? THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.floorDarkBoard
-					: THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.floorLightBoard,
+					? surfaceColors.floorDarkBoard
+					: surfaceColors.floorLightBoard,
 		});
 	}
 	return draws;

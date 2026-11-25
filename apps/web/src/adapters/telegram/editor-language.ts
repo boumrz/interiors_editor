@@ -44,11 +44,14 @@ export async function selectTelegramLanguage(
 		readonly storage?: Pick<Storage, "getItem" | "setItem"> | undefined;
 		readonly key?: Uint8Array<ArrayBuffer> | undefined;
 		readonly deviceLanguage?: string;
+		readonly menuSearch?: string;
 	},
 ): Promise<EditorLanguage> {
 	const storageKey = `interiors-tma-language:${launch.scope}`;
-	const candidate = launch.startParameter && dependencies.key
-		? await verifiedChoice(launch.startParameter, launch.scope, dependencies.key)
+	const menuTokens = new URLSearchParams(dependencies.menuSearch).getAll("language_token");
+	const parameter = launch.startParameter ?? (menuTokens.length === 1 ? menuTokens[0] : undefined);
+	const candidate = parameter && dependencies.key
+		? await verifiedChoice(parameter, launch.scope, dependencies.key)
 		: undefined;
 	let stored: LanguageChoice | undefined;
 	try {

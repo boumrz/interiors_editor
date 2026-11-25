@@ -69,6 +69,8 @@ export function TelegramSettings({
 		theme?.snapshot ?? noTheme,
 		theme?.snapshot ?? noTheme,
 	);
+	const nightMode = themeSnapshot?.colorScheme === "dark";
+	const useTelegramTheme = themeSnapshot?.preference === "auto";
 	const open = useCallback((restoreFocus?: HTMLElement) => {
 		if (onExitBeforeEntry) {
 			restoreFocus?.focus({ preventScroll: true });
@@ -177,20 +179,40 @@ export function TelegramSettings({
 					/>
 					<div className={`${sheetStyles.body} ${entryStyles.settingsContent}`}>
 						{theme && themeSnapshot && (
-							<label className={entryStyles.themeSetting}>
-								<span>{copy("Тема", "Theme")}</span>
-								<select
-									value={themeSnapshot.preference}
-									onChange={(event) => {
-										const { value } = event.currentTarget;
-										if (value === "auto" || value === "light" || value === "dark") theme.setPreference(value);
-									}}
+								<div className={entryStyles.themeSetting}>
+									<button
+										className={entryStyles.themeSwitch}
+										type="button"
+										role="switch"
+										aria-label={copy("Ночная тема", "Night mode")}
+										aria-checked={nightMode}
+										onClick={() => theme.setPreference(nightMode ? "light" : "dark")}
 								>
-									<option value="auto">{copy("Автоматически", "Automatic")}</option>
-									<option value="light">{copy("Светлая", "Light")}</option>
-									<option value="dark">{copy("Тёмная", "Dark")}</option>
-								</select>
-							</label>
+										<span aria-hidden="true">
+											<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" focusable="false">
+												<circle cx="12" cy="12" r="4" />
+												<path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" />
+											</svg>
+											{copy("День", "Day")}
+										</span>
+										<span aria-hidden="true">
+											<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" focusable="false">
+												<path d="M21 13.3A9 9 0 0 1 10.7 3 9 9 0 1 0 21 13.3Z" />
+											</svg>
+											{copy("Ночь", "Night")}
+										</span>
+									</button>
+									<button
+										className={entryStyles.themeReset}
+										type="button"
+										aria-disabled={useTelegramTheme}
+										onClick={() => {
+											if (!useTelegramTheme) theme.setPreference("auto");
+										}}
+									>
+										{copy("Как в Telegram", "Use Telegram theme")}
+									</button>
+								</div>
 						)}
 						<LegalStatus />
 						<TelegramLegalDocuments />

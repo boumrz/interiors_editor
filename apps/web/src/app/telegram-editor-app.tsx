@@ -1111,6 +1111,7 @@ export function mountTelegramBrowserEditor(
 				storage,
 				key: botLanguageKey(configuration.botId, configuration.environment),
 				deviceLanguage: navigator.language,
+				menuSearch: window.location.search,
 			});
 		},
 		connectHost: (capture, onContextChanged, scope) =>

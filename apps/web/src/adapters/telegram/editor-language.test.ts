@@ -11,6 +11,13 @@ function memoryStorage() {
 	};
 }
 
+async function signChoice(key: CryptoKey, language: "ru" | "en", revision: number) {
+	const payload = new TextEncoder().encode(`interiors-language/1\n${scope}\n${language}\n${revision}`);
+	const bytes = new Uint8Array(await crypto.subtle.sign("Ed25519", key, payload));
+	const signature = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+	return `lang1_${language}_${revision}_${signature}`;
+}
+
 describe("Telegram editor language", () => {
 	it.each([
 		["ru", "en-US", "ru"], ["RU-RU", "en-US", "ru"],
@@ -28,15 +35,9 @@ describe("Telegram editor language", () => {
 		const key = new Uint8Array(await crypto.subtle.exportKey("raw", keys.publicKey));
 		const launch = { scope, languageCode: "ru" };
 		const dependencies = { storage, key, deviceLanguage: "en" };
-		async function choice(language: "ru" | "en", revision: number, owner = scope) {
-			const payload = new TextEncoder().encode(`interiors-language/1\n${owner}\n${language}\n${revision}`);
-			const bytes = new Uint8Array(await crypto.subtle.sign("Ed25519", keys.privateKey, payload));
-			const signature = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
-			return `lang1_${language}_${revision}_${signature}`;
-		}
-		const english = await choice("en", 2);
-		const russian = await choice("ru", 3);
-		const sameRevision = await choice("en", 3);
+		const english = await signChoice(keys.privateKey, "en", 2);
+		const russian = await signChoice(keys.privateKey, "ru", 3);
+		const sameRevision = await signChoice(keys.privateKey, "en", 3);
 		const base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 		const nonCanonical = english.slice(0, -1) + base64[base64.indexOf(english.slice(-1)) + 1];
 		const invalid = [
@@ -95,5 +96,25 @@ describe("Telegram editor language", () => {
 			startParameter: "lang1_en_3_OBb2b1eaEuYS4XY7ZTwGyeG0RUVEGSFiityH78dCxdw-xcr7tOYFoxkaxOeQNf04MAP5U_CdM3d68IZ6hT3nCA",
 		};
 		expect(await selectTelegramLanguage(launch, { key })).toBe("en");
+	});
+
+	it("accepts only one authentic menu choice for the verified Telegram account", async () => {
+		const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]) as CryptoKeyPair;
+		const key = new Uint8Array(await crypto.subtle.exportKey("raw", keys.publicKey));
+		const token = await signChoice(keys.privateKey, "en", 2);
+		const startParameter = await signChoice(keys.privateKey, "ru", 1);
+		const menuSearch = `?language_token=${token}`;
+		const launch = { scope, languageCode: "ru" };
+		const storage = memoryStorage();
+		const dependencies = { key, storage };
+		for (const invalid of ["?language_token=en", `?other=${token}`, `${menuSearch}A`, `${menuSearch}&language_token=${token}`, menuSearch.replace("_2_", "_3_")]) {
+			expect(await selectTelegramLanguage(launch, { ...dependencies, menuSearch: invalid })).toBe("ru");
+		}
+		expect(await selectTelegramLanguage({ ...launch, scope: `${scope}-other` }, { ...dependencies, menuSearch })).toBe("ru");
+		expect(await selectTelegramLanguage({ ...launch, startParameter }, { ...dependencies, menuSearch })).toBe("ru");
+		expect(await selectTelegramLanguage(launch, { ...dependencies, menuSearch })).toBe("en");
+		expect(await selectTelegramLanguage(launch, dependencies)).toBe("en");
+		storage.setItem(`interiors-tma-language:${scope}`, JSON.stringify({ language: "ru", revision: 3 }));
+		expect(await selectTelegramLanguage(launch, { ...dependencies, menuSearch })).toBe("ru");
 	});
 });

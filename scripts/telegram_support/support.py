@@ -13,6 +13,7 @@ else:
 
 
 EDITOR_URL = "https://t.me/InteriorsEditorBot?startapp"
+EDITOR_WEB_URL = "https://domiknote.ru/"
 POLICY_URL = "https://domiknote.ru/legal/2026-11-24.2/telegram-support-privacy.html"
 ENGLISH_POLICY_URL = "https://domiknote.ru/legal/2026-11-24.2/en/telegram-support-privacy.html"
 DRAFT_LIFETIME = 24 * 60 * 60
@@ -128,7 +129,8 @@ def _telegram_language(actor):
     return "ru" if isinstance(tag, str) and tag.lower().partition("-")[0] == "ru" else "en"
 
 
-def _editor_keyboard(language, url, include_support=False):
+def _editor_keyboard(language, token, include_support=False):
+    url = EDITOR_URL if token is None else f"{EDITOR_URL}={token}"
     rows = [[{"text": copy(language, "editor"), "url": url}]]
     if include_support:
         rows.append([{"text": copy(language, "support"), "url": "https://t.me/InteriorsEditorBot?start=support"}])
@@ -262,13 +264,11 @@ class Support:
                                    (self.owner_id,)).fetchone()
         return self._language(self.owner_id, observed["language"] if observed is not None else "en")
 
-    def _editor_url(self, chat_id):
+    def _editor_token(self, chat_id):
         preference = self._preference(chat_id)
         if self.language_token is not None and preference is not None:
-            token = self.language_token(chat_id, preference["language"], preference["revision"])
-            if token is not None:
-                return f"{EDITOR_URL}={token}"
-        return EDITOR_URL
+            return self.language_token(chat_id, preference["language"], preference["revision"])
+        return None
 
     def _choose_language(self, chat_id, language, now):
         self._text(chat_id, copy(language, "choose_language"), now, markup={"inline_keyboard": [[
@@ -285,20 +285,23 @@ class Support:
         # A stale menu retry must never replace the latest selection.
         self.db.execute("DELETE FROM outbox WHERE id = (SELECT job_id FROM language_menu_jobs WHERE chat_id = ?)",
                         (chat_id,))
-        url = self._editor_url(chat_id)
-        if url != EDITOR_URL:
+        token = self._editor_token(chat_id)
+        if token is not None:
             job = self._job("setChatMenuButton", {
                 "chat_id": chat_id,
-                "menu_button": {"type": "web_app", "text": copy(language, "editor"), "web_app": {"url": url}},
+                "menu_button": {
+                    "type": "web_app", "text": copy(language, "editor"),
+                    "web_app": {"url": f"{EDITOR_WEB_URL}?language_token={token}"},
+                },
             }, "language-menu", now)
             self.db.execute("INSERT INTO language_menu_jobs VALUES (?, ?)", (chat_id, job))
-        message = "language_saved" if url != EDITOR_URL else "language_editor_pending"
-        self._text(chat_id, copy(language, message), now, markup=_editor_keyboard(language, url))
+        message = "language_saved" if token is not None else "language_editor_pending"
+        self._text(chat_id, copy(language, message), now, markup=_editor_keyboard(language, token))
 
     def _help(self, chat_id, language, now):
         self._text(
             chat_id, copy(language, "help"), now,
-            markup=_editor_keyboard(language, self._editor_url(chat_id), include_support=True),
+            markup=_editor_keyboard(language, self._editor_token(chat_id), include_support=True),
         )
 
     def _begin(self, chat_id, language, now):
@@ -351,7 +354,7 @@ class Support:
         elif text == "/start" or text.startswith("/start "):
             self._text(
                 chat_id, copy(language, "welcome"), now,
-                markup=_editor_keyboard(language, self._editor_url(chat_id), include_support=True),
+                markup=_editor_keyboard(language, self._editor_token(chat_id), include_support=True),
             )
         elif text == "/help":
             self._help(chat_id, language, now)

@@ -1,1 +1,1 @@
-export const privacyRevision = "2026-11-25";
+export const privacyRevision = "2026-11-25.2";

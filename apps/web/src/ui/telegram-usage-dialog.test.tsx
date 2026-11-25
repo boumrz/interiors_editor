@@ -81,7 +81,8 @@ test("English settings offer independent editor use and error consent and link t
 	try {
 		await model.openSettings();
 		let html = renderToStaticMarkup(<TelegramUsageDialog metrics={model} />);
-		expect(html).toContain('href="/legal/2026-11-25/en/product-analytics-consent.html"');
+		expect(html).toContain('href="/legal/2026-11-25.2/en/product-analytics-consent.html"');
+		expect(html).toContain("totals for each two-hour interval");
 		expect(html).toMatch(/<button\b(?=[^>]*role="switch")(?=[^>]*aria-checked="false")(?=[^>]*aria-label="Allow usage and error analytics")/);
 		await model.chooseProduct(true);
 		html = renderToStaticMarkup(<TelegramUsageDialog metrics={model} />);

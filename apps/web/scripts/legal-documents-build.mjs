@@ -12,7 +12,8 @@ export const legalDocumentNames = [
 ];
 const archivedPrivacy = `legal/${licenseRevision}/privacy-policy.html`;
 const productConsent = "product-analytics-consent";
-const recentPrivacy = "2026-11-24.1";
+const previousPrivacyEditions = ["2026-11-24.1", "2026-11-25"];
+const dailyProductEdition = "2026-11-25";
 const archivePath = (name) => {
 	const edition = name === "privacy-policy" ? privacyRevision
 		: name === productConsent ? productStatisticsRevision : licenseRevision;
@@ -74,10 +75,13 @@ export class LegalDocumentsPlugin {
 						compilation.fileDependencies.add(previous);
 						compilation.emitAsset(archivedPrivacy, new rspack.sources.RawSource(readFileSync(previous)));
 						for (const languagePath of this.english ? ["", "en/"] : [""]) {
-							const relative = `${recentPrivacy}/${languagePath}privacy-policy.html`;
-							const previous = fileURLToPath(new URL(`../../../docs/legal/archive/${relative}`, import.meta.url));
-							compilation.fileDependencies.add(previous);
-							compilation.emitAsset(`legal/${relative}`, new rspack.sources.RawSource(readFileSync(previous)));
+							const archives = previousPrivacyEditions.map((edition) => `${edition}/${languagePath}privacy-policy.html`);
+							if (this.english) archives.push(`${dailyProductEdition}/${languagePath}${productConsent}.html`);
+							for (const relative of archives) {
+								const previous = fileURLToPath(new URL(`../../../docs/legal/archive/${relative}`, import.meta.url));
+								compilation.fileDependencies.add(previous);
+								compilation.emitAsset(`legal/${relative}`, new rspack.sources.RawSource(readFileSync(previous)));
+							}
 						}
 						const html = entry.source.source().toString();
 						const reader = (id, texts) => `<script type="application/json" id="${id}">${JSON.stringify(texts).replaceAll("<", "\\u003c")}</script>`;

@@ -26,6 +26,7 @@ MOBILE_TOTAL = "/stats/tma-mobile-open-v1"
 REPEAT = "/stats/tma-repeat-v2"
 RETURN = "/stats/tma-return"
 PRODUCT = "/stats/tma-editor-v1/ios/editor_entry"
+PRODUCT_INTRADAY = "/stats/tma-editor-v2/editor_entry"
 
 
 class ProductionRouteContract(unittest.TestCase):
@@ -40,7 +41,7 @@ class ProductionRouteContract(unittest.TestCase):
 
     def test_only_product_capable_release_generates_the_aggregate_routes(self):
         config = frontend.nginx_site("/tmp/fixture", {"web": set(), "telegram": set()},
-                                     product_metrics=True).decode()
+                                     product_metrics="tma-editor-v1").decode()
         telegram = config.split("server_name domiknote.ru;", maxsplit=1)[1]
         self.assertIn("location = " + PRODUCT + " {", telegram)
         self.assertIn("location = /stats/tma-editor-v1/android/backup_handoff_failed {", telegram)
@@ -52,11 +53,25 @@ class ProductionRouteContract(unittest.TestCase):
         spec = importlib.util.spec_from_file_location("production_aggregate_catalog", source)
         collector = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(collector)
-        config = frontend.nginx_site("/tmp/fixture", {"web": set(), "telegram": set()},
-                                     product_metrics=True).decode()
-        routed = re.findall(r"location = (/stats/tma-editor-v1/[a-z0-9_/]+) \{", config)
-        self.assertEqual(len(routed), 60)
-        self.assertEqual(set(routed), set(collector.PRODUCT_ROUTES))
+        for version, catalog in [("tma-editor-v1", collector.PRODUCT_ROUTES),
+                                 ("tma-editor-v2", collector.PRODUCT_INTRADAY_ROUTES)]:
+            config = frontend.nginx_site("/tmp/fixture", {"web": set(), "telegram": set()},
+                                         product_metrics=version).decode()
+            routed = re.findall(r"location = (/stats/tma-editor-v[12]/[a-z0-9_/]+) \{", config)
+            self.assertCountEqual(routed, catalog.keys())
+
+    def test_intraday_frontend_replaces_product_routes_and_keeps_relay_on_regeneration(self):
+        paths = {"web": set(), "telegram": set()}
+        previous = frontend.nginx_site("/tmp/fixture", paths, project_transfer_relay=True,
+                                      product_metrics="tma-editor-v2")
+        config = frontend.telegram_nginx_site("/tmp/fixture", set(), previous).decode()
+        self.assertNotIn("/stats/tma-editor-v1/", config)
+        self.assertNotIn("/health/tma-editor-v2", config)
+        self.assertIn("location = " + frontend.PROJECT_TRANSFER_PATH + " {", config)
+        self.assertIn("location = " + MOBILE_TOTAL + " {", config)
+        routes = re.findall(r"location = (/stats/tma-editor-v2/[a-z0-9_/]+) \{", config)
+        self.assertEqual(len(routes), 30)
+        self.assertEqual(set(routes), {f"/stats/tma-editor-v2/{code}" for code in frontend.PRODUCT_METRIC_CODES})
 
 
 @unittest.skipUnless(NGINX, "Set INTERIORS_NGINX_BIN or install Nginx to run this integration test")
@@ -108,7 +123,7 @@ class NginxFixture(unittest.TestCase):
             reserved.bind(("127.0.0.1", 0))
             self.port = reserved.getsockname()[1]
         site = frontend.nginx_site(root, {"web": {"/index.html"}, "telegram": {"/index.html"}},
-                                   **({"product_metrics": True} if getattr(self, "use_product_metrics", False) else {})).decode()
+                                   product_metrics=getattr(self, "use_product_metrics", False)).decode()
         # Only adapt listeners, TLS/ACME, directories and the catalog include to local fixtures.
         site = "server {" + site.split("\nserver {", maxsplit=1)[1]
         site = site.replace("listen 443 ssl;", f"listen 127.0.0.1:{self.port};")
@@ -195,7 +210,7 @@ class AggregateIngressTests(NginxFixture):
 
 
 class ProductIngressTests(NginxFixture):
-    use_product_metrics = True
+    use_product_metrics = "tma-editor-v1"
 
     def test_only_fixed_platform_and_code_pairs_pass_without_client_headers_or_body(self):
         self.assertEqual(self.request(PRODUCT), 204)
@@ -224,6 +239,37 @@ class ProductIngressTests(NginxFixture):
              {"host": "localhost", "connection": "close", "content-length": "0"}, b""),
         ])
 
+
+class ProductIntradayIngressTests(NginxFixture):
+    use_product_metrics = "tma-editor-v2"
+
+    def test_intraday_only_forwards_empty_closed_signals_without_platform(self):
+        self.assertEqual(self.request(PRODUCT_INTRADAY), 204)
+        self.assertEqual(self.request("/stats/tma-editor-v2/backup_handoff_failed", Origin="null"), 204)
+        for path, options in [
+            (PRODUCT, {}),
+            (PRODUCT_INTRADAY.replace("/editor_entry", "/ios/editor_entry"), {}),
+            (PRODUCT_INTRADAY.replace("/editor_entry", "/%65ditor_entry"), {}),
+            (PRODUCT_INTRADAY.replace("editor_entry", "unrecognized"), {}),
+            (PRODUCT_INTRADAY + "?", {}),
+            (PRODUCT_INTRADAY + "?private=1", {}),
+            (PRODUCT_INTRADAY + "/", {}),
+            (PRODUCT_INTRADAY, {"body": b"private"}),
+            (PRODUCT_INTRADAY, {"Content-Length": None, "Transfer-Encoding": "chunked"}),
+            (PRODUCT_INTRADAY, {"Origin": "https://other.invalid"}),
+            (PRODUCT_INTRADAY, {"X-Interiors-Stats": None}),
+            (PRODUCT_INTRADAY, {"host": "www.domiknote.ru"}),
+            (PRODUCT_INTRADAY, {"method": "GET"}),
+            ("/health/tma-editor-v2", {"method": "GET"}),
+        ]:
+            with self.subTest(path=path, options=options):
+                self.assertIn(self.request(path, **options), (400, 403, 404, 405, 413))
+        headers = {"host": "localhost", "connection": "close", "content-length": "0"}
+        self.assertEqual(self.calls, [
+            (PRODUCT_INTRADAY, headers, b""),
+            ("/stats/tma-editor-v2/backup_handoff_failed", headers, b""),
+        ])
+
 class AggregatePipelineTest(NginxFixture):
     use_aggregate_collector = True
 
@@ -244,7 +290,7 @@ class AggregatePipelineTest(NginxFixture):
 
 class ProductPipelineTest(NginxFixture):
     use_aggregate_collector = True
-    use_product_metrics = True
+    use_product_metrics = "tma-editor-v1"
 
     def test_private_preflight_stages_with_collection_off_then_exports_only_eligible_signals(self):
         frontend.verify_product_collector_ready(self.socket_path)
@@ -264,3 +310,34 @@ class ProductPipelineTest(NginxFixture):
         self.app.env["INTERIORS_MP_AGGREGATE_COUNTER_ID"] = "123"
         with self.assertRaisesRegex(ValueError, "tma-editor-v1"):
             frontend.verify_product_collector_ready(self.socket_path)
+
+
+class ProductIntradayPipelineTest(NginxFixture):
+    use_aggregate_collector = True
+    use_product_metrics = "tma-editor-v2"
+
+    def test_v2_preflight_requires_new_storage_and_the_collector_exports_only_closed_windows(self):
+        with self.store.transaction() as db:
+            db.execute("DROP TABLE product_intraday_exports")
+        frontend.verify_product_collector_ready(self.socket_path, version="tma-editor-v1")
+        with self.assertRaisesRegex(ValueError, "tma-editor-v2"):
+            frontend.verify_product_collector_ready(self.socket_path, version="tma-editor-v2")
+        self.store.initialize()
+
+        frontend.verify_product_collector_ready(self.socket_path, version="tma-editor-v2")
+        self.assertEqual(self.request(PRODUCT_INTRADAY), 503)
+        self.assertEqual(self.request(MOBILE_TOTAL), 204)
+        self.app.env["INTERIORS_PRODUCT_METRICS_ENABLED"] = "1"
+        self.assertEqual(self.request(PRODUCT), 405)
+        self.assertEqual(self.app.export_product_intraday(), {"state": "ok", "windows": []})
+        self.assertEqual(self.request(PRODUCT_INTRADAY), 204)
+        self.assertEqual(self.app.export_product_intraday(), {"state": "ok", "windows": []})
+        self.assertEqual(self.reports, [])
+
+        self.clock += dt.timedelta(minutes=6)
+        self.assertEqual(self.app.export(), "sent")
+        self.assertEqual(self.app.export_product()["reports"], [])
+        self.assertEqual(self.app.export_product_intraday()["state"], "ok")
+        reports = {hit["dl"]: json.loads(hit["params"]) for batch in self.reports for hit in batch}
+        self.assertEqual(len(reports), 4)
+        self.assertEqual(reports["https://domiknote.ru/tma-editor-report/projects/mobile"]["editor_entry"], 1)

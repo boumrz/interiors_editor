@@ -434,15 +434,71 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(site.read_bytes(), original_config)
         with patch.object(frontend, "verify_product_collector_ready") as product_health:
             frontend.activate_telegram_release(candidate, incoming["commit"], **options)
-            product_health.assert_called_once_with()
+            product_health.assert_called_once_with(version="tma-editor-v1")
             self.assertIn(b"location = /stats/tma-editor-v1/ios/editor_entry {", site.read_bytes())
             consent_location = site.read_bytes().split(b"location = /legal/product-analytics-consent.html {")[1].split(b"}", 1)[0]
             self.assertIn(b'Cache-Control "no-store"', consent_location)
             self.assertTrue((root / "retained/telegram" / document.relative_to(self.telegram)).is_file())
             frontend.activate_telegram_release(rollback, rollback_inventory["commit"], **options)
-            product_health.assert_called_once_with()
+            product_health.assert_called_once_with(version="tma-editor-v1")
         self.assertNotIn(b"/stats/tma-editor-v1/", site.read_bytes())
         self.assertIn(b"/legal/2026-11-25/product-analytics-consent.html", site.read_bytes())
+
+    def test_intraday_archive_with_both_consent_copies_uses_v2_and_restores_v1_on_rollback(self):
+        root, site, _, _, _ = self.telegram_update()
+        archive_v1 = self.base / "product-v1.tar.gz"
+        archive_v2 = self.base / "product-v2.tar.gz"
+        active_document = self.telegram / "legal/product-analytics-consent.html"
+        for version, consent_revision, commit, archive in (
+            ("v1", "2026-11-25", "e", archive_v1),
+            ("v2", "2026-11-25.2", "f", archive_v2),
+        ):
+            document = self.telegram / f"legal/{consent_revision}/product-analytics-consent.html"
+            document.parent.mkdir(parents=True)
+            document.write_text(f"Synthetic consent {version}")
+            active_document.write_bytes(document.read_bytes())
+            (self.telegram / "release-manifest.json").write_text(json.dumps({"appBuildId": commit * 16}))
+            self.seal_telegram("telegram.456.js")
+            frontend.package_telegram_release(self.telegram, archive, commit * 40)
+
+        options = {"root": root, "site": site, "command": lambda _: None,
+                   "health": lambda _: None, "ready": lambda _: None}
+        v1_location = b"location = /stats/tma-editor-v1/ios/editor_entry {"
+        v2_location = b"location = /stats/tma-editor-v2/editor_entry {"
+        with patch.object(frontend, "verify_product_collector_ready") as preflight:
+            frontend.activate_telegram_release(archive_v1, "e" * 40, **options)
+            previous = (root / "current").readlink()
+            self.assertIn(v1_location, site.read_bytes())
+            self.assertNotIn(v2_location, site.read_bytes())
+            preflight.assert_called_once_with(version="tma-editor-v1")
+            preflight.reset_mock()
+
+            def fail_public_smoke(_):
+                self.assertIn(v2_location, site.read_bytes())
+                self.assertNotIn(v1_location, site.read_bytes())
+                raise RuntimeError("failed public smoke")
+
+            with self.assertRaisesRegex(RuntimeError, "failed public smoke"):
+                frontend.activate_telegram_release(archive_v2, "f" * 40, **{**options, "health": fail_public_smoke})
+            self.assertEqual((root / "current").readlink(), previous)
+            self.assertIn(v1_location, site.read_bytes())
+            self.assertNotIn(v2_location, site.read_bytes())
+            preflight.assert_called_once_with(version="tma-editor-v2")
+            preflight.reset_mock()
+
+            frontend.activate_telegram_release(archive_v2, "f" * 40, **options)
+            self.assertIn(v2_location, site.read_bytes())
+            self.assertNotIn(v1_location, site.read_bytes())
+            self.assertIn(b"/legal/2026-11-25/product-analytics-consent.html", site.read_bytes())
+            preflight.assert_called_once_with(version="tma-editor-v2")
+            preflight.reset_mock()
+
+            frontend.activate_telegram_release(archive_v1, "e" * 40, **options)
+            self.assertEqual((root / "current").readlink(), previous)
+            self.assertIn(v1_location, site.read_bytes())
+            self.assertNotIn(v2_location, site.read_bytes())
+            self.assertIn(b"/legal/2026-11-25.2/product-analytics-consent.html", site.read_bytes())
+            preflight.assert_called_once_with(version="tma-editor-v1")
 
     def test_replaying_the_same_telegram_build_preserves_the_previous_release(self):
         root, site, old, archive, incoming = self.telegram_update()

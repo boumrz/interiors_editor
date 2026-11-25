@@ -152,8 +152,8 @@ export function TelegramUsageDialog({
 							{copy("Использование и ошибки редактора", "Editor usage and errors")}
 						</h3>
 						<p>{copy(
-							"По вашему разрешению мы считаем запуски с действиями и ошибками редактора. Яндекс Метрика получает только суточные суммы. Вы можете отключить этот учёт здесь.",
-							"With your permission, we count launches where editor actions and errors occur. Yandex Metrica receives daily totals only. You can turn off this counting here.",
+							"По вашему разрешению мы считаем запуски с действиями и ошибками редактора. Яндекс Метрика получает общие суммы по кодам за каждый двухчасовой интервал. Вы можете отключить этот учёт здесь.",
+							"With your permission, we count launches where editor actions and errors occur. Yandex Metrica receives totals for each two-hour interval, grouped by code. You can turn off this counting here.",
 						)}</p>
 						<LegalDocumentLink telegram documentName="product-analytics-consent">
 							{copy("Согласие на статистику использования и ошибок", "Consent for usage and error analytics")}

@@ -9,7 +9,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
-from contextlib import closing, redirect_stderr
+from contextlib import closing, contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qsl, urlsplit
@@ -32,6 +32,7 @@ OPEN = "/stats/tma-open-v2"
 MOBILE_OPEN = "/stats/tma-mobile-open-v1"
 REPEAT = "/stats/tma-repeat-v2"
 PRODUCT_PREFIX = "/stats/tma-editor-v1/"
+PRODUCT_INTRADAY_PREFIX = "/stats/tma-editor-v2/"
 PRODUCT_FLAG = "INTERIORS_PRODUCT_METRICS_ENABLED"
 CUTOFF = dt.datetime(2027, 3, 31, 21, tzinfo=dt.timezone.utc)
 
@@ -294,6 +295,137 @@ class CollectorTest(unittest.TestCase):
         self.assertTrue(self.store.resolve_product_export(day, "projects", "ios", "sent"))
         self.assertEqual(self.app.export_product()["state"], "ok")
         self.assertEqual(len(self.sent), 5)
+
+    def test_product_v2_counts_after_lock_across_midnight_without_platform_or_v1_write(self):
+        request = self.serve()
+        route = PRODUCT_INTRADAY_PREFIX + "editor_entry"
+        self.assertEqual(request("GET", "/health/tma-editor-v2"), 204)
+        self.assertEqual(request("POST", route), 503)
+        self.app.env[PRODUCT_FLAG] = "1"
+        self.assertEqual(request("POST", route), 204)
+        for path, options in [
+            (PRODUCT_INTRADAY_PREFIX + "ios/editor_entry", {}),
+            (PRODUCT_INTRADAY_PREFIX + "unknown", {}),
+            (route + "?private=x", {}),
+            (route, {"body": b"private"}),
+            (route, {"headers": {"Transfer-Encoding": "chunked"}}),
+        ]:
+            with self.subTest(path=path, options=options):
+                self.assertGreaterEqual(request("POST", path, **options), 400)
+        original_transaction = self.store.transaction
+
+        @contextmanager
+        def transaction_at_midnight():
+            with original_transaction() as db:
+                self.now = START + dt.timedelta(seconds=1)
+                yield db
+
+        with patch.object(self.store, "transaction", transaction_at_midnight):
+            self.assertEqual(request("POST", route), 204)
+        with sqlite3.connect(self.db) as connection:
+            bucket_rows = connection.execute("SELECT * FROM product_intraday_counts ORDER BY start").fetchall()
+            self.assertEqual(bucket_rows, [
+                (int(dt.datetime.fromisoformat("2026-11-22T22:00:00+03:00").timestamp()), "editor_entry", 1),
+                (int(dt.datetime.fromisoformat("2026-11-23T00:00:00+03:00").timestamp()), "editor_entry", 1),
+            ])
+            self.assertEqual(connection.execute("SELECT count(*) FROM product_counts").fetchone(), (0,))
+        self.app.env["INTERIORS_MP_AGGREGATE_COUNTER_ID"] = "123"
+        self.assertEqual(request("GET", "/health/tma-editor-v2"), 503)
+        self.assertEqual([], self.sent)
+
+    def test_product_v2_exports_only_actual_closed_windows_three_groups_at_a_time(self):
+        self.app.env[PRODUCT_FLAG] = "1"
+        self.assertEqual(self.app.export_product_intraday(), {"state": "ok", "windows": []})
+        self.assertTrue(self.app.record(PRODUCT_INTRADAY_PREFIX + "editor_entry"))
+        self.assertTrue(self.app.record(PRODUCT_INTRADAY_PREFIX + "wall_moved"))
+        self.assertTrue(self.app.record(PRODUCT_PREFIX + "ios/project_created"))
+        self.assertEqual(self.app.export_product_intraday(), {"state": "ok", "windows": []})
+        self.assertEqual(self.sent, [])
+        self.now = CLOSED
+        with concurrent.futures.ThreadPoolExecutor(6) as pool:
+            list(pool.map(lambda _: self.app.export_product_intraday(), range(6)))
+        self.assertEqual(len(self.sent), 3)
+        observed = {hit["dl"]: (hit["cid"], hit["et"], json.loads(hit["params"]))
+                    for _, _, hits in self.sent for hit in hits}
+        root = "https://domiknote.ru/tma-editor-report/"
+        self.assertEqual({(key, row[0]) for key, row in observed.items()}, {
+            (root + "projects/mobile", "7000000000000000009"),
+            (root + "tools/mobile", "7000000000000000010"),
+            (root + "errors/mobile", "7000000000000000011"),
+        })
+        self.assertEqual({row[1] for row in observed.values()}, {str(int(START.timestamp()))})
+        self.assertEqual(observed[root + "projects/mobile"][2]["editor_entry"], 1)
+        self.assertEqual(observed[root + "projects/mobile"][2]["project_created"], 0)
+        self.assertEqual(observed[root + "tools/mobile"][2]["wall_moved"], 1)
+        self.assertEqual(observed[root + "errors/mobile"][2]["save_failed"], 0)
+        self.now += dt.timedelta(hours=3)
+        self.assertEqual(self.app.export_product_intraday()["state"], "ok")
+        self.assertEqual(len(self.sent), 3)
+        self.assertEqual(self.app.export_product()["state"], "ok")
+        self.assertEqual(len(self.sent), 9)
+        self.now += dt.timedelta(days=1)
+        self.app.export_product()
+        self.assertEqual(len(self.sent), 9)
+        self.assertEqual(self.store.product_report(dt.date(2026, 11, 23)), [])
+
+    def test_product_v2_export_retries_only_definite_failures_per_window_and_group(self):
+        self.app.env[PRODUCT_FLAG] = "1"
+        self.assertTrue(self.app.record(PRODUCT_INTRADAY_PREFIX + "save_failed"))
+        self.now = CLOSED
+        outcomes = iter(("offline", "unknown", "rejected"))
+        self.app.send = lambda *_: next(outcomes)
+        self.assertEqual(self.app.export_product_intraday()["state"], "needs-review")
+        self.app.send = self.sender
+        self.assertEqual(self.app.export_product_intraday()["state"], "needs-review")
+        self.assertEqual(len(self.sent), 2)
+        start = int(dt.datetime.fromisoformat("2026-11-22T22:00:00+03:00").timestamp())
+        windows = self.store.product_intraday_report(dt.date(2026, 11, 22), start)
+        self.assertEqual(len(windows), 1)
+        self.assertTrue(windows[0]["firstWindow"])
+        self.assertEqual({report["group"]: report["state"] for report in windows[0]["reports"]}, {
+            "projects": "sent", "tools": "unknown", "errors": "sent",
+        })
+        self.assertFalse(self.store.resolve_product_intraday(start, "projects", "rejected"))
+        self.assertTrue(self.store.resolve_product_intraday(start, "tools", "rejected"))
+        self.assertEqual(self.app.export_product_intraday()["state"], "ok")
+        self.assertEqual(len(self.sent), 3)
+        self.now = START + dt.timedelta(hours=12, seconds=1)
+        self.assertEqual(self.app.export_product_intraday(), {"state": "ok", "windows": []})
+        self.app.env[PRODUCT_FLAG] = "0"
+        self.assertFalse(self.app.record(PRODUCT_INTRADAY_PREFIX + "wall_moved"))
+        self.assertEqual(self.app.export_product_intraday()["state"], "disabled")
+
+    def test_product_v2_schema_upgrade_keeps_daily_counts_and_indeterminate_rows(self):
+        self.app.env[PRODUCT_FLAG] = "1"
+        self.assertTrue(self.app.record(PRODUCT_PREFIX + "ios/project_created"))
+        with sqlite3.connect(self.db) as connection:
+            connection.execute("INSERT INTO product_exports VALUES ('2026-11-22', 'projects', 'ios', 'unknown')")
+            connection.execute("DROP TABLE product_intraday_counts")
+            connection.execute("DROP TABLE product_intraday_exports")
+        self.store.initialize()
+        self.assertTrue(self.app.record(PRODUCT_INTRADAY_PREFIX + "project_created"))
+        self.now = CLOSED
+        with sqlite3.connect(self.db) as connection:
+            self.assertEqual(connection.execute("SELECT * FROM product_counts").fetchall(),
+                             [("2026-11-22", "ios", "project_created", 1)])
+            self.assertEqual(connection.execute("SELECT * FROM product_exports").fetchall(),
+                             [("2026-11-22", "projects", "ios", "unknown")])
+        self.assertEqual(self.app.export_product_intraday()["state"], "ok")
+        self.assertEqual(self.app.export_product()["state"], "needs-review")
+        self.assertEqual(len(self.sent), 8)
+
+    def test_intraday_cli_runs_each_export_even_when_the_other_store_fails(self):
+        for failed, success in (("export_intraday", "export_product_intraday"),
+                                ("export_product_intraday", "export_intraday")):
+            with (self.subTest(failed=failed), patch.object(c.sys, "argv", ["collector.py", "intraday"]),
+                  patch.dict(c.os.environ, {"INTERIORS_ANALYTICS_DB": str(self.db)}),
+                  patch.object(c.Analytics, failed, side_effect=sqlite3.OperationalError("store unavailable")),
+                  patch.object(c.Analytics, success, return_value={"state": "ok", "windows": []}) as other,
+                  redirect_stdout(io.StringIO()) as stdout):
+                self.assertEqual(c.main(), 1)
+                other.assert_called_once_with()
+                self.assertEqual({json.loads(line)["state"] for line in stdout.getvalue().splitlines()},
+                                 {"unavailable", "ok"})
 
     def test_disabled_receivers_and_exact_moscow_study_cutoff(self):
         request = self.serve()

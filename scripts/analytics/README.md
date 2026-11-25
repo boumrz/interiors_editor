@@ -52,7 +52,7 @@ SQLite резервирует отправку и получает обе сум
 новой оболочки и истечения окна доставки за последний неполный интервал.
 Отметьте неполные интервалы в операторском отчёте.
 
-## Продуктовая статистика мобильного редактора
+## Суточная продуктовая статистика мобильного редактора (v1)
 
 Пустой `POST /stats/tma-editor-v1/{ios|android}/{код}` увеличивает сумму за
 московский день. Список кодов закрыт. Nginx передаёт в приватный сокет
@@ -101,6 +101,8 @@ ClientID фиксированы. Параметры содержат суммы 
 суммы после появления принятого периода в Метрике. До первого закрытого
 периода укажите ожидание данных. Нулевые суммы в согласованном рабочем периоде
 отражают отсутствие сигналов. Отмечайте периоды отключения канала отдельно.
+После перехода на двухчасовой канал ежедневный таймер завершает только
+дни с принятыми сигналами v1 или существующим журналом выгрузки.
 
 ```sh
 sudo -u interiors-analytics /usr/bin/python3 -B /usr/local/lib/interiors-analytics/collector.py report-product --day YYYY-MM-DD
@@ -117,6 +119,53 @@ sudo -u interiors-analytics /usr/bin/python3 -B /usr/local/lib/interiors-analyti
 ```sh
 sudo -u interiors-analytics /usr/bin/python3 -B /usr/local/lib/interiors-analytics/collector.py resolve-product --day YYYY-MM-DD --group projects --platform ios --confirmed sent
 ```
+
+## Двухчасовая продуктовая статистика мобильного редактора (v2)
+
+Релиз с редакцией согласия `2026-11-25.2` принимает
+`POST /stats/tma-editor-v2/{код}`. Платформа остаётся на устройстве.
+Суммы и журнал v2 хранятся в новых таблицах. Ежедневные суммы и журнал v1
+остаются доступными для сверки.
+
+Перед выпуском установить обновлённый коллектор и проверить приватный
+протокол. Существующий флаг `INTERIORS_PRODUCT_METRICS_ENABLED` управляет
+обоими продуктовыми протоколами, наблюдение обычных открытий продолжает
+работать. Таймер `interiors-analytics-intraday.timer` в 05 минут каждого часа
+обрабатывает двухчасовые открытия и продуктовый поток независимо.
+
+```sh
+sudo curl -sS -o /dev/null -w '%{http_code}\n' --unix-socket /run/interiors-analytics/collect.sock http://localhost/health/tma-editor-v2
+sudo systemctl list-timers interiors-analytics-intraday.timer
+```
+
+Выгружаются закрытые окна, в которых принят хотя бы один сигнал v2.
+Первое записанное окно может быть неполным. Три отдельные записи имеют
+время последней секунды окна и постоянные служебные ClientID.
+
+| Группа | Адрес | ClientID |
+| --- | --- | --- |
+| `projects` | `https://domiknote.ru/tma-editor-report/projects/mobile` | `7000000000000000009` |
+| `tools` | `https://domiknote.ru/tma-editor-report/tools/mobile` | `7000000000000000010` |
+| `errors` | `https://domiknote.ru/tma-editor-report/errors/mobile` | `7000000000000000011` |
+
+Чтение по дню показывает закрытые окна. Пустой список `reports` в окне
+означает отсутствие исходных сигналов; у записанного окна видны суммы и
+статусы трёх групп. `firstWindow` отмечает первое записанное окно.
+Для одного окна используйте его точное начало со смещением часового
+пояса. После сверки получателя и завершения текущей выгрузки оператор
+может зафиксировать состояние конкретной группы. Подтверждённое отсутствие
+разрешает штатный повтор только в пределах 12-часового окна. Полученная
+и неопределённая отправки сохраняют свои статусы до сверки.
+
+```sh
+sudo -u interiors-analytics /usr/bin/python3 -B /usr/local/lib/interiors-analytics/collector.py report-product-intraday --day YYYY-MM-DD
+sudo -u interiors-analytics /usr/bin/python3 -B /usr/local/lib/interiors-analytics/collector.py report-product-intraday --start YYYY-MM-DDT22:00:00+03:00
+sudo -u interiors-analytics /usr/bin/python3 -B /usr/local/lib/interiors-analytics/collector.py resolve-product-intraday --start YYYY-MM-DDT22:00:00+03:00 --group projects --confirmed sent
+```
+
+Для отката сначала выключить продуктовый флаг и перезапустить
+`interiors-analytics.service`. Прежний архив восстанавливает маршруты v1.
+Двухчасовые суммы и журнал остаются в той же базе.
 
 Из корня репозитория можно проверить настоящее сокетное приложение, совместимость прежней базы, правила Nginx и форму отчёта без внешней отправки. Для HTTP-проверки требуется Nginx в PATH или путь в переменной `INTERIORS_NGINX_BIN`.
 

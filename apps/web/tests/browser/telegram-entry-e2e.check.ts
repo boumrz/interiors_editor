@@ -8,8 +8,10 @@ import {
 	openOpeningDetailsOnSelectedWall,
 	semanticRows,
 } from "./telegram-entry-support";
-import { signedExample, fixtureEditionTime } from "./telegram-entry-signed-fixture";
+import { signedExample, fixtureEditionTime, fixtureSignedTime } from "./telegram-entry-signed-fixture";
+import { verifyTelegramLaunch } from "../../src/adapters/telegram/signed-launch";
 import { licenseRevision } from "../../src/app/license-receipt";
+import { statisticsRevision } from "../../src/app/telegram-usage-metrics";
 import { clickRectangularRoomCentre, clickRectangularRoomPoint } from "./room-geometry-fixture";
 const sdkURL = "**/telegram-sdk/telegram-web-app.124bdff7ba3fe86c8ba5143467afec21e020405e74abdb92cfdda6c0ee3b5908.js";
 async function noStorage(page: Page, expectedReady = 0) {
@@ -703,7 +705,7 @@ test("TMA-LANGUAGE-01: the saved bot language localizes a direct signed launch, 
 for (const platform of ["ios", "android", "tdesktop"] as const) {
 	test(`TMA-PRODUCT-METRICS: ${platform} reports consented editor outcomes once per launch`, async ({ page }) => {
 		const sent: string[] = [];
-		await page.route("**/stats/tma-editor-v1/**", async (route) => {
+		await page.route(/\/stats\/tma-editor-v[12]\//, async (route) => {
 			const req = route.request();
 			expect(req.method()).toBe("POST");
 			expect(req.postData()).toBeNull();
@@ -712,11 +714,30 @@ for (const platform of ["ios", "android", "tdesktop"] as const) {
 			expect(req.headers().referer).toBeUndefined();
 			const url = new URL(req.url());
 			expect(url.search).toBe("");
+			expect(url.pathname).toMatch(/^\/stats\/tma-editor-v2\/[a-z_0-9]+$/);
 			sent.push(url.pathname);
 			await route.fulfill({ status: 204 });
 		});
 		await page.clock.setFixedTime(new Date(fixtureEditionTime));
 		await installEntryAudit(page, "signed", signedExample, false, platform);
+		const dailyLaunch = await verifyTelegramLaunch(
+			signedExample,
+			{ botId: "7342037359", environment: "production" },
+			{ nowEpochMs: fixtureSignedTime },
+		);
+		if (dailyLaunch.kind !== "verified") throw Error("Expected the published signed test vector");
+		await page.addInitScript(({ key, at, launch }) => {
+			if (localStorage.getItem(key) !== null) return;
+			localStorage.setItem(key, JSON.stringify({
+				form: null, opens: true, permission: "unknown", decisionAt: 0, lastOpen: 0, baseline: 0,
+				product: { revision: "2026-11-25", at, generation: "00000000-0000-4000-8000-000000000000" },
+			}));
+			sessionStorage.setItem(`${key}:product:launch`, JSON.stringify({ launch, codes: ["project_created"] }));
+		}, {
+			key: `interiors:${dailyLaunch.scope}:statistics:${statisticsRevision}`,
+			at: fixtureEditionTime - 1,
+			launch: dailyLaunch.authenticatedAt,
+		});
 		await page.goto("/");
 		await page.getByRole("button", { name: "Настройки", exact: true }).click();
 		await page.getByRole("button", { name: "Настройки статистики", exact: true }).click();
@@ -729,8 +750,8 @@ for (const platform of ["ios", "android", "tdesktop"] as const) {
 		await expect(toggle).toHaveAttribute("aria-checked", "false");
 		expect(sent).toEqual([]);
 		await toggle.click();
-		const prefix = `/stats/tma-editor-v1/${platform}/`;
-		const paths = ["editor_entry", "backup_incompatible", "project_created", "room_created", "view_3d_ready"].map((code) => prefix + code);
+		const prefix = "/stats/tma-editor-v2/";
+		const paths = ["editor_entry", "backup_incompatible", "room_created", "view_3d_ready"].map((code) => prefix + code);
 		await expect.poll(() => sent.slice()).toEqual(paths.slice(0, 1));
 		await page.getByRole("button", { name: "Закрыть статистику", exact: true }).click();
 		await page.getByRole("button", { name: "Закрыть настройки", exact: true }).click();

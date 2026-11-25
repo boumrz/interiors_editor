@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from "react";
+import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
 import type {
 	CatalogGatewayPort,
 	ProjectSourceRecoveryPort,
@@ -6,6 +7,7 @@ import type {
 } from "../application/ports";
 import type { PwaBrowseCache, PwaInstall, PwaUpdate } from "../ui/AppShell";
 import { AppShell } from "../ui/AppShell";
+import { copy } from "../ui/editor-language";
 import type { DrawingDimensionPreferencesPort } from "../ui/drawing-dimension-visibility";
 import type {
 	EditorNavigationProtection,
@@ -28,6 +30,7 @@ export type EditorAppProps = {
 	readonly diagnosticDetails?: ReactNode;
 	readonly projectsSupplement?: ReactNode;
 	readonly localGreyboxCatalog?: boolean;
+	readonly roomTheme?: RoomRenderTheme | undefined;
 	readonly exactFloorYaw?: boolean;
 	readonly doorHingeAuthoring?: boolean;
 	readonly readonlyContent?: ReactNode;
@@ -78,17 +81,16 @@ export function ReleaseRecoveryScreen({
 	const Container = embedded ? "section" : "main";
 	return (
 		<Container aria-labelledby="release-recovery-heading">
-			<h1 id="release-recovery-heading">Безопасное восстановление проекта</h1>
+			<h1 id="release-recovery-heading">{copy("Безопасное восстановление проекта", "Project recovery")}</h1>
 			<p>
-				Обновлённая версия не смогла подтвердить совместимость локального
-				проекта. Редактирование заблокировано: исходная ревизия не изменялась.
+				{copy("Обновлённая версия не смогла подтвердить совместимость локального проекта. Редактирование заблокировано: исходная ревизия не изменялась.", "The updated app could not verify this local project. The saved version is intact and editing is paused.")}
 			</p>
 			{typeof recovery.serializedProject === "string" ? (
 				<button onClick={downloadRecoverySource} type="button">
-					Скачать копию для восстановления
+					{copy("Скачать копию для восстановления", "Download recovery copy")}
 				</button>
 			) : (
-				<p>Доступной для экспорта читаемой копии не найдено.</p>
+				<p>{copy("Доступной для экспорта читаемой копии не найдено.", "There is no readable copy to export.")}</p>
 			)}
 		</Container>
 	);
@@ -111,6 +113,7 @@ export function EditorApp({
 	editorStorageNamespace,
 	requestedRenameProjectId,
 	hostNavigation,
+	roomTheme,
 	navigationProtection,
 	hostLifecycle,
 	registeredTransferImport,
@@ -146,7 +149,7 @@ export function EditorApp({
 
 	if (startup.kind === "checking" || startup.kind === "migration-in-progress") {
 		return (
-			<main aria-busy="true" aria-label="Проверка совместимости обновления" />
+			<main aria-busy="true" aria-label={copy("Проверка совместимости обновления", "Checking update compatibility")} />
 		);
 	}
 	const readOnly =
@@ -155,7 +158,7 @@ export function EditorApp({
 			: !writableSourceAdmitted;
 	if (readOnly) {
 		return (<>
-			{onOpenSettings && <button type="button" onClick={(event) => onOpenSettings(event.currentTarget)}>Настройки</button>}
+			{onOpenSettings && <button type="button" onClick={(event) => onOpenSettings(event.currentTarget)}>{copy("Настройки", "Settings")}</button>}
 			{readonlyContent ?? (
 				<ReleaseRecoveryScreen
 					recovery={
@@ -182,6 +185,7 @@ export function EditorApp({
 			canCreateLegacyProject={runtime.canCreateLegacyProject}
 			getLegacyStartupRecovery={runtime.getLegacyStartupRecovery}
 			hostNavigation={hostNavigation}
+			roomTheme={roomTheme}
 			navigationProtection={navigationProtection}
 			hostLifecycle={hostLifecycle}
 			registeredTransferImport={registeredTransferImport}

@@ -18,6 +18,10 @@ export const publicLegalPaths = [
 ];
 
 export class LegalDocumentsPlugin {
+	constructor({ english = false } = {}) {
+		this.english = english;
+	}
+
 	apply(compiler) {
 		compiler.hooks.thisCompilation.tap(
 			"LegalDocumentsPlugin",
@@ -32,6 +36,7 @@ export class LegalDocumentsPlugin {
 						const entry = compilation.getAsset("index.html");
 						if (!entry) return; // Unit-test compilations inherit the config without an HTML shell.
 						const documents = {};
+						const englishDocuments = {};
 						for (const name of legalDocumentNames) {
 							const sourcePath = fileURLToPath(
 								new URL(`../../../docs/legal/${name}.html`, import.meta.url),
@@ -45,6 +50,16 @@ export class LegalDocumentsPlugin {
 								asset,
 							);
 							documents[name] = bytes.toString("utf8");
+							if (this.english) {
+								const englishPath = fileURLToPath(new URL(`../../../docs/legal/en/${name}.html`, import.meta.url));
+								compilation.fileDependencies.add(englishPath);
+								const english = readFileSync(englishPath);
+								compilation.emitAsset(
+									archivePath(name).replace(`/${name}.html`, `/en/${name}.html`),
+									new rspack.sources.RawSource(english),
+								);
+								englishDocuments[name] = english.toString("utf8");
+							}
 						}
 						const previous = fileURLToPath(new URL(
 							`../../../docs/legal/archive/${licenseRevision}/privacy-policy.html`,
@@ -53,12 +68,13 @@ export class LegalDocumentsPlugin {
 						compilation.fileDependencies.add(previous);
 						compilation.emitAsset(archivedPrivacy, new rspack.sources.RawSource(readFileSync(previous)));
 						const html = entry.source.source().toString();
-						const json = JSON.stringify(documents).replaceAll("<", "\\u003c");
-						const reader = `<script type="application/json" id="legal-documents-${licenseRevision}">${json}</script>`;
+						const reader = (id, texts) => `<script type="application/json" id="${id}">${JSON.stringify(texts).replaceAll("<", "\\u003c")}</script>`;
+						const russianReader = reader(`legal-documents-${licenseRevision}`, documents);
+						const englishReader = this.english ? reader(`legal-documents-en-${licenseRevision}`, englishDocuments) : "";
 						compilation.updateAsset(
 							"index.html",
 							new rspack.sources.RawSource(
-								html.replace("</body>", () => reader + "</body>"),
+								html.replace("</body>", () => russianReader + englishReader + "</body>"),
 							),
 						);
 					},

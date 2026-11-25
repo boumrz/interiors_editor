@@ -230,6 +230,83 @@ describe("Telegram host environment", () => {
 		expect(count).toBe(1);
 		h.dispose();
 	});
+	it("applies and persists an override without invalidating layout or following later Telegram changes", () => {
+		const f = fixture();
+		const writes: string[] = [];
+		const dependencies = {
+			...f.dependencies,
+			themePreference: { read: () => writes.at(-1), write: (value: string) => writes.push(value) },
+		};
+		const host = f.capture.connect(dependencies);
+		const theme = host.theme;
+		if (!theme) throw new Error("Expected theme controls");
+		const before = host.lifecycle.snapshot();
+		const notifications: unknown[] = [];
+		theme.subscribe(() => notifications.push(theme.snapshot()));
+		expect(theme.snapshot()).toEqual({ preference: "auto", colorScheme: "light", background: "#fdfdfc" });
+		theme.setPreference("dark");
+		expect(f.style.getPropertyValue("--editor-host-plan-canvas")).toBe("#1d252c");
+		const chosenTheme = theme.snapshot();
+		theme.setPreference("dark");
+		f.emit("themeChanged");
+		expect(theme.snapshot()).toBe(chosenTheme);
+		expect(notifications).toEqual([{ preference: "dark", colorScheme: "dark", background: "#1d252c" }]);
+		expect(host.lifecycle.snapshot()).toBe(before);
+		host.dispose();
+		theme.setPreference("light");
+		const reopened = f.capture.connect(dependencies);
+		expect(reopened.theme?.snapshot().preference).toBe("dark");
+		reopened.theme?.setPreference("auto");
+		expect(f.style.getPropertyValue("color-scheme")).toBe("light");
+		expect(writes).toEqual(["dark", "auto"]);
+		reopened.dispose();
+	});
+	it("notifies only active theme subscribers of automatic host changes", () => {
+		const f = fixture();
+		const host = f.connect();
+		const theme = host.theme;
+		if (!theme) throw new Error("Expected theme controls");
+		const notified: string[] = [];
+		const stop = theme.subscribe(() => notified.push(theme.snapshot().colorScheme));
+		f.sdk.colorScheme = "dark";
+		f.emit("themeChanged");
+		expect(notified).toEqual(["dark"]);
+		stop();
+		f.sdk.colorScheme = "light";
+		f.emit("themeChanged");
+		expect(notified).toEqual(["dark"]);
+		expect(theme.snapshot().colorScheme).toBe("light");
+		host.dispose();
+	});
+	it("uses the live system theme only while Telegram has no recognized scheme and handles unavailable persistence", () => {
+		const f = fixture({ colorScheme: undefined });
+		let systemDark = true;
+		let onSystemChange = () => {};
+		let unsubscribed = false;
+		const host = f.capture.connect({
+			...f.dependencies,
+			readSystemColorScheme: () => systemDark ? "dark" : "light",
+			subscribeSystemColorScheme: (listener: () => void) => {
+				onSystemChange = listener;
+				return () => { unsubscribed = true; };
+			},
+			themePreference: {
+				read: () => "unsupported",
+				write: () => { throw new Error("storage unavailable"); },
+			},
+		});
+		expect(host.theme?.snapshot().colorScheme).toBe("dark");
+		systemDark = false;
+		onSystemChange();
+		expect(f.style.getPropertyValue("color-scheme")).toBe("light");
+		f.sdk.colorScheme = "dark";
+		f.emit("themeChanged");
+		expect(f.style.getPropertyValue("color-scheme")).toBe("dark");
+		host.theme?.setPreference("light");
+		expect(f.style.getPropertyValue("color-scheme")).toBe("light");
+		host.dispose();
+		expect(unsubscribed).toBe(true);
+	});
 	it("suspends on host, visibility and focus independently, then resumes with fresh snapshot", () => {
 		const f = fixture(),
 			h = f.connect();
@@ -699,6 +776,8 @@ it("reads native browser layout inputs and registers every capture listener with
 		window: noVisual as unknown as Window,
 		document: document as unknown as Document,
 	});
+	expect(fallback.readSystemColorScheme?.()).toBe("light");
+	expect(() => fallback.subscribeSystemColorScheme?.(() => undefined)()).not.toThrow();
 	expect(fallback.readBrowser().visualHeight).toBeUndefined();
 	const removeFallback = fallback.subscribeBrowser(() => {
 		calls++;
@@ -710,6 +789,47 @@ it("reads native browser layout inputs and registers every capture listener with
 	noVisual.emit("resize");
 	document.emit("visibilitychange");
 	expect(calls).toBe(9);
+});
+
+it("reads and cleans up the browser's live system theme signal", () => {
+	const f = fixture();
+	const media = {
+		matches: true,
+		listeners: new Set<() => void>(),
+		addEventListener(name: string, listener: () => void) {
+			expect(name).toBe("change");
+			this.listeners.add(listener);
+		},
+		removeEventListener(name: string, listener: () => void) {
+			expect(name).toBe("change");
+			this.listeners.delete(listener);
+		},
+	};
+	const signals = createTelegramBrowserSignals({
+		window: {
+			matchMedia(query: string) {
+				expect(query).toBe("(prefers-color-scheme: dark)");
+				return media;
+			},
+		} as unknown as Window,
+		document: { documentElement: { style: f.style } } as unknown as Document,
+	});
+	expect(signals.readSystemColorScheme?.()).toBe("dark");
+	let changes = 0;
+	const dispose = signals.subscribeSystemColorScheme?.(() => { changes++; });
+	expect(media.listeners.size).toBe(1);
+	media.matches = false;
+	for (const listener of [...media.listeners]) listener();
+	expect(changes).toBe(1);
+	expect(signals.readSystemColorScheme?.()).toBe("light");
+	dispose?.();
+	expect(media.listeners.size).toBe(0);
+	const staticMedia = createTelegramBrowserSignals({
+		window: { matchMedia: () => ({ matches: true }) } as unknown as Window,
+		document: { documentElement: { style: f.style } } as unknown as Document,
+	});
+	expect(staticMedia.readSystemColorScheme?.()).toBe("dark");
+	expect(() => staticMedia.subscribeSystemColorScheme?.(() => undefined)()).not.toThrow();
 });
 
 it("drains a browser remover returned after synchronous context-change disposal", () => {

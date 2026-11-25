@@ -1,4 +1,5 @@
 import { parsePpjA1JsonBytes } from "../../domain/ppj-a1-lossless-json";
+import { botLanguageParameter } from "./editor-language";
 
 export type TelegramEnvironment = "production" | "test";
 
@@ -26,6 +27,8 @@ export type TelegramLaunchResult =
 			readonly kind: "verified";
 			readonly scope: VerifiedTelegramScope;
 			readonly authenticatedAt: number;
+			readonly languageCode?: string;
+			readonly startParameter?: string;
 	  }
 	| { readonly kind: "rejected"; readonly reason: LaunchRejection };
 
@@ -65,10 +68,13 @@ export async function verifyTelegramLaunch(
 	// Reuse the bounded, duplicate-aware raw JSON parser, not the PPJ schema.
 	// Retaining the ID lexeme prevents fractional/unsafe values rounding to an ID.
 	const user = parsePpjA1JsonBytes(new TextEncoder().encode(rawUser));
-	const id =
+	const userData =
 		user.kind === "accepted" && user.root.kind === "object"
-			? user.root.properties.get("id")
+			? user.root.properties
 			: undefined;
+	const id = userData?.get("id");
+	const languageCode = userData?.get("language_code");
+	const startParameter = fields.get("start_param");
 	if (id?.kind !== "number" || !isCanonicalPositiveInteger(id.lexeme)) {
 		return reject("invalid-identity");
 	}
@@ -119,6 +125,8 @@ export async function verifyTelegramLaunch(
 			kind: "verified",
 			authenticatedAt: Number(rawAuthDate),
 			scope: `tma-v1-${hex}` as VerifiedTelegramScope,
+			...(languageCode?.kind === "string" && languageCode.value.length <= 64 ? { languageCode: languageCode.value } : {}),
+			...(startParameter && botLanguageParameter.test(startParameter) ? { startParameter } : {}),
 		};
 	} catch {
 		return reject("unsupported-crypto");

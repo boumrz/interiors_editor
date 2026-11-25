@@ -8,6 +8,17 @@ export const THREE_DIMENSIONAL_ROOM_PALETTE = {
 	wall: "#cdd0cf",
 } as const;
 
+export interface RoomRenderTheme {
+	readonly colorScheme: "light" | "dark";
+	readonly background: string;
+}
+
+const darkRoomMaterials = { floor: "#535d63", wall: "#66737c" };
+
+export function roomMaterialColors(theme?: RoomRenderTheme): { readonly floor: string; readonly wall: string } {
+	return theme?.colorScheme === "dark" ? darkRoomMaterials : THREE_DIMENSIONAL_ROOM_PALETTE;
+}
+
 /**
  * Presentation-only studio lighting.  It is shared as data so the WebGL2
  * projection stays reproducible and no light choice leaks into Project state.
@@ -27,6 +38,8 @@ export const THREE_DIMENSIONAL_ROOM_LIGHTING = {
 	skylight: { groundColor: "#c8cbca", intensity: 0.68, skyColor: "#f5f7fa" },
 } as const;
 
+type Rgba = readonly [number, number, number, number];
+
 export const THREE_DIMENSIONAL_ROOM_SURFACE_COLORS = {
 	background: [0.98, 0.984, 0.988, 1],
 	baseboard: [0.65, 0.66, 0.65, 1],
@@ -37,3 +50,15 @@ export const THREE_DIMENSIONAL_ROOM_SURFACE_COLORS = {
 	wallOutline: [0.27, 0.28, 0.27, 1],
 	wallUpperWash: [0.86, 0.87, 0.86, 1],
 } as const;
+
+export type RoomSurfaceColors = Readonly<Record<Exclude<keyof typeof THREE_DIMENSIONAL_ROOM_SURFACE_COLORS, "background">, Rgba>>;
+
+export const DARK_ROOM_SURFACE_COLORS: RoomSurfaceColors = {
+	baseboard: [0.31, 0.35, 0.38, 1],
+	floorDarkBoard: [0.31, 0.35, 0.37, 1],
+	floorLightBoard: [0.33, 0.37, 0.39, 1],
+	interiorWall: [0.4, 0.45, 0.49, 1],
+	exteriorWall: [0.36, 0.41, 0.44, 1],
+	wallOutline: [0.20, 0.24, 0.27, 1],
+	wallUpperWash: [0.43, 0.48, 0.52, 1],
+};

@@ -12,6 +12,8 @@ import {
 
 import type { SceneBox } from "./rectangular-room-projection";
 import {
+	DARK_ROOM_SURFACE_COLORS,
+	roomMaterialColors,
 	THREE_DIMENSIONAL_ROOM_LIGHTING,
 	THREE_DIMENSIONAL_ROOM_PALETTE,
 	THREE_DIMENSIONAL_ROOM_SURFACE_COLORS,
@@ -180,6 +182,34 @@ describe("3D room presentation", () => {
 		perceivedBrightness(THREE_DIMENSIONAL_ROOM_LIGHTING.skylight.skyColor) -
 			perceivedBrightness(THREE_DIMENSIONAL_ROOM_LIGHTING.skylight.groundColor),
 	).toBeGreaterThanOrEqual(0.12);
+	});
+
+	it("keeps floor, walls and surface details distinct against the shared dark plan canvas", () => {
+		const theme = { colorScheme: "dark", background: "#1d252c" } as const;
+		const background = perceivedBrightness(theme.background);
+		const three = roomMaterialColors(theme);
+		const fallback = DARK_ROOM_SURFACE_COLORS;
+		for (const [floor, wall] of [[three.floor, three.wall], [fallback.floorLightBoard, fallback.interiorWall]] as const) {
+			const floorBrightness = perceivedBrightness(floor);
+			const wallBrightness = perceivedBrightness(wall);
+			expect(floorBrightness - background).toBeGreaterThan(0.18);
+			expect(wallBrightness - floorBrightness).toBeGreaterThan(0.06);
+			expect(wallBrightness).toBeLessThan(0.5);
+		}
+		for (const color of Object.values(fallback)) {
+			expect(color[3]).toBe(1);
+			expect(color.slice(0, 3).every((channel) => channel > 0 && channel < 0.55)).toBe(true);
+		}
+		const contrast = (surface: keyof typeof fallback, adjacent: keyof typeof fallback) =>
+			perceivedBrightness(fallback[surface]) - perceivedBrightness(fallback[adjacent]);
+		expect(contrast("floorLightBoard", "floorDarkBoard")).toBeGreaterThan(0.015);
+		expect(contrast("interiorWall", "exteriorWall")).toBeGreaterThan(0.03);
+		expect(contrast("exteriorWall", "baseboard")).toBeGreaterThan(0.04);
+		expect(contrast("baseboard", "wallOutline")).toBeGreaterThan(0.08);
+		expect(contrast("wallUpperWash", "interiorWall")).toBeGreaterThan(0.025);
+		const lightMaterials = { floor: THREE_DIMENSIONAL_ROOM_PALETTE.floor, wall: THREE_DIMENSIONAL_ROOM_PALETTE.wall };
+		expect(roomMaterialColors({ ...theme, colorScheme: "light" })).toMatchObject(lightMaterials);
+		expect(roomMaterialColors()).toMatchObject(lightMaterials);
 	});
 });
 

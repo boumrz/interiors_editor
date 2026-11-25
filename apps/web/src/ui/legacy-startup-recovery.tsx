@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useState } from "react";
 import type { ReleaseRecoveryRecord } from "../app/release-startup";
 import { prepareUnverifiedSourceFile } from "./stored-source-recovery";
@@ -49,7 +50,10 @@ export function LegacyStartupRecoveryNotice({
 			current.serializedProject !== recovery.serializedProject
 		) {
 			setError(
-				"Исходная запись изменилась. Проверьте её и повторите скачивание.",
+				copy(
+					"Исходная запись изменилась. Проверьте её и повторите скачивание.",
+					"The source record changed. Check it and try downloading again.",
+				),
 			);
 			return;
 		}
@@ -57,10 +61,19 @@ export function LegacyStartupRecoveryNotice({
 		if (prepared.kind !== "prepared-source") {
 			setError(
 				prepared.kind === "too-large"
-					? "Исходная запись слишком велика для локального файла. Она остаётся в хранилище."
+					? copy(
+							"Исходная запись слишком велика для локального файла. Она остаётся в хранилище.",
+							"The source record is too large to save as a local file. It remains in storage.",
+						)
 					: prepared.kind === "preparation-failed"
-						? "Не удалось скачать исходную запись. Повторите попытку."
-						: "Доступной исходной записи для скачивания нет.",
+						? copy(
+								"Не удалось скачать исходную запись. Повторите попытку.",
+								"Could not download the source record. Try again.",
+							)
+						: copy(
+								"Доступной исходной записи для скачивания нет.",
+								"No source record is available to download.",
+							),
 			);
 			return;
 		}
@@ -80,26 +93,41 @@ export function LegacyStartupRecoveryNotice({
 				setTimeout(() => URL.revokeObjectURL(url), 1000);
 			}
 		} catch {
-			setError("Не удалось скачать исходную запись. Повторите попытку.");
+			setError(
+				copy(
+					"Не удалось скачать исходную запись. Повторите попытку.",
+					"Could not download the source record. Try again.",
+				),
+			);
 		}
 	};
 	const contents = (
 		<>
 			<p>
-				Часть данных Web/PWA требует восстановления. Доступные проекты из
-				другого хранилища можно продолжать использовать.
+				{copy(
+					"Часть данных Web/PWA требует восстановления. Доступные проекты из другого хранилища можно продолжать использовать.",
+					"Some Web/PWA data requires recovery. Available projects in other storage can still be used.",
+				)}
 			</p>
 			{readable ? (
 				<>
 					<p>
-						Файл содержит исходный текст записи без моделей и ресурсов проекта.
+						{copy(
+							"Файл содержит исходный текст записи без моделей и ресурсов проекта.",
+							"This file contains the original record text without project models or resources.",
+						)}
 					</p>
 					<button type="button" onClick={download}>
-						Сохранить исходную запись
+						{copy("Сохранить исходную запись", "Save source record")}
 					</button>
 				</>
 			) : (
-				<p>Доступной исходной записи для скачивания нет.</p>
+				<p>
+					{copy(
+						"Доступной исходной записи для скачивания нет.",
+						"No source record is available to download.",
+					)}
+				</p>
 			)}
 			{error ? <p role="alert">{error}</p> : null}
 		</>
@@ -109,12 +137,14 @@ export function LegacyStartupRecoveryNotice({
 			className={`${styles.panel} ${layout.floating}`}
 			data-testid="legacy-startup-recovery"
 		>
-			<summary>Исходная запись Web/PWA</summary>
+			<summary>
+				{copy("Исходная запись Web/PWA", "Web/PWA source record")}
+			</summary>
 			{contents}
 		</details>
 	) : (
 		<aside className={styles.panel} data-testid="legacy-startup-recovery">
-			<h2>Исходная запись Web/PWA</h2>
+			<h2>{copy("Исходная запись Web/PWA", "Web/PWA source record")}</h2>
 			{contents}
 		</aside>
 	);

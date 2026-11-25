@@ -473,6 +473,14 @@ const fixture = {
 		});
 		if (result.kind !== "durable") throw new Error(`Wall light fixture failed: ${result.kind}`);
 	},
+	async addRotatedTable(roomId: string) {
+		if (!runtime) throw new Error("No active runtime");
+		const result = await runtime.controller.createParametricFloorItem({
+			roomId, label: "Стол", xMm: 350, zMm: 1500,
+			widthMm: 2400, depthMm: 400, heightMm: 750, yawStep: 2, color: "#8C7B6B",
+		});
+		if (result.kind !== "durable") throw new Error(`Rotated table fixture failed: ${result.kind}`);
+	},
 	async addWall(input: AddWallSegmentInput) {
 		if (!runtime) throw new Error("No active runtime");
 		const result = await runtime.controller.addGeneralWall(input);

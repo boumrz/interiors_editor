@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import styles from "./AppShell.module.css";
 import rotationStyles from "./FloorRotationControls.module.css";
@@ -10,13 +11,35 @@ export function RotationAngleActions({ disabled, onApply, onCancel }: {
 }) {
 	return (
 		<div className={rotationStyles.angleActions}>
-			<button type="button" aria-label="Отменить ввод угла" disabled={disabled} onClick={onCancel}>
-				<svg aria-hidden="true" focusable="false" height="22" viewBox="0 0 24 24" width="22">
+			<button
+				type="button"
+				aria-label={copy("Отменить ввод угла", "Cancel angle entry")}
+				disabled={disabled}
+				onClick={onCancel}
+			>
+				<svg
+					aria-hidden="true"
+					focusable="false"
+					height="22"
+					viewBox="0 0 24 24"
+					width="22"
+				>
 					<path d="m6.5 6.5 11 11m0-11-11 11" />
 				</svg>
 			</button>
-			<button type="button" aria-label="Применить угол" disabled={disabled} onClick={onApply}>
-				<svg aria-hidden="true" focusable="false" height="22" viewBox="0 0 24 24" width="22">
+			<button
+				type="button"
+				aria-label={copy("Применить угол", "Apply angle")}
+				disabled={disabled}
+				onClick={onApply}
+			>
+				<svg
+					aria-hidden="true"
+					focusable="false"
+					height="22"
+					viewBox="0 0 24 24"
+					width="22"
+				>
 					<path d="m5.5 12.5 4.25 4.25 8.75-9.25" />
 				</svg>
 			</button>
@@ -31,12 +54,12 @@ export function RotationModeToggle({ checked, disabled, onChange }: {
 }) {
 	return (
 		<button
-			aria-label="Шаг 45°"
+			aria-label={copy("Шаг 45°", "45° step")}
 			aria-pressed={checked}
 			className={rotationStyles.modeToggle}
 			disabled={disabled}
 			onClick={() => onChange(!checked)}
-			title="Шаг поворота 45°"
+			title={copy("Шаг поворота 45°", "45° rotation step")}
 			type="button"
 		>
 			<svg aria-hidden="true" focusable="false" height="30" viewBox="0 0 32 32" width="30">
@@ -171,7 +194,14 @@ export function FloorRotationAngleField({
 				/>
 				<span aria-hidden="true">°</span>
 			</label>
-			{invalid ? <p id={errorId} className={styles.fieldError} role="alert">Укажите угол с точностью до трёх знаков.</p> : null}
+			{invalid ? (
+				<p id={errorId} className={styles.fieldError} role="alert">
+					{copy(
+						"Укажите угол с точностью до трёх знаков.",
+						"Enter an angle with up to three decimal places.",
+					)}
+				</p>
+			) : null}
 			{editing ? (
 				<RotationAngleActions disabled={disabled} onCancel={() => finish(false)} onApply={() => finish(true)} />
 			) : null}

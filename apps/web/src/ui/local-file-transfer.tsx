@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { type FormEvent, type MouseEvent, type PointerEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import {
 	encryptProjectTransfer,
@@ -122,14 +123,26 @@ export class LocalFileTransferSession {
 			signal.throwIfAborted();
 			this.encryptedHandle = { path, expiresAt };
 		} catch {
-			if (!signal.aborted) this.update({
-				kind: "encrypted-failed", prepared,
-				notice: "Не удалось подготовить копию. Проверьте подключение и введите пароль ещё раз.",
-			});
+			if (!signal.aborted)
+				this.update({
+					kind: "encrypted-failed",
+					prepared,
+					notice: copy(
+						"Не удалось подготовить копию. Проверьте подключение и введите пароль ещё раз.",
+						"Could not prepare the backup. Check your connection and enter the password again.",
+					),
+				});
 			return;
 		}
 		if (!hasFreshDownloadTap(tappedAt)) {
-			this.update({ kind: "encrypted-ready", prepared, notice: "Копия готова. Коснитесь кнопки «Скачать»." });
+			this.update({
+				kind: "encrypted-ready",
+				prepared,
+				notice: copy(
+					"Копия готова. Коснитесь кнопки «Скачать».",
+					"The backup is ready. Tap Download.",
+				),
+			});
 			return;
 		}
 		await this.requestEncryptedDownload(prepared, relay, path);
@@ -143,8 +156,12 @@ export class LocalFileTransferSession {
 		if (Date.now() >= handle.expiresAt) {
 			this.encryptedHandle = undefined;
 			this.update({
-				kind: "encrypted-failed", prepared,
-				notice: "Срок скачивания истёк. Введите пароль, чтобы скачать новую копию.",
+				kind: "encrypted-failed",
+				prepared,
+				notice: copy(
+					"Срок скачивания истёк. Введите пароль, чтобы скачать новую копию.",
+					"The download expired. Enter the password to download a new copy.",
+				),
 			});
 			return;
 		}
@@ -153,15 +170,29 @@ export class LocalFileTransferSession {
 	private async requestEncryptedDownload(prepared: PreparedHostFile, relay: TelegramProjectDownload, path: string): Promise<void> {
 		const { signal } = this.operation;
 		this.update({ kind: "encrypted-downloading", prepared });
-		const result = await relay.download(path, signal).catch(() => "unavailable");
-		if (!signal.aborted) this.update({
-			kind: "encrypted-ready", prepared,
-			notice: result === "requested"
-				? `Telegram принял запрос. Проверьте файл ${telegramProjectDownloadFilename} в загрузках.`
-				: result === "cancelled"
-					? "Скачивание отменено. Коснитесь «Скачать», чтобы повторить."
-					: "Telegram не открыл скачивание. Попробуйте ещё раз.",
-		});
+		const result = await relay
+			.download(path, signal)
+			.catch(() => "unavailable");
+		if (!signal.aborted)
+			this.update({
+				kind: "encrypted-ready",
+				prepared,
+				notice:
+					result === "requested"
+						? copy(
+								`Telegram принял запрос. Проверьте файл ${telegramProjectDownloadFilename} в загрузках.`,
+								`Telegram accepted the request. Check Downloads for ${telegramProjectDownloadFilename}.`,
+							)
+						: result === "cancelled"
+							? copy(
+									"Скачивание отменено. Коснитесь «Скачать», чтобы повторить.",
+									"Download canceled. Tap Download to try again.",
+								)
+							: copy(
+									"Telegram не открыл скачивание. Попробуйте ещё раз.",
+									"Telegram did not open the download. Try again.",
+								),
+			});
 	}
 	public async handoff(): Promise<void> {
 		if (
@@ -203,47 +234,84 @@ export function LocalFileTransferPanel({
 		state.kind === "encrypted-failed" || state.kind === "encrypted-downloading"))
 		return <EncryptedDownloadPanel session={session} prepared={prepared} state={state} />;
 	const busy = state.kind === "preparing" || state.kind === "handing-off";
-	const copy =
+	const statusMessage =
 		state.kind === "handoff-attempted"
-			? prepared?.fileKind === "unverified-source" ? "Проверьте файл вне приложения. Системное действие не подтверждает его сохранность. Содержимое записи не проверено; этот файл не восстанавливает проект автоматически." : "Проверьте файл вне приложения. Системное действие не подтверждает сохранность backup; выберите полученный файл для проверки импорта."
+			? prepared?.fileKind === "unverified-source"
+				? copy(
+						"Проверьте файл вне приложения. Системное действие не подтверждает его сохранность. Содержимое записи не проверено; этот файл не восстанавливает проект автоматически.",
+						"Check the file outside the app to confirm it saved. The source record is unverified and does not restore a project automatically.",
+					)
+				: copy(
+						"Проверьте файл вне приложения. Системное действие не подтверждает сохранность backup; выберите полученный файл для проверки импорта.",
+						"Check the file outside the app to confirm it saved. Select the file to verify that it can be imported.",
+					)
 			: state.kind === "unsupported"
-				? "Передача файла недоступна в этом клиенте. Попробуйте другой поддерживаемый клиент."
+				? copy(
+						"Передача файла недоступна в этом клиенте. Попробуйте другой поддерживаемый клиент.",
+						"File sharing is unavailable in this client. Try another supported client.",
+					)
 				: state.kind === "save-incomplete"
-					? "Система не завершила сохранение файла. В этой версии Telegram сохранение может быть недоступно."
+					? copy(
+							"Система не завершила сохранение файла. В этой версии Telegram сохранение может быть недоступно.",
+							"The system did not finish saving the file. This version of Telegram may not support saving files.",
+						)
 					: state.kind === "cancelled"
-						? "Передача отменена. Можно повторить попытку."
+						? copy(
+								"Передача отменена. Можно повторить попытку.",
+								"Sharing canceled. You can try again.",
+							)
 						: state.kind === "failed"
 							? prepared
-								? "Не удалось передать файл. Повторите попытку."
-								: "Не удалось подготовить файл. Повторите попытку."
+								? copy(
+										"Не удалось передать файл. Повторите попытку.",
+										"Could not share the file. Try again.",
+									)
+								: copy(
+										"Не удалось подготовить файл. Повторите попытку.",
+										"Could not prepare the file. Try again.",
+									)
 							: state.kind === "handing-off"
-								? "Передача файла…"
+								? copy("Передача файла…", "Sharing file…")
 								: state.kind === "preparing"
-									? "Подготовка файла…"
-									: "Файл готов к передаче. Выберите системное действие и проверьте полученный файл.";
+									? copy("Подготовка файла…", "Preparing file…")
+									: copy(
+											"Файл готов к передаче. Выберите системное действие и проверьте полученный файл.",
+											"The file is ready to share. Choose a system action and check the resulting file.",
+										);
 	return (
 		<TelegramSheetFrame telegram={telegram} canvasAnchored
 			className={styles.panel}
-			aria-label="Передача файла"
+			aria-label={copy("Передача файла", "File sharing")}
 			aria-busy={busy}
 		>
 			<h2>
-				{prepared?.fileKind === "unverified-source" ? "Непроверенная исходная запись" : prepared?.fileKind === "recovery-draft"
-					? "Несохранённая правка"
-					: "Файл проекта"}
+				{prepared?.fileKind === "unverified-source"
+					? copy("Непроверенная исходная запись", "Unverified source record")
+					: prepared?.fileKind === "recovery-draft"
+						? copy("Несохранённая правка", "Unsaved edit")
+						: copy("Файл проекта", "Project file")}
 			</h2>
 			{prepared ? <p>{prepared.file.name}</p> : null}
-			{prepared?.fileKind === "unverified-source" ? <p>Это не резервная копия проекта и не файл несохранённой правки. Содержимое записи не проверено; автоматическое восстановление не выполняется.</p> : null}
-			{prepared?.fileKind === "recovery-draft" ? (
+			{prepared?.fileKind === "unverified-source" ? (
 				<p>
-					Это не полный backup. Восстановление создаёт отдельный проект после
-					проверки.
+					{copy(
+						"Это не резервная копия проекта и не файл несохранённой правки. Содержимое записи не проверено; автоматическое восстановление не выполняется.",
+						"This file contains an unverified source record. It cannot restore the project or an unsaved edit automatically.",
+					)}
 				</p>
 			) : null}
-			<p role="status">{copy}</p>
+			{prepared?.fileKind === "recovery-draft" ? (
+				<p>
+					{copy(
+						"Это не полный backup. Восстановление создаёт отдельный проект после проверки.",
+						"This recovery file contains an unsaved edit. The app verifies the file and then creates a separate project.",
+					)}
+				</p>
+			) : null}
+			<p role="status">{statusMessage}</p>
 			<div>
 				<button type="button" onClick={() => session.close()}>
-					{busy ? "Отменить" : "Закрыть"}
+					{busy ? copy("Отменить", "Cancel") : copy("Закрыть", "Close")}
 				</button>
 				{prepared || state.kind === "failed" ? (
 					<button
@@ -253,10 +321,10 @@ export function LocalFileTransferPanel({
 						onClick={() => void session.retry()}
 					>
 						{state.kind === "prepared"
-							? "Передать файл"
+							? copy("Передать файл", "Share file")
 							: state.kind === "handing-off"
-								? "Передача файла…"
-								: "Повторить"}
+								? copy("Передача файла…", "Sharing file…")
+								: copy("Повторить", "Retry")}
 					</button>
 				) : null}
 			</div>
@@ -300,59 +368,147 @@ function EncryptedDownloadPanel({ session, prepared, state }: {
 		setInfoOpen(false);
 		void session.startEncryptedDownload(password, tappedAt);
 	};
-	return <TelegramSheetFrame telegram canvasAnchored className={styles.panel}
-		aria-label="Передача файла" aria-busy={encrypting || downloading}>
-		<div className={styles.encryptedHeading}>
-			<h2>Файл проекта</h2>
-			<button type="button" className={styles.encryptedInfo} aria-label="Как работает скачивание"
-				aria-expanded={infoOpen} aria-controls={infoId} aria-describedby={infoOpen ? infoId : undefined}
-				onClick={() => setInfoOpen(!infoOpen)} onKeyDown={(event) => {
-					if (event.key === "Escape" && infoOpen) {
-						event.stopPropagation();
-						setInfoOpen(false);
-					}
-				}}>
-				<span aria-hidden="true">ⓘ</span>
-			</button>
-			<p id={infoId} role="tooltip" className={styles.encryptedInfoText} hidden={!infoOpen}>
-				Копия шифруется на телефоне. Подтвердите скачивание в Telegram. Сервер удалит копию через 15 минут. Пароль понадобится для импорта.
+	return (
+		<TelegramSheetFrame
+			telegram
+			canvasAnchored
+			className={styles.panel}
+			aria-label={copy("Передача файла", "File sharing")}
+			aria-busy={encrypting || downloading}
+		>
+			<div className={styles.encryptedHeading}>
+				<h2>{copy("Файл проекта", "Project file")}</h2>
+				<button
+					type="button"
+					className={styles.encryptedInfo}
+					aria-label={copy("Как работает скачивание", "How downloads work")}
+					aria-expanded={infoOpen}
+					aria-controls={infoId}
+					aria-describedby={infoOpen ? infoId : undefined}
+					onClick={() => setInfoOpen(!infoOpen)}
+					onKeyDown={(event) => {
+						if (event.key === "Escape" && infoOpen) {
+							event.stopPropagation();
+							setInfoOpen(false);
+						}
+					}}
+				>
+					<span aria-hidden="true">ⓘ</span>
+				</button>
+				<p
+					id={infoId}
+					role="tooltip"
+					className={styles.encryptedInfoText}
+					hidden={!infoOpen}
+				>
+					{copy(
+						"Копия шифруется на телефоне. Подтвердите скачивание в Telegram. Сервер удалит копию через 15 минут. Пароль понадобится для импорта.",
+						"The backup is encrypted on your phone. Confirm the download in Telegram. The server deletes its copy after 15 minutes. You will need the password to import it.",
+					)}
+				</p>
+			</div>
+			<p>
+				{ready || downloading
+					? telegramProjectDownloadFilename
+					: prepared.file.name}
 			</p>
-		</div>
-		<p>{ready || downloading ? telegramProjectDownloadFilename : prepared.file.name}</p>
-		{ready || downloading ? <>
-			<p role="status">{downloading ? "Открытие Telegram…" : state.notice}</p>
-			<div>
-				<button type="button" onClick={() => session.close()}>{downloading ? "Отменить" : "Закрыть"}</button>
-				<button ref={downloadButton} type="button" className={styles.handoff} disabled={downloading}
-					onPointerDown={recordDownloadTap} onPointerCancel={clearDownloadTap} onClick={(event) => {
-						rejectKeyboardClick(event);
-						const tappedAt = downloadTap.current;
-						clearDownloadTap();
-						if (hasFreshDownloadTap(tappedAt)) void session.downloadEncrypted();
-					}}>Скачать</button>
-			</div>
-		</> : <form className={styles.passwordForm} onSubmit={submit}>
-			<label>Пароль для копии
-				<input name="password" type="password" autoComplete="new-password" required disabled={encrypting}
-					aria-describedby={passwordHintId} aria-invalid={passwordValid === false || undefined}
-					onChange={(event) => {
-						const password = event.currentTarget.value;
-						setPasswordValid(password ? isProjectTransferExportPasswordValid(password) : undefined);
-					}} />
-			</label>
-			<p id={passwordHintId} className={styles.passwordHint}>Пароль должен состоять из 6 символов.</p>
-			{state.notice ? <p role="alert">{state.notice}</p> : null}
-			{encrypting ? <p role="status">Подготовка скачивания…</p> : null}
-			<div>
-				<button type="button" onClick={() => session.close()}>{encrypting ? "Отменить" : "Закрыть"}</button>
-				<button type="submit" disabled={encrypting || passwordValid !== true} className={styles.handoff}
-					onPointerDown={recordDownloadTap} onPointerCancel={clearDownloadTap} onClick={rejectKeyboardClick}>Скачать</button>
-			</div>
-		</form>}
-	</TelegramSheetFrame>;
+			{ready || downloading ? (
+				<>
+					<p role="status">
+						{downloading
+							? copy("Открытие Telegram…", "Opening Telegram…")
+							: state.notice}
+					</p>
+					<div>
+						<button type="button" onClick={() => session.close()}>
+							{downloading
+								? copy("Отменить", "Cancel")
+								: copy("Закрыть", "Close")}
+						</button>
+						<button
+							ref={downloadButton}
+							type="button"
+							className={styles.handoff}
+							disabled={downloading}
+							onPointerDown={recordDownloadTap}
+							onPointerCancel={clearDownloadTap}
+							onClick={(event) => {
+								rejectKeyboardClick(event);
+								const tappedAt = downloadTap.current;
+								clearDownloadTap();
+								if (hasFreshDownloadTap(tappedAt))
+									void session.downloadEncrypted();
+							}}
+						>
+							{copy("Скачать", "Download")}
+						</button>
+					</div>
+				</>
+			) : (
+				<form className={styles.passwordForm} onSubmit={submit}>
+					<label>
+						{copy("Пароль для копии", "Backup password")}
+						<input
+							name="password"
+							type="password"
+							autoComplete="new-password"
+							required
+							disabled={encrypting}
+							aria-describedby={passwordHintId}
+							aria-invalid={passwordValid === false || undefined}
+							onChange={(event) => {
+								const password = event.currentTarget.value;
+								setPasswordValid(
+									password
+										? isProjectTransferExportPasswordValid(password)
+										: undefined,
+								);
+							}}
+						/>
+					</label>
+					<p id={passwordHintId} className={styles.passwordHint}>
+						{copy(
+							"Пароль должен состоять из 6 символов.",
+							"The password must have 6 characters.",
+						)}
+					</p>
+					{state.notice ? <p role="alert">{state.notice}</p> : null}
+					{encrypting ? (
+						<p role="status">
+							{copy("Подготовка скачивания…", "Preparing download…")}
+						</p>
+					) : null}
+					<div>
+						<button type="button" onClick={() => session.close()}>
+							{encrypting
+								? copy("Отменить", "Cancel")
+								: copy("Закрыть", "Close")}
+						</button>
+						<button
+							type="submit"
+							disabled={encrypting || passwordValid !== true}
+							className={styles.handoff}
+							onPointerDown={recordDownloadTap}
+							onPointerCancel={clearDownloadTap}
+							onClick={rejectKeyboardClick}
+						>
+							{copy("Скачать", "Download")}
+						</button>
+					</div>
+				</form>
+			)}
+		</TelegramSheetFrame>
+	);
 }
 
-export function EncryptedImportPasswordDialog({ filename, busy, error, onCancel, onUnlock, submitLabel = "Импортировать" }: {
+export function EncryptedImportPasswordDialog({
+	filename,
+	busy,
+	error,
+	onCancel,
+	onUnlock,
+	submitLabel = copy("Импортировать", "Import"),
+}: {
 	readonly filename: string;
 	readonly busy: boolean;
 	readonly error?: string;
@@ -368,28 +524,52 @@ export function EncryptedImportPasswordDialog({ filename, busy, error, onCancel,
 		element.showModal();
 		return () => element.close();
 	}, []);
-	return <TelegramSheetFrame as="dialog" telegram ref={dialog} busy={busy} className={`${styles.panel} ${styles.passwordDialog}`}
-		aria-labelledby={id} onBackdropClose={onCancel}
-		onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
-		<h2 id={id}>Пароль файла проекта</h2>
-		<p>{filename}</p>
-		<form className={styles.passwordForm} onSubmit={(event) => {
-			event.preventDefault();
-			const form = new FormData(event.currentTarget);
-			const password = String(form.get("password") ?? "");
-			event.currentTarget.reset();
-			onUnlock(password);
-		}}>
-			<label>Пароль, заданный при экспорте
-				<input name="password" type="password" autoComplete="off" required disabled={busy} />
-			</label>
-			{error ? <p role="alert">{error}</p> : null}
-			<div>
-				<button type="button" onClick={onCancel} disabled={busy}>Отмена</button>
-				<button type="submit" disabled={busy} className={styles.handoff}>
-					{busy ? "Открываем…" : submitLabel}
-				</button>
-			</div>
-		</form>
-	</TelegramSheetFrame>;
+	return (
+		<TelegramSheetFrame
+			as="dialog"
+			telegram
+			ref={dialog}
+			busy={busy}
+			className={`${styles.panel} ${styles.passwordDialog}`}
+			aria-labelledby={id}
+			onBackdropClose={onCancel}
+			onCancel={(event) => {
+				event.preventDefault();
+				if (!busy) onCancel();
+			}}
+		>
+			<h2 id={id}>{copy("Пароль файла проекта", "Project file password")}</h2>
+			<p>{filename}</p>
+			<form
+				className={styles.passwordForm}
+				onSubmit={(event) => {
+					event.preventDefault();
+					const form = new FormData(event.currentTarget);
+					const password = String(form.get("password") ?? "");
+					event.currentTarget.reset();
+					onUnlock(password);
+				}}
+			>
+				<label>
+					{copy("Пароль, заданный при экспорте", "Password set during export")}
+					<input
+						name="password"
+						type="password"
+						autoComplete="off"
+						required
+						disabled={busy}
+					/>
+				</label>
+				{error ? <p role="alert">{error}</p> : null}
+				<div>
+					<button type="button" onClick={onCancel} disabled={busy}>
+						{copy("Отмена", "Cancel")}
+					</button>
+					<button type="submit" disabled={busy} className={styles.handoff}>
+						{busy ? copy("Открываем…", "Opening…") : submitLabel}
+					</button>
+				</div>
+			</form>
+		</TelegramSheetFrame>
+	);
 }

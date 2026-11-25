@@ -39,6 +39,7 @@ import {
 import { itemCountCopy } from "./item-count-copy";
 import { defaultDrawingDimensionVisibility } from "./drawing-dimension-visibility";
 import { initialEditorViewport } from "./editor-viewport";
+import { setEditorLanguage } from "./editor-language";
 import { PlanProjection } from "./PlanProjection";
 import { telegramGreyboxKindForLabel } from "./telegram-greybox-catalog";
 
@@ -552,6 +553,26 @@ describe("AppShell project directory", () => {
 });
 
 describe("AppShell Projects-first entry", () => {
+	it("renders the English project entry and wall feedback", () => {
+		const controller = {
+			open: async () => undefined,
+			sessionHistory: () => ({ canRedo: false, canUndo: false }),
+			snapshot: () => ({ kind: "projects" as const, projects: [] }),
+			subscribe: () => () => undefined,
+			writerAccess: () => ({ kind: "not-ready" as const }),
+		} as unknown as ProjectController;
+		setEditorLanguage("en");
+		try {
+			const markup = renderToStaticMarkup(<AppShell controller={controller} />);
+			expect(markup).toContain(">New project<");
+			expect(markup).toContain(">Import project<");
+			expect(markup).toContain("No projects yet");
+			expect(errorCopy("ROOM_USABLE_AREA_COLLAPSE")).toContain("Choose a different wall position");
+		} finally {
+			setEditorLanguage("ru");
+		}
+	});
+
 	it("keeps recovery-file import available in Web/PWA while the healthy Telegram hub shows no diagnostics or unsaved-draft restore", () => {
 		const controller = {
 			open: async () => undefined,
@@ -1342,6 +1363,11 @@ describe("FBX conversion feedback", () => {
 });
 
 describe("wall mutation feedback", () => {
+	it("directs the user to change the wall position when a room would lose its usable area", () => {
+		expect(errorCopy("ROOM_USABLE_AREA_COLLAPSE")).toContain("Выберите другое положение стены");
+		expect(errorCopy("USABLE_POLYGON_COLLAPSED")).toContain("Выберите другое положение стены");
+	});
+
 	it("does not mislabel a rejected diagonal topology as a millimetre input error", () => {
 		expect(errorCopy("INVALID_PLAN_GRAPH").toLowerCase()).toContain("контур");
 		expect(errorCopy("UNSUPPORTED_FACE_SHAPE").toLowerCase()).toContain(

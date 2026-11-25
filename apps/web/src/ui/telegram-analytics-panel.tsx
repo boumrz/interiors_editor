@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import {
 	useEffect,
 	useId,
@@ -8,12 +9,12 @@ import {
 import type { TelegramAnalytics } from "../app/telegram-analytics";
 import styles from "./telegram-analytics-panel.module.css";
 
-const ratingLabels = [
-	"1 — Очень неудобно",
-	"2 — Неудобно",
-	"3 — Нейтрально",
-	"4 — Удобно",
-	"5 — Очень удобно",
+const ratingLabels = () => [
+	copy("1 — Очень неудобно", "1 — Very difficult"),
+	copy("2 — Неудобно", "2 — Difficult"),
+	copy("3 — Нейтрально", "3 — Neutral"),
+	copy("4 — Удобно", "4 — Easy"),
+	copy("5 — Очень удобно", "5 — Very easy"),
 ];
 
 export function TelegramAnalyticsPanel({
@@ -22,8 +23,8 @@ export function TelegramAnalyticsPanel({
 	readonly analytics: TelegramAnalytics;
 }) {
 	const title = analytics.canRate
-		? "Статистика и оценка"
-		: "Настройки статистики";
+		? copy("Статистика и оценка", "Analytics and feedback")
+		: copy("Настройки статистики", "Analytics settings");
 	const status = useSyncExternalStore(analytics.subscribe, analytics.snapshot);
 	const [open, setOpen] = useState(false);
 	const toggle = useRef<HTMLButtonElement>(null);
@@ -73,49 +74,71 @@ export function TelegramAnalyticsPanel({
 							else void analytics.enable();
 						}}
 					>
-						Статистика использования
+						{copy("Статистика использования", "Usage analytics")}
 						<span className={styles.track} aria-hidden="true" />
 					</button>
 					<p id={id + "-purpose"} className={styles.caption}>
 						{analytics.canRate
-							? "Статистика и добровольные оценки помогают нам улучшать редактор."
-							: "Яндекс Метрика считает открытия редактора. При включении Яндекс видит ваш IP и сведения об устройстве."}
+							? copy(
+									"Статистика и добровольные оценки помогают нам улучшать редактор.",
+									"Usage analytics and optional feedback help us improve the editor.",
+								)
+							: copy(
+									"Яндекс Метрика считает открытия редактора. При включении Яндекс видит ваш IP и сведения об устройстве.",
+									"Yandex Metrica counts editor launches. When enabled, Yandex can see your IP address and device details.",
+								)}
 					</p>
 					{!analytics.canRate && (
 						<details className={styles.details}>
-							<summary>Какие данные передаются</summary>
+							<summary>
+								{copy("Какие данные передаются", "What data is shared")}
+							</summary>
 							<p>
-								Яндекс получает IP-адрес, сведения о браузере и устройстве, а
-								также идентификаторы посещения. Полный IP в счётчике не
-								сохраняется.
+								{copy(
+									"Яндекс получает IP-адрес, сведения о браузере и устройстве, а также идентификаторы посещения. Полный IP в счётчике не сохраняется.",
+									"Yandex receives an IP address, browser and device details, and visit identifiers. The analytics counter does not store the full IP address.",
+								)}
 							</p>
 							<p>
-								Мы не отправляем Telegram ID и содержимое проектов. Статистика
-								хранится, пока действует счётчик. По завершении измерений мы
-								запросим её удаление. Выключить сбор можно здесь в любой момент.
+								{copy(
+									"Мы не отправляем Telegram ID и содержимое проектов. Статистика хранится, пока действует счётчик. По завершении измерений мы запросим её удаление. Выключить сбор можно здесь в любой момент.",
+									"We do not send your Telegram ID or project contents. Analytics are stored while the counter is active. We will request deletion when measurement ends. You can turn off collection here at any time.",
+								)}
 							</p>
 						</details>
 					)}
 					{status === "connecting" && (
-						<p role="status">Подключаем статистику…</p>
+						<p role="status">
+							{copy("Подключаем статистику…", "Connecting analytics…")}
+						</p>
 					)}
 					{withdrawalFailed && (
 						<>
 							<p role="status">
-								Сбор остановлен. Не удалось сохранить выбор для следующих
-								запусков.
+								{copy(
+									"Сбор остановлен. Не удалось сохранить выбор для следующих запусков.",
+									"Collection has stopped. Your preference could not be saved for future launches.",
+								)}
 							</p>
 							<button
 								className={styles.retry}
 								type="button"
 								onClick={analytics.withdraw}
 							>
-								Повторить отзыв разрешения
+								{copy(
+									"Повторить отзыв разрешения",
+									"Retry withdrawing consent",
+								)}
 							</button>
 						</>
 					)}
 					{status === "unavailable" && (
-						<p role="status">Статистика недоступна. Редактор работает.</p>
+						<p role="status">
+							{copy(
+								"Статистика недоступна. Редактор работает.",
+								"Analytics are unavailable. You can keep using the editor.",
+							)}
+						</p>
 					)}
 					{status === "on" && analytics.canRate && (
 						<FeedbackForm analytics={analytics} onSkip={close} />
@@ -139,7 +162,12 @@ function FeedbackForm({
 		"ready" | "pending" | "sent" | "failed"
 	>("ready");
 	const group = useId();
-	if (delivery === "sent") return <p role="status">Спасибо за оценку.</p>;
+	if (delivery === "sent")
+		return (
+			<p role="status">
+				{copy("Спасибо за оценку.", "Thanks for your feedback.")}
+			</p>
+		);
 	return (
 		<form
 			onSubmit={(event) => {
@@ -157,7 +185,12 @@ function FeedbackForm({
 			}}
 		>
 			<fieldset disabled={delivery === "pending"}>
-				<legend>Удалось собрать планировку?</legend>
+				<legend>
+					{copy(
+						"Удалось собрать планировку?",
+						"Were you able to create your floor plan?",
+					)}
+				</legend>
 				<label>
 					<input
 						type="radio"
@@ -165,7 +198,7 @@ function FeedbackForm({
 						checked={completed === true}
 						onChange={() => setCompleted(true)}
 					/>{" "}
-					Да
+					{copy("Да", "Yes")}
 				</label>
 				<label>
 					<input
@@ -174,12 +207,17 @@ function FeedbackForm({
 						checked={completed === false}
 						onChange={() => setCompleted(false)}
 					/>{" "}
-					Нет
+					{copy("Нет", "No")}
 				</label>
 			</fieldset>
 			<fieldset disabled={delivery === "pending"}>
-				<legend>Насколько удобно было пользоваться редактором?</legend>
-				{ratingLabels.map((label, index) => (
+				<legend>
+					{copy(
+						"Насколько удобно было пользоваться редактором?",
+						"How easy was the editor to use?",
+					)}
+				</legend>
+				{ratingLabels().map((label, index) => (
 					<label key={label}>
 						<input
 							type="radio"
@@ -192,7 +230,9 @@ function FeedbackForm({
 				))}
 			</fieldset>
 			{delivery === "failed" ? (
-				<p role="status">Не удалось отправить оценку.</p>
+				<p role="status">
+					{copy("Не удалось отправить оценку.", "Could not send feedback.")}
+				</p>
 			) : null}
 			<div className={styles.actions}>
 				<button
@@ -203,10 +243,12 @@ function FeedbackForm({
 						delivery === "pending"
 					}
 				>
-					{delivery === "failed" ? "Повторить" : "Отправить"}
+					{delivery === "failed"
+						? copy("Повторить", "Retry")
+						: copy("Отправить", "Send")}
 				</button>
 				<button type="button" onClick={onSkip}>
-					Пропустить
+					{copy("Пропустить", "Skip")}
 				</button>
 			</div>
 		</form>

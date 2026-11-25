@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import {
 	addDoorOpeningToProject,
 	addWindowOpeningToProject,
@@ -145,7 +146,10 @@ export function validateOpeningCreationDraft(
 	if (!host) {
 		return {
 			kind: "invalid",
-			message: "Выберите стену, на которой можно создать проём.",
+			message: copy(
+				"Выберите стену, на которой можно создать проём.",
+				"Choose a wall that can host the opening.",
+			),
 		};
 	}
 	const widthMm = positiveInteger(draft.widthMm);
@@ -156,8 +160,10 @@ export function validateOpeningCreationDraft(
 	if (widthMm === undefined || heightMm === undefined || sillMm === undefined) {
 		return {
 			kind: "invalid",
-			message:
+			message: copy(
 				"Укажите целые положительные ширину и высоту.",
+				"Enter positive whole numbers for width and height.",
+			),
 		};
 	}
 	const dimensions = {
@@ -185,7 +191,14 @@ export function validateOpeningCreationDraft(
 				);
 	if (draft.baseRevisionId !== undefined) {
 		const offsetMm = nonNegativeInteger(draft.offsetMm);
-		if (offsetMm === undefined) return { kind: "invalid", message: "Укажите целое смещение в миллиметрах." };
+		if (offsetMm === undefined)
+			return {
+				kind: "invalid",
+				message: copy(
+					"Укажите целое смещение в миллиметрах.",
+					"Enter the offset in whole millimetres.",
+				),
+			};
 		const result = validate(offsetMm);
 		return result.kind === "accepted"
 			? { host, input: { ...dimensions, offsetMm }, kind: "valid" }
@@ -252,8 +265,14 @@ export function validateOpeningCreationDraft(
 		kind: "invalid",
 		message:
 			intervals.length === 0
-				? "На этой стене нет свободного места для такого проёма."
-				: "Не удалось подобрать свободное место. Уменьшите ширину или выберите другую стену.",
+				? copy(
+						"На этой стене нет свободного места для такого проёма.",
+						"This wall has no space for an opening of this size.",
+					)
+				: copy(
+						"Не удалось подобрать свободное место. Уменьшите ширину или выберите другую стену.",
+						"No free space was found. Reduce the width or choose another wall.",
+					),
 	};
 }
 
@@ -338,24 +357,54 @@ function creationRejectionMessage(
 	switch (rejection.reasonCode) {
 		case "DOOR_WIDTH_EXCEEDS_WALL_LENGTH":
 		case "WINDOW_WIDTH_EXCEEDS_WALL_LENGTH":
-			return "Ширина больше свободного участка стены.";
+			return copy(
+				"Ширина больше свободного участка стены.",
+				"The opening is wider than the available wall space.",
+			);
 		case "OPENING_OVERLAP":
-			return "Проём пересекается с другим проёмом.";
+			return copy(
+				"Проём пересекается с другим проёмом.",
+				"The opening overlaps another opening.",
+			);
 		case "OPENING_OUT_OF_BOUNDS":
-			return "Проём не помещается по высоте стены.";
+			return copy(
+				"Проём не помещается по высоте стены.",
+				"The opening is too tall for the wall.",
+			);
 		case "OPENING_OUTSIDE_WALL_INTERVAL":
-			return "Проём не помещается в свободный участок стены.";
+			return copy(
+				"Проём не помещается в свободный участок стены.",
+				"The opening does not fit in the available wall space.",
+			);
 		case "DOOR_WIDTH_BELOW_MINIMUM":
-			return "Ширина дверного проёма должна быть не менее 800 мм.";
+			return copy(
+				"Ширина дверного проёма должна быть не менее 800 мм.",
+				"The doorway must be at least 800 mm wide.",
+			);
 		case "INVALID_DIMENSION":
-			return "Укажите точные целые миллиметры для этого проёма.";
+			return copy(
+				"Укажите точные целые миллиметры для этого проёма.",
+				"Enter the opening dimensions in whole millimetres.",
+			);
 		case "INVALID_WALL_HOST":
 		case "WALL_NOT_FOUND":
-			return "Выберите стену, на которой можно создать проём.";
+			return copy(
+				"Выберите стену, на которой можно создать проём.",
+				"Choose a wall that can host the opening.",
+			);
 		case "DOOR_CLEARANCE_COLLISION":
-			return "Проём пересекает зону предмета. Уменьшите ширину или переместите предмет.";
+			return copy(
+				"Проём пересекает зону предмета. Уменьшите ширину или переместите предмет.",
+				"The opening overlaps an item. Reduce the width or move the item.",
+			);
 		case "WALL_OPENING_COLLISION":
-			return "Проём пересекается с настенным предметом.";
+			return copy(
+				"Проём пересекается с настенным предметом.",
+				"The opening overlaps a wall-mounted item.",
+			);
 	}
-	return "Этот проём нельзя добавить на выбранную стену.";
+	return copy(
+		"Этот проём нельзя добавить на выбранную стену.",
+		"This opening cannot be added to the selected wall.",
+	);
 }

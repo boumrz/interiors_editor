@@ -74,6 +74,15 @@ test("Telegram publishes the unmodified legal editions, provides prelaunch readi
 			assert.equal(response.headers.get("cache-control"), cache);
 			assert.equal(await response.text(), body);
 		}
+		const englishPath = `/legal/${name === "privacy-policy" ? privacyEdition : edition}/en/${name}.html`;
+		const englishResponse = await fetch(origin + englishPath);
+		assert.equal(englishResponse.status, 200, englishPath);
+		assert.equal(englishResponse.headers.get("cache-control"), "public, max-age=31536000, immutable");
+		const english = await readFile(new URL(`en/${name}.html`, source), "utf8");
+		assert.match(english, /<html lang="en">/);
+		assert.equal(await englishResponse.text(), english);
+		const localized = await page.locator(`[id="legal-documents-en-${edition}"]`).textContent();
+		assert.equal(JSON.parse(localized)[name], english);
 	}
 	const retainedPrivacy = await fetch(origin + `/legal/${edition}/privacy-policy.html`);
 	assert.equal(retainedPrivacy.status, 200);
@@ -109,6 +118,10 @@ test("Telegram publishes the unmodified legal editions, provides prelaunch readi
 		await directSupport.text(),
 		await readFile(new URL("telegram-support-direct-privacy.html", source), "utf8"),
 	);
+	const englishSupportPath = "/legal/2026-11-24.2/en/telegram-support-privacy.html";
+	const englishSupport = await fetch(origin + englishSupportPath);
+	assert.equal(englishSupport.status, 200, englishSupportPath);
+	assert.equal(await englishSupport.text(), await readFile(new URL("en/telegram-support-direct-privacy.html", source), "utf8"));
 	assert.ok(
 		api.every(
 			(url) => new URL(url).origin === origin && !url.includes("/stats/"),

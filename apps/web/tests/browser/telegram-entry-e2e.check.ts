@@ -667,6 +667,33 @@ test("TMA-ENTRY-07: real signed native bootstrap and shared factory save and reo
 	).toHaveText("Сохранено");
 	expect(await semanticRows(page)).toEqual(before);
 });
+
+test("TMA-LANGUAGE-01: the saved bot language localizes a direct signed launch, plan, and 3D", async ({ page }) => {
+	await signed(page);
+	await page.addInitScript(() => {
+		const scope = "tma-v1-dbe0608621f508120a9bf4cf979ea7a411b32592a8d5b9c33d9c423a6241cae1";
+		localStorage.setItem(`interiors-tma-language:${scope}`, JSON.stringify({ language: "en", revision: 1 }));
+	});
+	await page.goto("/");
+	await expect(page.locator("html")).toHaveAttribute("lang", "en");
+	await page.getByRole("button", { name: "New project", exact: true }).click();
+	const name = "План A";
+	await page.getByRole("textbox", { name: "Project name" }).fill(name);
+	await page.getByRole("button", { name: "Create project", exact: true }).click();
+	await page.getByRole("textbox", { name: "Width, mm", exact: true }).fill("4100");
+	await page.getByRole("textbox", { name: "Depth, mm", exact: true }).fill("3200");
+	await page.getByRole("textbox", { name: "Height, mm", exact: true }).fill("2800");
+	await page.getByRole("button", { name: "Create outline", exact: true }).click();
+	await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Saved");
+	await expect(page.getByTestId("editor-action-dock").getByRole("button")).toHaveText(["Room", "Wall", "Add", "Select"]);
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await expect(page.getByTestId("three-dimensional-canvas")).toBeVisible();
+	const durable = await semanticRows(page);
+	await page.reload();
+	await page.getByRole("button", { name: `Open ${name}`, exact: true }).click();
+	await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Saved");
+	expect(await semanticRows(page)).toEqual(durable);
+});
 for (const direction of ["release", "rollback"] as const)
 	test(`TMA-ENTRY-${direction === "release" ? "08" : "09"}: old loaded shell resolves its pending application module after ${direction}`, async ({
 		page,
@@ -1328,6 +1355,110 @@ test("TMA-THEME-03: actual dark 3D controls preserve a readable surface and the 
 		contentType: "image/png",
 	});
 	expect(await semanticRows(page)).toEqual(before);
+});
+
+for (const backend of ["Three", "procedural fallback"]) {
+	test(`TMA-THEME-04: an explicit theme updates Plan and live 3D, survives reopening and returns to automatic (${backend})`, async ({ page }) => {
+		if (backend === "procedural fallback") {
+			await page.addInitScript(() => {
+				// Three requires context attributes on initialization. The procedural
+				// fallback draws through the same actual WebGL2 context without them.
+				WebGL2RenderingContext.prototype.getContextAttributes = () => {
+					throw new Error("Force the alternate renderer");
+				};
+			});
+		}
+		await signed(page);
+		await page.goto("/");
+		await createRoom(page, "Общая палитра");
+		const before = await semanticRows(page);
+		const setHostTheme = (colorScheme: string) => page.evaluate((scheme) => {
+			window.__telegramEntryProof.host.patch({ colorScheme: scheme });
+			window.__telegramEntryProof.host.emit("themeChanged");
+		}, colorScheme);
+		const planBackground = () => page.evaluate(() =>
+			getComputedStyle(document.documentElement).getPropertyValue("--editor-host-plan-canvas").trim(),
+		);
+		const setTheme = async (choice: "auto" | "light" | "dark") => {
+			await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+			await page.getByRole("button", { name: "Настройки", exact: true }).click();
+			const dialog = page.getByRole("dialog", { name: "Настройки" });
+			await dialog.getByLabel("Тема").selectOption(choice, { timeout: 3_000 });
+			await dialog.getByRole("button", { name: "Закрыть настройки" }).click();
+		};
+		const canvas = page.getByTestId("three-dimensional-canvas");
+		const drawnBackgroundCount = async (red: number, green: number, blue: number) => {
+			const png = (await canvas.screenshot()).toString("base64");
+			return page.evaluate(async ({ png, red, green, blue }) => {
+				const bytes = Uint8Array.from(atob(png), (byte) => byte.charCodeAt(0));
+				const image = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+				const context = document.createElement("canvas").getContext("2d");
+				if (!context) throw new Error("Cannot sample the 3D screenshot");
+				context.drawImage(image, 0, 0, 20, 20);
+				image.close();
+				const pixels = context.getImageData(0, 0, 20, 20).data;
+				let matching = 0;
+				for (let offset = 0; offset < pixels.length; offset += 4) {
+					if (pixels[offset] === red && pixels[offset + 1] === green && pixels[offset + 2] === blue) matching++;
+				}
+				return matching;
+			}, { png, red, green, blue });
+		};
+		await setHostTheme("light");
+		expect(await planBackground()).toBe("#fdfdfc");
+		await page.getByRole("button", { name: "3D", exact: true }).click();
+		await expect(canvas).toBeVisible();
+		const camera = page.getByTestId("three-dimensional-camera");
+		const initialCamera = await camera.textContent();
+		const frame = await canvas.boundingBox();
+		if (!frame) throw new Error("3D canvas was not mounted");
+		const orbitStart = { x: frame.x + frame.width * 0.19, y: frame.y + frame.height * 0.32 };
+		await page.mouse.move(orbitStart.x, orbitStart.y);
+		await page.mouse.down();
+		await page.mouse.move(orbitStart.x + 36, orbitStart.y + 10, { steps: 5 });
+		await page.mouse.up();
+		await expect.poll(() => camera.textContent()).not.toBe(initialCamera);
+		const cameraBefore = await camera.textContent();
+		await expect.poll(() => drawnBackgroundCount(253, 253, 252)).toBeGreaterThan(40);
+		const originalCanvas = await canvas.elementHandle();
+		if (!originalCanvas) throw new Error("3D canvas was not mounted");
+		await setTheme("dark");
+		expect(await planBackground()).toBe("#1d252c");
+		await expect.poll(() => drawnBackgroundCount(29, 37, 44)).toBeGreaterThan(40);
+		expect(await originalCanvas.evaluate((element) => element.isConnected)).toBe(true);
+		expect(await camera.textContent()).toBe(cameraBefore);
+		await setHostTheme("dark");
+		await setHostTheme("light");
+		expect(await planBackground()).toBe("#1d252c");
+		expect(await semanticRows(page)).toEqual(before);
+		await page.reload();
+		await expect.poll(planBackground).toBe("#1d252c");
+		await page.getByRole("button", { name: "Настройки", exact: true }).click();
+		const settings = page.getByRole("dialog", { name: "Настройки" });
+		await expect(settings.getByLabel("Тема")).toHaveValue("dark");
+		await settings.getByLabel("Тема").selectOption("auto");
+		await expect.poll(planBackground).toBe("#fdfdfc");
+	});
+}
+
+test("TMA-THEME-05: the loading shell follows the system before any app code runs", async ({ page }) => {
+	await page.emulateMedia({ colorScheme: "dark" });
+	await page.route("**/telegram.*.js", (route) => route.abort());
+	await page.goto("/");
+	await expect(page.locator("#telegram-loading-heading")).toBeVisible();
+	const presentation = await page.locator("html").evaluate((root) => {
+		const style = getComputedStyle(root);
+		return {
+			background: style.backgroundColor,
+			color: style.color,
+			scheme: style.colorScheme,
+		};
+	});
+	expect(presentation).toEqual({
+		background: "rgb(23, 33, 43)",
+		color: "rgb(245, 247, 250)",
+		scheme: "dark",
+	});
 });
 
 async function allScopedRecords(page: Page) {

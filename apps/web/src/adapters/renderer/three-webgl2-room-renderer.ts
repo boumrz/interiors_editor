@@ -31,8 +31,10 @@ import type {
 	SceneFloorPolygon,
 } from "./rectangular-room-projection";
 import {
+	roomMaterialColors,
 	THREE_DIMENSIONAL_ROOM_LIGHTING,
 	THREE_DIMENSIONAL_ROOM_PALETTE,
+	type RoomRenderTheme,
 } from "./three-dimensional-room-palette";
 import {
 	cameraEyeAndTargetFor,
@@ -101,7 +103,8 @@ export function createThreeWebGl2RoomSceneRenderer(
 	renderer.shadowMap.type = PCFSoftShadowMap;
 	let drawingBufferSize: { width: number; height: number; pixelRatio: number } | undefined;
 	const threeScene = new Scene();
-	threeScene.background = new Color(THREE_DIMENSIONAL_ROOM_PALETTE.background);
+	const background = new Color(THREE_DIMENSIONAL_ROOM_PALETTE.background);
+	threeScene.background = background;
 	threeScene.add(
 		new AmbientLight(
 			THREE_DIMENSIONAL_ROOM_LIGHTING.ambient.color,
@@ -140,15 +143,13 @@ export function createThreeWebGl2RoomSceneRenderer(
 	let activeScene = scene;
 	let activeRuntimeModels = runtimeModels;
 	let cutaway: WebGl2WallCutaway | undefined;
+	let appliedTheme: RoomRenderTheme | undefined;
 
-	for (const floor of scene.floors) {
-		roomGroup.add(
-			boxMesh(floor, THREE_DIMENSIONAL_ROOM_PALETTE.floor, "floor"),
-		);
-	}
-	for (const floor of scene.floorPolygons ?? []) {
-		roomGroup.add(polygonFloorMesh(floor));
-	}
+	const floorMeshes = [
+		...scene.floors.map((floor) => boxMesh(floor, THREE_DIMENSIONAL_ROOM_PALETTE.floor, "floor")),
+		...(scene.floorPolygons ?? []).map(polygonFloorMesh),
+	];
+	for (const floor of floorMeshes) roomGroup.add(floor);
 	const addWallPart = (part: Mesh, wallSegmentId?: string) => {
 		const wallGroup = new Group();
 		wallGroup.add(part);
@@ -160,7 +161,11 @@ export function createThreeWebGl2RoomSceneRenderer(
 			]);
 		}
 	};
-	for (const wall of scene.walls) addWallPart(createThreeWallMesh(wall), wall.wall?.wallSegmentId);
+	const wallMeshes = scene.walls.map((wall) => {
+		const mesh = createThreeWallMesh(wall);
+		addWallPart(mesh, wall.wall?.wallSegmentId);
+		return mesh;
+	});
 	for (const { box, role, wallSegmentId } of scene.openingParts ?? []) {
 		const mesh = boxMesh(box, OPENING_FINISH[role], "wall");
 		if (role === "glass") {
@@ -191,8 +196,16 @@ export function createThreeWebGl2RoomSceneRenderer(
 			viewport = initialWebGl2Camera,
 			cutawayMode: WebGl2CutawayMode = "auto",
 			sceneOverride = scene,
+			theme,
 		) => {
 			activeScene = sceneOverride;
+			if (theme !== appliedTheme) {
+				appliedTheme = theme;
+				background.set(theme?.background ?? THREE_DIMENSIONAL_ROOM_PALETTE.background);
+				const colors = roomMaterialColors(theme);
+				for (const floor of floorMeshes) floor.material.color.set(colors.floor);
+				for (const wall of wallMeshes) wall.material.color.set(colors.wall);
+			}
 			const pixelRatio = Math.min(
 				qualityTier === "reduced" ? 1 : 2,
 				window.devicePixelRatio || 1,
@@ -403,7 +416,7 @@ export function threeDimensionalShadowFlagsFor(
 	};
 }
 
-function polygonFloorMesh(floor: SceneFloorPolygon): Mesh {
+function polygonFloorMesh(floor: SceneFloorPolygon) {
 	const shape = new Shape(
 		floor.vertices.map((vertex) => new Vector2(vertex.xM, vertex.zM)),
 	);
@@ -427,7 +440,7 @@ function polygonFloorMesh(floor: SceneFloorPolygon): Mesh {
 	return mesh;
 }
 
-export function createThreeWallMesh(wall: SceneBox): Mesh {
+export function createThreeWallMesh(wall: SceneBox) {
 	return boxMesh(wall, THREE_DIMENSIONAL_ROOM_PALETTE.wall, "wall");
 }
 

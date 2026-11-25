@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { isOverlayBackdrop, useBackdropDismiss } from "./backdrop-dismiss";
@@ -51,20 +52,51 @@ export function EditorLeaveGuard({ focus, fallback, onContinue, onDiscard, teleg
 			});
 		};
 	}, [parent, focus, fallback]);
-	return createPortal(<div ref={overlay} className={styles.overlay} {...(telegram ? backdrop : {})}>
-		<section className={styles.card} role="alertdialog" aria-modal="true" aria-label="Несохранённая правка" aria-describedby="editor-leave-description" tabIndex={-1} onKeyDown={(event) => {
-		if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onContinue(); }
-		else if (event.key === "Tab") {
-			event.preventDefault(); event.stopPropagation();
-			(document.activeElement === continueButton.current ? discardButton.current : continueButton.current)?.focus();
-		}
-	}}>
-			<h2>Продолжить правку?</h2>
-			<p id="editor-leave-description">Правка ещё не сохранена. Продолжите работу или явно отмените её.</p>
-			<div>
-				<button ref={continueButton} type="button" onClick={onContinue}>Продолжить</button>
-				<button ref={discardButton} type="button" onClick={onDiscard}>Отменить правку</button>
-			</div>
-		</section>
-	</div>, parent);
+	return createPortal(
+		<div
+			ref={overlay}
+			className={styles.overlay}
+			{...(telegram ? backdrop : {})}
+		>
+			<section
+				className={styles.card}
+				role="alertdialog"
+				aria-modal="true"
+				aria-label={copy("Несохранённая правка", "Unsaved edit")}
+				aria-describedby="editor-leave-description"
+				tabIndex={-1}
+				onKeyDown={(event) => {
+					if (event.key === "Escape") {
+						event.preventDefault();
+						event.stopPropagation();
+						onContinue();
+					} else if (event.key === "Tab") {
+						event.preventDefault();
+						event.stopPropagation();
+						(document.activeElement === continueButton.current
+							? discardButton.current
+							: continueButton.current
+						)?.focus();
+					}
+				}}
+			>
+				<h2>{copy("Продолжить правку?", "Continue editing?")}</h2>
+				<p id="editor-leave-description">
+					{copy(
+						"Правка ещё не сохранена. Продолжите работу или явно отмените её.",
+						"This edit is unsaved. Keep editing or discard it.",
+					)}
+				</p>
+				<div>
+					<button ref={continueButton} type="button" onClick={onContinue}>
+						{copy("Продолжить", "Continue")}
+					</button>
+					<button ref={discardButton} type="button" onClick={onDiscard}>
+						{copy("Отменить правку", "Discard edit")}
+					</button>
+				</div>
+			</section>
+		</div>,
+		parent,
+	);
 }

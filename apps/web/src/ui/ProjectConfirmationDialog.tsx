@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import {
 	type KeyboardEvent,
 	type ReactNode,
@@ -133,7 +134,7 @@ export function ProjectConfirmationDialog({
 			{plainLabels ? (
 				<SheetHeader
 					title={title}
-					closeLabel="Закрыть подтверждение"
+					closeLabel={copy("Закрыть подтверждение", "Close confirmation")}
 					closeDisabled={busy}
 					onClose={onCancel}
 				/>
@@ -149,7 +150,7 @@ export function ProjectConfirmationDialog({
 					ref={cancelRef}
 					type="button"
 				>
-					{plainLabels ? "Отменить" : cancelLabel}
+					{plainLabels ? copy("Отменить", "Cancel") : cancelLabel}
 				</button>
 				<button
 					className={plainLabels || confirmTone === "primary" ? styles.primary : styles.danger}
@@ -157,7 +158,11 @@ export function ProjectConfirmationDialog({
 					onClick={onConfirm}
 					type="button"
 				>
-					{busy ? busyLabel : plainLabels ? "Подтвердить" : confirmLabel}
+					{busy
+						? busyLabel
+						: plainLabels
+							? copy("Подтвердить", "Confirm")
+							: confirmLabel}
 				</button>
 			</div>
 		</TelegramSheetFrame>

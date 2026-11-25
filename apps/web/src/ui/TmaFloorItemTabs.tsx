@@ -1,10 +1,26 @@
+import { copy } from "./editor-language";
 import { type KeyboardEvent, type ReactNode, useId } from "react";
 import styles from "./TmaFloorItemTabs.module.css";
 
 const tabs = [
-	{ id: "sizes", label: "Размеры" },
-	{ id: "walls", label: "До стен" },
-	{ id: "settings", label: "Настройки" },
+	{
+		id: "sizes",
+		get label() {
+			return copy("Размеры", "Dimensions");
+		},
+	},
+	{
+		id: "walls",
+		get label() {
+			return copy("До стен", "Clearances");
+		},
+	},
+	{
+		id: "settings",
+		get label() {
+			return copy("Настройки", "Settings");
+		},
+	},
 ] as const;
 
 export type FloorItemTab = (typeof tabs)[number]["id"];
@@ -35,7 +51,11 @@ export function TmaFloorItemTabs({ active, onChange, ...content }: Props) {
 
 	return (
 		<>
-			<div className={styles.tabs} role="tablist" aria-label="Параметры предмета">
+			<div
+				className={styles.tabs}
+				role="tablist"
+				aria-label={copy("Параметры предмета", "Item settings")}
+			>
 				{tabs.map((tab, index) => (
 					<button
 						aria-controls={`${id}-panel-${tab.id}`}

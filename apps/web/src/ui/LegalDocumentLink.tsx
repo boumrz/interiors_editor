@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { isDialogBackdrop, useBackdropDismiss } from "./backdrop-dismiss";
@@ -105,7 +106,7 @@ function LegalReader({ first, onClose, telegram }: ReaderProps) {
 			ref={dialog}
 			data-legal-reader=""
 			className={styles.reader}
-			aria-label="Чтение документа"
+			aria-label={copy("Чтение документа", "Document reader")}
 			onCancel={(event) => {
 				event.preventDefault();
 				back();
@@ -114,14 +115,14 @@ function LegalReader({ first, onClose, telegram }: ReaderProps) {
 		>
 			<div className={styles.actions}>
 				<button data-legal-back="" type="button" onClick={back}>
-					Назад
+					{copy("Назад", "Back")}
 				</button>
 				<a
 					ref={save}
 					href={legalArchivePath(current.name)}
 					download={`${current.name}.html`}
 				>
-					Сохранить HTML
+					{copy("Сохранить HTML", "Save HTML")}
 				</a>
 			</div>
 			<div ref={content} />

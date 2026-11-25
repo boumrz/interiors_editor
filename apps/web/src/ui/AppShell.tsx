@@ -1,3 +1,5 @@
+import { copy, editorLanguage } from "./editor-language";
+import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
 import { DoorSwingPicker } from "./door-swing-picker";
 import type { ReleaseRecoveryRecord } from "../app/release-startup";
 import { LegacyStartupRecoveryNotice } from "./legacy-startup-recovery";
@@ -52,7 +54,7 @@ import {
 	alphaParametricItemColorVariants,
 	type ItemColorVariantId,
 } from "../domain/item-color-variant";
-import { formatAreaMm2, formatLengthMm } from "../domain/measurement-format";
+import { formatAreaMm2, formatLengthMm } from "./editor-measurement-format";
 import {
 	alphaParametricItemColors,
 	assessParametricFloorItemPlacement,
@@ -152,6 +154,7 @@ import {
 	catalogAssetsFromPublication,
 	catalogSections,
 	filterPreloadedGlbCatalogAssets,
+	preloadedGlbCatalogLabelForDisplay,
 	preloadedGlbCatalogAssets as localPreloadedGlbCatalogAssets,
 	type PreloadedGlbCatalogAsset,
 } from "./preloaded-glb-catalog";
@@ -222,6 +225,7 @@ interface AppShellProps {
 	readonly sourceRecovery?: ProjectSourceRecoveryPort;
 	readonly catalogGateway?: CatalogGatewayPort;
 	readonly localGreyboxCatalog?: boolean;
+	readonly roomTheme?: RoomRenderTheme | undefined;
 	readonly exactFloorYaw?: boolean;
 	readonly doorHingeAuthoring?: boolean;
 	readonly projectsSupplement?: ReactNode;
@@ -504,21 +508,21 @@ function catalogOriginFor(
 function statusCopy(state: ProjectScreenState): string {
 	switch (state.kind) {
 		case "loading":
-			return "Проверяем";
+			return copy("Проверяем", "Checking");
 		case "first-run":
-			return "Новый проект";
+			return copy("Новый проект", "New project");
 		case "projects":
-			return "Выберите проект";
+			return copy("Выберите проект", "Choose a project");
 		case "saving":
-			return "Сохраняем локально…";
+			return copy("Сохраняем локально…", "Saving locally…");
 		case "saved":
-			return "Сохранено локально";
+			return copy("Сохранено локально", "Saved locally");
 		case "persist-failed":
-			return "Не сохранено";
+			return copy("Не сохранено", "Unsaved");
 		case "recovery-needed":
-			return "Нужно восстановление";
+			return copy("Нужно восстановление", "Recovery needed");
 		case "history-recovery-needed":
-			return "История требует восстановления";
+			return copy("История требует восстановления", "History needs recovery");
 	}
 }
 
@@ -550,56 +554,56 @@ function storagePressureCopy(
 		(pressure.usageBytes / pressure.quotaBytes) * 100,
 	);
 	return pressure.kind === "critical"
-		? `Локальное хранилище почти заполнено: занято не менее ${percentage}%. Экспортируйте проект до следующего изменения.`
-		: `Локальное хранилище заполнено на ${percentage}%. Подготовьте экспорт проекта до следующего изменения.`;
+		? copy(`Локальное хранилище почти заполнено: занято не менее ${percentage}%. Экспортируйте проект до следующего изменения.`, `Local storage is nearly full. At least ${percentage}% is in use. Export your project before making another change.`)
+		: copy(`Локальное хранилище заполнено на ${percentage}%. Подготовьте экспорт проекта до следующего изменения.`, `Local storage is ${percentage}% full. Prepare a project export before making another change.`);
 }
 
 function persistentStorageRequestCopy(
 	result: PersistentStorageRequest,
 ): string {
 	if (result.kind === "granted") {
-		return "Браузер подтвердил защиту локального хранилища. Это не заменяет резервный экспорт проекта.";
+		return copy("Браузер подтвердил защиту локального хранилища. Это не заменяет резервный экспорт проекта.", "The browser has confirmed that local storage is protected. Keep a separate project backup.");
 	}
 	if (result.kind === "not-granted") {
-		return "Браузер не подтвердил защиту локального хранилища. Экспортируйте проект перед следующей правкой.";
+		return copy("Браузер не подтвердил защиту локального хранилища. Экспортируйте проект перед следующей правкой.", "The browser could not confirm local storage protection. Export your project before your next edit.");
 	}
-	return "Этот браузер не может подтвердить защиту локального хранилища. Экспортируйте проект перед следующей правкой.";
+	return copy("Этот браузер не может подтвердить защиту локального хранилища. Экспортируйте проект перед следующей правкой.", "This browser cannot confirm local storage protection. Export your project before your next edit.");
 }
 
 /** Explains why the last durable Project revision intentionally stayed current. */
 export function persistenceFailureCopy(reasonCode: string): string {
 	if (reasonCode === "PERSISTENCE_QUOTA_EXCEEDED") {
-		return "В локальном хранилище недостаточно места. Сохранённый план не изменён — экспортируйте проект, освободите место и повторите сохранение.";
+		return copy("В локальном хранилище недостаточно места. Сохранённый план не изменён — экспортируйте проект, освободите место и повторите сохранение.", "Local storage is full. Your saved plan is intact. Export your project, free up space and save again.");
 	}
 	return reasonCode === "PROJECT_HISTORY_RESOURCE_LIMIT"
-		? "Новая правка превысила лимит текущей истории. Закройте и заново откройте проект, чтобы начать новую историю; сохранённый план не изменён."
-		: "Не удалось сохранить правку. Сохранённый план не изменён — повторите действие.";
+		? copy("Новая правка превысила лимит текущей истории. Закройте и заново откройте проект, чтобы начать новую историю; сохранённый план не изменён.", "This edit exceeds the session history limit. Reopen the project to start a new history. Your saved plan is intact.")
+		: copy("Не удалось сохранить правку. Сохранённый план не изменён — повторите действие.", "The edit could not be saved. Your saved plan is intact. Try again.");
 }
 
 /** Name-specific feedback stays inside the rename dialog. */
 export function renamePersistenceFailureCopy(reasonCode: string): string {
 	return reasonCode === "PROJECT_HISTORY_RESOURCE_LIMIT" ||
 		reasonCode === "PERSISTENCE_QUOTA_EXCEEDED"
-		? `Прежнее название не изменено. ${persistenceFailureCopy(reasonCode)}`
-		: "Прежнее название не изменено. Не удалось сохранить правку — повторите действие.";
+		? copy(`Прежнее название не изменено. ${persistenceFailureCopy(reasonCode)}`, `The previous name is still in use. ${persistenceFailureCopy(reasonCode)}`)
+		: copy("Прежнее название не изменено. Не удалось сохранить правку — повторите действие.", "The previous name is still in use. Try saving again.");
 }
 
 export function persistenceFailureActionCopy(reasonCode: string, retryPolicy: ReturnType<ProjectController["persistenceRetryPolicy"]> = "allowed"): string {
-	if (retryPolicy === "registered-transfer-reselection-required") return "Выбрать исходный файл снова";
+	if (retryPolicy === "registered-transfer-reselection-required") return copy("Выбрать исходный файл снова", "Choose the original file again");
 	return reasonCode === "PROJECT_HISTORY_RESOURCE_LIMIT"
-		? "Открыть проект заново"
-		: "Повторить сохранение";
+		? copy("Открыть проект заново", "Reopen project")
+		: copy("Повторить сохранение", "Retry save");
 }
 
 /** The history branch is unchanged whenever its explicit discard cannot be proven safe. */
 export function historyDiscardFailureCopy(reason: string): string {
 	if (reason === "current-resource-issue") {
-		return "Текущий план тоже требует восстановления, поэтому история не изменена.";
+		return copy("Текущий план тоже требует восстановления, поэтому история не изменена.", "The current plan also needs recovery. The history is intact.");
 	}
 	if (reason === "read-only" || reason === "writer-lease-lost") {
-		return "Проект открыт для редактирования в другом окне. История не изменена.";
+		return copy("Проект открыт для редактирования в другом окне. История не изменена.", "This project is being edited in another window. The history is intact.");
 	}
-	return "Не удалось повторно проверить текущий план. История не изменена.";
+	return copy("Не удалось повторно проверить текущий план. История не изменена.", "The current plan could not be checked again. The history is intact.");
 }
 
 function isLegacyFixtureProject(
@@ -651,6 +655,7 @@ export function dimensionsAfterCustomGlbPreviewMeasurement(
 }
 
 function roomCountCopy(count: number): string {
+	if (editorLanguage() === "en") return `${count} ${count === 1 ? "room" : "rooms"}`;
 	const lastTwoDigits = Math.abs(count) % 100;
 	const lastDigit = Math.abs(count) % 10;
 	if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
@@ -671,12 +676,13 @@ function roomPropertyFieldsFor(
 ): RoomPropertyFields {
 	return {
 		heightMm: String(room.heightMm),
-		name: room.name?.trim() || `Комната ${roomIndex + 1}`,
+		name: room.name?.trim() || copy(`Комната ${roomIndex + 1}`, `Room ${roomIndex + 1}`),
 		type: room.type ?? "other",
 	};
 }
 
 function wallCountCopy(count: number): string {
+	if (editorLanguage() === "en") return `${count} ${count === 1 ? "wall" : "walls"}`;
 	const lastTwoDigits = Math.abs(count) % 100;
 	const lastDigit = Math.abs(count) % 10;
 	if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
@@ -702,162 +708,161 @@ function activeEditorModeCopy(
 	}
 	switch (activeTool) {
 		case "wall":
-			return "Стены";
+			return copy("Стены", "Walls");
 		case "item":
-			return "Предмет";
+			return copy("Предмет", "Item");
 		case "select":
-			return "Рука и выбор";
+			return copy("Рука и выбор", "Pan and select");
 	}
 }
 
 type FloorItemEdit = "move" | "rotation" | "size";
 
 const itemCollisionCopy: Record<FloorItemEdit, string> = {
-	move: "Пересечение с другим предметом. Предмет остался на прежнем месте.",
-	rotation: "Пересечение с другим предметом. Угол поворота не изменился.",
-	size: "Пересечение с другим предметом. Размеры не изменились.",
+	get move() { return copy("Пересечение с другим предметом. Предмет остался на прежнем месте.", "This overlaps another item. The item stayed in its previous position."); },
+	get rotation() { return copy("Пересечение с другим предметом. Угол поворота не изменился.", "This overlaps another item. The angle stayed the same."); },
+	get size() { return copy("Пересечение с другим предметом. Размеры не изменились.", "This overlaps another item. The dimensions stayed the same."); },
 };
 
 export function errorCopy(reasonCode: string, itemEdit?: FloorItemEdit): string {
 	switch (reasonCode) {
 		case "OUTSIDE_ROOM_HOST":
-			return "Предмет должен целиком находиться внутри выбранной комнаты.";
+			return copy("Предмет должен целиком находиться внутри выбранной комнаты.", "The item must fit entirely inside the selected room.");
 		case "ITEM_COLLISION":
-			return itemEdit ? itemCollisionCopy[itemEdit] : "Предметы не могут пересекаться.";
+			return itemEdit ? itemCollisionCopy[itemEdit] : copy("Предметы не могут пересекаться.", "Items cannot overlap.");
 		case "WALL_ITEM_COLLISION":
-			return "Стена не может пересекать размещённый предмет. Переместите предмет или проведите стену иначе.";
+			return copy("Стена не может пересекать размещённый предмет. Переместите предмет или проведите стену иначе.", "A wall cannot intersect an item. Move the item or draw the wall in a different position.");
 		case "WALL_HOST_NOT_FOUND":
-			return "Выбранная стена больше недоступна. Выберите её ещё раз.";
+			return copy("Выбранная стена больше недоступна. Выберите её ещё раз.", "The selected wall is unavailable. Select it again.");
 		case "OUTSIDE_WALL_HOST":
-			return "Предмет должен целиком помещаться на выбранной стене.";
+			return copy("Предмет должен целиком помещаться на выбранной стене.", "The item must fit entirely on the selected wall.");
 		case "WALL_OPENING_COLLISION":
-			return "Настенный предмет не может пересекать дверной или оконный проём.";
+			return copy("Настенный предмет не может пересекать дверной или оконный проём.", "A wall-mounted item cannot overlap a door or window opening.");
 		case "ASSET_DEFINITION_NOT_PINNED":
-			return "Модель ещё не закреплена в ресурсах этого проекта. Сначала завершите её добавление.";
+			return copy("Модель ещё не закреплена в ресурсах этого проекта. Сначала завершите её добавление.", "Finish adding this model so its resources are available in the project.");
 		case "WALL_ITEM_LOCKED":
 		case "ITEM_LOCKED":
-			return "Предмет заблокирован. Сначала разблокируйте его.";
+			return copy("Предмет заблокирован. Сначала разблокируйте его.", "Unlock the item first.");
 		case "WALL_ITEM_LOCK_STATE_UNCHANGED":
 		case "ITEM_LOCK_STATE_UNCHANGED":
-			return "Предмет уже находится в выбранном состоянии блокировки.";
+			return copy("Предмет уже находится в выбранном состоянии блокировки.", "The item already has the selected lock setting.");
 		case "WALL_DOOR_OPENING_COLLISION":
-			return "Новая стена пересекает проём. Соедините её с краем проёма или проведите в стороне.";
+			return copy("Новая стена пересекает проём. Соедините её с краем проёма или проведите в стороне.", "The new wall intersects an opening. Join it to the edge of the opening or draw it in a different position.");
 		case "DOOR_CLEARANCE_COLLISION":
-			return "Предмет пересекает сектор открывания двери. Измените сторону двери или переместите предмет.";
+			return copy("Предмет пересекает сектор открывания двери. Измените сторону двери или переместите предмет.", "The item overlaps the door swing. Change the swing direction or move the item.");
 		case "PROJECT_BOUNDS_EXCEEDED":
-			return "Новое положение или размер выходит за границы проекта.";
+			return copy("Новое положение или размер выходит за границы проекта.", "The proposed position or size exceeds the project bounds.");
 		case "INVALID_DIMENSION":
-			return "Введите целые положительные миллиметры.";
+			return copy("Введите целые положительные миллиметры.", "Enter a positive whole number of millimetres.");
 		case "ZERO_LENGTH":
-			return "Проведите стену с ненулевой длиной.";
+			return copy("Проведите стену с ненулевой длиной.", "Draw a wall with nonzero length.");
 		case "ROOM_NOT_DETACHED":
-			return "Новая комната не должна касаться существующего контура.";
+			return copy("Новая комната не должна касаться существующего контура.", "Leave space between the new room and the existing outline.");
 		case "ROOM_OVERLAP":
-			return "Новая комната пересекает существующий контур.";
+			return copy("Новая комната пересекает существующий контур.", "The new room overlaps the existing outline.");
 		case "PLAN_TOPOLOGY_UNSUPPORTED":
-			return "Этот план пока не поддерживает добавление отдельного контура.";
+			return copy("Этот план пока не поддерживает добавление отдельного контура.", "This plan does not currently support a separate outline.");
 		case "PLAN_NOT_RECTANGULAR_STARTER":
-			return "Для этого контура нужен инструмент стен, а не изменение стартовой стороны.";
+			return copy("Для этого контура нужен инструмент стен, а не изменение стартовой стороны.", "Use the Wall tool to change this outline.");
 		case "WALL_BOUNDARY":
-			return "Внешнюю стену нельзя удалить в текущем плане.";
+			return copy("Внешнюю стену нельзя удалить в текущем плане.", "The outer wall cannot be deleted in the current plan.");
 		case "WALL_NOT_FOUND":
 		case "WALL_NOT_DELETABLE":
-			return "Эту стену нельзя удалить в текущей топологии.";
+			return copy("Эту стену нельзя удалить в текущей топологии.", "This wall cannot be deleted in the current plan.");
 		case "INVALID_WALL_HOST":
-			return "Для проёма нужна корректно выбранная стена.";
+			return copy("Для проёма нужна корректно выбранная стена.", "Select an eligible wall for the opening.");
 		case "DOOR_WIDTH_BELOW_MINIMUM":
-			return `Ширина дверного проёма должна быть не менее ${MINIMUM_RESIDENTIAL_DOORWAY_WIDTH_MM} мм.`;
+			return copy(`Ширина дверного проёма должна быть не менее ${MINIMUM_RESIDENTIAL_DOORWAY_WIDTH_MM} мм.`, `The doorway must be at least ${MINIMUM_RESIDENTIAL_DOORWAY_WIDTH_MM} mm wide.`);
 		case "DOOR_WIDTH_EXCEEDS_WALL_LENGTH":
-			return "Ширина дверного проёма не может превышать длину выбранной стены.";
+			return copy("Ширина дверного проёма не может превышать длину выбранной стены.", "The door opening must fit within the wall length.");
 		case "WINDOW_WIDTH_EXCEEDS_WALL_LENGTH":
-			return "Ширина окна не может превышать длину выбранной стены.";
+			return copy("Ширина окна не может превышать длину выбранной стены.", "The window must fit within the wall length.");
 		case "OPENING_OUTSIDE_WALL_INTERVAL":
-			return "Проём не помещается в границы выбранной стены.";
+			return copy("Проём не помещается в границы выбранной стены.", "The opening extends beyond the wall.");
 		case "OPENING_OUT_OF_BOUNDS":
-			return "Высота проёма превышает высоту выбранной стены.";
+			return copy("Высота проёма превышает высоту выбранной стены.", "The opening is taller than the selected wall.");
 		case "OPENING_OVERLAP":
-			return "Проёмы на одной стене не могут пересекаться.";
+			return copy("Проёмы на одной стене не могут пересекаться.", "Openings on a wall cannot overlap.");
 		case "OPENING_NOT_FOUND":
-			return "Этот проём уже удалён или недоступен.";
+			return copy("Этот проём уже удалён или недоступен.", "This opening is unavailable.");
 		case "ITEM_HOST_UNRESOLVABLE":
-			return "Изменение нарушит размещение предмета. Переместите предмет и повторите.";
+			return copy("Изменение нарушит размещение предмета. Переместите предмет и повторите.", "This change would affect an item placement. Move the item and try again.");
 		case "OPENING_HOST_UNRESOLVABLE":
-			return "Изменение сделает проём невалидным. Сначала удалите или переместите проём.";
+			return copy("Изменение сделает проём невалидным. Сначала удалите или переместите проём.", "This change would make an opening invalid. Move or delete the opening first.");
 		case "OPENING_CONFLICT_STALE":
-			return "Состав затронутых проёмов изменился. Проверьте последствия ещё раз.";
+			return copy("Состав затронутых проёмов изменился. Проверьте последствия ещё раз.", "The affected openings have changed. Review them again.");
 		case "WALL_DELETION_CONFLICT":
-			return "Перед удалением стены подтвердите все показанные последствия.";
+			return copy("Перед удалением стены подтвердите все показанные последствия.", "Confirm the effects before deleting the wall.");
 		case "STALE_BASE_REVISION":
-			return "План изменился после preview. Проверьте последствия удаления ещё раз.";
+			return copy("План изменился после preview. Проверьте последствия удаления ещё раз.", "The plan changed after the preview. Review the effects of deleting the wall again.");
 		case "WRITER_LEASE_LOST":
-			return "Редактирование перешло в другое окно. Удаление не выполнено.";
+			return copy("Редактирование перешло в другое окно. Удаление не выполнено.", "Editing moved to another window. The wall was not deleted.");
 		case "WALL_ADD_CONFLICT_STALE":
-			return "Состав затронутых проёмов или предметов изменился. Проверьте последствия добавления ещё раз.";
+			return copy("Состав затронутых проёмов или предметов изменился. Проверьте последствия добавления ещё раз.", "The affected openings or items have changed. Review the effects of adding the wall again.");
 		case "ITEM_NOT_FOUND":
-			return "Предмет уже удалён или недоступен.";
+			return copy("Предмет уже удалён или недоступен.", "This item is unavailable.");
 		case "ITEM_COLOR_UNSUPPORTED":
-			return "Этот вариант цвета недоступен в локальном каталоге.";
+			return copy("Этот вариант цвета недоступен в локальном каталоге.", "This color is unavailable in the local catalog.");
 		case "FIXED_ASSET_DIMENSIONS":
-			return "Габариты этой 3D-модели зафиксированы её определением.";
+			return copy("Габариты этой 3D-модели зафиксированы её определением.", "This 3D model has fixed dimensions.");
 		case "ITEM_COLOR_NOT_SUPPORTED":
-			return "У этой 3D-модели не объявлены изменяемые варианты цвета.";
+			return copy("У этой 3D-модели не объявлены изменяемые варианты цвета.", "This 3D model has no adjustable colors.");
 		case "ROOM_HEIGHT_CONFLICT":
-			return "У объединяемых комнат разная высота. Сначала выровняйте её.";
+			return copy("У объединяемых комнат разная высота. Сначала выровняйте её.", "The rooms have different heights. Set the same height before merging them.");
 		case "ROOM_METADATA_CONFLICT_STALE":
-			return "Состав объединяемых помещений изменился. Проверьте последствия ещё раз.";
+			return copy("Состав объединяемых помещений изменился. Проверьте последствия ещё раз.", "The rooms to merge have changed. Review the effects again.");
 		case "ROOM_NOT_FOUND":
-			return "Выбранное помещение больше не существует в текущем плане.";
+			return copy("Выбранное помещение больше не существует в текущем плане.", "The selected room is no longer on the plan.");
 		case "ROOM_NAME_REQUIRED":
-			return "Укажите название помещения.";
+			return copy("Укажите название помещения.", "Enter a room name.");
 		case "ROOM_TYPE_INVALID":
-			return "Выберите назначение помещения из списка.";
+			return copy("Выберите назначение помещения из списка.", "Choose a room type from the list.");
 		case "ROOM_HEIGHT_INVALID":
-			return "Высота комнаты должна быть целым числом от 500 до 10 000 мм.";
+			return copy("Высота комнаты должна быть целым числом от 500 до 10 000 мм.", "Enter a whole number between 500 and 10,000 mm for the room height.");
 		case "ROOM_HEIGHT_OPENING_CONFLICT":
-			return "Эта высота сделает существующий проём выше стены. Сначала измените или удалите проём.";
+			return copy("Эта высота сделает существующий проём выше стены. Сначала измените или удалите проём.", "The wall would be shorter than an existing opening. Change or remove the opening first.");
 		case "ROOM_HEIGHT_OPENING_CONFLICT_STALE":
-			return "Состав затронутых проёмов изменился. Проверьте высоту помещения ещё раз.";
+			return copy("Состав затронутых проёмов изменился. Проверьте высоту помещения ещё раз.", "The affected openings have changed. Check the room height again.");
 		case "ROOM_HEIGHT_OPENING_RESOLUTION_INVALID":
-			return "Выбранный результат больше не подходит текущим проёмам. Проверьте их ещё раз.";
+			return copy("Выбранный результат больше не подходит текущим проёмам. Проверьте их ещё раз.", "The selected result no longer fits the openings. Review them again.");
 		case "ROOM_USABLE_AREA_COLLAPSE":
-			return "Эта толщина сделает комнату непригодной. Укажите меньшее значение.";
 		case "USABLE_POLYGON_COLLAPSED":
-			return "Эта толщина схлопнет внутренний контур комнаты. Укажите меньшее значение.";
+			return copy("Изменение разрушит внутренний контур комнаты. Выберите другое положение стены.", "This change would leave the room without usable space. Choose a different wall position.");
 		case "UNSUPPORTED_WALL_THICKNESS":
-			return "Толщина стены должна быть целым числом от 20 до 1000 мм.";
+			return copy("Толщина стены должна быть целым числом от 20 до 1000 мм.", "Enter a whole number from 20 to 1,000 mm for the wall thickness.");
 		case "WALL_POSITION_UNCHANGED":
-			return "Укажите новое положение стены.";
+			return copy("Укажите новое положение стены.", "Choose a new wall position.");
 		case "WALL_NOT_MOVABLE":
-			return "Эту стену пока нельзя переместить отдельно от связанных сегментов.";
+			return copy("Эту стену пока нельзя переместить отдельно от связанных сегментов.", "This wall cannot move independently of the connected segments.");
 		case "WALL_SPLIT_CONFLICT_STALE":
-			return "Состав затронутых проёмов или предметов изменился. Проверьте последствия ещё раз.";
+			return copy("Состав затронутых проёмов или предметов изменился. Проверьте последствия ещё раз.", "The affected openings or items have changed. Review the effects again.");
 		case "WALL_SPLIT_POINT_INVALID":
-			return "Выберите точку разделения строго внутри стены.";
+			return copy("Выберите точку разделения строго внутри стены.", "Choose a point inside the wall segment.");
 		case "VERTEX_NOT_FOUND":
-			return "Эта вершина уже недоступна в текущем плане.";
+			return copy("Эта вершина уже недоступна в текущем плане.", "This vertex is unavailable.");
 		case "VERTEX_NOT_DELETABLE":
-			return "Можно убрать только промежуточную вершину на прямой стене без проёмов.";
+			return copy("Можно убрать только промежуточную вершину на прямой стене без проёмов.", "Only an intermediate vertex on a straight wall without openings can be removed.");
 		case "VERTEX_POSITION_UNCHANGED":
-			return "Вершина уже находится в этом положении.";
+			return copy("Вершина уже находится в этом положении.", "The vertex is already at this position.");
 		case "VERTEX_NOT_MOVABLE":
-			return "Этот перенос изменит связанные стены. Пока можно двигать только вершину на прямом участке.";
+			return copy("Этот перенос изменит связанные стены. Пока можно двигать только вершину на прямом участке.", "This move would change the connected walls. Move a vertex on a straight segment.");
 		case "COLLINEAR_OVERLAP":
-			return "Новая стена накладывается на существующий сегмент.";
+			return copy("Новая стена накладывается на существующий сегмент.", "The new wall overlaps an existing segment.");
 		case "INVALID_PLAN_GRAPH":
-			return "Контур стен нельзя безопасно замкнуть. Проверьте, что стены не пересекаются и соединяются в углах.";
+			return copy("Контур стен нельзя безопасно замкнуть. Проверьте, что стены не пересекаются и соединяются в углах.", "The wall outline cannot close safely. Check that walls are joined at the corners and do not cross.");
 		case "UNSUPPORTED_FACE_SHAPE":
-			return "Этот замкнутый контур пока не поддерживается. Используйте простой выпуклый контур без пересечений.";
+			return copy("Этот замкнутый контур пока не поддерживается. Используйте простой выпуклый контур без пересечений.", "This closed outline is not supported yet. Use a simple convex shape without intersections.");
 		case "DIAGONAL_WALL_CONTACT_UNSUPPORTED":
-			return "Диагональная стена не может накладываться на другую, а точка пересечения должна попадать в целый миллиметр.";
+			return copy("Диагональная стена не может накладываться на другую, а точка пересечения должна попадать в целый миллиметр.", "Diagonal walls cannot overlap. Their intersection must fall on a whole millimetre.");
 		case "TOO_SHORT_WALL":
-			return "Стена должна быть длиннее своей толщины.";
+			return copy("Стена должна быть длиннее своей толщины.", "The wall length must exceed its thickness.");
 		case "UNSUPPORTED_DIRECTION":
-			return "В альфе стены строятся горизонтально, вертикально или под углом 45°.";
+			return copy("В альфе стены строятся горизонтально, вертикально или под углом 45°.", "Draw walls horizontally, vertically or at 45°.");
 		case "INVALID_SOURCE_PROJECT":
 		case "INVALID_RESULTING_PROJECT":
-			return "Этот план нельзя безопасно изменить. Проверьте его целостность.";
+			return copy("Этот план нельзя безопасно изменить. Проверьте его целостность.", "This plan cannot be changed safely. Check its geometry.");
 		default:
-			return "Не удалось применить изменение. Проверьте параметры и попробуйте снова.";
+			return copy("Не удалось применить изменение. Проверьте параметры и попробуйте снова.", "The change could not be applied. Check the details and try again.");
 	}
 }
 
@@ -883,7 +888,7 @@ export function wallMutationCorrection(
 			? {
 					assetInstanceId: item.assetInstanceId,
 					kind: "floor-item",
-					message: `Стена не может пересекать предмет «${item.label}». Откройте предмет, чтобы переместить его, или проведите стену иначе.`,
+					message: copy(`Стена не может пересекать предмет «${item.label}». Откройте предмет, чтобы переместить его, или проведите стену иначе.`, `The wall would intersect “${item.label}”. Open the item to move it or draw the wall in a different position.`),
 				}
 			: undefined;
 	}
@@ -903,10 +908,10 @@ export function wallMutationCorrection(
 	const ordinal = openingsOnHost.findIndex(
 		(candidate) => candidate.openingId === opening.openingId,
 	);
-	const name = `${opening.kind === "Door" ? "Дверной проём" : "Окно"} № ${ordinal + 1}`;
+	const name = copy(`${opening.kind === "Door" ? "Дверной проём" : "Окно"} № ${ordinal + 1}`, `${opening.kind === "Door" ? "Door opening" : "Window"} #${ordinal + 1}`);
 	return {
 		kind: "opening",
-		message: `Стена пересекает ${name} на выбранной стене. Откройте ${opening.kind === "Door" ? "проём" : "окно"}, чтобы изменить его, или проведите стену иначе.`,
+		message: copy(`Стена пересекает ${name} на выбранной стене. Откройте ${opening.kind === "Door" ? "проём" : "окно"}, чтобы изменить его, или проведите стену иначе.`, `The wall intersects ${name} on the selected wall. Open it to adjust it or draw the wall in a different position.`),
 		opening,
 	};
 }
@@ -914,9 +919,12 @@ export function wallMutationCorrection(
 export function wallThicknessErrorCopy(reasonCode: string): string {
 	switch (reasonCode) {
 		case "INVALID_DIMENSION":
-			return "Толщина стены должна быть целым числом миллиметров.";
+			return copy("Толщина стены должна быть целым числом миллиметров.", "Enter a whole number of millimetres for the wall thickness.");
 		case "PROJECT_BOUNDS_EXCEEDED":
-			return "Толщина стены должна быть в допустимом диапазоне 20–1000 мм.";
+			return copy("Толщина стены должна быть в допустимом диапазоне 20–1000 мм.", "Wall thickness must be between 20 and 1,000 mm.");
+		case "ROOM_USABLE_AREA_COLLAPSE":
+		case "USABLE_POLYGON_COLLAPSED":
+			return copy("Эта толщина схлопнет внутренний контур комнаты. Укажите меньшее значение.", "This thickness would remove the usable space inside the room. Enter a smaller value.");
 		default:
 			return errorCopy(reasonCode);
 	}
@@ -924,45 +932,45 @@ export function wallThicknessErrorCopy(reasonCode: string): string {
 
 export function projectNameErrorCopy(reasonCode: string): string {
 	return reasonCode === "PROJECT_NAME_INVALID_UNICODE"
-		? "Название содержит недопустимый символ. Удалите его и повторите попытку."
-		: "Введите название проекта.";
+		? copy("Название содержит недопустимый символ. Удалите его и повторите попытку.", "The name contains an unsupported character. Remove it and try again.")
+		: copy("Введите название проекта.", "Enter a project name.");
 }
 
 /** A project card is a place to return to, not a diagnostic log. */
 export function projectDirectoryUpdatedCopy(updatedAt: string): string {
 	const timestamp = new Date(updatedAt);
-	if (Number.isNaN(timestamp.valueOf())) return "Изменён недавно";
-	const formatted = new Intl.DateTimeFormat("ru-RU", {
+	if (Number.isNaN(timestamp.valueOf())) return copy("Изменён недавно", "Edited recently");
+	const formatted = new Intl.DateTimeFormat(copy("ru-RU", "en-US"), {
 		day: "numeric",
 		hour: "2-digit",
 		minute: "2-digit",
 		month: "short",
 	}).format(timestamp);
-	return `Изменён · ${formatted}`;
+	return copy(`Изменён · ${formatted}`, `Edited · ${formatted}`);
 }
 
 export function projectTransferImportFeedback(reasonCode: string): string {
 	switch (reasonCode) {
 		case "PROJECT_BACKUP_ENVELOPE_EXCEEDED":
-			return "Текущий формат резервной копии в браузере не сохраняет эти данные точно. Исходный файл и существующие проекты не изменены.";
+			return copy("Текущий формат резервной копии в браузере не сохраняет эти данные точно. Исходный файл и существующие проекты не изменены.", "The current browser backup format cannot store these data exactly. The source file and existing projects are intact.");
 		case "BACKUP_SCHEMA_UNREADABLE":
-			return "Не удалось безопасно определить формат файла. Исходный файл и существующие проекты не изменены.";
+			return copy("Не удалось безопасно определить формат файла. Исходный файл и существующие проекты не изменены.", "The file format could not be recognized safely. The source file and existing projects are intact.");
 		case "verification-unavailable":
-			return "Проверка этого файла сейчас недоступна. Повторите попытку или обновите приложение. Исходный файл и существующие проекты не изменены.";
+			return copy("Проверка этого файла сейчас недоступна. Повторите попытку или обновите приложение. Исходный файл и существующие проекты не изменены.", "This file cannot be verified right now. Try again or update the app. The source file and existing projects are intact.");
 		case "BACKUP_CHECKSUM_MISMATCH":
 		case "PROJECT_JSON_CHECKSUM_MISMATCH":
 		case "PORTABLE_BACKUP_CHECKSUM_MISMATCH":
-			return "Контрольная сумма файла не совпала. Передайте исходный файл заново.";
+			return copy("Контрольная сумма файла не совпала. Передайте исходный файл заново.", "The file checksum did not match. Share the original file again.");
 		case "BACKUP_CANCELLED":
 		case "PORTABLE_BACKUP_CANCELLED":
-			return "Импорт отменён. Существующие проекты не изменены.";
+			return copy("Импорт отменён. Существующие проекты не изменены.", "Import canceled. Existing projects are intact.");
 		case "PORTABLE_BACKUP_FUTURE_SCHEMA":
-			return "Этот backup создан более новой версией приложения. Обновите приложение и повторите импорт; существующие проекты не изменены.";
+			return copy("Этот backup создан более новой версией приложения. Обновите приложение и повторите импорт; существующие проекты не изменены.", "This backup was created with a newer version of the app. Update the app and import it again. Existing projects are intact.");
 		case "BACKUP_LIMIT_EXCEEDED":
 		case "PORTABLE_BACKUP_LIMIT_EXCEEDED":
-			return "Backup превышает безопасный размер или количество файлов для телефона. Существующие проекты не изменены.";
+			return copy("Backup превышает безопасный размер или количество файлов для телефона. Существующие проекты не изменены.", "The backup exceeds the mobile limit for size or file count. Existing projects are intact.");
 		default:
-			return "Не удалось проверить файл проекта. Существующие проекты не изменены.";
+			return copy("Не удалось проверить файл проекта. Существующие проекты не изменены.", "The project file could not be verified. Existing projects are intact.");
 	}
 }
 
@@ -989,19 +997,19 @@ function projectTransferProgressCopy(
 ): string {
 	switch (state.kind) {
 		case "reading":
-			return `Читаем ${state.filename}…`;
+			return copy(`Читаем ${state.filename}…`, `Reading ${state.filename}…`);
 		case "validating":
-			return "Проверяем контейнер, схему и контрольные суммы…";
+			return copy("Проверяем контейнер, схему и контрольные суммы…", "Checking the container, schema and checksums…");
 		case "staging-resources":
 			return state.total === 0
-				? "Подготавливаем новый локальный проект…"
-				: `Проверяем локальные ресурсы: ${state.completed} из ${state.total}…`;
+				? copy("Подготавливаем новый локальный проект…", "Preparing a new local project…")
+				: copy(`Проверяем локальные ресурсы: ${state.completed} из ${state.total}…`, `Checking local resources (${state.completed} of ${state.total})…`);
 		case "checking-render":
-			return "Проверяем локальное чтение и 2D/3D-проекцию…";
+			return copy("Проверяем локальное чтение и 2D/3D-проекцию…", "Verifying local access and the 2D and 3D views…");
 		case "saving":
-			return "Публикуем новый локальный проект…";
+			return copy("Публикуем новый локальный проект…", "Saving a new local project…");
 		case "cancelling":
-			return "Останавливаем импорт и очищаем временные данные…";
+			return copy("Останавливаем импорт и очищаем временные данные…", "Canceling the import and clearing temporary data…");
 	}
 }
 
@@ -1009,35 +1017,35 @@ function projectTransferProgressCopy(
 export function fbxConversionFeedback(reasonCode: string): string {
 	switch (reasonCode) {
 		case "FBX_FILE_SELECTION_INVALID":
-			return "Выберите один FBX с текстурами либо один ZIP-архив с такой моделью.";
+			return copy("Выберите один FBX с текстурами либо один ZIP-архив с такой моделью.", "Choose one FBX with textures or one ZIP archive containing that model.");
 		case "FBX_ARCHIVE_INVALID":
-			return "ZIP-архив не удалось прочитать. Скачайте модель заново и выберите исходный ZIP.";
+			return copy("ZIP-архив не удалось прочитать. Скачайте модель заново и выберите исходный ZIP.", "The ZIP archive could not be opened. Download it again and choose the original ZIP.");
 		case "FBX_ARCHIVE_BYTES_LIMIT":
-			return "ZIP-архив ограничен 25 MiB для надёжного локального преобразования на телефоне.";
+			return copy("ZIP-архив ограничен 25 MiB для надёжного локального преобразования на телефоне.", "The ZIP archive is limited to 25 MiB for mobile conversion.");
 		case "FBX_ARCHIVE_RESOURCE_LIMIT":
-			return "В ZIP слишком много файлов или распакованных данных для одного предмета. Экспортируйте одну модель с уменьшенными текстурами.";
+			return copy("В ZIP слишком много файлов или распакованных данных для одного предмета. Экспортируйте одну модель с уменьшенными текстурами.", "The ZIP contains too many files or too much extracted data. Export a single model with smaller textures.");
 		case "FBX_SIDECAR_TYPE_UNSUPPORTED":
-			return "Вместе с FBX поддерживаются только текстуры JPG, PNG или WebP. Уберите другие файлы или упакуйте модель в GLB.";
+			return copy("Вместе с FBX поддерживаются только текстуры JPG, PNG или WebP. Уберите другие файлы или упакуйте модель в GLB.", "FBX textures must be JPG, PNG or WebP. Remove other files or package the model as GLB.");
 		case "FBX_FILE_BYTES_LIMIT":
-			return "Один FBX для телефона ограничен 12 MiB. Выберите отдельный предмет, а не набор мебели.";
+			return copy("Один FBX для телефона ограничен 12 MiB. Выберите отдельный предмет, а не набор мебели.", "A mobile FBX is limited to 12 MiB. Choose a single furniture model.");
 		case "FBX_SIDECAR_BYTES_LIMIT":
-			return "Текстуры, выбранные вместе с FBX, ограничены 13 MiB. Уменьшите текстуры или выберите GLB до 25 MiB.";
+			return copy("Текстуры, выбранные вместе с FBX, ограничены 13 MiB. Уменьшите текстуры или выберите GLB до 25 MiB.", "FBX textures are limited to 13 MiB. Use smaller textures or choose GLB up to 25 MiB.");
 		case "FBX_BINARY_HEADER_REQUIRED":
-			return "Нужен binary FBX версии 7.1–7.8, а не текстовый или переименованный файл.";
+			return copy("Нужен binary FBX версии 7.1–7.8, а не текстовый или переименованный файл.", "Choose a binary FBX version 7.1–7.8.");
 		case "UNSUPPORTED_FBX_VERSION":
-			return "Версия FBX не поддерживается. Экспортируйте binary FBX 7.1–7.8 или сразу GLB.";
+			return copy("Версия FBX не поддерживается. Экспортируйте binary FBX 7.1–7.8 или сразу GLB.", "This FBX version is unsupported. Export a binary FBX 7.1–7.8 or a GLB.");
 		case "FBX_EXTERNAL_RESOURCE":
-			return "Для этой FBX выберите вместе с моделью все нужные текстуры JPG, PNG или WebP — приложение не скачивает файлы по ссылкам.";
+			return copy("Для этой FBX выберите вместе с моделью все нужные текстуры JPG, PNG или WebP — приложение не скачивает файлы по ссылкам.", "Select all required JPG, PNG or WebP textures with the FBX. The app uses the files you select.");
 		case "FBX_UNSUPPORTED_SCENE_CONTENT":
-			return "Поддерживается только статичный предмет без анимации, скелета, morph-targets, камер и света.";
+			return copy("Поддерживается только статичный предмет без анимации, скелета, morph-targets, камер и света.", "Choose a static item without animation, rigs, morph targets, cameras or lights.");
 		case "FBX_CONVERSION_OUTPUT_LIMIT":
-			return "Нормализованная GLB-модель превысила 25 MiB. Уменьшите геометрию или текстуры и повторите.";
+			return copy("Нормализованная GLB-модель превысила 25 MiB. Уменьшите геометрию или текстуры и повторите.", "The converted GLB exceeds 25 MiB. Simplify the model or reduce its textures and try again.");
 		case "FBX_CONVERSION_TIMEOUT":
-			return "Преобразование не завершилось за 15 секунд и было безопасно остановлено.";
+			return copy("Преобразование не завершилось за 15 секунд и было безопасно остановлено.", "The conversion exceeded 15 seconds and was stopped.");
 		case "FBX_CONVERSION_CANCELLED":
-			return "Преобразование отменено. Проект и локальное хранилище не изменены.";
+			return copy("Преобразование отменено. Проект и локальное хранилище не изменены.", "Conversion canceled. The project and local storage are intact.");
 		default:
-			return "Не удалось безопасно преобразовать FBX. Проект и локальное хранилище не изменены.";
+			return copy("Не удалось безопасно преобразовать FBX. Проект и локальное хранилище не изменены.", "The FBX could not be converted safely. The project and local storage are intact.");
 	}
 }
 
@@ -1045,28 +1053,28 @@ function customGlbImportFeedback(reasonCode: string): string {
 	switch (reasonCode) {
 		case "GLB_BYTES_LIMIT":
 		case "GLB_FILE_BYTES_LIMIT":
-			return "Одна GLB-модель ограничена 25 MiB, чтобы её можно было хранить и открыть на телефоне.";
+			return copy("Одна GLB-модель ограничена 25 MiB, чтобы её можно было хранить и открыть на телефоне.", "Each GLB is limited to 25 MiB for mobile storage and viewing.");
 		case "GLB_HEADER_INVALID":
 		case "GLB_JSON_INVALID":
 		case "MALFORMED_GLTF":
-			return "Это не целая GLB 2.0. Экспортируйте из Blender/Maya в один файл .glb и повторите.";
+			return copy("Это не целая GLB 2.0. Экспортируйте из Blender/Maya в один файл .glb и повторите.", "Choose a complete GLB 2.0 file. Export a single .glb file from Blender or Maya.");
 		case "EXTERNAL_RESOURCE":
-			return "Модель ссылается на отдельные текстуры или файлы. Экспортируйте self-contained GLB со всеми текстурами внутри.";
+			return copy("Модель ссылается на отдельные текстуры или файлы. Экспортируйте self-contained GLB со всеми текстурами внутри.", "The model refers to external files. Export a GLB with all textures embedded.");
 		case "UNSUPPORTED_DYNAMIC_CONTENT":
 		case "ANIMATION_OR_SKIN_UNSUPPORTED":
-			return "Поддерживается статичная модель без анимации, рига, камеры и света.";
+			return copy("Поддерживается статичная модель без анимации, рига, камеры и света.", "Choose a static model without animation, a rig, cameras or lights.");
 		case "UNSUPPORTED_REQUIRED_EXTENSION":
-			return "В модели используется неподдерживаемое расширение glTF. Экспортируйте стандартный GLB без расширений.";
+			return copy("В модели используется неподдерживаемое расширение glTF. Экспортируйте стандартный GLB без расширений.", "This model uses an unsupported glTF extension. Export a standard GLB without extensions.");
 		case "GLB_GEOMETRY_BUDGET":
 		case "DECODED_GEOMETRY_LIMIT":
-			return "В модели слишком много геометрии для надёжного мобильного предпросмотра. Упростите её и повторите.";
+			return copy("В модели слишком много геометрии для надёжного мобильного предпросмотра. Упростите её и повторите.", "This model is too detailed for mobile preview. Simplify it and try again.");
 		case "GLB_TEXTURE_BUDGET":
 		case "TEXTURE_LIMIT":
-			return "В модели слишком много текстур для мобильного проекта. Объедините или уменьшите текстуры.";
+			return copy("В модели слишком много текстур для мобильного проекта. Объедините или уменьшите текстуры.", "This model has too many textures for a mobile project. Merge or reduce them.");
 		case "MEMORY_BUDGET_RISK":
-			return "Текстуры после распаковки слишком велики для надёжной работы на телефоне. Уменьшите их до 4096 px по стороне и 48 Мп суммарно.";
+			return copy("Текстуры после распаковки слишком велики для надёжной работы на телефоне. Уменьшите их до 4096 px по стороне и 48 Мп суммарно.", "The extracted textures are too large for mobile. Reduce them to 4,096 px per side and 48 MP in total.");
 		default:
-			return "Не удалось проверить GLB. Проект и локальное хранилище не изменены.";
+			return copy("Не удалось проверить GLB. Проект и локальное хранилище не изменены.", "The GLB could not be verified. The project and local storage are intact.");
 	}
 }
 
@@ -1089,7 +1097,7 @@ async function prepareCustomGlbImport(
 		return { kind: "rejected", reasonCode: preflight.reasonCode };
 	}
 	const displayName =
-		filename.replace(/\.(?:fbx|glb)$/i, "").trim() || "Моя модель";
+		filename.replace(/\.(?:fbx|glb)$/i, "").trim() || copy("Моя модель", "My model");
 	return {
 		assetDefinitionId: browserRandomUuid(),
 		bytes,
@@ -1142,26 +1150,26 @@ function preloadedGlbResourceReadinessCopy(
 	switch (state?.kind) {
 		case "loading":
 			return state.totalBytes
-				? `Готовим для офлайн · ${Math.round((state.loadedBytes / state.totalBytes) * 100)}%`
-				: "Готовим для офлайн";
+				? copy(`Готовим для офлайн · ${Math.round((state.loadedBytes / state.totalBytes) * 100)}%`, `Preparing for offline use · ${Math.round((state.loadedBytes / state.totalBytes) * 100)}%`)
+				: copy("Готовим для офлайн", "Preparing for offline use");
 		case "ready":
-			return "Готово для размещения";
+			return copy("Готово для размещения", "Ready to place");
 		case "unavailable":
-			return "Не удалось подготовить предмет для офлайн";
+			return copy("Не удалось подготовить предмет для офлайн", "Could not prepare the item for offline use");
 		default:
-			return "Готово к загрузке";
+			return copy("Готово к загрузке", "Ready to download");
 	}
 }
 
 export function preloadedGlbLoadingStatusCopy(
 	state: Readonly<{ loadedBytes: number; totalBytes?: number }>,
 ): string {
-	if (!state.totalBytes) return "Готовим для офлайн…";
+	if (!state.totalBytes) return copy("Готовим для офлайн…", "Preparing for offline use…");
 	const percent = Math.min(
 		100,
 		Math.round((state.loadedBytes / state.totalBytes) * 100),
 	);
-	return `Готовим для офлайн… ${percent}%`;
+	return copy(`Готовим для офлайн… ${percent}%`, `Preparing for offline use… ${percent}%`);
 }
 
 function catalogThumbnailUrlFor(
@@ -1241,21 +1249,21 @@ export function itemPlacementFeedback(result: {
 }): string | undefined {
 	switch (result.kind) {
 		case "durable":
-			return "Предмет размещён и сохранён.";
+			return copy("Предмет размещён и сохранён.", "Item placed and saved.");
 		case "in-progress":
-			return "Предыдущая правка ещё сохраняется. Подождите и повторите размещение.";
+			return copy("Предыдущая правка ещё сохраняется. Подождите и повторите размещение.", "The previous edit is still saving. Wait, then place the item again.");
 		case "not-ready":
-			return "Проект ещё открывается. Подождите и повторите размещение предмета.";
+			return copy("Проект ещё открывается. Подождите и повторите размещение предмета.", "The project is still opening. Wait, then place the item again.");
 		case "persist-failed":
-			return "Не удалось сохранить предмет. Повторите сохранение и разместите его снова.";
+			return copy("Не удалось сохранить предмет. Повторите сохранение и разместите его снова.", "The item could not be saved. Retry the save and place it again.");
 		case "cancelled":
-			return "Размещение предмета отменено.";
+			return copy("Размещение предмета отменено.", "Item placement canceled.");
 		case "rejected":
 			return result.reasonCode
 				? errorCopy(result.reasonCode)
-				: "Предмет нельзя разместить в этой точке.";
+				: copy("Предмет нельзя разместить в этой точке.", "The item cannot be placed here.");
 		default:
-			return "Предмет пока нельзя разместить. Повторите действие.";
+			return copy("Предмет пока нельзя разместить. Повторите действие.", "The item could not be placed. Try again.");
 	}
 }
 
@@ -1381,24 +1389,24 @@ function PwaUpdateNotice({
 		>
 			<strong>
 				{isReloadReady
-					? "Обновление готово к перезапуску"
-					: "Обновление готово"}
+					? copy("Обновление готово к перезапуску", "Update ready to apply")
+					: copy("Обновление готово", "Update ready")}
 			</strong>
 			<p>
 				{canActivate
 					? isReloadReady
-						? "Текущий проект сохранён. Перезагрузите приложение, когда будете готовы."
-						: "Текущий проект сохранён. Обновите приложение, когда будете готовы."
+						? copy("Текущий проект сохранён. Перезагрузите приложение, когда будете готовы.", "The project is saved. Reload the app when you are ready.")
+						: copy("Текущий проект сохранён. Обновите приложение, когда будете готовы.", "The project is saved. Update the app when you are ready.")
 					: hasUndurableDraft
-						? "Завершите или отмените черновую правку перед обновлением приложения."
-						: "Обновление будет доступно после завершения сохранения текущего проекта."}
+						? copy("Завершите или отмените черновую правку перед обновлением приложения.", "Finish or cancel the draft before updating.")
+						: copy("Обновление будет доступно после завершения сохранения текущего проекта.", "You can update after the current project finishes saving.")}
 			</p>
 			<button
 				disabled={!canActivate}
 				onClick={isReloadReady ? pwaUpdate.reload : pwaUpdate.activate}
 				type="button"
 			>
-				{isReloadReady ? "Перезагрузить приложение" : "Обновить приложение"}
+				{isReloadReady ? copy("Перезагрузить приложение", "Reload app") : copy("Обновить приложение", "Update app")}
 			</button>
 		</aside>
 	);
@@ -1434,14 +1442,14 @@ function PwaInstallGuide({
 				onClick={() => void promptInstall()}
 				type="button"
 			>
-				{isPrompting ? "Открываем установку…" : "Установить приложение"}
+				{isPrompting ? copy("Открываем установку…", "Opening installation…") : copy("Установить приложение", "Install app")}
 			</button>
 			{promptOutcome === "unavailable" ? (
 				<div role="status">
-					Установка сейчас недоступна.
+					{copy("Установка сейчас недоступна.", "Installation is unavailable right now.")}
 					<button
 						type="button"
-						aria-label="Закрыть уведомление"
+						aria-label={copy("Закрыть уведомление", "Dismiss notification")}
 						onClick={() => setPromptOutcome(undefined)}
 					>
 						×
@@ -1484,46 +1492,42 @@ function WriterLeaseNotice({
 			data-testid="writer-lease-notice"
 			role="alert"
 		>
-			<strong>Проект открыт в другом окне</strong>
+			<strong>{copy("Проект открыт в другом окне", "Project open in another window")}</strong>
 			<p>
-				В этом окне редактирование остановлено, чтобы версии не перезаписали
-				друг друга.
+				{copy("В этом окне редактирование остановлено, чтобы версии не перезаписали друг друга.", "Editing is paused in this window to prevent conflicting saves.")}
 			</p>
 			{hasRecoveryCopy ? (
 				<>
 					<p>
-						Незавершённое изменение осталось в этом окне. Скачайте его, чтобы
-						восстановить как отдельный проект.
+						{copy("Незавершённое изменение осталось в этом окне. Скачайте его, чтобы восстановить как отдельный проект.", "The unfinished edit is still in this window. Download it to recover it as a separate project.")}
 					</p>
 					<button onClick={onRecoveryExport} type="button">
-						Скачать несохранённую правку
+						{copy("Скачать несохранённую правку", "Download unsaved edit")}
 					</button>
 					<button onClick={onToggleRecoveryCopy} type="button">
 						{isShowingRecoveryCopy
-							? "Показать актуальную версию"
-							: "Показать recovery-копию"}
+							? copy("Показать актуальную версию", "Show current version")
+							: copy("Показать recovery-копию", "Show recovery copy")}
 					</button>
 				</>
 			) : null}
 			{isConfirming ? (
 				<>
 					<p>
-						После перехвата другое окно потеряет право сохранять этот проект.
-						Подтвердите действие или отмените его — сохранённая версия не
-						изменится.
+						{copy("После перехвата другое окно потеряет право сохранять этот проект. Подтвердите действие или отмените его — сохранённая версия не изменится.", "The other window will lose edit access after takeover. Confirm or cancel to keep the saved version.")}
 					</p>
 					<button data-editor-action="confirm" disabled={isTakingOver} onClick={onConfirm} type="button">
 						{isTakingOver
-							? "Перехватываем редактирование…"
-							: plainLabels ? "Подтвердить" : "Подтвердить перехват"}
+							? copy("Перехватываем редактирование…", "Taking over editing…")
+							: plainLabels ? copy("Подтвердить", "Confirm") : copy("Подтвердить перехват", "Confirm takeover")}
 					</button>
 					<button data-editor-action="cancel" disabled={isTakingOver} onClick={onCancel} type="button">
-						{plainLabels ? "Отменить" : "Отмена"}
+						{plainLabels ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 					</button>
 				</>
 			) : (
 				<button onClick={onRequestTakeOver} type="button">
-					Взять редактирование на себя
+					{copy("Взять редактирование на себя", "Take over editing")}
 				</button>
 			)}
 			{error ? <p role="alert">{error}</p> : null}
@@ -1543,6 +1547,7 @@ export function AppShell({
 	hostNavigation,
  navigationProtection,
 	hostLifecycle,
+	roomTheme,
 	registeredTransferImport,
 	registeredTransferExport,
 	fileTransfer,
@@ -2383,7 +2388,7 @@ export function AppShell({
 			.catch(() => {
 				if (!cancelled)
 					setCustomLibraryError(
-						"Не удалось прочитать свою библиотеку. Откройте каталог снова.",
+						copy("Не удалось прочитать свою библиотеку. Откройте каталог снова.", "Your library could not be read. Open the catalog again."),
 					);
 			});
 		return () => {
@@ -2706,7 +2711,7 @@ export function AppShell({
 		selectedWallItemDraftSource === undefined
 			? undefined
 			: selectedWallItemDraftCandidate === undefined
-				? "Укажите название, целые положительные размеры и целые миллиметры от нуля для положения настенного предмета."
+				? copy("Укажите название, целые положительные размеры и целые миллиметры от нуля для положения настенного предмета.", "Enter a name, positive whole dimensions and a nonnegative position in millimetres for the wall-mounted item.")
 				: selectedWallItemDraftAssessment?.kind === "rejected"
 					? errorCopy(selectedWallItemDraftAssessment.reasonCode)
 					: undefined;
@@ -3067,13 +3072,13 @@ export function AppShell({
 	);
 	const editorSaveState =
 		state.kind === "saving"
-			? "Сохраняем…"
+			? copy("Сохраняем…", "Saving…")
 			: hasRetainedHistoryTarget || (state.kind === "saved" && dimensionNotice?.kind === "item-collision")
-				? "Правка не сохранена"
+				? copy("Правка не сохранена", "Edit unsaved")
 			: isEditorPreview
-				? "Предпросмотр — не сохранено"
+				? copy("Предпросмотр — не сохранено", "Preview · unsaved")
 				: state.kind === "saved"
-					? "Сохранено"
+					? copy("Сохранено", "Saved")
 					: statusCopy(state);
 
 	useEffect(() => {
@@ -3093,9 +3098,9 @@ export function AppShell({
 	const sessionHistoryCommandLabels =
 		controller.sessionHistoryCommandLabels?.();
 	const undoActionLabel =
-		sessionHistoryCommandLabels?.undoActionLabel ?? "Отменить действие";
+		sessionHistoryCommandLabels?.undoActionLabel ?? copy("Отменить действие", "Undo");
 	const redoActionLabel =
-		sessionHistoryCommandLabels?.redoActionLabel ?? "Повторить действие";
+		sessionHistoryCommandLabels?.redoActionLabel ?? copy("Повторить действие", "Redo");
 	const canReturnToDrawing =
 		project !== undefined &&
 		project.level.wallSegments.length > 0 &&
@@ -3291,8 +3296,8 @@ export function AppShell({
 		if (!file || projectTransferAbortRef.current || projectTransferImport.kind !== "idle" ||
 			(repairing && isRepairingCustomGlb)) return;
 		const setError = repairing ? setCustomGlbRepairError : setProjectTransferError;
-		const sizeError = repairing ? "Резервная копия превышает допустимый размер." : projectTransferImportFeedback("BACKUP_LIMIT_EXCEEDED");
-		const readError = repairing ? "Не удалось прочитать резервную копию." : "Не удалось прочитать файл. Существующие проекты не изменены.";
+		const sizeError = repairing ? copy("Резервная копия превышает допустимый размер.", "This backup exceeds the size limit.") : projectTransferImportFeedback("BACKUP_LIMIT_EXCEEDED");
+		const readError = repairing ? copy("Не удалось прочитать резервную копию.", "The backup could not be read.") : copy("Не удалось прочитать файл. Существующие проекты не изменены.", "The file could not be read. Existing projects are intact.");
 		setError(undefined);
 		if (password !== undefined) setEncryptedProjectTransfer({ file, destination });
 		const abortController = new AbortController();
@@ -3333,10 +3338,10 @@ export function AppShell({
 				if (unlocked.kind !== "decrypted") {
 					setEncryptedProjectTransfer({ file, destination, error:
 						unlocked.reasonCode === "TRANSFER_AUTHENTICATION_FAILED"
-							? "Пароль неверен или файл повреждён."
+							? copy("Пароль неверен или файл повреждён.", "The password is incorrect or the file is damaged.")
 							: unlocked.reasonCode === "INVALID_TRANSFER_PASSWORD"
-								? "Введите пароль, заданный при экспорте."
-								: "Не удалось открыть зашифрованный файл.",
+								? copy("Введите пароль, заданный при экспорте.", "Enter the password you set during export.")
+								: copy("Не удалось открыть зашифрованный файл.", "The encrypted file could not be opened."),
 					});
 					return;
 				}
@@ -3346,9 +3351,9 @@ export function AppShell({
 			if (repairing) {
 				const result = await controller.repairResourcesFromPortableBackup(bytes);
 				if (result.kind === "rejected")
-					setError("Эта копия не содержит всех нужных точных моделей или не прошла проверку.");
+					setError(copy("Эта копия не содержит всех нужных точных моделей или не прошла проверку.", "This backup is missing exact models or could not be verified."));
 				else if (result.kind === "persist-failed")
-					setError("Не удалось сохранить восстановленные модели. Повторите попытку.");
+					setError(copy("Не удалось сохранить восстановленные модели. Повторите попытку.", "The recovered models could not be saved. Try again."));
 				return;
 			}
 			const importOptions = {
@@ -3386,7 +3391,7 @@ export function AppShell({
 				setProjectTransferError(
 					result.kind === "verification-unavailable"
 						? projectTransferImportFeedback(result.kind)
-						: "Не удалось импортировать проект. Существующие проекты не изменены.",
+						: copy("Не удалось импортировать проект. Существующие проекты не изменены.", "The project could not be imported. Existing projects are intact."),
 				);
 			}
 		} catch {
@@ -3412,7 +3417,7 @@ export function AppShell({
 			filename={encryptedProjectTransfer.file.name}
 			busy={projectTransferImport.kind !== "idle"}
 			error={encryptedProjectTransfer.error ?? (repairPasswordPrompt ? customGlbRepairError : projectTransferError)}
-			submitLabel={repairPasswordPrompt ? "Восстановить" : undefined}
+			submitLabel={repairPasswordPrompt ? copy("Восстановить", "Recover") : undefined}
 			onCancel={() => {
 				setEncryptedProjectTransfer(undefined);
 				if (repairPasswordPrompt) setCustomGlbRepairError(undefined);
@@ -3435,7 +3440,7 @@ export function AppShell({
 			const result = await controller.exportRecoveryDraft();
 			if (result.kind !== "ready") {
 				setProjectTransferError(
-					"Не удалось подготовить несохранённую правку. Повторите попытку.",
+					copy("Не удалось подготовить несохранённую правку. Повторите попытку.", "The unsaved edit could not be prepared. Try again."),
 				);
 				return;
 			}
@@ -3448,14 +3453,14 @@ export function AppShell({
 			anchor.click();
 			setTimeout(() => URL.revokeObjectURL(url), 1000);
 		} catch {
-			setProjectTransferError("Не удалось скачать несохранённую правку.");
+			setProjectTransferError(copy("Не удалось скачать несохранённую правку.", "The unsaved edit could not be downloaded."));
 		}
 	};
 	const restoreRecoveryDraftFile = async (file: File | undefined) => {
 		if (!file) return;
 		setProjectTransferError(undefined);
 		if (file.size > 280 * 1024 * 1024) {
-			setProjectTransferError("Файл восстановления слишком велик.");
+			setProjectTransferError(copy("Файл восстановления слишком велик.", "The recovery file is too large."));
 			return;
 		}
 		const abortController = new AbortController();
@@ -3488,11 +3493,11 @@ export function AppShell({
 				setProjectTransferError(
 					result.kind === "rejected" &&
 						result.reasonCode === "RECOVERY_DRAFT_INCOMPLETE"
-						? "В файле не хватает точных моделей. Сохраните исходный файл и восстановите модели из оригиналов."
-						: "Не удалось восстановить правку. Исходные проекты остались без изменений.",
+						? copy("В файле не хватает точных моделей. Сохраните исходный файл и восстановите модели из оригиналов.", "The file does not contain all exact models. Keep the source file and recover models from their originals.")
+						: copy("Не удалось восстановить правку. Исходные проекты остались без изменений.", "The edit could not be recovered. Existing projects are intact."),
 				);
 		} catch {
-			setProjectTransferError("Не удалось прочитать файл восстановления.");
+			setProjectTransferError(copy("Не удалось прочитать файл восстановления.", "The recovery file could not be read."));
 		} finally {
 			if (projectTransferAbortRef.current === abortController)
 				projectTransferAbortRef.current = undefined;
@@ -3519,30 +3524,30 @@ export function AppShell({
 		try {
 			const bounded = isEmbeddedHost ? await readBoundedLocalGlbFiles(files, "exact-repair") : undefined;
 			if (bounded?.kind === "rejected") {
-				setCustomGlbRepairError("Выбранный набор GLB превышает допустимые ограничения. Проект не изменён.");
+				setCustomGlbRepairError(copy("Выбранный набор GLB превышает допустимые ограничения. Проект не изменён.", "The selected GLB files exceed the limits. The project is intact."));
 				return;
 			}
 			const result = await controller.repairCustomGlbResources(bounded?.bytes ?? await Promise.all(files.map(async (file) => new Uint8Array(await file.arrayBuffer()))));
 			if (result.kind === "rejected") {
 				setCustomGlbRepairError(
-					"Нужен точный набор исходных GLB для восстановления: по одному файлу для каждой недоступной модели.",
+					copy("Нужен точный набор исходных GLB для восстановления: по одному файлу для каждой недоступной модели.", "Choose the exact original GLB files, one for each unavailable model."),
 				);
 				return;
 			}
 			if (result.kind === "repaired") {
 				setCustomGlbRepairError(
-					"Набор записан, но проверка проекта всё ещё требует точные исходные GLB. Повторите выбор полного набора.",
+					copy("Набор записан, но проверка проекта всё ещё требует точные исходные GLB. Повторите выбор полного набора.", "The files were saved. Verification still needs the exact original GLBs. Select the complete set again."),
 				);
 				return;
 			}
 			if (result.kind !== "recovered") {
 				setCustomGlbRepairError(
-					"Не удалось записать проверенный GLB. Проект не изменён — повторите попытку.",
+					copy("Не удалось записать проверенный GLB. Проект не изменён — повторите попытку.", "The verified GLB could not be saved. The project is intact. Try again."),
 				);
 			}
 		} catch {
 			setCustomGlbRepairError(
-				"Не удалось прочитать файлы. Проект не изменён — выберите исходные GLB для восстановления повторно.",
+				copy("Не удалось прочитать файлы. Проект не изменён — выберите исходные GLB для восстановления повторно.", "The files could not be read. The project is intact. Select the original GLB files again."),
 			);
 		} finally {
 			setIsRepairingCustomGlb(false);
@@ -3565,16 +3570,16 @@ export function AppShell({
 			setIsRecoveryRemovalConfirmationOpen(false);
 			setRecoveryRemovalError(
 				result.kind === "stale-recovery"
-					? "Состав недоступных моделей изменился. Проверьте обновлённый список и подтвердите действие снова."
+					? copy("Состав недоступных моделей изменился. Проверьте обновлённый список и подтвердите действие снова.", "The unavailable models have changed. Review the updated list and confirm again.")
 					: result.kind === "writer-lease-lost"
-						? "Другое окно получило право записи. Перехватите редактирование или вернитесь к исходным GLB."
+						? copy("Другое окно получило право записи. Перехватите редактирование или вернитесь к исходным GLB.", "Another window now has write access. Take over editing or return to the original GLBs.")
 						: result.kind === "reopen-failed"
-							? "Новая версия сохранена, но повторная проверка не завершилась. Проект остаётся в режиме восстановления."
-							: "Не удалось удалить недоступные модели. Проект и исходная версия не изменены.",
+							? copy("Новая версия сохранена, но повторная проверка не завершилась. Проект остаётся в режиме восстановления.", "The new version is saved. Verification is incomplete and the project remains in recovery mode.")
+							: copy("Не удалось удалить недоступные модели. Проект и исходная версия не изменены.", "The unavailable models could not be removed. The project and its original version are intact."),
 			);
 		} catch {
 			setRecoveryRemovalError(
-				"Не удалось удалить недоступные модели. Проект и исходная версия не изменены.",
+				copy("Не удалось удалить недоступные модели. Проект и исходная версия не изменены.", "The unavailable models could not be removed. The project and its original version are intact."),
 			);
 		} finally {
 			setIsRemovingUnresolvedCustomGlb(false);
@@ -3582,7 +3587,7 @@ export function AppShell({
 	};
 
 	// iOS Files can classify a valid .interiors archive as an unknown type. Validate its bytes after selection.
-	const registeredTransferFileInput = registeredTransferImport ? <input type="file" accept={hostNavigation ? undefined : "application/zip,.interiors"} aria-label="Импорт файла для переноса" hidden ref={registeredTransferInputRef} disabled={projectTransferImport.kind !== "idle"} onChange={(event) => void readProjectTransferFile(event.currentTarget.files?.[0], "registered-import")} /> : null;
+	const registeredTransferFileInput = registeredTransferImport ? <input type="file" accept={hostNavigation ? undefined : "application/zip,.interiors"} aria-label={copy("Импорт файла для переноса", "Import a transfer file")} hidden ref={registeredTransferInputRef} disabled={projectTransferImport.kind !== "idle"} onChange={(event) => void readProjectTransferFile(event.currentTarget.files?.[0], "registered-import")} /> : null;
 
 	const exportProjectTransfer = async (projectId?: string, registered = false, storageNamespace?: ProjectStorageNamespace) => {
 		setProjectTransferError(undefined);
@@ -3604,8 +3609,8 @@ export function AppShell({
 				setProjectTransferError(
 					result.kind === "rejected" &&
 						result.reasonCode === "PORTABLE_BACKUP_RESOURCES_UNAVAILABLE"
-						? "Точные байты одной из моделей недоступны, поэтому файл проекта не создан. Сначала восстановите исходную модель."
-						: "Не удалось подготовить файл проекта. Проект не изменён. Повторите попытку.",
+						? copy("Точные байты одной из моделей недоступны, поэтому файл проекта не создан. Сначала восстановите исходную модель.", "One model's exact file is unavailable. Recover the original model before exporting the project.")
+						: copy("Не удалось подготовить файл проекта. Проект не изменён. Повторите попытку.", "The project file could not be prepared. The project is intact. Try again."),
 				);
 				return;
 			}
@@ -3620,7 +3625,7 @@ export function AppShell({
 			queueMicrotask(() => URL.revokeObjectURL(url));
 		} catch {
 			setProjectTransferError(
-				"Не удалось подготовить файл проекта. Повторите попытку.",
+				copy("Не удалось подготовить файл проекта. Повторите попытку.", "The project file could not be prepared. Try again."),
 			);
 		}
 	};
@@ -3680,24 +3685,24 @@ export function AppShell({
 					setRenameProjectError(projectNameErrorCopy(result.reasonCode));
 					break;
 				case "stale-base":
-					setRenameProjectError("Проект изменился в другом окне. Закройте форму и откройте её снова.");
+					setRenameProjectError(copy("Проект изменился в другом окне. Закройте форму и откройте её снова.", "The project changed in another window. Close this form and open it again."));
 					break;
 				case "read-only":
 				case "writer-lease-lost":
-					setRenameProjectError("Проект открыт для редактирования в другом окне.");
+					setRenameProjectError(copy("Проект открыт для редактирования в другом окне.", "This project is being edited in another window."));
 					break;
 				case "resources-unavailable":
-					setRenameProjectError("Некоторые модели недоступны. Откройте проект и восстановите модели, затем повторите переименование.");
+					setRenameProjectError(copy("Некоторые модели недоступны. Откройте проект и восстановите модели, затем повторите переименование.", "Some models are unavailable. Open the project and recover them before renaming it."));
 					break;
 				case "persist-failed":
 					setRenameProjectError(result.retryAvailable
 						? result.reasonCode === "PERSISTENCE_QUOTA_EXCEEDED"
-							? "В хранилище недостаточно места. Освободите место на устройстве и нажмите «Повторить сохранение»."
-							: "Сохранение имени не подтверждено. Нажмите «Повторить сохранение», чтобы проверить ту же правку."
+							? copy("В хранилище недостаточно места. Освободите место на устройстве и нажмите «Повторить сохранение».", "Storage is full. Free up space on this device and select Retry save.")
+							: copy("Сохранение имени не подтверждено. Нажмите «Повторить сохранение», чтобы проверить ту же правку.", "The name could not be confirmed. Select Retry save to check the same edit.")
 						: renamePersistenceFailureCopy(result.reasonCode));
 					break;
 				default:
-					setRenameProjectError("Не удалось открыть сохранённую версию проекта. Повторите попытку.");
+					setRenameProjectError(copy("Не удалось открыть сохранённую версию проекта. Повторите попытку.", "The saved version could not be opened. Try again."));
 			}
 		} catch {
 			setDirectoryRenameWrite(retry ? "retained" : "idle");
@@ -3722,7 +3727,7 @@ export function AppShell({
 		}
 		if (result.kind === "stale-base") {
 			setRenameProjectError(
-				"Проект изменился в другом окне. Вернитесь к проектам и откройте актуальную версию.",
+				copy("Проект изменился в другом окне. Вернитесь к проектам и откройте актуальную версию.", "The project changed in another window. Return to Projects and open the current version."),
 			);
 			return;
 		}
@@ -3730,7 +3735,7 @@ export function AppShell({
 			setRenameProjectError(renamePersistenceFailureCopy(result.reasonCode));
 			return;
 		}
-		setRenameProjectError("Проект ещё открывается. Повторите попытку.");
+		setRenameProjectError(copy("Проект ещё открывается. Повторите попытку.", "The project is still opening. Try again shortly."));
 	};
 
 	const retryRenameProjectPublication = async () => {
@@ -3883,7 +3888,7 @@ export function AppShell({
 		}
 		const result = await controller.updateRoomProperties(input);
 		if (result.kind === "durable") {
-			setRoomPropertyConfirmation("Помещение сохранено локально.");
+			setRoomPropertyConfirmation(copy("Помещение сохранено локально.", "Room saved locally."));
 			return;
 		}
 		// The validated input is still the controller's pending change. Keep
@@ -3896,8 +3901,8 @@ export function AppShell({
 		}
 		setRoomPropertyError(
 			result.kind === "in-progress"
-				? "Дождитесь завершения текущего сохранения и повторите попытку."
-				: "Проект ещё открывается. Повторите попытку.",
+				? copy("Дождитесь завершения текущего сохранения и повторите попытку.", "Wait for the current save to finish and try again.")
+				: copy("Проект ещё открывается. Повторите попытку.", "The project is still opening. Try again shortly."),
 		);
 	};
 
@@ -3966,7 +3971,7 @@ export function AppShell({
 					roomPropertyFields?.name ?? selectedRoomProperty?.fields.name ?? "",
 				type: conflict.input.type as RoomType,
 			});
-			setRoomPropertyConfirmation("Помещение и проёмы сохранены локально.");
+			setRoomPropertyConfirmation(copy("Помещение и проёмы сохранены локально.", "Room and openings saved locally."));
 			return;
 		}
 		setRoomHeightOpeningConflict(undefined);
@@ -3978,8 +3983,8 @@ export function AppShell({
 			result.kind === "rejected"
 				? errorCopy(result.reasonCode)
 				: result.kind === "in-progress"
-					? "Дождитесь завершения текущего сохранения и повторите попытку."
-					: "Проект ещё открывается. Повторите попытку.",
+					? copy("Дождитесь завершения текущего сохранения и повторите попытку.", "Wait for the current save to finish and try again.")
+					: copy("Проект ещё открывается. Повторите попытку.", "The project is still opening. Try again shortly."),
 		);
 	};
 
@@ -4137,7 +4142,7 @@ export function AppShell({
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
 			setDimensionError(
-				`Предупреждение: ${itemPlacementWarningSummary(result.warnings)}.`,
+				copy(`Предупреждение: ${itemPlacementWarningSummary(result.warnings)}.`, `Warning: ${itemPlacementWarningSummary(result.warnings)}.`),
 			);
 		}
 		return result.kind === "durable";
@@ -4157,7 +4162,7 @@ export function AppShell({
 		const exact = exactFloorYaw || "yawMilliDeg" in selectedItem;
 		const yawRadians = exact ? preciseYawRadiansFromDegrees(selectedItemAngleRaw) : yawRadiansFromDegrees(selectedItemAngleRaw);
 		if (yawRadians === undefined) {
-			setDimensionError(exact ? "Укажите угол в градусах с точностью до трёх знаков после запятой." : "Укажите конечный угол поворота в градусах.");
+			setDimensionError(exact ? copy("Укажите угол в градусах с точностью до трёх знаков после запятой.", "Enter an angle in degrees with up to three decimal places.") : copy("Укажите конечный угол поворота в градусах.", "Enter a final rotation angle in degrees."));
 			return;
 		}
 		const canonicalAngle = yawRadiansFor(floorYawFieldsForRadians(yawRadians, exact));
@@ -4216,7 +4221,7 @@ export function AppShell({
 		}
 		const draft = openingCreationDraftFor(project, selectedWall.wallSegmentId);
 		if (!draft) {
-			setDimensionError("Выберите стену, на которой можно создать проём.");
+			setDimensionError(copy("Выберите стену, на которой можно создать проём.", "Select a wall that can host an opening."));
 			return;
 		}
 		setDimensionError(undefined);
@@ -4398,7 +4403,7 @@ export function AppShell({
 		const label = placeholderFields.label.trim();
 		if (!widthMm || !depthMm || !heightMm || label.length === 0) {
 			setPlaceholderComposerError(
-				"Укажите название и целые положительные ширину, глубину и высоту.",
+				copy("Укажите название и целые положительные ширину, глубину и высоту.", "Enter a name and positive whole width, depth and height."),
 			);
 			return;
 		}
@@ -4407,7 +4412,7 @@ export function AppShell({
 				placeholderFields.color as (typeof alphaParametricItemColors)[number],
 			)
 		) {
-			setPlaceholderComposerError("Выберите один из доступных цветов макета.");
+			setPlaceholderComposerError(copy("Выберите один из доступных цветов макета.", "Choose an available color."));
 			return;
 		}
 		setPlaceholderComposerError(undefined);
@@ -4558,7 +4563,7 @@ export function AppShell({
 						candidate.heightMm >= asset.heightMm,
 				);
 			if (!host) {
-				setDimensionError("Нет стены, на которой помещается этот предмет.");
+				setDimensionError(copy("Нет стены, на которой помещается этот предмет.", "There is no wall that can fit this item."));
 				return;
 			}
 			const draft: ParametricWallItemInput = {
@@ -4649,13 +4654,13 @@ export function AppShell({
 	const beginCustomCatalogPlacement = () => {
 		if (selectedCustomCatalogAsset?.resourceState === "unavailable") {
 			setDimensionError(
-				"Модель недоступна локально. Импортируйте исходный GLB заново.",
+				copy("Модель недоступна локально. Импортируйте исходный GLB заново.", "The model is unavailable locally. Import the original GLB again."),
 			);
 			return;
 		}
 		if (!selectedCustomCatalogAsset?.resource) {
 			setDimensionError(
-				"Байты модели ещё загружаются из локального хранилища. Подождите и повторите.",
+				copy("Байты модели ещё загружаются из локального хранилища. Подождите и повторите.", "The model is still loading from local storage. Wait and try again."),
 			);
 			return;
 		}
@@ -4793,7 +4798,7 @@ export function AppShell({
 				libraryDefinition?.assetDefinitionId ?? asset.assetDefinitionId,
 			);
 			if (result.kind !== "removed") {
-				setCustomLibraryError("Не удалось убрать карточку. Повторите попытку.");
+				setCustomLibraryError(copy("Не удалось убрать карточку. Повторите попытку.", "The card could not be removed. Try again."));
 				return;
 			}
 			setRemovedCustomGlbHashes((hashes) => [
@@ -4807,7 +4812,7 @@ export function AppShell({
 			setSelectedCustomCatalogAssetId(undefined);
 			setCustomLibraryEpoch((epoch) => epoch + 1);
 		} catch {
-			setCustomLibraryError("Не удалось убрать карточку. Повторите попытку.");
+			setCustomLibraryError(copy("Не удалось убрать карточку. Повторите попытку.", "The card could not be removed. Try again."));
 		} finally {
 			setRemovingCustomAssetId(undefined);
 		}
@@ -4827,7 +4832,7 @@ export function AppShell({
 			importForPlacement.displayName.trim().length === 0
 		) {
 			setDimensionError(
-				"Укажите название и целые положительные габариты модели.",
+				copy("Укажите название и целые положительные габариты модели.", "Enter a name and positive whole dimensions for the model."),
 			);
 			return;
 		}
@@ -4914,8 +4919,8 @@ export function AppShell({
 					result.kind === "rejected"
 						? errorCopy(result.reasonCode)
 						: localGreyboxCatalog
-							? "Не удалось добавить свою модель. Повторите импорт."
-							: "Не удалось добавить модель в «Кастомное». Повторите импорт.",
+							? copy("Не удалось добавить свою модель. Повторите импорт.", "The custom model could not be added. Try the import again.")
+							: copy("Не удалось добавить модель в «Кастомное». Повторите импорт.", "The model could not be added to Custom. Try the import again."),
 				);
 			});
 	};
@@ -4927,7 +4932,7 @@ export function AppShell({
 		fbxConversionAbortRef.current = abortController;
 		discardCustomGlbImport();
 		setFbxConversion({
-			filename: selectedFiles[0]?.name ?? "выбранный файл",
+			filename: selectedFiles[0]?.name ?? copy("выбранный файл", "selected file"),
 			kind: "converting",
 		});
 		try {
@@ -5055,7 +5060,7 @@ export function AppShell({
 		setItemPlacementConfirmation(undefined);
 		if (!draft) {
 			setDimensionError(
-				"Укажите название и целые положительные размеры предмета.",
+				copy("Укажите название и целые положительные размеры предмета.", "Enter a name and positive whole dimensions for the item."),
 			);
 			return;
 		}
@@ -5069,7 +5074,7 @@ export function AppShell({
 		});
 		if (!roomId) {
 			setDimensionError(
-				"Предмет должен целиком находиться внутри ячейки сетки.",
+				copy("Предмет должен целиком находиться внутри ячейки сетки.", "The item must fit entirely inside the grid cell."),
 			);
 			return;
 		}
@@ -5160,7 +5165,7 @@ export function AppShell({
 				: undefined;
 		setItemPlacementConfirmation(
 			warningSummary
-				? `${feedback} Предупреждение сохранено: ${warningSummary}.`
+				? copy(`${feedback} Предупреждение сохранено: ${warningSummary}.`, `${feedback} Saved with a warning: ${warningSummary}.`)
 				: feedback,
 		);
 		setActiveTool("select");
@@ -5196,7 +5201,7 @@ export function AppShell({
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
 			setDimensionError(
-				`Предупреждение: ${itemPlacementWarningSummary(result.warnings)}.`,
+				copy(`Предупреждение: ${itemPlacementWarningSummary(result.warnings)}.`, `Warning: ${itemPlacementWarningSummary(result.warnings)}.`),
 			);
 		}
 		return result.kind === "durable";
@@ -5263,7 +5268,7 @@ export function AppShell({
 		});
 		if (moved) {
 			setItemPlacementConfirmation(
-				`Предмет «${selectedItem.label}» перемещён на 100 мм.`,
+				copy(`Предмет «${selectedItem.label}» перемещён на 100 мм.`, `Moved “${selectedItem.label}” by 100 mm.`),
 			);
 		}
 	};
@@ -5377,7 +5382,7 @@ export function AppShell({
 			});
 		if (!draft) {
 			setDimensionError(
-				"На этой стене нет места для безопасной копии предмета.",
+				copy("На этой стене нет места для безопасной копии предмета.", "There is no space to place a copy of the item on this wall."),
 			);
 			return;
 		}
@@ -5391,7 +5396,7 @@ export function AppShell({
 		const draft = wallItemDraftFromFields(wallItemDraft, wallItemDraftFields);
 		if (!draft) {
 			setDimensionError(
-				"Укажите название, целые положительные размеры и целые миллиметры от нуля для положения настенного предмета.",
+				copy("Укажите название, целые положительные размеры и целые миллиметры от нуля для положения настенного предмета.", "Enter a name, positive whole dimensions and a nonnegative position in millimetres for the wall-mounted item."),
 			);
 			return;
 		}
@@ -5434,7 +5439,7 @@ export function AppShell({
 				result.warnings.length
 			) {
 				setDimensionError(
-					"Предупреждение сохранено: настенные предметы пересекаются. Измените смещение или сторону, если это не запланированное наложение.",
+					copy("Предупреждение сохранено: настенные предметы пересекаются. Измените смещение или сторону, если это не запланированное наложение.", "Saved with a warning. Wall-mounted items overlap. Change their offset or side to resolve the overlap."),
 				);
 			}
 			setWallItemDraft(undefined);
@@ -5498,7 +5503,7 @@ export function AppShell({
 		const offsetMm = nonNegativeSafeInteger(fields.offsetMm);
 		if (elevationMm === undefined || offsetMm === undefined) {
 			setDimensionError(
-				"Укажите целые миллиметры от нуля для смещения и высоты предмета.",
+				copy("Укажите целые миллиметры от нуля для смещения и высоты предмета.", "Enter nonnegative whole millimetres for the offset and height."),
 			);
 			return;
 		}
@@ -5514,7 +5519,7 @@ export function AppShell({
 		}
 		if (result.kind === "durable" && result.warnings?.length) {
 			setDimensionError(
-				"Предупреждение сохранено: настенные предметы пересекаются. Измените смещение или сторону, если это не запланированное наложение.",
+				copy("Предупреждение сохранено: настенные предметы пересекаются. Измените смещение или сторону, если это не запланированное наложение.", "Saved with a warning. Wall-mounted items overlap. Change their offset or side to resolve the overlap."),
 			);
 		}
 	};
@@ -5570,7 +5575,7 @@ export function AppShell({
 				))
 		) {
 			setDimensionError(
-				"Модель выбранного предмета больше не прикреплена к проекту. Восстановите её перед созданием копии.",
+				copy("Модель выбранного предмета больше не прикреплена к проекту. Восстановите её перед созданием копии.", "The selected model is no longer attached to the project. Recover it before duplicating the item."),
 			);
 			return;
 		}
@@ -5680,7 +5685,7 @@ export function AppShell({
 			roomMetadataResolutions.some((resolution) => resolution === undefined)
 		) {
 			setDimensionError(
-				"Выберите помещение, чьи параметры останутся после объединения.",
+				copy("Выберите помещение, чьи параметры останутся после объединения.", "Choose which room's settings to keep when merging."),
 			);
 			return;
 		}
@@ -6003,7 +6008,7 @@ export function AppShell({
 			!Number.isSafeInteger(input.offsetMm) ||
 			input.offsetMm < 0
 		) {
-			setDimensionError("Укажите положительные целые ширину и высоту.");
+			setDimensionError(copy("Укажите положительные целые ширину и высоту.", "Enter a positive whole width and height."));
 			return;
 		}
 		setDimensionError(undefined);
@@ -6041,7 +6046,7 @@ export function AppShell({
 		if (project?.schemaVersion !== 1 || !openingCreationDraft) return;
 		const latest = controller.snapshot();
 		if (openingCreationDraft.baseRevisionId !== undefined && (latest.kind !== "saved" || latest.revisionId !== openingCreationDraft.baseRevisionId)) {
-			setDimensionError("План изменился. Выберите место проёма заново.");
+			setDimensionError(copy("План изменился. Выберите место проёма заново.", "The plan changed. Choose a new position for the opening."));
 			return;
 		}
 		const validation = validateOpeningCreationDraft(
@@ -6160,7 +6165,7 @@ export function AppShell({
 			latest.revisionId !== openingDraft.baseRevisionId
 		) {
 			setOpeningDraft(undefined);
-			setDimensionError("План изменился. Выберите проём заново.");
+			setDimensionError(copy("План изменился. Выберите проём заново.", "The plan changed. Select the opening again."));
 			return;
 		}
 		const currentOpening = latest.project.level.openings.find(
@@ -6168,7 +6173,7 @@ export function AppShell({
 		);
 		const input = openingEditInputFor(openingDraft, currentOpening, hostNavigation !== undefined);
 		if (!input) {
-			setDimensionError("Укажите положительные целые ширину и высоту.");
+			setDimensionError(copy("Укажите положительные целые ширину и высоту.", "Enter a positive whole width and height."));
 			return;
 		}
 		if (action === "align" && (!windowAlignmentAvailable || windowAlignmentDirty)) return;
@@ -6224,7 +6229,7 @@ export function AppShell({
 			: positiveInteger(selectedItemFields.heightMm);
 		report(undefined);
 		if (!widthMm || !depthMm || !heightMm) {
-			report(edit ? "Укажите целый положительный размер в мм." : "Укажите целые положительные размеры предмета.");
+			report(edit ? copy("Укажите целый положительный размер в мм.", "Enter a positive whole number of millimetres.") : copy("Укажите целые положительные размеры предмета.", "Enter positive whole dimensions for the item."));
 			return;
 		}
 		if (widthMm === selectedItem.widthMm && depthMm === selectedItem.depthMm &&
@@ -6251,11 +6256,11 @@ export function AppShell({
 			return;
 		}
 		if (edit && (result.kind === "in-progress" || result.kind === "not-ready")) {
-			report("Дождитесь сохранения предыдущей правки и повторите ввод.");
+			report(copy("Дождитесь сохранения предыдущей правки и повторите ввод.", "Wait for the previous edit to save before entering the value again."));
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
 			setDimensionError(
-				`Предупреждение: ${itemPlacementWarningSummary(result.warnings)}.`,
+				copy(`Предупреждение: ${itemPlacementWarningSummary(result.warnings)}.`, `Warning: ${itemPlacementWarningSummary(result.warnings)}.`),
 			);
 		}
 	};
@@ -6273,7 +6278,7 @@ export function AppShell({
 			(candidate) => candidate.assetInstanceId === draft.assetInstanceId,
 		);
 		if (!item || item.anchorClass !== draft.anchorClass) {
-			setDimensionError("Предмет больше недоступен. Выберите его заново.");
+			setDimensionError(copy("Предмет больше недоступен. Выберите его заново.", "The item is unavailable. Select it again."));
 			setItemColorVariantDraft(undefined);
 			return;
 		}
@@ -6428,11 +6433,11 @@ export function AppShell({
 				return;
 			}
 			setWriterTakeoverError(
-				"Не удалось перехватить редактирование. Проект остался только для просмотра — попробуйте ещё раз.",
+				copy("Не удалось перехватить редактирование. Проект остался только для просмотра — попробуйте ещё раз.", "Takeover failed. The project is still read-only. Try again."),
 			);
 		} catch {
 			setWriterTakeoverError(
-				"Не удалось перехватить редактирование. Проект остался только для просмотра — попробуйте ещё раз.",
+				copy("Не удалось перехватить редактирование. Проект остался только для просмотра — попробуйте ещё раз.", "Takeover failed. The project is still read-only. Try again."),
 			);
 		} finally {
 			setIsTakingOverWriterLease(false);
@@ -6473,7 +6478,7 @@ export function AppShell({
 			}
 			if (result.kind === "persist-failed") {
 				setDimensionError(
-					"Не удалось сохранить новый пустой план. Исходный чертёж не изменён.",
+					copy("Не удалось сохранить новый пустой план. Исходный чертёж не изменён.", "The new blank plan could not be saved. The original plan is intact."),
 				);
 			}
 		} finally {
@@ -6505,7 +6510,7 @@ export function AppShell({
 		setIsEditorActionMenuOpen(chromeReset.actionMenuOpen);
 		setViewMode(chromeReset.viewMode);
         if (confirmedCopy && navigationProtection) {
-            if (!(await navigationProtection.discardWriterRecoveryAndShowProjects(confirmedCopy))) setHostBackNotice("Несохранённая копия изменилась. Повторите выход после проверки данных.");
+            if (!(await navigationProtection.discardWriterRecoveryAndShowProjects(confirmedCopy))) setHostBackNotice(copy("Несохранённая копия изменилась. Повторите выход после проверки данных.", "The unsaved copy changed. Check it before leaving."));
         } else await controller.showProjects();
 	};
 
@@ -6521,8 +6526,8 @@ export function AppShell({
 			}
 			setProjectDeletionError(
 				result.kind === "read-only" || result.kind === "writer-lease-lost"
-					? "Проект открыт для редактирования в другом окне. Удаление не выполнено."
-					: "Не удалось удалить проект. Исходные данные не изменены.",
+					? copy("Проект открыт для редактирования в другом окне. Удаление не выполнено.", "This project is open for editing in another window and could not be deleted.")
+					: copy("Не удалось удалить проект. Исходные данные не изменены.", "The project could not be deleted. The original data are intact."),
 			);
 		} finally {
 			setIsDeletingProject(false);
@@ -6542,8 +6547,8 @@ export function AppShell({
 			} else {
 				setProjectDeletionError(
 					result.kind === "read-only" || result.kind === "writer-lease-lost"
-						? "Проект открыт для редактирования в другом окне. Удаление не выполнено."
-						: "Не удалось удалить проект. Исходные данные не изменены.",
+						? copy("Проект открыт для редактирования в другом окне. Удаление не выполнено.", "This project is open for editing in another window and could not be deleted.")
+						: copy("Не удалось удалить проект. Исходные данные не изменены.", "The project could not be deleted. The original data are intact."),
 				);
 			}
 		} finally {
@@ -6599,9 +6604,9 @@ export function AppShell({
 		});
 		if (decision === "confirm-discard") { confirmedWriterExit.current = recoveryExit; leaveFocusActive.current = true; setLeaveFocus(captureEditorFocus()); return; }
 		resumeTransientViews();
-		if (decision === "saving") { setHostBackNotice("Дождитесь завершения текущего действия. Сохраняемая правка не отменена."); return; }
+		if (decision === "saving") { setHostBackNotice(copy("Дождитесь завершения текущего действия. Сохраняемая правка не отменена.", "Wait for the current action to finish saving.")); return; }
 		if (decision === "persist-failed") {
-			if (directoryRenameWrite !== "retained") setHostBackNotice("Правка не сохранена. Повторите сохранение или экспортируйте данные для восстановления.");
+			if (directoryRenameWrite !== "retained") setHostBackNotice(copy("Правка не сохранена. Повторите сохранение или экспортируйте данные для восстановления.", "The edit is unsaved. Retry saving or export it for recovery."));
 			return;
 		}
 		setHostBackNotice(undefined);
@@ -6628,7 +6633,7 @@ export function AppShell({
 				footerToggle.focus();
 			} else closeOverlay();
 		} else if (decision === "projects") { void returnToProjects(); }
-		else { try { hostNavigation?.close(); } catch { setHostBackNotice("Не удалось закрыть приложение. Попробуйте ещё раз."); } }
+		else { try { hostNavigation?.close(); } catch { setHostBackNotice(copy("Не удалось закрыть приложение. Попробуйте ещё раз.", "The app could not close. Try again.")); } }
 	};
 	const closeEditorActionMenu = () => {
 		const close = () => setIsEditorActionMenuOpen(false);
@@ -6656,7 +6661,7 @@ export function AppShell({
 		if (hasPendingEditorCommand() || controller.snapshot().kind === "persist-failed") return;
 		const exitCopy = confirmedWriterExit.current;
 		if (exitCopy && controller.writerRecoveryCopy?.() !== exitCopy) {
-			continueEditorDraft(); setHostBackNotice("Несохранённая правка изменилась. Повторите выход, чтобы проверить её снова."); return;
+			continueEditorDraft(); setHostBackNotice(copy("Несохранённая правка изменилась. Повторите выход, чтобы проверить её снова.", "The unsaved edit changed. Review it before leaving.")); return;
 		}
 		for (const boundary of transientBoundaries.current) if (boundary.inspect().hasDraft) boundary.cancelDraft();
 		if (isRenameProjectOpen) cancelRenameProject();
@@ -6697,10 +6702,10 @@ export function AppShell({
 					<header className={styles.projectHubHeading}>
 						<h1 id="projects-heading" ref={projectsHeadingRef} tabIndex={-1}>
 							{hostNavigation && <img src="/interiors-lamp-v1.png" alt="" width={40} height={40} className={styles.projectHubLogo} />}
-							Проекты
+							{copy("Проекты", "Projects")}
 						</h1>
-						<p>Планы на этом устройстве</p>
-						{onOpenSettings && <button className={styles.documentsSettings} type="button" onClick={(event) => onOpenSettings(event.currentTarget)}>Настройки</button>}
+						<p>{copy("Планы на этом устройстве", "Plans on this device")}</p>
+						{onOpenSettings && <button className={styles.documentsSettings} type="button" onClick={(event) => onOpenSettings(event.currentTarget)}>{copy("Настройки", "Settings")}</button>}
 					</header>
 					<div
 						className={styles.projectHubActions}
@@ -6712,11 +6717,11 @@ export function AppShell({
  onClick={() => controller.startNewProject()}
 							type="button"
 						>
-							Новый проект
+							{copy("Новый проект", "New project")}
 						</button>
 						<input
 							accept={hostNavigation ? undefined : "application/json,.json,application/zip,.interiors"}
-							aria-label="Импортировать проект"
+							aria-label={copy("Импортировать проект", "Import project")}
 							className={styles.visuallyHidden}
 							disabled={projectTransferImport.kind !== "idle"}
 							id="import-project-transfer"
@@ -6732,10 +6737,10 @@ export function AppShell({
 							onClick={() => projectTransferInputRef.current?.click()}
 							type="button"
 						>
-							Импортировать проект
+							{copy("Импортировать проект", "Import project")}
 						</button>
 						{registeredTransferImport ? <>
-							<button className={styles.secondaryAction} type="button" disabled={projectTransferImport.kind !== "idle"} onClick={() => registeredTransferInputRef.current?.click()}>Импорт файла для переноса</button>
+							<button className={styles.secondaryAction} type="button" disabled={projectTransferImport.kind !== "idle"} onClick={() => registeredTransferInputRef.current?.click()}>{copy("Импорт файла для переноса", "Import a transfer file")}</button>
 						</> : null}
 					</div>
 					{!hostNavigation ? <><input
@@ -6743,7 +6748,7 @@ export function AppShell({
 						ref={recoveryDraftInputRef}
 						type="file"
 						accept=".json,application/json"
-						aria-label="Выбрать файл несохранённой правки"
+						aria-label={copy("Выбрать файл несохранённой правки", "Choose an unsaved edit file")}
 						onChange={(event) => {
 							void restoreRecoveryDraftFile(event.currentTarget.files?.[0]);
 							event.currentTarget.value = "";
@@ -6755,7 +6760,7 @@ export function AppShell({
 						onClick={() => recoveryDraftInputRef.current?.click()}
 						type="button"
 					>
-						Восстановить несохранённую правку
+						{copy("Восстановить несохранённую правку", "Recover unsaved edit")}
 					</button></> : null}
 					{projectTransferImport.kind !== "idle" ? (
 						<div
@@ -6765,14 +6770,14 @@ export function AppShell({
 						>
 							<span>{projectTransferProgressCopy(projectTransferImport)}</span>
 							<progress
-								aria-label="Прогресс импорта проекта"
+								aria-label={copy("Прогресс импорта проекта", "Project import progress")}
 								max={4}
 								value={projectTransferProgress(projectTransferImport)}
 							/>
 							{projectTransferImport.kind !== "saving" &&
 							projectTransferImport.kind !== "cancelling" ? (
 								<button onClick={cancelProjectTransferImport} type="button">
-									Отменить импорт
+									{copy("Отменить импорт", "Cancel import")}
 								</button>
 							) : null}
 						</div>
@@ -6785,23 +6790,23 @@ export function AppShell({
 					{state.recoveryNeeded ? (
 						<p className={styles.fieldError} role="alert">
 							{state.projects.length > 0
-                                ? "Один из локальных проектов требует восстановления. Остальные доступны."
-                                : "Локальные записи требуют проверки и восстановления."}
+                                ? copy("Один из локальных проектов требует восстановления. Остальные доступны.", "One local project needs recovery. Your other projects are available.")
+                                : copy("Локальные записи требуют проверки и восстановления.", "Local records need to be checked and recovered.")}
 						</p>
 					) : null}
                     {state.recoveryNeeded && state.projects.length === 0 ? (
                         <section className={safetyStyles.card} data-testid="project-recovery-screen" aria-labelledby="directory-recovery-heading">
-                            <h2 id="directory-recovery-heading">Проект требует восстановления</h2>
-                            <p role="status">Нужно восстановление</p>
-                            <p>Не удалось проверить сохранённую версию. Исходные записи не изменены. Доступные исходники можно подготовить отдельно.</p>
-                            <button className={safetyStyles.primary} type="button" onClick={() => void controller.showProjects()}>Повторить проверку</button>
+                            <h2 id="directory-recovery-heading">{copy("Проект требует восстановления", "Project needs recovery")}</h2>
+                            <p role="status">{copy("Нужно восстановление", "Recovery needed")}</p>
+                            <p>{copy("Не удалось проверить сохранённую версию. Исходные записи не изменены. Доступные исходники можно подготовить отдельно.", "The saved version could not be verified. The original records are intact. Available source files can be prepared separately.")}</p>
+                            <button className={safetyStyles.primary} type="button" onClick={() => void controller.showProjects()}>{copy("Повторить проверку", "Retry verification")}</button>
                         </section>
                     ) : null}
-					{!legacyCreationAllowed ? <p role="status">Создание и редактирование проектов Web/PWA сейчас недоступны.</p> : null}
+					{!legacyCreationAllowed ? <p role="status">{copy("Создание и редактирование проектов Web/PWA сейчас недоступны.", "Creating and editing web projects is unavailable right now.")}</p> : null}
                     {state.storageSources ? <ProjectStorageStatus sources={state.storageSources.filter(source=>!readonlyStorageSources?.includes(source.storageNamespace))} onRetry={() => void controller.showProjects()} /> : null}
 					{state.projects.length === 0 ? (projectDirectoryEmptyLabel(state.storageSources, state.recoveryNeeded === true) ? (
 						<section
-							aria-label="Пустой список проектов"
+							aria-label={copy("Пустой список проектов", "Empty project list")}
 							className={styles.projectDirectoryEmpty}
 							data-testid="project-directory-empty"
 						>
@@ -6824,7 +6829,7 @@ export function AppShell({
 									data-project-storage={summary.storageNamespace}
 								>
 									<button
-										aria-label={`Открыть ${spokenName}`}
+										aria-label={copy(`Открыть ${spokenName}`, `Open ${spokenName}`)}
 										disabled={!ownerConfirmed || isLegacyOwnerReadOnly(summary.storageNamespace)}
 										className={styles.projectCardOpen}
 										onClick={() =>
@@ -6856,7 +6861,7 @@ export function AppShell({
 										</span>
 									</button>
 									<button
-										aria-label={`Удалить проект ${spokenName}`}
+										aria-label={copy(`Удалить проект ${spokenName}`, `Delete project ${spokenName}`)}
 										disabled={!ownerConfirmed || isLegacyOwnerReadOnly(summary.storageNamespace)}
 										className={styles.projectDeleteAction}
 										onClick={(event) => {
@@ -6886,31 +6891,31 @@ export function AppShell({
 											if (menu !== event.currentTarget) menu.open = false;
 										}
 									}}>
-										<summary aria-label={`Действия для ${spokenName}`}>
+										<summary aria-label={copy(`Действия для ${spokenName}`, `Actions for ${spokenName}`)}>
 											<span aria-hidden="true">•••</span>
 										</summary>
 										<div>
 											<button
-												aria-label={`Переименовать ${spokenName}`}
+												aria-label={copy(`Переименовать ${spokenName}`, `Rename ${spokenName}`)}
 												disabled={!ownerConfirmed || isLegacyOwnerReadOnly(summary.storageNamespace)}
 												onClick={(event) =>
 													renameProjectFromDirectory(summary, event.currentTarget)
 												}
 												type="button"
 											>
-												Переименовать
+												{copy("Переименовать", "Rename")}
 											</button>
 											<button
-												aria-label={`Экспортировать проект ${spokenName}`}
+												aria-label={copy(`Экспортировать проект ${spokenName}`, `Export project ${spokenName}`)}
 												disabled={!ownerConfirmed}
 												onClick={() =>
 													void exportProjectTransfer(summary.projectId, false, summary.storageNamespace)
 												}
 												type="button"
 											>
-												Экспортировать проект
+												{copy("Экспортировать проект", "Export project")}
 											</button>
-											{registeredTransferExport ? <button type="button" aria-label={`Экспорт файла для переноса: ${spokenName}`} disabled={!ownerConfirmed} onClick={() => void exportProjectTransfer(summary.projectId, true, summary.storageNamespace)}>Экспорт файла для переноса</button> : null}
+											{registeredTransferExport ? <button type="button" aria-label={copy(`Экспорт файла для переноса: ${spokenName}`, `Export transfer file for ${spokenName}`)} disabled={!ownerConfirmed} onClick={() => void exportProjectTransfer(summary.projectId, true, summary.storageNamespace)}>{copy("Экспорт файла для переноса", "Export transfer file")}</button> : null}
 										</div>
 									</details>
 								</li>
@@ -6942,11 +6947,11 @@ export function AppShell({
 				{directoryDeletionTarget ? (
 					<ProjectConfirmationDialog
 						plainLabels={hostNavigation !== undefined}
-						label="Удалить проект"
-						title="Удалить проект навсегда?"
-						cancelLabel="Оставить проект"
-						confirmLabel="Удалить навсегда"
-						busyLabel="Удаляем…"
+						label={copy("Удалить проект", "Delete project")}
+						title={copy("Удалить проект навсегда?", "Delete this project permanently?")}
+						cancelLabel={copy("Оставить проект", "Keep project")}
+						confirmLabel={copy("Удалить навсегда", "Delete permanently")}
+						busyLabel={copy("Удаляем…", "Deleting…")}
 						busy={isDeletingProject}
 						error={projectDeletionError}
 						onCancel={() => setDirectoryDeletionTarget(undefined)}
@@ -6956,8 +6961,7 @@ export function AppShell({
 					>
 						<p>{projectDeletionTargetText(directoryDeletionTarget.name)}</p>
 						<p>
-							Проект и его локальные версии будут удалены без возможности
-							восстановления. Это действие нельзя отменить.
+							{copy("Проект и его локальные версии будут удалены без возможности восстановления. Это действие нельзя отменить.", "The project and its local versions will be permanently deleted.")}
 						</p>
 					</ProjectConfirmationDialog>
 				) : null}
@@ -7005,7 +7009,7 @@ export function AppShell({
 				>
 					{state.kind === "first-run" || state.kind === "recovery-needed" ? (
 						<button
-							aria-label="Вернуться к проектам"
+							aria-label={copy("Вернуться к проектам", "Back to projects")}
 							data-editor-host-back={fullTransientNavigationProtection ? "back" : undefined}
 							className={
 								state.kind === "recovery-needed"
@@ -7022,13 +7026,13 @@ export function AppShell({
 							}}
 							type="button"
 						>
-							‹ Назад
+							{copy("‹ Назад", "‹ Back")}
 						</button>
 					) : null}
 					<h1 id="create-heading">
 						{state.kind === "recovery-needed"
-							? "Проект требует восстановления"
-							: "Новый проект"}
+							? copy("Проект требует восстановления", "Project needs recovery")
+							: copy("Новый проект", "New project")}
 					</h1>
 					{state.kind !== "recovery-needed" ? (
 						<form
@@ -7036,7 +7040,7 @@ export function AppShell({
 							noValidate
 							onSubmit={submitProject}
 						>
-							<label htmlFor="project-name">Название проекта</label>
+							<label htmlFor="project-name">{copy("Название проекта", "Project name")}</label>
 							<input
 								aria-describedby={nameError ? "project-name-error" : undefined}
 								aria-invalid={nameError ? "true" : undefined}
@@ -7060,20 +7064,20 @@ export function AppShell({
 								disabled={isWorking || state.kind === "persist-failed"}
 								type="submit"
 							>
-								{state.kind === "saving" ? "Сохранение…" : "Создать проект"}
+								{state.kind === "saving" ? copy("Сохранение…", "Saving…") : copy("Создать проект", "Create project")}
 							</button>
 						</form>
 					) : null}
 					{state.kind !== "first-run" ? (
 						<span className={styles.startStatus} role="status">
-							{isWriterLeaseReadOnly ? "Только просмотр" : statusCopy(state)}
+							{isWriterLeaseReadOnly ? copy("Только просмотр", "View only") : statusCopy(state)}
 						</span>
 					) : null}
 					{state.kind === "recovery-needed" ? (
 						<p data-testid="resource-recovery-diagnostic">
 							{recoveryRemovalSummary
-								? "Некоторые модели отсутствуют или повреждены. Редактирование остановлено. Восстановите точные исходные файлы или выберите удаление недоступных моделей."
-								: "Не удалось проверить сохранённую версию. Локальные данные оставлены на устройстве. Повторите проверку или вернитесь к списку проектов."}
+								? copy("Некоторые модели отсутствуют или повреждены. Редактирование остановлено. Восстановите точные исходные файлы или выберите удаление недоступных моделей.", "Some models are missing or damaged. Editing is paused. Recover the exact original files or remove the unavailable models.")
+								: copy("Не удалось проверить сохранённую версию. Локальные данные оставлены на устройстве. Повторите проверку или вернитесь к списку проектов.", "The saved version could not be verified. Local data are still on this device. Retry verification or return to Projects.")}
 						</p>
 					) : null}
 					{state.kind === "persist-failed" ? (
@@ -7082,11 +7086,11 @@ export function AppShell({
 							data-testid="project-creation-failure"
 						>
 							<div className={safetyStyles.message} role="alert">
-								<h2>Не удалось создать проект</h2>
+								<h2>{copy("Не удалось создать проект", "Could not create project")}</h2>
 								<p>
 									{state.reasonCode === "PERSISTENCE_QUOTA_EXCEEDED"
-										? "В локальном хранилище недостаточно места. Освободите место и повторите сохранение."
-										: "Проект ещё не сохранён на устройстве. Повторите сохранение."}
+										? copy("В локальном хранилище недостаточно места. Освободите место и повторите сохранение.", "Local storage is full. Free up space and retry saving.")
+										: copy("Проект ещё не сохранён на устройстве. Повторите сохранение.", "The project has not been saved to this device yet. Retry saving.")}
 								</p>
 							</div>
 							<button
@@ -7114,16 +7118,15 @@ export function AppShell({
 							{recoveryRemovalSummary ? (
 								<div>
 									<p>
-										Размещённых предметов:{" "}
-										{recoveryRemovalSummary.affectedAssetInstanceCount}.
-										Недоступных описаний моделей:{" "}
+										{copy("Размещённых предметов:", "Placed items:")}{" "}
+										{recoveryRemovalSummary.affectedAssetInstanceCount}{copy(". Недоступных описаний моделей:", ". Unavailable model definitions:")}{" "}
 										{recoveryRemovalSummary.affectedAssetDefinitionCount}.
 									</p>
-									<p>Это действие нельзя отменить через историю.</p>
+									<p>{copy("Это действие нельзя отменить через историю.", "This action cannot be undone.")}</p>
 									{isRecoveryRemovalConfirmationOpen ? (
 										<div aria-live="assertive" role="alert">
 											<p>
-												Будет создана новая версия без всех недоступных моделей.
+												{copy("Будет создана новая версия без всех недоступных моделей.", "A new version will be saved with all unavailable models removed.")}
 											</p>
 											<button data-editor-action="confirm"
 												className={safetyStyles.danger}
@@ -7136,8 +7139,8 @@ export function AppShell({
 												type="button"
 											>
 												{isRemovingUnresolvedCustomGlb
-													? "Удаляем недоступные модели…"
-													: hostNavigation ? "Подтвердить" : "Подтвердить удаление всех недоступных моделей"}
+													? copy("Удаляем недоступные модели…", "Removing unavailable models…")
+													: hostNavigation ? copy("Подтвердить", "Confirm") : copy("Подтвердить удаление всех недоступных моделей", "Confirm removal of all unavailable models")}
 											</button>
 											<button data-editor-action="cancel"
 												className={styles.textAction}
@@ -7149,7 +7152,7 @@ export function AppShell({
 												}
 												type="button"
 											>
-												{hostNavigation ? "Отменить" : "Отмена"}
+												{hostNavigation ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 											</button>
 										</div>
 									) : (
@@ -7161,7 +7164,7 @@ export function AppShell({
 											onClick={() => setIsRecoveryRemovalConfirmationOpen(true)}
 											type="button"
 										>
-											Удалить все недоступные модели
+											{copy("Удалить все недоступные модели", "Remove all unavailable models")}
 										</button>
 									)}
 									{recoveryRemovalError ? (
@@ -7199,7 +7202,7 @@ export function AppShell({
 								onClick={() => void controller.recover()}
 								type="button"
 							>
-								Повторить проверку
+								{copy("Повторить проверку", "Retry verification")}
 							</button>
 						</div>
 					) : null}
@@ -7250,9 +7253,9 @@ export function AppShell({
 		selectedItem && selectedItemFields ? (
 			<div className={styles.itemDimensions}>
 				{([
-					["widthMm", "Ширина"],
-					["depthMm", "Глубина"],
-					["heightMm", "Высота"],
+					["widthMm", copy("Ширина", "Width")],
+					["depthMm", copy("Глубина", "Depth")],
+					["heightMm", copy("Высота", "Height")],
 				] as const).map(([field, label]) => {
 					const error = hostNavigation ? floorDimensionErrors[field] : undefined;
 					const errorId = error ? `floor-dimension-error-${field}` : undefined;
@@ -7261,7 +7264,7 @@ export function AppShell({
 							<label>
 								<span>{label}</span>
 								<input
-									aria-label={`${label} выбранного предмета, мм`}
+									aria-label={copy(`${label} выбранного предмета, мм`, `Selected item ${label.toLowerCase()}, mm`)}
 									aria-describedby={errorId ?? (!hostNavigation && field === "widthMm" && dimensionError ? "dimension-error" : undefined)}
 									aria-invalid={error || (!hostNavigation && field === "widthMm" && dimensionError) ? true : undefined}
 									autoComplete="off"
@@ -7304,9 +7307,9 @@ export function AppShell({
 				{!onRotationStepModeChange ? (
 					<div>
 						<label data-angle-unit>
-							<span>Поворот</span>
+							<span>{copy("Поворот", "Rotation")}</span>
 							<input
-								aria-label="Угол поворота выбранного предмета, градусы"
+								aria-label={copy("Угол поворота выбранного предмета, градусы", "Selected item rotation angle, degrees")}
 								autoComplete="off"
 								disabled={
 									isEditorReadOnly ||
@@ -7384,15 +7387,15 @@ export function AppShell({
 					state.kind === "persist-failed" ||
 					state.kind === "recovery-needed"
 				}
-				aria-label="Дублировать предмет"
+				aria-label={copy("Дублировать предмет", "Duplicate item")}
 				onClick={duplicateSelectedItem}
 				type="button"
 			>
-				{hostNavigation ? "Дублировать" : "Дублировать предмет"}
+				{hostNavigation ? copy("Дублировать", "Duplicate") : copy("Дублировать предмет", "Duplicate item")}
 			</button>
 			<button
 				aria-label={
-					selectedItemLocked ? "Разблокировать предмет" : "Заблокировать предмет"
+					selectedItemLocked ? copy("Разблокировать предмет", "Unlock item") : copy("Заблокировать предмет", "Lock item")
 				}
 				aria-pressed={selectedItemLocked === true}
 				disabled={isEditorReadOnly || isMutationBlocked}
@@ -7403,11 +7406,11 @@ export function AppShell({
 			>
 				{selectedItemLocked
 					? hostNavigation
-						? "Разблокировать"
-						: "Разблокировать предмет"
+						? copy("Разблокировать", "Unlock")
+						: copy("Разблокировать предмет", "Unlock item")
 					: hostNavigation
-						? "Заблокировать"
-						: "Заблокировать предмет"}
+						? copy("Заблокировать", "Lock")
+						: copy("Заблокировать предмет", "Lock item")}
 			</button>
 
 			<button
@@ -7427,7 +7430,7 @@ export function AppShell({
 				}
 				type="button"
 			>
-				Удалить предмет
+				{copy("Удалить предмет", "Delete item")}
 			</button>
 		</ItemInspectorActions>
 	) : null;
@@ -7449,8 +7452,8 @@ export function AppShell({
 			>
 				<strong>
 					{storagePressure.kind === "critical"
-						? "Риск заполнения хранилища"
-						: "Хранилище почти заполнено"}
+						? copy("Риск заполнения хранилища", "Storage is running low")
+						: copy("Хранилище почти заполнено", "Storage is nearly full")}
 				</strong>
 				<p>{storagePressureCopy(storagePressure)}</p>
 				<button
@@ -7459,8 +7462,8 @@ export function AppShell({
 					type="button"
 				>
 					{isRequestingPersistentStorage
-						? "Запрашиваем защиту…"
-						: "Запросить защиту хранилища"}
+						? copy("Запрашиваем защиту…", "Requesting protection…")
+						: copy("Запросить защиту хранилища", "Request storage protection")}
 				</button>
 				{persistentStorageRequest ? (
 					<p data-testid="storage-persistence-status">
@@ -7475,21 +7478,21 @@ export function AppShell({
 							type="button"
 						>
 							{isClearingBrowseCache
-								? "Очищаем кэш…"
-								: "Освободить место в кэше"}
+								? copy("Очищаем кэш…", "Clearing cache…")
+								: copy("Освободить место в кэше", "Free up cache space")}
 						</button>
 						{browseCacheCleanup ? (
 							<p data-testid="browse-cache-cleanup-status">
 								{browseCacheCleanup.kind === "cleared"
-									? "Кэш повторно загружаемых данных очищен. Сохранённые проекты и модели не затронуты."
-									: "Не удалось очистить кэш каталога. Экспортируйте проект перед следующей правкой."}
+									? copy("Кэш повторно загружаемых данных очищен. Сохранённые проекты и модели не затронуты.", "Downloaded data were cleared from the cache. Saved projects and models are intact.")
+									: copy("Не удалось очистить кэш каталога. Экспортируйте проект перед следующей правкой.", "The catalog cache could not be cleared. Export the project before your next edit.")}
 							</p>
 						) : null}
 					</>
 				) : null}
 				<button data-editor-host-back={fullTransientNavigationProtection ? "projects" : undefined}
 							onClick={() => isNavigationProtected ? requestEditorBack(true) : void returnToProjects()} type="button">
-					К проектам и экспорту
+					{copy("К проектам и экспорту", "Projects and exports")}
 				</button>
 			</aside>
 		) : hasCheckedStoragePressure && storagePressure.kind === "unavailable" ? (
@@ -7500,22 +7503,20 @@ export function AppShell({
 				data-testid="storage-estimate-unavailable"
 				role="status"
 			>
-				<strong>Не удалось оценить свободное место</strong>
+				<strong>{copy("Не удалось оценить свободное место", "Storage availability could not be estimated")}</strong>
 				<p>
-					Точный 2D-план и локальное сохранение остаются доступны, но браузер не
-					сообщает остаток хранилища. Перед важной работой создайте резервную
-					копию проекта.
+					{copy("Точный 2D-план и локальное сохранение остаются доступны, но браузер не сообщает остаток хранилища. Перед важной работой создайте резервную копию проекта.", "The 2D plan and local saving are available. The browser cannot report remaining storage. Back up the project before making important changes.")}
 				</p>
 				<button data-editor-host-back={fullTransientNavigationProtection ? "projects" : undefined}
 							onClick={() => isNavigationProtected ? requestEditorBack(true) : void returnToProjects()} type="button">
-					К проектам и экспорту
+					{copy("К проектам и экспорту", "Projects and exports")}
 				</button>
 			</aside>
 		) : null;
 
 	const selectToolButton = (
 		<button
-			aria-label={hostNavigation ? "Выбор и перемещение" : "Рука и выбор"}
+			aria-label={hostNavigation ? copy("Выбор и перемещение", "Select and move") : copy("Рука и выбор", "Pan and select")}
 			aria-pressed={activeTool === "select"}
 			className={styles.selectToolButton}
 			onClick={activateSelectTool}
@@ -7542,7 +7543,7 @@ export function AppShell({
 					strokeWidth="2"
 				/>
 			</svg>
-			<span>{hostNavigation ? "Выбор" : "Рука и выбор"}</span>
+			<span>{hostNavigation ? copy("Выбор", "Select") : copy("Рука и выбор", "Pan and select")}</span>
 		</button>
 	);
 
@@ -7562,15 +7563,15 @@ export function AppShell({
 				{hostBackGuard}
 				{hostBackNotice ? <p role="status">{hostBackNotice}</p> : null}
             {hasRetainedHistoryTarget ? <aside className={`${safetyStyles.card} ${safetyStyles.floating}`} data-testid="retained-publication-notice" role="status">
-                <strong>Есть несохранённая правка</strong>
-                <p>На экране — последняя сохранённая версия. Сначала сохраните отдельную копию правки.</p>
-                <button type="button" onClick={() => void downloadRecoveryDraft()}>Скачать копию для восстановления</button>
+                <strong>{copy("Есть несохранённая правка", "Unsaved edit")}</strong>
+                <p>{copy("На экране — последняя сохранённая версия. Сначала сохраните отдельную копию правки.", "You are viewing the last saved version. Save a separate copy of the edit first.")}</p>
+                <button type="button" onClick={() => void downloadRecoveryDraft()}>{copy("Скачать копию для восстановления", "Download recovery copy")}</button>
                 {projectTransferError ? <p role="alert">{projectTransferError}</p> : null}
             </aside> : null}
 			{state.kind === "persist-failed" && !isRenameProjectOpen ? (
 				<SaveFailureNotice
 					actionLabel={persistenceFailureActionCopy(state.reasonCode, retryPolicy)}
-					description={retryPolicy === "registered-transfer-reselection-required" ? "Несохранённая правка доступна для экспорта восстановления. Чтобы повторить импорт, выберите исходный файл снова. Существующие проекты не изменены." : persistenceFailureCopy(state.reasonCode)}
+					description={retryPolicy === "registered-transfer-reselection-required" ? copy("Несохранённая правка доступна для экспорта восстановления. Чтобы повторить импорт, выберите исходный файл снова. Существующие проекты не изменены.", "You can export the unsaved edit for recovery. Choose the original file again to retry the import. Existing projects are intact.") : persistenceFailureCopy(state.reasonCode)}
 					exportError={projectTransferError}
 					onExport={() => void exportProjectTransfer()}
 					onRecoveryExport={() => void downloadRecoveryDraft()}
@@ -7586,17 +7587,14 @@ export function AppShell({
 						data-testid="project-recovery-screen"
 						className={safetyStyles.recoveryActions}
 					>
-						<h2>Проект требует восстановления</h2>
+						<h2>{copy("Проект требует восстановления", "Project needs recovery")}</h2>
 						<p data-testid="resource-recovery-diagnostic">
-							Редактирование остановлено. Показана проверенная геометрия только
-							для просмотра. Недоступные модели временно скрыты; сохранённый
-							проект не изменён.
+							{copy("Редактирование остановлено. Показана проверенная геометрия только для просмотра. Недоступные модели временно скрыты; сохранённый проект не изменён.", "Editing is paused. Verified geometry is available to view. Unavailable models are temporarily hidden. The saved project is intact.")}
 						</p>
 						{recoveryRemovalSummary ? (
 							<p>
-								Размещённых предметов:{" "}
-								{recoveryRemovalSummary.affectedAssetInstanceCount}. Недоступных
-								описаний моделей:{" "}
+								{copy("Размещённых предметов:", "Placed items:")}{" "}
+								{recoveryRemovalSummary.affectedAssetInstanceCount}{copy(". Недоступных описаний моделей:", ". Unavailable model definitions:")}{" "}
 								{recoveryRemovalSummary.affectedAssetDefinitionCount}.
 							</p>
 						) : null}
@@ -7614,7 +7612,7 @@ export function AppShell({
 								onClick={() => setIsRecoveryRemovalConfirmationOpen(true)}
 								type="button"
 							>
-								Удалить все недоступные модели
+								{copy("Удалить все недоступные модели", "Remove all unavailable models")}
 							</button>
 						) : null}
 						<button
@@ -7622,7 +7620,7 @@ export function AppShell({
 							onClick={() => void controller.recover()}
 							type="button"
 						>
-							Повторить проверку
+							{copy("Повторить проверку", "Retry verification")}
 						</button>
 						<button
 							disabled={isRepairingCustomGlb || isRemovingUnresolvedCustomGlb}
@@ -7630,7 +7628,7 @@ export function AppShell({
 							onClick={() => isNavigationProtected ? requestEditorBack(true) : void returnToProjects()}
 							type="button"
 						>
-							Вернуться к проектам
+							{copy("Вернуться к проектам", "Back to projects")}
 						</button>
 					</section>
 				</aside>
@@ -7648,9 +7646,9 @@ export function AppShell({
 					role="status"
 				>
 					{isShowingWriterRecoveryCopy
-						? "Recovery-копия — только просмотр"
+						? copy("Recovery-копия — только просмотр", "Recovery copy · view only")
 						: isWriterLeaseReadOnly
-							? "Только просмотр"
+							? copy("Только просмотр", "View only")
 							: statusCopy(state)}
 				</span>
 				{isHistoryResourceRecovery && !isHistoryDiscardConfirmationOpen ? (
@@ -7660,7 +7658,7 @@ export function AppShell({
 						data-testid="history-resource-recovery-notice"
 						role="alert"
 					>
-						<h2>Недоступная модель находится только в истории</h2>
+						<h2>{copy("Недоступная модель находится только в истории", "An unavailable model is used only in the history")}</h2>
 						<ResourceRepairControls
 							telegram={hasTelegramEditorSheet}
 							busy={isRepairingCustomGlb}
@@ -7669,16 +7667,14 @@ export function AppShell({
 							onBackupFile={repairFromPortableBackup}
 						/>
 						<p>
-							Текущий план сохранён и доступен для экспорта, но редактирование,
-							«Отменить» и «Повторить» остановлены до восстановления модели или
-							явной очистки истории.
+							{copy("Текущий план сохранён и доступен для экспорта, но редактирование, «Отменить» и «Повторить» остановлены до восстановления модели или явной очистки истории.", "The current plan is saved and can be exported. Restore the model or clear the history to resume editing, undo and redo.")}
 						</p>
 						<button
 							className={safetyStyles.primary}
 							onClick={() => void controller.refreshSessionHistoryIntegrity()}
 							type="button"
 						>
-							Проверить историю снова
+							{copy("Проверить историю снова", "Check history again")}
 						</button>
 						<button
 							ref={historyDiscardTriggerRef}
@@ -7688,7 +7684,7 @@ export function AppShell({
 							}}
 							type="button"
 						>
-							Очистить историю
+							{copy("Очистить историю", "Clear history")}
 						</button>
 					</aside>
 				) : null}
@@ -7700,10 +7696,11 @@ export function AppShell({
 						disabled={isEditorReadOnly || isMutationBlocked}
 						onClick={duplicateSelectedItem}
 						type="button"
-					>Дублировать</button>
+					>{copy("Дублировать", "Duplicate")}</button>
 				) : null}
 				{viewMode === "three-dimensional" && threeDimensionalScene ? (
 					<RoomScene3d
+						roomTheme={roomTheme}
 						plainLabels={hostNavigation !== undefined}
 						resizeDrawingBufferOnChangeOnly={hostNavigation !== undefined}
 						onCloseItemPlacement={localGreyboxCatalog ? () => requestEditorBack(false, cancelItemPlacement) : undefined}
@@ -7846,7 +7843,7 @@ export function AppShell({
 						openingHostIds={openingEntry && openingEntry !== "add" ? openingHostIds : undefined}
 						onChooseOpeningHost={openingEntry && openingEntry !== "add" ? (wallSegmentId, offsetMm) => {
 							if (openingHostIds.has(wallSegmentId)) placeNewOpening(openingEntry, wallSegmentId, offsetMm);
-							else setDimensionError("Этот проём не помещается на выбранной стене.");
+							else setDimensionError(copy("Этот проём не помещается на выбранной стене.", "This opening does not fit on the selected wall."));
 						} : undefined}
 						keyboardItemMovement={hostNavigation !== undefined}
 						showOpeningTemplates={hostNavigation !== undefined}
@@ -7912,7 +7909,7 @@ export function AppShell({
 					ref={editorTopBarRef}
 				>
 					<button
-						aria-label={hostNavigation ? "Назад" : "Вернуться к проектам"}
+						aria-label={hostNavigation ? copy("Назад", "Back") : copy("Вернуться к проектам", "Back to projects")}
 						data-editor-host-back={fullTransientNavigationProtection ? "back" : undefined}
 						className={styles.editorBackAction}
 						disabled={
@@ -7921,10 +7918,10 @@ export function AppShell({
 						onClick={() => isNavigationProtected ? requestEditorBack() : void returnToProjects()}
 						type="button"
 					>
-						Назад
+						{copy("Назад", "Back")}
 					</button>
 					<button
-						aria-label={`Переименовать проект ${project.name}`}
+						aria-label={copy(`Переименовать проект ${project.name}`, `Rename project ${project.name}`)}
 						className={styles.projectIdentity}
 						disabled={isEditorReadOnly || isMutationBlocked}
 						onClick={openRenameProject}
@@ -7946,7 +7943,7 @@ export function AppShell({
 							aria-controls="editor-secondary-actions"
 							aria-expanded={isEditorActionMenuOpen}
 							aria-haspopup="dialog"
-							aria-label="Открыть остальные действия"
+							aria-label={copy("Открыть остальные действия", "Open more actions")}
 							ref={editorHeaderMenuRef}
 							className={styles.editorHeaderMenuTrigger}
 							onClick={() => setIsEditorActionMenuOpen((isOpen) => !isOpen)}
@@ -7968,21 +7965,21 @@ export function AppShell({
 					) : null}
 					<div className={styles.editorViewRow}>
 						<fieldset
-							aria-label="Переключить вид редактора"
+							aria-label={copy("Переключить вид редактора", "Switch editor view")}
 							className={styles.editorViewSwitch}
 							data-testid="editor-view-switch"
 						>
 							<legend className={styles.visuallyHidden}>
-								Переключить вид редактора
+								{copy("Переключить вид редактора", "Switch editor view")}
 							</legend>
 							<button
-								aria-label="План 2D"
+								aria-label={copy("План 2D", "2D plan")}
 								aria-pressed={viewMode === "plan"}
 								disabled={openingCreationDraft !== undefined}
 								onClick={() => setViewMode("plan")}
 								type="button"
 							>
-								План
+								{copy("План", "Plan")}
 							</button>
 							<button
 								aria-pressed={viewMode === "three-dimensional"}
@@ -7997,7 +7994,7 @@ export function AppShell({
 						</fieldset>
 						{viewMode === "plan" ? (
 							<button
-								aria-label="Настроить размеры"
+								aria-label={copy("Настроить размеры", "Configure dimensions")}
 								aria-haspopup="dialog"
 								aria-expanded={isDimensionFilterOpen}
 								className={styles.dimensionFilterTrigger}
@@ -8024,7 +8021,7 @@ export function AppShell({
 										strokeLinecap="round"
 									/>
 								</svg>
-								<span>Размеры</span>
+								<span>{copy("Размеры", "Dimensions")}</span>
 							</button>
 						) : null}
 					</div>
@@ -8036,7 +8033,7 @@ export function AppShell({
 						data-testid="healthy-offline-status"
 						role="status"
 					>
-						Офлайн — работаем на устройстве
+						{copy("Офлайн — работаем на устройстве", "Offline · working on this device")}
 					</p>
 				) : null}
 
@@ -8059,7 +8056,7 @@ export function AppShell({
 
 				{!isItemPlacementSurfaceActive && !openingCreationDraft && (!openingEntry || openingEntry === "add") ? (
 					<>
-						<nav aria-label="Инструменты редактора" className={styles.toolRail}>
+						<nav aria-label={copy("Инструменты редактора", "Editor tools")} className={styles.toolRail}>
 							<span
 								aria-live="polite"
 								className={styles.railActiveTool}
@@ -8074,7 +8071,7 @@ export function AppShell({
 							>
 								{isWallOpeningDockContext && !hostNavigation ? (
 									<button
-										aria-label="Добавить проём"
+										aria-label={copy("Добавить проём", "Add opening")}
 										className={`${styles.dockAction} ${styles.roomDockAction}`}
 										disabled={
 											isEditorReadOnly ||
@@ -8108,11 +8105,11 @@ export function AppShell({
 												strokeWidth="1.8"
 											/>
 										</svg>
-										<span>Добавить проём</span>
+										<span>{copy("Добавить проём", "Add opening")}</span>
 									</button>
 								) : (
 									<button
-										aria-label="Комната"
+										aria-label={copy("Комната", "Room")}
 										ref={roomDockActionRef}
 										aria-pressed={isRoomDirectoryOpen}
 										className={`${styles.dockAction} ${styles.roomDockAction}`}
@@ -8138,13 +8135,13 @@ export function AppShell({
 												strokeWidth="1.8"
 											/>
 										</svg>
-										<span>Комната</span>
+										<span>{copy("Комната", "Room")}</span>
 									</button>
 								)}
 								{!hostNavigation && selectToolButton}
 								{isWallOpeningDockContext ? (
 									<button
-										aria-label="Свойства"
+										aria-label={copy("Свойства", "Properties")}
 										ref={selectionPropertiesTriggerRef}
 										className={`${styles.dockAction} ${styles.wallDockAction}`}
 										disabled={isEditorReadOnly || isMutationBlocked}
@@ -8171,11 +8168,11 @@ export function AppShell({
 												strokeWidth="1.8"
 											/>
 										</svg>
-										<span>Свойства</span>
+										<span>{copy("Свойства", "Properties")}</span>
 									</button>
 								) : (
 									<button
-										aria-label="Стена"
+										aria-label={copy("Стена", "Wall")}
 										aria-pressed={activeTool === "wall"}
 										className={`${styles.dockAction} ${styles.wallDockAction}`}
 										disabled={
@@ -8207,7 +8204,7 @@ export function AppShell({
 												strokeWidth="1.8"
 											/>
 										</svg>
-										<span>Стена</span>
+										<span>{copy("Стена", "Wall")}</span>
 									</button>
 								)}
 
@@ -8224,11 +8221,11 @@ export function AppShell({
 										<svg aria-hidden="true" data-testid="add-tool-icon" fill="none" height="24" viewBox="0 0 24 24" width="24">
 											<path d="M12 4.5v15M4.5 12h15" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
 										</svg>
-										<span>Добавить</span>
+										<span>{copy("Добавить", "Add")}</span>
 									</button>
 								) : (
 								<button
-									aria-label="Предметы интерьера"
+									aria-label={copy("Предметы интерьера", "Furniture and fixtures")}
 									aria-pressed={activeTool === "item"}
 									className={`${styles.dockAction} ${styles.itemDockAction}`}
 									disabled={
@@ -8261,7 +8258,7 @@ export function AppShell({
 											strokeWidth="1.9"
 										/>
 									</svg>
-									<span>Предмет</span>
+									<span>{copy("Предмет", "Item")}</span>
 								</button>
 								)}
 								{hostNavigation && selectToolButton}
@@ -8270,7 +8267,7 @@ export function AppShell({
 						<TelegramSheetFrame
 							as="dialog"
 							telegram={hasTelegramEditorSheet}
-							aria-label="Остальные действия редактора"
+							aria-label={copy("Остальные действия редактора", "More editor actions")}
 							data-telegram-sheet={hasTelegramEditorSheet ? "menu" : undefined}
 							className={styles.editorActionMenu}
 							hidden={!isEditorActionMenuOpen}
@@ -8316,18 +8313,18 @@ export function AppShell({
 								data-testid="editor-action-menu-handle"
 							/>
 							<SheetHeader
-								title="Ещё"
-								closeLabel="Закрыть остальные действия"
+								title={copy("Ещё", "More")}
+								closeLabel={copy("Закрыть остальные действия", "Close more actions")}
 								protectEditorDraft={hasTelegramEditorSheet}
 								onClose={closeEditorActionMenu}
 							/>
 							{onOpenSettings && <button type="button" onClick={() => {
 								setIsEditorActionMenuOpen(false);
 								requestAnimationFrame(() => onOpenSettings(editorHeaderMenuRef.current ?? undefined));
-							}}>Настройки</button>}
+							}}>{copy("Настройки", "Settings")}</button>}
 							{isWallOpeningDockContext ? (
 								<button
-									aria-label="Предметы интерьера"
+									aria-label={copy("Предметы интерьера", "Furniture and fixtures")}
 									disabled={
 										isEditorReadOnly ||
 										isWorking ||
@@ -8340,7 +8337,7 @@ export function AppShell({
 									}}
 									type="button"
 								>
-									Каталог
+									{copy("Каталог", "Catalog")}
 								</button>
 							) : null}
 							{viewMode === "plan" &&
@@ -8351,7 +8348,7 @@ export function AppShell({
 									onClick={openSelectionProperties}
 									type="button"
 								>
-									Параметры выбранного предмета
+									{copy("Параметры выбранного предмета", "Selected item settings")}
 								</button>
 							) : null}
 							{viewMode === "plan" &&
@@ -8360,7 +8357,7 @@ export function AppShell({
 							!selectedWall &&
 							metrics ? (
 								<button onClick={openPlanInspector} type="button">
-									Размеры плана
+									{copy("Размеры плана", "Plan dimensions")}
 								</button>
 							) : null}
 							<button
@@ -8369,16 +8366,16 @@ export function AppShell({
 							onClick={() => isNavigationProtected ? requestEditorBack(true) : void returnToProjects()}
 								type="button"
 							>
-								Проекты
+								{copy("Проекты", "Projects")}
 							</button>
 							<button
 								disabled={isWorking}
 								onClick={() => void exportProjectTransfer()}
 								type="button"
 							>
-								Экспортировать проект
+								{copy("Экспортировать проект", "Export project")}
 							</button>
-							{registeredTransferExport ? <button type="button" disabled={isWorking} onClick={() => void exportProjectTransfer(undefined, true)}>Экспорт файла для переноса</button> : null}
+							{registeredTransferExport ? <button type="button" disabled={isWorking} onClick={() => void exportProjectTransfer(undefined, true)}>{copy("Экспорт файла для переноса", "Export transfer file")}</button> : null}
 							<button
 								disabled={
 									isEditorReadOnly ||
@@ -8393,7 +8390,7 @@ export function AppShell({
 								}}
 								type="button"
 							>
-								Начать заново
+								{copy("Начать заново", "Start over")}
 							</button>
 							<button
 								className={styles.menuDangerAction}
@@ -8410,14 +8407,14 @@ export function AppShell({
 								}}
 								type="button"
 							>
-								Удалить проект
+								{copy("Удалить проект", "Delete project")}
 							</button>
 						</TelegramSheetFrame>
 					</>
 				) : null}
 
 				<fieldset
-					aria-label="История изменений"
+					aria-label={copy("История изменений", "Edit history")}
 					className={styles.canvasHistory}
 					data-plan-rotation-obstacle={viewMode === "plan" || undefined}
 				>
@@ -8455,7 +8452,7 @@ export function AppShell({
 				!selectedWall &&
 				editableRooms.length > 0 ? (
 					<button
-						aria-label="Помещения"
+						aria-label={copy("Помещения", "Rooms")}
 						aria-expanded={isRoomDirectoryOpen}
 						className={styles.roomDirectoryToggle}
 						disabled={isWorking}
@@ -8482,7 +8479,7 @@ export function AppShell({
 
 				{viewMode === "plan" && canReturnToDrawing ? (
 					<button
-						aria-label="Вернуться к чертежу"
+						aria-label={copy("Вернуться к чертежу", "Back to plan")}
 						className={styles.returnToDrawing}
 						data-testid="drawing-compass"
 						onClick={() => setViewport(initialEditorViewport)}
@@ -8509,12 +8506,12 @@ export function AppShell({
 						className={styles.openingContext}
 						aria-label={
 							selectedOpening.kind === "Window"
-								? "Выбранное окно"
-								: "Выбранный проём"
+								? copy("Выбранное окно", "Selected window")
+								: copy("Выбранный проём", "Selected opening")
 						}
 					>
 						<strong>
-							{selectedOpening.kind === "Window" ? "Окно" : "Дверной проём"}
+							{selectedOpening.kind === "Window" ? copy("Окно", "Window") : copy("Дверной проём", "Door opening")}
 						</strong>
 						<span>
 							{formatLengthMm(selectedOpening.widthMm)} ×{" "}
@@ -8525,7 +8522,7 @@ export function AppShell({
 							disabled={isEditorReadOnly || isMutationBlocked}
 							onClick={() => openOpeningDraft(selectedOpening)}
 						>
-							Параметры
+							{copy("Параметры", "Settings")}
 						</button>
 						<button
 							type="button"
@@ -8534,7 +8531,7 @@ export function AppShell({
 								void deleteSelectedDoorOpening(selectedOpening.openingId)
 							}
 						>
-							Удалить
+							{copy("Удалить", "Delete")}
 						</button>
 					</TelegramSheetFrame>
 				) : null}
@@ -8542,32 +8539,32 @@ export function AppShell({
 				{viewMode === "plan" && openingEntry === "add" ? (
 					<EditorModalSheet
 						telegramModal={canOpenTelegramEditorSheet}
-						aria-label="Добавить"
+						aria-label={copy("Добавить", "Add")}
 						className={styles.openingEntrySheet}
 						onRequestClose={() => requestEditorBack(false, closeOpeningEntry)}
 						restoreFocus={() => addDockTriggerRef.current}
 						role="dialog"
 						tabIndex={-1}
 					>
-						<SheetHeader title="Добавить" closeLabel="Закрыть добавление" onClose={() => requestEditorBack(false, closeOpeningEntry)} />
+						<SheetHeader title={copy("Добавить", "Add")} closeLabel={copy("Закрыть добавление", "Close add menu")} onClose={() => requestEditorBack(false, closeOpeningEntry)} />
 						<div className={sheetStyles.body}>
 							<div className={styles.openingAddChoices} data-opening-type-choices>
 								<button type="button" ref={doorChoiceRef} onClick={() => chooseOpeningType("Door")}>
 									<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
 										<path d="M3 20h4V5" /><path d="M7 5a15 15 0 0 1 15 15" strokeDasharray="2 2" />
 									</svg>
-									Дверь
+									{copy("Дверь", "Door")}
 								</button>
 								<button type="button" ref={windowChoiceRef} onClick={() => chooseOpeningType("Window")}>
 									<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M2 10h20M2 14h20" /></svg>
-									Окно
+									{copy("Окно", "Window")}
 								</button>
 								<button type="button" onClick={() => {
 									setOpeningEntry(undefined);
 									openBuiltInCatalog(addDockTriggerRef.current);
 								}}>
 									<svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8"><path d="M7 11V6.5A2.5 2.5 0 0 1 9.5 4h5A2.5 2.5 0 0 1 17 6.5V11M5 11h14v6H5zM8 17v3M16 17v3" /></svg>
-									Предмет
+									{copy("Предмет", "Item")}
 								</button>
 							</div>
 						</div>
@@ -8578,32 +8575,32 @@ export function AppShell({
 					<EditorModalSheet
 						telegramModal={false}
 						telegramSheet
-						aria-label={openingEntry === "Door" ? "Поставить дверь" : "Поставить окно"}
+						aria-label={openingEntry === "Door" ? copy("Поставить дверь", "Place door") : copy("Поставить окно", "Place window")}
 						className={styles.openingEntrySheet}
 						data-testid="opening-host-picker"
 						onRequestClose={() => requestEditorBack(false, goBackFromOpeningEntry)}
 						role="region"
 						tabIndex={-1}
 					>
-						<SheetHeader title={openingEntry === "Door" ? "Поставить дверь" : "Поставить окно"} closeLabel="Отменить выбор места" onClose={() => requestEditorBack(false, closeOpeningEntry)} />
+						<SheetHeader title={openingEntry === "Door" ? copy("Поставить дверь", "Place door") : copy("Поставить окно", "Place window")} closeLabel={copy("Отменить выбор места", "Cancel position selection")} onClose={() => requestEditorBack(false, closeOpeningEntry)} />
 						<div className={sheetStyles.body}>
-							<p>{openingHostChoices.length ? "Укажите место на подсвеченной стене." : "На плане нет подходящих стен."}</p>
+							<p>{openingHostChoices.length ? copy("Укажите место на подсвеченной стене.", "Choose a position on a highlighted wall.") : copy("На плане нет подходящих стен.", "There are no suitable walls on the plan.")}</p>
 							{dimensionError && <p role="alert">{dimensionError}</p>}
 							{openingHostChoices.length > 0 ? (
 								<button type="button" ref={openingWallListRef} aria-expanded={showOpeningWallList} onClick={() => setShowOpeningWallList(value => !value)}>
-									Выбрать стену
+									{copy("Выбрать стену", "Choose wall")}
 								</button>
 							) : (
 								<button type="button" ref={openingWallListRef} onClick={() => {
 									setOpeningEntry(undefined);
 									void activateWallTool();
-								}}>Нарисовать стену</button>
+								}}>{copy("Нарисовать стену", "Draw wall")}</button>
 							)}
 							{showOpeningWallList && (
 								<div className={styles.openingAddChoices}>
 									{openingHostChoices.map(host => (
 										<button key={host.wallSegmentId} type="button" onClick={() => placeNewOpening(openingEntry, host.wallSegmentId)}>
-											Стена {host.ordinal} · {formatLengthMm(host.lengthMm)}
+											{copy("Стена", "Wall")} {host.ordinal} · {formatLengthMm(host.lengthMm)}
 										</button>
 									))}
 								</div>
@@ -8616,7 +8613,7 @@ export function AppShell({
 					<EditorModalSheet
 						telegramModal={false}
 						telegramSheet
-						aria-label={openingCreationDraft.kind === "Door" ? "Новая дверь" : "Новое окно"}
+						aria-label={openingCreationDraft.kind === "Door" ? copy("Новая дверь", "New door") : copy("Новое окно", "New window")}
 						busy={isWorking}
 						className={styles.openingEntrySheet}
 						data-testid="opening-creation-draft"
@@ -8624,7 +8621,7 @@ export function AppShell({
 						role="region"
 						tabIndex={-1}
 					>
-						<SheetHeader title={openingCreationDraft.kind === "Door" ? "Новая дверь" : "Новое окно"} closeLabel="Закрыть создание проёма" closeDisabled={isWorking} onClose={() => requestEditorBack(false, closeOpeningCreationDraft)} />
+						<SheetHeader title={openingCreationDraft.kind === "Door" ? copy("Новая дверь", "New door") : copy("Новое окно", "New window")} closeLabel={copy("Закрыть создание проёма", "Close opening creation")} closeDisabled={isWorking} onClose={() => requestEditorBack(false, closeOpeningCreationDraft)} />
 						<div className={sheetStyles.body}>
 							{openingCreationDraftError && <p role="alert">{openingCreationDraftError}</p>}
 							<div className={styles.openingCompactActions}>
@@ -8633,10 +8630,10 @@ export function AppShell({
 									setOpeningCreationDraft(undefined);
 									setDimensionError(undefined);
 									requestAnimationFrame(() => openingWallListRef.current?.focus());
-								}}>Выбрать другое место</button>}
-								<button type="button" disabled={isWorking} onClick={() => setShowOpeningCreationDetails(true)}>Параметры</button>
-								<button type="button" disabled={isWorking} onClick={closeOpeningCreationDraft}>Отменить</button>
-								<button type="button" disabled={isMutationBlocked || !canConfirmOpeningCreationDraft} onClick={() => void confirmOpeningCreationDraft()}>Подтвердить</button>
+								}}>{copy("Выбрать другое место", "Choose another position")}</button>}
+								<button type="button" disabled={isWorking} onClick={() => setShowOpeningCreationDetails(true)}>{copy("Параметры", "Settings")}</button>
+								<button type="button" disabled={isWorking} onClick={closeOpeningCreationDraft}>{copy("Отменить", "Cancel")}</button>
+								<button type="button" disabled={isMutationBlocked || !canConfirmOpeningCreationDraft} onClick={() => void confirmOpeningCreationDraft()}>{copy("Подтвердить", "Confirm")}</button>
 							</div>
 						</div>
 					</EditorModalSheet>
@@ -8672,26 +8669,26 @@ export function AppShell({
 							/>
 							<SheetHeader
 								titleId="opening-creation-title"
-								title={openingCreationDraft.kind === "Window" ? "Новое окно" : "Новый проём"}
-								closeLabel="Закрыть создание проёма"
+								title={openingCreationDraft.kind === "Window" ? copy("Новое окно", "New window") : copy("Новый проём", "New opening")}
+								closeLabel={copy("Закрыть создание проёма", "Close opening creation")}
 								closeDisabled={isWorking}
 								onClose={() => isNavigationProtected ? requestEditorBack(false, closeOpeningCreationDraft) : closeOpeningCreationDraft()}
 							/>
 							{openingCreationHost ? (
 								<p className={styles.openingCreationHost}>
-									Стена {openingCreationHost.ordinal} ·{" "}
+									{copy("Стена", "Wall")} {openingCreationHost.ordinal} ·{" "}
 									{formatLengthMm(openingCreationHost.lengthMm)}
 								</p>
 							) : null}
 							{openingCreationDraft.baseRevisionId === undefined && <fieldset className={styles.openingCreationKindPicker}>
-								<legend className={styles.visuallyHidden}>Тип проёма</legend>
+								<legend className={styles.visuallyHidden}>{copy("Тип проёма", "Opening type")}</legend>
 								<button
 									aria-pressed={openingCreationDraft.kind === "Door"}
 									disabled={isWorking || isEditorReadOnly}
 									onClick={() => selectOpeningCreationKind("Door")}
 									type="button"
 								>
-									Дверь
+									{copy("Дверь", "Door")}
 								</button>
 								<button
 									aria-pressed={openingCreationDraft.kind === "Window"}
@@ -8699,14 +8696,14 @@ export function AppShell({
 									onClick={() => selectOpeningCreationKind("Window")}
 									type="button"
 								>
-									Окно
+									{copy("Окно", "Window")}
 								</button>
 							</fieldset>}
 							<div className={styles.openingCreationFields}>
 								{openingCreationDraft.baseRevisionId !== undefined && (
 									<label>
-										<span>Смещение вдоль стены</span>
-										<input aria-label="Смещение вдоль стены, мм" inputMode="numeric"
+										<span>{copy("Смещение вдоль стены", "Offset along the wall")}</span>
+										<input aria-label={copy("Смещение вдоль стены, мм", "Offset along the wall, mm")} inputMode="numeric"
 											aria-describedby={openingCreationDraftError ? "opening-creation-error" : undefined}
 											aria-invalid={!!openingCreationDraftError}
 											disabled={isWorking || isEditorReadOnly}
@@ -8719,7 +8716,7 @@ export function AppShell({
 									</label>
 								)}
 								<label>
-									<span>Ширина</span>
+									<span>{copy("Ширина", "Width")}</span>
 									<input
 										aria-describedby={
 											openingCreationDraftError
@@ -8727,7 +8724,7 @@ export function AppShell({
 												: undefined
 										}
 										aria-invalid={openingCreationDraftError ? true : undefined}
-										aria-label="Ширина, мм"
+										aria-label={copy("Ширина, мм", "Width, mm")}
 										disabled={isWorking || isEditorReadOnly}
 										inputMode="numeric"
 										onChange={(event) => {
@@ -8743,7 +8740,7 @@ export function AppShell({
 									/>
 								</label>
 								<label>
-									<span>Высота</span>
+									<span>{copy("Высота", "Height")}</span>
 									<input
 										aria-describedby={
 											openingCreationDraftError
@@ -8751,7 +8748,7 @@ export function AppShell({
 												: undefined
 										}
 										aria-invalid={openingCreationDraftError ? true : undefined}
-										aria-label="Высота, мм"
+										aria-label={copy("Высота, мм", "Height, mm")}
 										disabled={isWorking || isEditorReadOnly}
 										inputMode="numeric"
 										onChange={(event) => {
@@ -8784,7 +8781,7 @@ export function AppShell({
 									onClick={closeOpeningCreationDraft}
 									type="button"
 								>
-									{hostNavigation ? "Отменить" : "Отмена"}
+									{hostNavigation ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 								</button>
 								<button
 									disabled={
@@ -8794,7 +8791,7 @@ export function AppShell({
 									}
 									type="submit"
 								>
-									{openingCreationDraft.baseRevisionId === undefined ? "Добавить" : "Подтвердить"}
+									{openingCreationDraft.baseRevisionId === undefined ? copy("Добавить", "Add") : copy("Подтвердить", "Confirm")}
 								</button>
 							</div>
 						</form>
@@ -8806,18 +8803,18 @@ export function AppShell({
 						plainLabels={hostNavigation !== undefined}
 						label={
 							openingDraft.kind === "Window"
-								? "Подтвердить перемещение окна"
-								: "Подтвердить перемещение проёма"
+								? copy("Подтвердить перемещение окна", "Confirm window move")
+								: copy("Подтвердить перемещение проёма", "Confirm opening move")
 						}
 						title={
 							openingDraft.kind === "Window"
-								? "Переместить окно?"
-								: "Переместить проём?"
+								? copy("Переместить окно?", "Move this window?")
+								: copy("Переместить проём?", "Move this opening?")
 						}
-						cancelLabel="Отмена"
-						confirmLabel="Подтвердить"
+						cancelLabel={copy("Отмена", "Cancel")}
+						confirmLabel={copy("Подтвердить", "Confirm")}
 						confirmTone="primary"
-						busyLabel="Сохраняем…"
+						busyLabel={copy("Сохраняем…", "Saving…")}
 						busy={isWorking}
 						error={dimensionError}
 						onCancel={cancelOpeningDraft}
@@ -8827,7 +8824,7 @@ export function AppShell({
 						testId="opening-move-confirmation"
 					>
 						<p>
-							{openingDraft.kind === "Window" ? "Окно переместится в выбранное место." : "Дверь переместится в выбранное место."}
+							{openingDraft.kind === "Window" ? copy("Окно переместится в выбранное место.", "The window will move to the selected position.") : copy("Дверь переместится в выбранное место.", "The door will move to the selected position.")}
 						</p>
 					</ProjectConfirmationDialog>
 				) : null}
@@ -8840,8 +8837,8 @@ export function AppShell({
 						restoreFocus={() => editorHeaderMenuRef.current}
 						aria-label={
 							openingDraft.kind === "Door"
-								? "Параметры дверного проёма"
-								: "Параметры окна"
+								? copy("Параметры дверного проёма", "Door opening settings")
+								: copy("Параметры окна", "Window settings")
 						}
 						className={styles.openingCreationSheet}
 						data-testid="opening-draft"
@@ -8861,16 +8858,16 @@ export function AppShell({
 							}}
 						>
 							<SheetHeader
-								title={openingDraft.kind === "Door" ? "Изменить проём" : "Изменить окно"}
-								closeLabel="Закрыть параметры проёма"
+								title={openingDraft.kind === "Door" ? copy("Изменить проём", "Edit opening") : copy("Изменить окно", "Edit window")}
+								closeLabel={copy("Закрыть параметры проёма", "Close opening settings")}
 								closeDisabled={isWorking}
 								onClose={() => isNavigationProtected ? requestEditorBack(false, cancelOpeningDraft) : cancelOpeningDraft()}
 							/>
 
 							<div className={styles.openingCreationFields}>
 								{canEditOpeningOffset(openingDraft, hostNavigation !== undefined) && <label>
-									<span>Смещение вдоль стены</span>
-									<input aria-label="Смещение вдоль стены, мм" inputMode="numeric"
+									<span>{copy("Смещение вдоль стены", "Offset along the wall")}</span>
+									<input aria-label={copy("Смещение вдоль стены, мм", "Offset along the wall, mm")} inputMode="numeric"
 										value={openingDraft.offsetMm}
 										disabled={isWorking || isEditorReadOnly}
 										onChange={(event) => {
@@ -8880,12 +8877,12 @@ export function AppShell({
 										}} />
 								</label>}
 								<label>
-									<span>Ширина</span>
+									<span>{copy("Ширина", "Width")}</span>
 									<input
 										aria-label={
 											openingDraft.kind === "Door"
-												? "Ширина дверного проёма, мм"
-												: "Ширина окна, мм"
+												? copy("Ширина дверного проёма, мм", "Door opening width, mm")
+												: copy("Ширина окна, мм", "Window width, mm")
 										}
 										aria-describedby={
 											dimensionError ? "opening-draft-error" : undefined
@@ -8905,12 +8902,12 @@ export function AppShell({
 									/>
 								</label>
 								<label>
-									<span>Высота</span>
+									<span>{copy("Высота", "Height")}</span>
 									<input
 										aria-label={
 											openingDraft.kind === "Door"
-												? "Высота дверного проёма, мм"
-												: "Высота окна, мм"
+												? copy("Высота дверного проёма, мм", "Door opening height, mm")
+												: copy("Высота окна, мм", "Window height, mm")
 										}
 										aria-describedby={
 											dimensionError ? "opening-draft-error" : undefined
@@ -8938,14 +8935,14 @@ export function AppShell({
 							)}
 							{windowAlignmentAvailable ? (
 								<div className={styles.windowAlignment}>
-									<p id="window-alignment-help">Одинаковые окна на этой стене стоят на разных отметках.</p>
+									<p id="window-alignment-help">{copy("Одинаковые окна на этой стене стоят на разных отметках.", "Matching windows on this wall are at different heights.")}</p>
 									<button
 										aria-describedby="window-alignment-help"
 										disabled={isEditorReadOnly || isMutationBlocked || windowAlignmentDirty}
 										onClick={() => void confirmOpeningDraft("align")}
 										type="button"
 									>
-										Выровнять окна
+										{copy("Выровнять окна", "Align windows")}
 									</button>
 								</div>
 							) : null}
@@ -8957,17 +8954,17 @@ export function AppShell({
 							<div className={styles.openingCreationActions}>
 								<button disabled={isWorking || isEditorReadOnly} type="submit">
 									{openingDraft.isMove
-										? "Применить"
+										? copy("Применить", "Apply")
 										: openingDraft.kind === "Door"
-											? "Сохранить проём"
-											: "Сохранить окно"}
+											? copy("Сохранить проём", "Save opening")
+											: copy("Сохранить окно", "Save window")}
 								</button>
 								<button data-editor-action="cancel"
 									disabled={isWorking}
 									onClick={cancelOpeningDraft}
 									type="button"
 								>
-									{hostNavigation ? "Отменить" : "Отмена"}
+									{hostNavigation ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 								</button>
 							</div>
 						</form>
@@ -8976,9 +8973,9 @@ export function AppShell({
 
 				{viewMode === "plan" && vertexDeletionCandidate && hostNavigation ? (
 					<EditorConsequenceSheet
-						title="Удалить вершину"
-						closeLabel="Закрыть удаление вершины"
-						confirmLabel="Удалить вершину"
+						title={copy("Удалить вершину", "Delete vertex")}
+						closeLabel={copy("Закрыть удаление вершины", "Close vertex deletion")}
+						confirmLabel={copy("Удалить вершину", "Delete vertex")}
 						testId="vertex-deletion-draft"
 						busy={isDeletingVertex || isWorking}
 						blocked={isMutationBlocked || isEditorReadOnly || state.kind === "recovery-needed"}
@@ -8987,12 +8984,12 @@ export function AppShell({
 						onConfirm={() => void confirmVertexDeletion()}
 						restoreFocus={() => selectionPropertiesTriggerRef.current}
 					>
-						<p>Две прямые части стены станут одним участком.</p>
-						{vertexDeletionAffectedWallItemIds.length > 0 ? <p>Настенные предметы останутся на своих местах.</p> : null}
+						<p>{copy("Две прямые части стены станут одним участком.", "The two straight wall sections will become one segment.")}</p>
+						{vertexDeletionAffectedWallItemIds.length > 0 ? <p>{copy("Настенные предметы останутся на своих местах.", "Wall-mounted items will stay in place.")}</p> : null}
 					</EditorConsequenceSheet>
 				) : viewMode === "plan" && vertexDeletionCandidate ? (
 					<aside
-						aria-label="Последствия удаления вершины"
+						aria-label={copy("Последствия удаления вершины", "Effects of deleting the vertex")}
 						aria-live="assertive"
 						className={styles.windowDraftPanel}
 						data-testid="vertex-deletion-draft"
@@ -9001,15 +8998,14 @@ export function AppShell({
 						tabIndex={-1}
 					>
 						<div>
-							<strong>Черновик удаления вершины</strong>
+							<strong>{copy("Черновик удаления вершины", "Vertex deletion preview")}</strong>
 							<span>
-								Будут объединены только две прямые части стены без проёмов.
+								{copy("Будут объединены только две прямые части стены без проёмов.", "Two straight wall sections without openings will be joined.")}
 							</span>
 							{vertexDeletionAffectedWallItemIds.length > 0 ? (
 								<>
 									<span>
-										Адреса настенных предметов будут проверены и при
-										необходимости перенесены на объединённую стену.
+										{copy("Адреса настенных предметов будут проверены и при необходимости перенесены на объединённую стену.", "The editor will check wall-mounted items and move their attachments to the joined wall if needed.")}
 									</span>
 									<ul data-testid="vertex-deletion-affected-items">
 										{vertexDeletionAffectedWallItemIds.map(
@@ -9023,7 +9019,7 @@ export function AppShell({
 								</>
 							) : null}
 							<span>
-								Отмена не меняет план, историю или локальное сохранение.
+								{copy("Отмена не меняет план, историю или локальное сохранение.", "Cancel to keep the plan and history as they are.")}
 							</span>
 							{dimensionError ? <p role="alert">{dimensionError}</p> : null}
 							<div>
@@ -9037,7 +9033,7 @@ export function AppShell({
 									onClick={() => void confirmVertexDeletion()}
 									type="button"
 								>
-									{hostNavigation ? "Подтвердить" : "Подтвердить удаление"}
+									{hostNavigation ? copy("Подтвердить", "Confirm") : copy("Подтвердить удаление", "Confirm deletion")}
 								</button>
 								<button data-editor-action="cancel"
 									disabled={isDeletingVertex}
@@ -9047,7 +9043,7 @@ export function AppShell({
 									}}
 									type="button"
 								>
-									{hostNavigation ? "Отменить" : "Отменить удаление"}
+									{hostNavigation ? copy("Отменить", "Cancel") : copy("Отменить удаление", "Cancel deletion")}
 								</button>
 							</div>
 						</div>
@@ -9056,9 +9052,9 @@ export function AppShell({
 
 				{viewMode === "plan" && wallAddHostConflict && hostNavigation ? (
 					<EditorConsequenceSheet
-						title="Добавить стену"
-						closeLabel="Закрыть добавление стены"
-						confirmLabel="Добавить и удалить"
+						title={copy("Добавить стену", "Add wall")}
+						closeLabel={copy("Закрыть добавление стены", "Close wall creation")}
+						confirmLabel={copy("Добавить и удалить", "Add and remove")}
 						testId="wall-add-host-conflict-preview"
 						busy={isResolvingWallAddHostConflict || isWorking}
 						blocked={isEditorReadOnly}
@@ -9066,19 +9062,19 @@ export function AppShell({
 						onCancel={cancelWallAddHostConflict}
 						onConfirm={() => void resolveWallAddHostConflict()}
 					>
-						<p>Новая стена пересекает существующую. Следующие объекты на месте стыка будут удалены.</p>
+						<p>{copy("Новая стена пересекает существующую. Следующие объекты на месте стыка будут удалены.", "The new wall intersects an existing wall. The following objects at the join will be removed.")}</p>
 						<ul>
 							{wallAddHostConflict.openingIds.map(openingId => (
-								<li key={openingId}>{project?.level.openings.find(opening => opening.openingId === openingId)?.kind === "Window" ? "Окно" : "Дверной проём"}</li>
+								<li key={openingId}>{project?.level.openings.find(opening => opening.openingId === openingId)?.kind === "Window" ? copy("Окно", "Window") : copy("Дверной проём", "Door opening")}</li>
 							))}
 							{wallAddHostConflict.itemIds.map(itemId => (
-								<li key={itemId}>{project?.assetInstances.find(item => item.assetInstanceId === itemId)?.label ?? "Настенный предмет"}</li>
+								<li key={itemId}>{project?.assetInstances.find(item => item.assetInstanceId === itemId)?.label ?? copy("Настенный предмет", "Wall-mounted item")}</li>
 							))}
 						</ul>
 					</EditorConsequenceSheet>
 				) : viewMode === "plan" && wallAddHostConflict ? (
 					<aside
-						aria-label="Последствия добавления стены"
+						aria-label={copy("Последствия добавления стены", "Effects of adding the wall")}
 						aria-live="assertive"
 						className={styles.windowDraftPanel}
 						data-testid="wall-add-host-conflict-preview"
@@ -9087,17 +9083,16 @@ export function AppShell({
 						tabIndex={-1}
 					>
 						<div>
-							<strong>Последствия добавления стены</strong>
+							<strong>{copy("Последствия добавления стены", "Effects of adding the wall")}</strong>
 							<span>
-								Новый T- или X-образный стык разделит существующую стену в точке
-								размещённого объекта.
+								{copy("Новый T- или X-образный стык разделит существующую стену в точке размещённого объекта.", "A T or X junction will split the existing wall where an object is attached.")}
 							</span>
 							{wallAddHostConflict.openingIds.length > 0 ? (
 								<>
 									<span>
 										{wallAddHostConflict.openingIds.length === 1
-											? "1 проём потеряет допустимый адрес. Его можно удалить только вместе с добавлением стены."
-											: `${wallAddHostConflict.openingIds.length} проёма потеряют допустимый адрес. Их можно удалить только вместе с добавлением стены.`}
+											? copy("1 проём потеряет допустимый адрес. Его можно удалить только вместе с добавлением стены.", "One opening will lose its wall attachment. Remove it when you add the wall.")
+											: copy(`${wallAddHostConflict.openingIds.length} проёма потеряют допустимый адрес. Их можно удалить только вместе с добавлением стены.`, `${wallAddHostConflict.openingIds.length} openings will lose their wall attachments. Remove them when you add the wall.`)}
 									</span>
 									<ul data-testid="wall-add-conflicting-openings">
 										{wallAddHostConflict.openingIds.map((openingId) => {
@@ -9107,8 +9102,8 @@ export function AppShell({
 											return (
 												<li key={openingId}>
 													{opening?.kind === "Window"
-														? "Окно"
-														: "Дверной проём"}{" "}
+														? copy("Окно", "Window")
+														: copy("Дверной проём", "Door opening")}{" "}
 													<code>{openingId}</code>
 												</li>
 											);
@@ -9120,8 +9115,8 @@ export function AppShell({
 								<>
 									<span>
 										{wallAddHostConflict.itemIds.length === 1
-											? "1 настенный предмет потеряет допустимый адрес. Его можно удалить только вместе с добавлением стены."
-											: `${wallAddHostConflict.itemIds.length} настенных предмета потеряют допустимый адрес. Их можно удалить только вместе с добавлением стены.`}
+											? copy("1 настенный предмет потеряет допустимый адрес. Его можно удалить только вместе с добавлением стены.", "One wall-mounted item will lose its attachment. Remove it when you add the wall.")
+											: copy(`${wallAddHostConflict.itemIds.length} настенных предмета потеряют допустимый адрес. Их можно удалить только вместе с добавлением стены.`, `${wallAddHostConflict.itemIds.length} wall-mounted items will lose their attachments. Remove them when you add the wall.`)}
 									</span>
 									<ul data-testid="wall-add-conflicting-items">
 										{wallAddHostConflict.itemIds.map((assetInstanceId) => {
@@ -9131,7 +9126,7 @@ export function AppShell({
 											);
 											return (
 												<li key={assetInstanceId}>
-													{item?.label ?? "Настенный предмет"}{" "}
+													{item?.label ?? copy("Настенный предмет", "Wall-mounted item")}{" "}
 													<code>{assetInstanceId}</code>
 												</li>
 											);
@@ -9140,7 +9135,7 @@ export function AppShell({
 								</>
 							) : null}
 							<span>
-								Отмена не меняет план, историю или локальное сохранение.
+								{copy("Отмена не меняет план, историю или локальное сохранение.", "Cancel to keep the plan and history as they are.")}
 							</span>
 							{dimensionError ? <p role="alert">{dimensionError}</p> : null}
 							<div>
@@ -9153,7 +9148,7 @@ export function AppShell({
 									onClick={() => void resolveWallAddHostConflict()}
 									type="button"
 								>
-									{hostNavigation ? "Подтвердить" : `Добавить стену${
+									{hostNavigation ? copy("Подтвердить", "Confirm") : copy(`Добавить стену${
 										wallAddHostConflict.openingIds.length === 0
 											? ""
 											: wallAddHostConflict.openingIds.length === 1
@@ -9165,14 +9160,14 @@ export function AppShell({
 											: wallAddHostConflict.itemIds.length === 1
 												? " и удалить 1 настенный предмет"
 												: ` и удалить ${wallAddHostConflict.itemIds.length} настенных предмета`
-									}`}
+									}`, `Add wall${wallAddHostConflict.openingIds.length === 0 ? "" : ` and remove ${wallAddHostConflict.openingIds.length} ${wallAddHostConflict.openingIds.length === 1 ? "opening" : "openings"}`}${wallAddHostConflict.itemIds.length === 0 ? "" : ` and remove ${wallAddHostConflict.itemIds.length} wall-mounted ${wallAddHostConflict.itemIds.length === 1 ? "item" : "items"}`}`)}
 								</button>
 								<button data-editor-action="cancel"
 									disabled={isResolvingWallAddHostConflict || isWorking}
 									onClick={cancelWallAddHostConflict}
 									type="button"
 								>
-									{hostNavigation ? "Отменить" : "Отмена"}
+									{hostNavigation ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 								</button>
 							</div>
 						</div>
@@ -9181,9 +9176,9 @@ export function AppShell({
 
 				{viewMode === "plan" && wallDeletionConflict && hostNavigation ? (
 					<EditorConsequenceSheet
-						title="Удалить стену"
-						closeLabel="Закрыть удаление стены"
-						confirmLabel={wallDeletionConflict.roomMetadataConflicts.length ? "Объединить помещения" : "Удалить стену"}
+						title={copy("Удалить стену", "Delete wall")}
+						closeLabel={copy("Закрыть удаление стены", "Close wall deletion")}
+						confirmLabel={wallDeletionConflict.roomMetadataConflicts.length ? copy("Объединить помещения", "Merge rooms") : copy("Удалить стену", "Delete wall")}
 						testId="opening-conflict-preview"
 						busy={isWorking}
 						blocked={isEditorReadOnly || wallDeletionConflict.roomMetadataConflicts.some(conflict =>
@@ -9193,7 +9188,7 @@ export function AppShell({
 						onConfirm={() => void confirmWallDeletionConflict()}
 						restoreFocus={() => selectionPropertiesTriggerRef.current}
 					>
-						{!wallDeletionConflict.requiresResolution ? <p>Выбранная стена будет удалена.</p> : null}
+						{!wallDeletionConflict.requiresResolution ? <p>{copy("Выбранная стена будет удалена.", "The selected wall will be deleted.")}</p> : null}
 						{wallDeletionConflict.roomMetadataConflicts.map(conflict => {
 							const choices = conflict.retainedRoomIds.map(roomId => {
 								const room = project?.schemaVersion === 1 ? project.level.rooms.find(candidate => candidate.roomId === roomId) : undefined;
@@ -9201,9 +9196,9 @@ export function AppShell({
 							});
 							return (
 								<Fragment key={conflict.targetFaceKey}>
-									<p>Объединятся помещения {choices.map(choice => `«${choice.label}»`).join(" и ")}.</p>
+									<p>{copy("Объединятся помещения", "Rooms will merge")} {choices.map(choice => `«${choice.label}»`).join(copy(" и ", " and "))}.</p>
 									<fieldset className={sheetStyles.consequenceChoices}>
-										<legend>Какие тип и высоту сохранить?</legend>
+										<legend>{copy("Какие тип и высоту сохранить?", "Which room type and height should be kept?")}</legend>
 										{choices.map(({ roomId, room, label }, index) => (
 											<button
 												type="button"
@@ -9213,7 +9208,7 @@ export function AppShell({
 												key={roomId}
 												onClick={() => chooseWallDeletionRoomMetadata(conflict.targetFaceKey, roomId)}
 											>
-												{label}{choices.filter(choice => choice.label === label).length > 1 ? ` · вариант ${index + 1}` : ""}
+												{label}{choices.filter(choice => choice.label === label).length > 1 ? copy(` · вариант ${index + 1}`, ` · option ${index + 1}`) : ""}
 												{room ? <small>{formatLengthMm(room.heightMm)}</small> : null}
 											</button>
 										))}
@@ -9222,20 +9217,20 @@ export function AppShell({
 							);
 						})}
 						{wallDeletionConflict.roomIds.length > 0 && wallDeletionConflict.roomMetadataConflicts.length === 0 ? (
-							<p>Будут изменены контуры помещений {wallDeletionConflict.roomIds.map(roomId => {
+							<p>{copy("Будут изменены контуры помещений", "Room outlines will change")} {wallDeletionConflict.roomIds.map(roomId => {
 								const room = project?.schemaVersion === 1 ? project.level.rooms.find(candidate => candidate.roomId === roomId) : undefined;
 								return `«${roomTypeLabels[room?.type ?? "other"]}»`;
 							}).join(", ")}.</p>
 						) : null}
 						{wallDeletionConflict.openingIds.length + wallDeletionConflict.itemIds.length > 0 ? (
 							<>
-								<p>Вместе со стеной будут удалены следующие объекты.</p>
+								<p>{copy("Вместе со стеной будут удалены следующие объекты.", "The following objects will be deleted with the wall.")}</p>
 								<ul>
 									{wallDeletionConflict.openingIds.map(openingId => (
-										<li key={openingId}>{project?.level.openings.find(opening => opening.openingId === openingId)?.kind === "Window" ? "Окно" : "Дверной проём"}</li>
+										<li key={openingId}>{project?.level.openings.find(opening => opening.openingId === openingId)?.kind === "Window" ? copy("Окно", "Window") : copy("Дверной проём", "Door opening")}</li>
 									))}
 									{wallDeletionConflict.itemIds.map(itemId => (
-										<li key={itemId}>{project?.assetInstances.find(item => item.assetInstanceId === itemId)?.label ?? "Предмет"}</li>
+										<li key={itemId}>{project?.assetInstances.find(item => item.assetInstanceId === itemId)?.label ?? copy("Предмет", "Item")}</li>
 									))}
 								</ul>
 							</>
@@ -9243,7 +9238,7 @@ export function AppShell({
 					</EditorConsequenceSheet>
 				) : viewMode === "plan" && wallDeletionConflict ? (
 					<aside
-						aria-label="Последствия удаления стены"
+						aria-label={copy("Последствия удаления стены", "Effects of deleting the wall")}
 						aria-live="assertive"
 						className={styles.windowDraftPanel}
 						data-testid="opening-conflict-preview"
@@ -9252,19 +9247,18 @@ export function AppShell({
 						tabIndex={-1}
 					>
 						<div>
-							<strong>Последствия удаления</strong>
+							<strong>{copy("Последствия удаления", "Effects of deletion")}</strong>
 							{!wallDeletionConflict.requiresResolution ? (
 								<span>
-									Будет удалена выбранная стена. Помещения, проёмы и предметы не
-									затрагиваются.
+									{copy("Будет удалена выбранная стена. Помещения, проёмы и предметы не затрагиваются.", "The selected wall will be deleted. Rooms, openings and items will stay in place.")}
 								</span>
 							) : null}
 							{wallDeletionConflict.openingIds.length > 0 ? (
 								<>
 									<span>
 										{wallDeletionConflict.openingIds.length === 1
-											? "На этой стене 1 проём. Его можно удалить только вместе со стеной."
-											: `На этой стене ${wallDeletionConflict.openingIds.length} проёма. Их можно удалить только вместе со стеной.`}
+											? copy("На этой стене 1 проём. Его можно удалить только вместе со стеной.", "This wall has one opening. It will be deleted with the wall.")
+											: copy(`На этой стене ${wallDeletionConflict.openingIds.length} проёма. Их можно удалить только вместе со стеной.`, `This wall has ${wallDeletionConflict.openingIds.length} openings. They will be deleted with the wall.`)}
 									</span>
 									<ul data-testid="wall-deletion-affected-openings">
 										{wallDeletionConflict.openingIds.map((openingId) => (
@@ -9279,8 +9273,8 @@ export function AppShell({
 								<>
 									<span>
 										{wallDeletionConflict.itemIds.length === 1
-											? "1 предмет потеряет допустимый адрес. Его можно удалить только вместе со стеной."
-											: `${wallDeletionConflict.itemIds.length} предмета потеряют допустимый адрес. Их можно удалить только вместе со стеной.`}
+											? copy("1 предмет потеряет допустимый адрес. Его можно удалить только вместе со стеной.", "One item will lose its attachment. It will be deleted with the wall.")
+											: copy(`${wallDeletionConflict.itemIds.length} предмета потеряют допустимый адрес. Их можно удалить только вместе со стеной.`, `${wallDeletionConflict.itemIds.length} items will lose their attachments. They will be deleted with the wall.`)}
 									</span>
 									<ul data-testid="wall-deletion-affected-items">
 										{wallDeletionConflict.itemIds.map((assetInstanceId) => (
@@ -9295,8 +9289,8 @@ export function AppShell({
 								<>
 									<span>
 										{wallDeletionConflict.roomIds.length === 1
-											? "Будет изменено 1 помещение."
-											: `Будут изменены ${wallDeletionConflict.roomIds.length} помещения.`}
+											? copy("Будет изменено 1 помещение.", "One room will change.")
+											: copy(`Будут изменены ${wallDeletionConflict.roomIds.length} помещения.`, `${wallDeletionConflict.roomIds.length} rooms will change.`)}
 									</span>
 									<ul data-testid="wall-deletion-affected-rooms">
 										{wallDeletionConflict.roomIds.map((roomId) => (
@@ -9310,8 +9304,7 @@ export function AppShell({
 							{wallDeletionConflict.roomMetadataConflicts.map((conflict) => (
 								<div key={conflict.targetFaceKey}>
 									<span>
-										После объединения выберите помещение, чьи тип, высота и
-										история останутся.
+										{copy("После объединения выберите помещение, чьи тип, высота и история останутся.", "Choose which room's type, height and history to keep after merging.")}
 									</span>
 									<div>
 										{conflict.retainedRoomIds.map((roomId, index) => {
@@ -9341,8 +9334,8 @@ export function AppShell({
 												>
 													<span>
 														{room
-															? `Сохранить параметры «${roomTypeLabels[room.type ?? "other"]}»`
-															: `Сохранить параметры помещения ${index + 1}`}
+															? copy(`Сохранить параметры «${roomTypeLabels[room.type ?? "other"]}»`, `Keep settings for “${roomTypeLabels[room.type ?? "other"]}”`)
+															: copy(`Сохранить параметры помещения ${index + 1}`, `Keep settings for room ${index + 1}`)}
 													</span>
 													<small>
 														{room
@@ -9357,7 +9350,7 @@ export function AppShell({
 								</div>
 							))}
 							<span>
-								Отмена не меняет план, историю или локальное сохранение.
+								{copy("Отмена не меняет план, историю или локальное сохранение.", "Cancel to keep the plan and history as they are.")}
 							</span>
 							{dimensionError ? <p role="alert">{dimensionError}</p> : null}
 							<div>
@@ -9375,7 +9368,7 @@ export function AppShell({
 									onClick={() => void confirmWallDeletionConflict()}
 									type="button"
 								>
-									{hostNavigation ? "Подтвердить" : `Удалить стену${
+									{hostNavigation ? copy("Подтвердить", "Confirm") : copy(`Удалить стену${
 										wallDeletionConflict.openingIds.length === 0
 											? ""
 											: wallDeletionConflict.openingIds.length === 1
@@ -9393,14 +9386,14 @@ export function AppShell({
 											: wallDeletionConflict.roomIds.length === 1
 												? " и изменить 1 помещение"
 												: ` и изменить ${wallDeletionConflict.roomIds.length} помещения`
-									}`}
+									}`, `Delete wall${wallDeletionConflict.openingIds.length === 0 ? "" : ` and ${wallDeletionConflict.openingIds.length} ${wallDeletionConflict.openingIds.length === 1 ? "opening" : "openings"}`}${wallDeletionConflict.itemIds.length === 0 ? "" : ` and ${wallDeletionConflict.itemIds.length} ${wallDeletionConflict.itemIds.length === 1 ? "item" : "items"}`}${wallDeletionConflict.roomIds.length === 0 ? "" : ` and change ${wallDeletionConflict.roomIds.length} ${wallDeletionConflict.roomIds.length === 1 ? "room" : "rooms"}`}`)}
 								</button>
 								<button data-editor-action="cancel"
 									disabled={isWorking}
 									onClick={cancelWallDeletionConflict}
 									type="button"
 								>
-									{hostNavigation ? "Отменить" : "Отмена"}
+									{hostNavigation ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 								</button>
 							</div>
 						</div>
@@ -9438,9 +9431,7 @@ export function AppShell({
 						data-testid="legacy-read-only"
 						role="status"
 					>
-						Этот архивный формат доступен только для просмотра. Новое
-						редактирование будет доступно после безопасного переноса в
-						канонический план.
+						{copy("Этот архивный формат доступен только для просмотра. Новое редактирование будет доступно после безопасного переноса в канонический план.", "This archived format is view only. Editing is available after transferring it to the current plan format.")}
 					</p>
 				) : null}
 
@@ -9453,7 +9444,7 @@ export function AppShell({
 						busy={isWorking}
 						onRequestClose={() => requestEditorBack(false, closeFloorItemProperties)}
 						restoreFocus={() => floorPropertiesTriggerRef.current ?? selectionPropertiesTriggerRef.current}
-						aria-label="Свойства выбранного предмета"
+						aria-label={copy("Свойства выбранного предмета", "Selected item properties")}
 						className={`${styles.selectionPanel} ${styles.selectionInspectorPanel}`}
 						data-item-locked={selectedItemLocked}
 						data-inspector-expanded={isSelectionInspectorExpanded}
@@ -9469,7 +9460,7 @@ export function AppShell({
 						{localGreyboxCatalog && isSelectionInspectorExpanded ? (
 							<SheetHeader
 								title={selectedItem.label}
-								closeLabel="Скрыть панель предмета"
+								closeLabel={copy("Скрыть панель предмета", "Hide item panel")}
 								protectEditorDraft={fullTransientNavigationProtection}
 								onClose={() => requestEditorBack(false, closeFloorItemProperties)}
 							/>
@@ -9493,16 +9484,16 @@ export function AppShell({
 							<span className={styles.selectionItemInspectorCategory}>
 								{"assetDefinitionId" in selectedItem &&
 								selectedItem.assetDefinitionId
-									? "ВЫБРАННЫЙ ПРЕДМЕТ"
-									: "МАКЕТНЫЙ ПРЕДМЕТ"}
+									? copy("ВЫБРАННЫЙ ПРЕДМЕТ", "SELECTED ITEM")
+									: copy("МАКЕТНЫЙ ПРЕДМЕТ", "PLACEHOLDER ITEM")}
 							</span>
 							<strong>{selectedItem.label}</strong>
 							<button
 								aria-expanded={isSelectionInspectorExpanded}
 								aria-label={
 									isSelectionInspectorExpanded
-										? "Скрыть панель предмета"
-										: "Развернуть панель предмета"
+										? copy("Скрыть панель предмета", "Hide item panel")
+										: copy("Развернуть панель предмета", "Expand item panel")
 								}
 								className={styles.selectionInspectorToggle}
 								ref={floorPropertiesTriggerRef}
@@ -9514,8 +9505,8 @@ export function AppShell({
 								type="button"
 							>
 								{isSelectionInspectorExpanded
-									? "Скрыть параметры"
-									: "Параметры ↓"}
+									? copy("Скрыть параметры", "Hide settings")
+									: copy("Параметры ↓", "Settings ↓")}
 							</button>
 						</div>
 						)}
@@ -9523,18 +9514,18 @@ export function AppShell({
 
 						{selectedItemPlacementWarnings.length > 0 ? (
 							<p data-testid="selected-item-placement-warning" role="status">
-								Предупреждение для этого предмета:{" "}
+								{copy("Предупреждение для этого предмета:", "Warning for this item")}{" "}
 								{itemPlacementWarningSummary(selectedItemPlacementWarnings)}.
 							</p>
 						) : null}
 						{hostNavigation ? null : floorItemDimensionFields}
 						{hostNavigation || localGreyboxCatalog || selectedItemHasNoDeclaredColorVariant ? null : (
 							<fieldset className={styles.quickPalette}>
-								<legend>Цвет предмета</legend>
+								<legend>{copy("Цвет предмета", "Item color")}</legend>
 								<div>
 									{alphaParametricItemColorVariants.map((variant) => (
 										<button
-											aria-label={`Выбрать вариант цвета предмета ${variant.label}`}
+											aria-label={copy(`Выбрать вариант цвета предмета ${variant.label}`, `Choose item color ${variant.label}`)}
 											aria-pressed={selectedItem.color === variant.color}
 											disabled={
 												isEditorReadOnly ||
@@ -9569,16 +9560,16 @@ export function AppShell({
 							<>
 								<dl className={styles.inlineMetrics}>
 									<div>
-										<dt>ПОЗИЦИЯ X</dt>
+										<dt>{copy("ПОЗИЦИЯ X", "POSITION X")}</dt>
 										<dd>{formatLengthMm(selectedItem.xMm)}</dd>
 									</div>
 									<div>
-										<dt>ПОЗИЦИЯ Z</dt>
+										<dt>{copy("ПОЗИЦИЯ Z", "POSITION Z")}</dt>
 										<dd>{formatLengthMm(selectedItem.zMm)}</dd>
 									</div>
 								</dl>
 								<fieldset className={styles.itemNudgeControls}>
-									<legend>Переместить предмет на 100 мм</legend>
+									<legend>{copy("Переместить предмет на 100 мм", "Move item 100 mm")}</legend>
 									<div>
 										<button
 											disabled={
@@ -9591,7 +9582,7 @@ export function AppShell({
 											onClick={() => void nudgeSelectedItem({ xMm: -100, zMm: 0 })}
 											type="button"
 										>
-											Сместить предмет на 100 мм влево
+											{copy("Сместить предмет на 100 мм влево", "Move item 100 mm left")}
 										</button>
 										<button
 											disabled={
@@ -9604,7 +9595,7 @@ export function AppShell({
 											onClick={() => void nudgeSelectedItem({ xMm: 100, zMm: 0 })}
 											type="button"
 										>
-											Сместить предмет на 100 мм вправо
+											{copy("Сместить предмет на 100 мм вправо", "Move item 100 mm right")}
 										</button>
 									</div>
 									<div>
@@ -9619,7 +9610,7 @@ export function AppShell({
 											onClick={() => void nudgeSelectedItem({ xMm: 0, zMm: -100 })}
 											type="button"
 										>
-											Сместить предмет на 100 мм вверх
+											{copy("Сместить предмет на 100 мм вверх", "Move item 100 mm up")}
 										</button>
 										<button
 											disabled={
@@ -9632,7 +9623,7 @@ export function AppShell({
 											onClick={() => void nudgeSelectedItem({ xMm: 0, zMm: 100 })}
 											type="button"
 										>
-											Сместить предмет на 100 мм вниз
+											{copy("Сместить предмет на 100 мм вниз", "Move item 100 mm down")}
 										</button>
 									</div>
 								</fieldset>
@@ -9647,7 +9638,7 @@ export function AppShell({
 								settings={floorItemActions}
 							/>
 						) : (
-							<button className={styles.tmaDuplicateAction} disabled={isEditorReadOnly || isMutationBlocked} onClick={duplicateSelectedItem} type="button">Дублировать</button>
+							<button className={styles.tmaDuplicateAction} disabled={isEditorReadOnly || isMutationBlocked} onClick={duplicateSelectedItem} type="button">{copy("Дублировать", "Duplicate")}</button>
 						)) : floorItemActions}
 					</EditorModalSheet>
 				) : activeTool === "select" &&
@@ -9666,7 +9657,7 @@ export function AppShell({
 						busy={isWorking}
 						onRequestClose={() => requestEditorBack(false, closeWallProperties)}
 						restoreFocus={() => selectionPropertiesTriggerRef.current}
-						aria-label="Свойства выбранной стены"
+						aria-label={copy("Свойства выбранной стены", "Selected wall properties")}
 						className={`${styles.selectionPanel} ${styles.selectionInspectorPanel}${hasTelegramEditorSheet ? ` ${styles.wallPropertiesSheet}` : ""}`}
 						data-inspector-expanded={true}
 						data-testid="selected-wall-inspector"
@@ -9678,8 +9669,8 @@ export function AppShell({
 					>
 						{localGreyboxCatalog ? (
 						<SheetHeader
-							title="Свойства стены"
-							closeLabel="Закрыть свойства стены"
+							title={copy("Свойства стены", "Wall properties")}
+							closeLabel={copy("Закрыть свойства стены", "Close wall properties")}
 							protectEditorDraft={fullTransientNavigationProtection}
 							onClose={() => {
 								if (isNavigationProtected) requestEditorBack(false, closeWallProperties);
@@ -9702,9 +9693,9 @@ export function AppShell({
 									/>
 								</svg>
 							</span>
-							<strong>Свойства стены</strong>
+							<strong>{copy("Свойства стены", "Wall properties")}</strong>
 							<button
-								aria-label="Закрыть свойства стены"
+								aria-label={copy("Закрыть свойства стены", "Close wall properties")}
 								className={styles.selectionInspectorToggle}
 								onClick={() => {
 									setIsSelectionInspectorExpanded(false);
@@ -9714,16 +9705,16 @@ export function AppShell({
 								}}
 								type="button"
 							>
-								Закрыть
+								{copy("Закрыть", "Close")}
 							</button>
 						</div>
 						)}
 
 						{selectedWallItemDraft ? (
 							<div className={styles.openingRow} role="status">
-								<strong>Размещение настенного предмета</strong>
+								<strong>{copy("Размещение настенного предмета", "Wall-mounted item placement")}</strong>
 								<span>
-									Смещение от начала стены:{" "}
+									{copy("Смещение от начала стены:", "Offset from the start of the wall")}{" "}
 									{formatLengthMm(selectedWallItemDraft.offsetMm)} ·{" "}
 									{formatLengthMm(selectedWallItemDraft.widthMm)} ×{" "}
 									{formatLengthMm(selectedWallItemDraft.heightMm)}
@@ -9739,8 +9730,8 @@ export function AppShell({
 										className={styles.fieldWarning}
 										data-testid="wall-item-placement-affected-target"
 									>
-										Конфликтующий предмет: «{selectedWallItemDraftAffectedLabel}
-										». Измените смещение или сторону.
+										{copy("Конфликтующий предмет: «", "Overlapping item: “")}{selectedWallItemDraftAffectedLabel}
+										{copy("». Измените смещение или сторону.", "”. Change the offset or side.")}
 									</p>
 								) : null}
 								{selectedWallItemDraftWarning ? (
@@ -9749,15 +9740,15 @@ export function AppShell({
 										data-testid="wall-item-placement-warning"
 										role="status"
 									>
-										Предупреждение: предметы пересекаются.
+										{copy("Предупреждение: предметы пересекаются.", "Warning: items overlap.")}
 									</p>
 								) : null}
 								<fieldset className={styles.sidePicker}>
 									<legend className={styles.visuallyHidden}>
-										Сторона размещения предмета
+										{copy("Сторона размещения предмета", "Mounting side")}
 									</legend>
 									<button
-										aria-label="Разместить на левой стороне стены"
+										aria-label={copy("Разместить на левой стороне стены", "Place on left side of wall")}
 										aria-pressed={selectedWallItemDraft.side === "left"}
 										disabled={
 											isEditorReadOnly ||
@@ -9774,10 +9765,10 @@ export function AppShell({
 										}
 										type="button"
 									>
-										Слева
+										{copy("Слева", "Left")}
 									</button>
 									<button
-										aria-label="Разместить на правой стороне стены"
+										aria-label={copy("Разместить на правой стороне стены", "Place on right side of wall")}
 										aria-pressed={selectedWallItemDraft.side === "right"}
 										disabled={
 											isEditorReadOnly ||
@@ -9794,7 +9785,7 @@ export function AppShell({
 										}
 										type="button"
 									>
-										Справа
+										{copy("Справа", "Right")}
 									</button>
 								</fieldset>
 								<button data-editor-action="confirm"
@@ -9806,7 +9797,7 @@ export function AppShell({
 									onClick={() => void confirmWallItemPlacement()}
 									type="button"
 								>
-									{hostNavigation ? "Подтвердить" : "Подтвердить размещение"}
+									{hostNavigation ? copy("Подтвердить", "Confirm") : copy("Подтвердить размещение", "Confirm placement")}
 								</button>
 								<button
 									disabled={isWorking}
@@ -9816,7 +9807,7 @@ export function AppShell({
 									}}
 									type="button"
 								>
-									Отменить
+									{copy("Отменить", "Cancel")}
 								</button>
 							</div>
 						) : null}
@@ -9842,15 +9833,14 @@ export function AppShell({
 											data-testid={`wall-item-warning-${item.assetInstanceId}`}
 											role="status"
 										>
-											Предупреждение: «{item.label}» пересекается с «
-											{affectedLabels.join("», «")}». Измените смещение или
-											сторону.
+											{copy("Предупреждение: «", "Warning: “")}{item.label}{copy("» пересекается с «", "” overlaps “")}
+											{affectedLabels.join("», «")}{copy("». Измените смещение или сторону.", "”. Change the offset or side.")}
 										</p>
 									) : null}
 									<label>
-										<span>{localGreyboxCatalog ? "Смещение вдоль стены, мм" : `Смещение настенного предмета «${item.label}», мм`}</span>
+										<span>{localGreyboxCatalog ? copy("Смещение вдоль стены, мм", "Offset along the wall, mm") : copy(`Смещение настенного предмета «${item.label}», мм`, `Offset for wall-mounted item “${item.label}”, mm`)}</span>
 										<input
-											aria-label={`Смещение настенного предмета «${item.label}», мм`}
+											aria-label={copy(`Смещение настенного предмета «${item.label}», мм`, `Offset for wall-mounted item “${item.label}”, mm`)}
 											autoComplete="off"
 											disabled={
 												isEditorReadOnly || isMutationBlocked || item.locked
@@ -9888,10 +9878,10 @@ export function AppShell({
 									</label>
 									<label>
 										<span>
-											{localGreyboxCatalog ? "Высота центра, мм" : `Высота центра настенного предмета «${item.label}», мм`}
+											{localGreyboxCatalog ? copy("Высота центра, мм", "Center height, mm") : copy(`Высота центра настенного предмета «${item.label}», мм`, `Center height for wall-mounted item “${item.label}”, mm`)}
 										</span>
 										<input
-											aria-label={`Высота центра настенного предмета «${item.label}», мм`}
+											aria-label={copy(`Высота центра настенного предмета «${item.label}», мм`, `Center height for wall-mounted item “${item.label}”, mm`)}
 											autoComplete="off"
 											disabled={
 												isEditorReadOnly || isMutationBlocked || item.locked
@@ -9933,11 +9923,11 @@ export function AppShell({
 											definition.assetDefinitionId === item.assetDefinitionId,
 									) || hostNavigation || localGreyboxCatalog ? null : (
 										<fieldset className={styles.quickPalette}>
-											<legend>Цвет настенного предмета «{item.label}»</legend>
+											<legend>{copy("Цвет настенного предмета «", "Color of wall-mounted item “")}{item.label}»</legend>
 											<div>
 												{alphaParametricItemColorVariants.map((variant) => (
 													<button
-														aria-label={`Выбрать вариант цвета настенного предмета ${variant.label}`}
+														aria-label={copy(`Выбрать вариант цвета настенного предмета ${variant.label}`, `Choose wall-mounted item color ${variant.label}`)}
 														aria-pressed={item.color === variant.color}
 														disabled={
 															isEditorReadOnly ||
@@ -9978,11 +9968,11 @@ export function AppShell({
 												onClick={() => duplicateWallItem(item)}
 												type="button"
 											>
-												Дублировать настенный предмет
+												{copy("Дублировать настенный предмет", "Duplicate wall-mounted item")}
 											</button>
 										) : null}
 										<button
-											aria-label={item.locked ? "Разблокировать настенный предмет" : "Заблокировать настенный предмет"}
+											aria-label={item.locked ? copy("Разблокировать настенный предмет", "Unlock wall-mounted item") : copy("Заблокировать настенный предмет", "Lock wall-mounted item")}
 											aria-pressed={item.locked === true}
 											disabled={isEditorReadOnly || isMutationBlocked}
 											onClick={() =>
@@ -9991,20 +9981,20 @@ export function AppShell({
 											type="button"
 										>
 											{item.locked
-												? (hostNavigation ? "Разблокировать" : "Разблокировать настенный предмет")
-												: (hostNavigation ? "Заблокировать" : "Заблокировать настенный предмет")}
+												? (hostNavigation ? copy("Разблокировать", "Unlock") : copy("Разблокировать настенный предмет", "Unlock wall-mounted item"))
+												: (hostNavigation ? copy("Заблокировать", "Lock") : copy("Заблокировать настенный предмет", "Lock wall-mounted item"))}
 										</button>
 
 										<button
 											disabled={
 												isEditorReadOnly || isMutationBlocked || item.locked
 											}
-											aria-label="Удалить настенный предмет"
+											aria-label={copy("Удалить настенный предмет", "Delete wall-mounted item")}
 											className={hostNavigation ? styles.deleteAction : undefined}
 											onClick={() => void deleteWallItem(item.assetInstanceId)}
 											type="button"
 										>
-											{hostNavigation ? "Удалить предмет" : "Удалить настенный предмет"}
+											{hostNavigation ? copy("Удалить предмет", "Delete item") : copy("Удалить настенный предмет", "Delete wall-mounted item")}
 										</button>
 									</ItemInspectorActions>
 								</div>
@@ -10028,18 +10018,18 @@ export function AppShell({
 								type="button"
 							>
 								{isWallMoveMode
-									? "Отменить перенос стены"
-									: "Переместить стену жестом"}
+									? copy("Отменить перенос стены", "Cancel wall move")
+									: copy("Переместить стену жестом", "Drag to move wall")}
 							</button>
 						) : null}
 						{removableSelectedWallVertexIds.map((vertexId) => (
 							<button
 								aria-label={
 									removableSelectedWallVertexIds.length === 1
-										? "Удалить вершину"
+										? copy("Удалить вершину", "Delete vertex")
 										: vertexId === selectedWall.startVertexId
-											? `Удалить начальную вершину ${vertexId}`
-											: `Удалить конечную вершину ${vertexId}`
+											? copy(`Удалить начальную вершину ${vertexId}`, `Delete start vertex ${vertexId}`)
+											: copy(`Удалить конечную вершину ${vertexId}`, `Delete end vertex ${vertexId}`)
 								}
 								className={styles.wallMoveGestureAction}
 								disabled={
@@ -10064,10 +10054,10 @@ export function AppShell({
 								type="button"
 							>
 								{removableSelectedWallVertexIds.length === 1
-									? "Удалить вершину"
+									? copy("Удалить вершину", "Delete vertex")
 									: vertexId === selectedWall.startVertexId
-										? "Удалить начальную вершину"
-										: "Удалить конечную вершину"}
+										? copy("Удалить начальную вершину", "Delete start vertex")
+										: copy("Удалить конечную вершину", "Delete end vertex")}
 							</button>
 						))}
 						{movableSelectedWallVertexIds.length > 0 ? (
@@ -10089,22 +10079,22 @@ export function AppShell({
 								type="button"
 							>
 								{isWallVertexMoveMode
-									? "Отменить перенос вершины"
-									: "Переместить вершину жестом"}
+									? copy("Отменить перенос вершины", "Cancel vertex move")
+									: copy("Переместить вершину жестом", "Drag to move vertex")}
 							</button>
 						) : null}
 						{selectedWallOpenings.map((opening) => (
 							<div className={styles.openingRow} key={opening.openingId}>
 								{hasTelegramEditorSheet ? (
 									<dl className={styles.wallOpeningWidth} data-testid="wall-opening-width">
-										<dt>{opening.kind === "Door" ? "Ширина дверного проёма" : "Ширина окна"}</dt>
+										<dt>{opening.kind === "Door" ? copy("Ширина дверного проёма", "Door opening width") : copy("Ширина окна", "Window width")}</dt>
 										<dd>{formatLengthMm(opening.widthMm)}</dd>
 									</dl>
 								) : <div>
 									<span>
 										{opening.kind === "Door"
-											? "Ширина дверного проёма, мм"
-											: "Ширина окна, мм"}
+											? copy("Ширина дверного проёма, мм", "Door opening width, mm")
+											: copy("Ширина окна, мм", "Window width, mm")}
 									</span>
 
 									<output>{formatLengthMm(opening.widthMm)}</output>
@@ -10118,7 +10108,7 @@ export function AppShell({
 									onClick={() => openOpeningDraft(opening)}
 									type="button"
 								>
-									{opening.kind === "Door" ? "Изменить проём" : "Изменить окно"}
+									{opening.kind === "Door" ? copy("Изменить проём", "Edit opening") : copy("Изменить окно", "Edit window")}
 								</button>
 								<button
 									disabled={
@@ -10131,7 +10121,7 @@ export function AppShell({
 									}
 									type="button"
 								>
-									{opening.kind === "Door" ? "Удалить проём" : "Удалить окно"}
+									{opening.kind === "Door" ? copy("Удалить проём", "Delete opening") : copy("Удалить окно", "Delete window")}
 								</button>
 							</div>
 						))}
@@ -10146,7 +10136,7 @@ export function AppShell({
 							onClick={() => void deleteSelectedWall()}
 							type="button"
 						>
-							Удалить стену
+							{copy("Удалить стену", "Delete wall")}
 						</button>
 					</EditorModalSheet>
 				) : activeTool === "select" && metrics && viewMode === "plan" ? (
@@ -10154,7 +10144,7 @@ export function AppShell({
 						telegramModal={canOpenTelegramEditorSheet && isPlanInspectorOpen}
 						onRequestClose={() => requestEditorBack(false, closePlanInspector)}
 						restoreFocus={() => editorHeaderMenuRef.current}
-						aria-label="Точные размеры плана"
+						aria-label={copy("Точные размеры плана", "Exact plan dimensions")}
 						className={inspectorStyles.planPanel}
 						ref={planInspectorRef}
 						tabIndex={-1}
@@ -10173,8 +10163,8 @@ export function AppShell({
 							data-testid="plan-dimensions-sheet-handle"
 						/>
 						<SheetHeader
-							title="Размеры плана"
-							closeLabel="Скрыть размеры плана"
+							title={copy("Размеры плана", "Plan dimensions")}
+							closeLabel={copy("Скрыть размеры плана", "Hide plan dimensions")}
 							protectEditorDraft={fullTransientNavigationProtection}
 							onClose={() => isNavigationProtected ? requestEditorBack(false, closePlanInspector) : closePlanInspector()}
 						/>
@@ -10184,7 +10174,7 @@ export function AppShell({
 						>
 							<div className={inspectorStyles.fields}>
 								<label>
-									<span>Ширина, мм</span>
+									<span>{copy("Ширина, мм", "Width, mm")}</span>
 									<input
 										aria-describedby={
 											planDimensionError ? "plan-dimension-error" : undefined
@@ -10208,7 +10198,7 @@ export function AppShell({
 									/>
 								</label>
 								<label>
-									<span>Глубина, мм</span>
+									<span>{copy("Глубина, мм", "Depth, mm")}</span>
 									<input
 										aria-describedby={
 											planDimensionError ? "plan-dimension-error" : undefined
@@ -10232,7 +10222,7 @@ export function AppShell({
 									/>
 								</label>
 								<label>
-									<span>Высота, мм</span>
+									<span>{copy("Высота, мм", "Height, mm")}</span>
 									<input
 										aria-describedby={
 											planDimensionError ? "plan-dimension-error" : undefined
@@ -10275,24 +10265,24 @@ export function AppShell({
 								}
 								type="submit"
 							>
-								Применить размеры
+								{copy("Применить размеры", "Apply dimensions")}
 							</button>
 						</form>
 						<dl className={inspectorStyles.metrics}>
 							<div>
-								<dt>Площадь</dt>
+								<dt>{copy("Площадь", "Area")}</dt>
 								<dd data-testid="plan-area">
 									{formatAreaMm2(metrics.areaMm2)}
 								</dd>
 							</div>
 							<div>
-								<dt>Высота</dt>
+								<dt>{copy("Высота", "Height")}</dt>
 								<dd data-testid="plan-height">
 									{formatLengthMm(metrics.heightMm)}
 								</dd>
 							</div>
 							<div>
-								<dt>Периметр</dt>
+								<dt>{copy("Периметр", "Perimeter")}</dt>
 								<dd data-testid="plan-perimeter">
 									{formatLengthMm(metrics.perimeterMm)}
 								</dd>
@@ -10313,7 +10303,7 @@ export function AppShell({
 				metrics &&
 				viewMode === "plan" ? (
 					<button
-						aria-label="Размеры плана"
+						aria-label={copy("Размеры плана", "Plan dimensions")}
 						aria-expanded={isPlanInspectorOpen}
 						className={styles.planInspectorToggle}
 						onClick={
@@ -10342,12 +10332,12 @@ export function AppShell({
 
 				{threeDimensionalMeasurements && viewMode === "three-dimensional" ? (
 					<aside
-						aria-label="Характеристики 3D макета"
+						aria-label={copy("Характеристики 3D макета", "3D model details")}
 						className={`${styles.selectionPanel} ${styles.threeDimensionalMetrics}`}
 						data-testid="three-dimensional-metrics"
 					>
 						<div className={styles.panelHeading}>
-							<span>3D МАКЕТ</span>
+							<span>{copy("3D МАКЕТ", "3D MODEL")}</span>
 							<strong>
 								{metrics
 									? formatAreaMm2(metrics.areaMm2)
@@ -10356,19 +10346,19 @@ export function AppShell({
 						</div>
 						<dl className={styles.inlineMetrics}>
 							<div>
-								<dt>ШИРИНА</dt>
+								<dt>{copy("ШИРИНА", "WIDTH")}</dt>
 								<dd>{formatLengthMm(threeDimensionalMeasurements.widthMm)}</dd>
 							</div>
 							<div>
-								<dt>ГЛУБИНА</dt>
+								<dt>{copy("ГЛУБИНА", "DEPTH")}</dt>
 								<dd>{formatLengthMm(threeDimensionalMeasurements.depthMm)}</dd>
 							</div>
 							<div>
-								<dt>ВЫСОТА</dt>
+								<dt>{copy("ВЫСОТА", "HEIGHT")}</dt>
 								<dd>{formatLengthMm(threeDimensionalMeasurements.heightMm)}</dd>
 							</div>
 							<div>
-								<dt>СТЕНЫ</dt>
+								<dt>{copy("СТЕНЫ", "WALLS")}</dt>
 								<dd>{project.level.wallSegments.length}</dd>
 							</div>
 						</dl>
@@ -10402,15 +10392,15 @@ export function AppShell({
 					>
 						{storagePressureNotice}
 						<form
-							aria-label="Размеры стартового контура"
+							aria-label={copy("Размеры стартового контура", "Starter outline dimensions")}
 							className={styles.contourPanel}
 							noValidate
 							onSubmit={createContour}
 						>
-							<span>СТАРТОВЫЙ КОНТУР</span>
+							<span>{copy("СТАРТОВЫЙ КОНТУР", "STARTER OUTLINE")}</span>
 							<div className={styles.contourFields}>
 								<label>
-									Ширина, мм
+									{copy("Ширина, мм", "Width, mm")}
 									<input
 										autoComplete="off"
 										disabled={isEditorReadOnly || isMutationBlocked}
@@ -10425,7 +10415,7 @@ export function AppShell({
 									/>
 								</label>
 								<label>
-									Глубина, мм
+									{copy("Глубина, мм", "Depth, mm")}
 									<input
 										autoComplete="off"
 										disabled={isEditorReadOnly || isWorking}
@@ -10440,7 +10430,7 @@ export function AppShell({
 									/>
 								</label>
 								<label>
-									Высота, мм
+									{copy("Высота, мм", "Height, mm")}
 									<input
 										autoComplete="off"
 										disabled={isEditorReadOnly || isWorking}
@@ -10465,7 +10455,7 @@ export function AppShell({
 								}
 								type="submit"
 							>
-								Создать контур
+								{copy("Создать контур", "Create outline")}
 							</button>
 						</form>
 					</div>
@@ -10481,7 +10471,7 @@ export function AppShell({
 						<button
 							className={styles.notificationClose}
 							type="button"
-							aria-label="Закрыть уведомление"
+							aria-label={copy("Закрыть уведомление", "Dismiss notification")}
 							onClick={() => setDimensionError(undefined)}
 						>
 							×
@@ -10495,8 +10485,8 @@ export function AppShell({
 								type="button"
 							>
 								{wallMutationCorrectionState.kind === "opening"
-									? `Открыть ${wallMutationCorrectionState.opening.kind === "Door" ? "дверной проём" : "окно"} для исправления`
-									: "Открыть предмет для исправления"}
+									? copy(`Открыть ${wallMutationCorrectionState.opening.kind === "Door" ? "дверной проём" : "окно"} для исправления`, `Open ${wallMutationCorrectionState.opening.kind === "Door" ? "the door opening" : "the window"} to adjust it`)
+									: copy("Открыть предмет для исправления", "Open item to adjust it")}
 							</button>
 						) : null}
 					</div>
@@ -10522,7 +10512,7 @@ export function AppShell({
 						onClick={() => void controller.recover()}
 						type="button"
 					>
-						Восстановить проверку
+						{copy("Восстановить проверку", "Retry verification")}
 					</button>
 				) : null}
 				<PwaUpdateNotice
@@ -10555,11 +10545,11 @@ export function AppShell({
 			{itemDeleteConfirmation && selectedItem ? (
 				<ProjectConfirmationDialog
 					plainLabels
-					label="Удалить предмет?"
-					title="Удалить предмет?"
-					cancelLabel="Отменить"
-					confirmLabel="Удалить предмет"
-					busyLabel="Сохраняем…"
+					label={copy("Удалить предмет?", "Delete item?")}
+					title={copy("Удалить предмет?", "Delete item?")}
+					cancelLabel={copy("Отменить", "Cancel")}
+					confirmLabel={copy("Удалить предмет", "Delete item")}
+					busyLabel={copy("Сохраняем…", "Saving…")}
 					busy={isWorking}
 					error={dimensionError}
 					onCancel={() => setItemDeleteConfirmation(false)}
@@ -10576,7 +10566,7 @@ export function AppShell({
 					telegramModal={canOpenTelegramEditorSheet}
 					onRequestClose={() => requestEditorBack(false, closeRoomDirectory)}
 					restoreFocus={() => roomDockActionRef.current ?? editorHeaderMenuRef.current}
-					aria-label="Помещения"
+					aria-label={copy("Помещения", "Rooms")}
 					aria-modal={isExternalSaveFailure ? undefined : true}
 					className={canOpenTelegramEditorSheet ? undefined : inspectorStyles.roomBackdrop}
 					onKeyDown={isExternalSaveFailure ? undefined : trapRoomDirectoryFocus}
@@ -10594,8 +10584,8 @@ export function AppShell({
 							data-testid="room-directory-sheet-handle"
 						/>
 						<SheetHeader
-							title="Помещения"
-							closeLabel="Закрыть помещения"
+							title={copy("Помещения", "Rooms")}
+							closeLabel={copy("Закрыть помещения", "Close rooms")}
 							closeDisabled={isWorking}
 							protectEditorDraft={fullTransientNavigationProtection}
 							onClose={() => isNavigationProtected ? requestEditorBack(false, closeRoomDirectory) : closeRoomDirectory()}
@@ -10603,7 +10593,7 @@ export function AppShell({
 
 						<div className={inspectorStyles.content}>
 							<nav
-								aria-label="Список помещений"
+								aria-label={copy("Список помещений", "Room list")}
 								className={inspectorStyles.roomList}
 							>
 								{editableRooms.map(({ fields, room }) => (
@@ -10630,9 +10620,9 @@ export function AppShell({
 									onSubmit={(event) => void saveRoomProperties(event)}
 								>
 									<label>
-										<span>Тип</span>
+										<span>{copy("Тип", "Type")}</span>
 										<select
-											aria-label="Тип помещения"
+											aria-label={copy("Тип помещения", "Room type")}
 											disabled={
 												isEditorReadOnly ||
 												isMutationBlocked ||
@@ -10658,9 +10648,9 @@ export function AppShell({
 										</select>
 									</label>
 									<label>
-										<span>Высота, мм</span>
+										<span>{copy("Высота, мм", "Height, mm")}</span>
 										<input
-											aria-label="Высота помещения, мм"
+											aria-label={copy("Высота помещения, мм", "Room height, mm")}
 											aria-describedby={
 												roomPropertyError ? "room-property-error" : undefined
 											}
@@ -10685,15 +10675,15 @@ export function AppShell({
 
 									{roomHeightOpeningConflict ? (
 										<section
-											aria-label="Конфликт высоты помещения и проёмов"
+											aria-label={copy("Конфликт высоты помещения и проёмов", "Room height and opening conflict")}
 											className={inspectorStyles.conflict}
 											data-testid="room-height-opening-conflict-preview"
 										>
-											<strong>Высота затрагивает проёмы</strong>
+											<strong>{copy("Высота затрагивает проёмы", "Height affects openings")}</strong>
 											<p>
 												{roomHeightOpeningConflict.openingIds.length === 1
-													? "1 проём больше не помещается в стене. Выберите, что с ним сделать."
-													: `${roomHeightOpeningConflict.openingIds.length} проёма больше не помещаются в стене. Выберите, что сделать с каждым.`}
+													? copy("1 проём больше не помещается в стене. Выберите, что с ним сделать.", "One opening no longer fits in the wall. Choose how to resolve it.")
+													: copy(`${roomHeightOpeningConflict.openingIds.length} проёма больше не помещаются в стене. Выберите, что сделать с каждым.`, `${roomHeightOpeningConflict.openingIds.length} openings no longer fit in the wall. Choose how to resolve each one.`)}
 											</p>
 											{roomHeightOpeningConflict.openingIds.map(
 												(openingId, openingIndex) => {
@@ -10719,13 +10709,13 @@ export function AppShell({
 														>
 															<span>
 																{opening?.kind === "Window"
-																	? "Окно"
-																	: "Дверной проём"}
+																	? copy("Окно", "Window")
+																	: copy("Дверной проём", "Door opening")}
 																{actionSuffix}
 															</span>
 															{resizeHeightMm > 0 ? (
 																<button
-																	aria-label={`Уменьшить проём${actionSuffix} до ${resizeHeightMm} мм`}
+																	aria-label={copy(`Уменьшить проём${actionSuffix} до ${resizeHeightMm} мм`, `Resize opening${actionSuffix} to ${resizeHeightMm} mm`)}
 																	aria-pressed={
 																		roomHeightOpeningConflict.resolutions[
 																			openingId
@@ -10740,11 +10730,11 @@ export function AppShell({
 																	}
 																	type="button"
 																>
-																	Уменьшить до {resizeHeightMm} мм
+																	{copy("Уменьшить до", "Resize to")} {resizeHeightMm} {copy("мм", "mm")}
 																</button>
 															) : null}
 															<button
-																aria-label={`Удалить проём${actionSuffix}`}
+																aria-label={copy(`Удалить проём${actionSuffix}`, `Delete opening${actionSuffix}`)}
 																aria-pressed={
 																	roomHeightOpeningConflict.resolutions[
 																		openingId
@@ -10759,7 +10749,7 @@ export function AppShell({
 																}
 																type="button"
 															>
-																Удалить проём
+																{copy("Удалить проём", "Delete opening")}
 															</button>
 														</div>
 													);
@@ -10771,7 +10761,7 @@ export function AppShell({
 													onClick={cancelRoomHeightOpeningConflict}
 													type="button"
 												>
-													{hostNavigation ? "Отменить" : "Отмена"}
+													{hostNavigation ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 												</button>
 												<button data-editor-action="confirm"
 													disabled={
@@ -10788,7 +10778,7 @@ export function AppShell({
 													}
 													type="button"
 												>
-													{hostNavigation ? "Подтвердить" : `Сохранить помещение и изменить ${roomHeightOpeningConflict.openingIds.length} проём`}
+													{hostNavigation ? copy("Подтвердить", "Confirm") : copy(`Сохранить помещение и изменить ${roomHeightOpeningConflict.openingIds.length} проём`, `Save room and update ${roomHeightOpeningConflict.openingIds.length} ${roomHeightOpeningConflict.openingIds.length === 1 ? "opening" : "openings"}`)}
 												</button>
 											</div>
 										</section>
@@ -10813,7 +10803,7 @@ export function AppShell({
 											disabled={isEditorReadOnly || isMutationBlocked}
 											type="submit"
 										>
-											{isWorking ? "Сохраняем…" : "Сохранить помещение"}
+											{isWorking ? copy("Сохраняем…", "Saving…") : copy("Сохранить помещение", "Save room")}
 										</button>
 									) : null}
 								</form>
@@ -10828,7 +10818,7 @@ export function AppShell({
 					telegramModal={canOpenTelegramEditorSheet}
 					onRequestClose={() => requestEditorBack(false, closeOverlay)}
 					restoreFocus={() => editorHeaderMenuRef.current}
-					aria-label="Предметы интерьера"
+					aria-label={copy("Предметы интерьера", "Furniture and fixtures")}
 					aria-modal={localGreyboxCatalog && !isExternalSaveFailure ? true : undefined}
 					className={`${styles.catalogDialog}${localGreyboxCatalog ? ` ${styles.tmaGreyboxDialog}` : ""}`}
 					data-focused-preloaded-selection={
@@ -10841,15 +10831,15 @@ export function AppShell({
 					tabIndex={-1}
 				>
 					<SheetHeader
-						title={<span data-testid="catalog-title">Каталог</span>}
-						closeLabel="Закрыть предметы интерьера"
+						title={<span data-testid="catalog-title">{copy("Каталог", "Catalog")}</span>}
+						closeLabel={copy("Закрыть предметы интерьера", "Close furniture and fixtures")}
 						protectEditorDraft={fullTransientNavigationProtection}
 						onClose={() => isNavigationProtected ? requestEditorBack(false, closeOverlay) : closeOverlay()}
 					/>
 					{(!localGreyboxCatalog || isModelLibrarySelected) && (
 						<input
 							accept=".glb,model/gltf-binary,application/octet-stream"
-							aria-label="Выбрать GLB-модель для размещения"
+							aria-label={copy("Выбрать GLB-модель для размещения", "Choose GLB model to place")}
 							className={styles.visuallyHidden}
 							data-testid="custom-glb-import-input"
 							disabled={customGlbImport.kind === "checking"}
@@ -10890,12 +10880,12 @@ export function AppShell({
 								role="alert"
 								data-testid="catalog-publication-error"
 							>
-								<strong>Каталог временно недоступен</strong>
+								<strong>{copy("Каталог временно недоступен", "The catalog is temporarily unavailable")}</strong>
 								<button
 									onClick={() => void loadCatalogPublication()}
 									type="button"
 								>
-									Повторить
+									{copy("Повторить", "Retry")}
 								</button>
 							</div>
 						) : null}
@@ -10905,7 +10895,7 @@ export function AppShell({
 								data-testid="catalog-publication-status"
 								role="status"
 							>
-								Загружаем актуальную версию каталога…
+								{copy("Загружаем актуальную версию каталога…", "Loading the latest catalog…")}
 							</div>
 						) : null}
 						{catalogPublicationState.kind === "ready" ? (
@@ -10915,12 +10905,11 @@ export function AppShell({
 								role="status"
 							>
 								<span className={styles.catalogPublicationSummary}>
-									Каталог обновлён
+									{copy("Каталог обновлён", "Catalog updated")}
 								</span>
 								<span className={styles.catalogPublicationDetails}>
-									Версия {catalogPublicationState.publication.catalogVersion} ·{" "}
-									{catalogPublicationState.publication.assets.length} предметов
-									· envelope SHA-256{" "}
+									{copy("Версия", "Version")} {catalogPublicationState.publication.catalogVersion} ·{" "}
+									{catalogPublicationState.publication.assets.length} {copy("предметов · envelope SHA-256", "items · envelope SHA-256")}{" "}
 									{catalogPublicationState.publication.envelopeHash}
 								</span>
 							</div>
@@ -10935,7 +10924,7 @@ export function AppShell({
 									✦
 								</span>
 								<span className={styles.catalogAuthoringCopy}>
-									<strong>Импорт модели</strong>
+									<strong>{copy("Импорт модели", "Import model")}</strong>
 								</span>
 								<span
 									aria-hidden="true"
@@ -10946,11 +10935,11 @@ export function AppShell({
 							</summary> : null}
 							<div className={styles.catalogAuthoringContent}>
 								{!localGreyboxCatalog || isPlaceholderComposerOpen ? <section
-									aria-label="Создать макетный предмет"
+									aria-label={copy("Создать макетный предмет", "Create placeholder item")}
 									className={styles.catalogImport}
 								>
 									{!localGreyboxCatalog ? <><div>
-										<strong>Свой макетный предмет</strong>
+										<strong>{copy("Свой макетный предмет", "Custom placeholder item")}</strong>
 									</div>
 									<button
 										onClick={() => {
@@ -10960,12 +10949,12 @@ export function AppShell({
 										type="button"
 									>
 										{isPlaceholderComposerOpen
-											? "Скрыть параметры"
-											: "Создать макетный предмет"}
+											? copy("Скрыть параметры", "Hide settings")
+											: copy("Создать макетный предмет", "Create placeholder item")}
 									</button></> : null}
 									{isPlaceholderComposerOpen ? (
 										<form
-											aria-label="Создать макетный предмет"
+											aria-label={copy("Создать макетный предмет", "Create placeholder item")}
 											className={styles.placeholderComposer}
 											onSubmit={(event) => {
 												event.preventDefault();
@@ -10973,7 +10962,7 @@ export function AppShell({
 											}}
 										>
 											<label>
-												<span>Название макетного предмета</span>
+												<span>{copy("Название макетного предмета", "Placeholder item name")}</span>
 												<input
 													autoComplete="off"
 													onChange={(event) =>
@@ -10987,7 +10976,7 @@ export function AppShell({
 											</label>
 											<div className={styles.placeholderDimensions}>
 												<label>
-													<span>Ширина макетного предмета, мм</span>
+													<span>{copy("Ширина макетного предмета, мм", "Placeholder item width, mm")}</span>
 													<input
 														autoComplete="off"
 														inputMode="numeric"
@@ -11001,7 +10990,7 @@ export function AppShell({
 													/>
 												</label>
 												<label>
-													<span>Глубина макетного предмета, мм</span>
+													<span>{copy("Глубина макетного предмета, мм", "Placeholder item depth, mm")}</span>
 													<input
 														autoComplete="off"
 														inputMode="numeric"
@@ -11015,7 +11004,7 @@ export function AppShell({
 													/>
 												</label>
 												<label>
-													<span>Высота макетного предмета, мм</span>
+													<span>{copy("Высота макетного предмета, мм", "Placeholder item height, mm")}</span>
 													<input
 														autoComplete="off"
 														inputMode="numeric"
@@ -11030,11 +11019,11 @@ export function AppShell({
 												</label>
 											</div>
 											<fieldset className={styles.placeholderPalette}>
-												<legend>Цвет макетного предмета</legend>
+												<legend>{copy("Цвет макетного предмета", "Placeholder item color")}</legend>
 												<div>
 													{alphaParametricItemColors.map((color) => (
 														<button
-															aria-label={`Выбрать цвет макетного предмета ${color}`}
+															aria-label={copy(`Выбрать цвет макетного предмета ${color}`, `Choose placeholder color ${color}`)}
 															aria-pressed={placeholderFields.color === color}
 															key={color}
 															onClick={() =>
@@ -11061,23 +11050,23 @@ export function AppShell({
 												</p>
 											) : null}
 											<button className={styles.primaryAction} type="submit">
-												Начать размещение
+												{copy("Начать размещение", "Start placement")}
 											</button>
 										</form>
 									) : null}
 								</section> : null}
 								<section
-									aria-label="Локальное преобразование FBX"
+									aria-label={copy("Локальное преобразование FBX", "Local FBX conversion")}
 									hidden={isEmbeddedHost}
 									style={isEmbeddedHost ? { display: "none" } : undefined}
 									className={styles.catalogImport}
 								>
 									<div>
-										<strong>Импортировать FBX</strong>
+										<strong>{copy("Импортировать FBX", "Import FBX")}</strong>
 									</div>
 									<input
 										accept=".fbx,.zip,.jpg,.jpeg,.png,.webp,application/octet-stream,application/zip,application/x-zip-compressed,image/jpeg,image/png,image/webp"
-										aria-label="Выбрать FBX и текстуры для локального преобразования"
+										aria-label={copy("Выбрать FBX и текстуры для локального преобразования", "Choose FBX and textures for local conversion")}
 										className={styles.visuallyHidden}
 										data-testid="fbx-import-input"
 										disabled={isEmbeddedHost || fbxConversion.kind === "converting"}
@@ -11093,16 +11082,16 @@ export function AppShell({
 											onClick={() => fbxImportInputRef.current?.click()}
 											type="button"
 										>
-											Выбрать FBX или ZIP
+											{copy("Выбрать FBX или ZIP", "Choose FBX or ZIP")}
 										</button>
 									) : null}
 									{fbxConversion.kind === "converting" ? (
 										<div className={styles.catalogImportStatus} role="status">
 											<span>
-												Преобразуем {fbxConversion.filename} локально…
+												{copy("Преобразуем", "Converting")} {fbxConversion.filename} {copy("локально…", "on this device…")}
 											</span>
 											<button onClick={cancelFbxConversion} type="button">
-												Отменить
+												{copy("Отменить", "Cancel")}
 											</button>
 										</div>
 									) : null}
@@ -11115,30 +11104,30 @@ export function AppShell({
 												onClick={() => setFbxConversion({ kind: "idle" })}
 												type="button"
 											>
-												Понятно
+												{copy("Понятно", "Got it")}
 											</button>
 										</div>
 									) : null}
 								</section>
 								{!localGreyboxCatalog || customGlbImport.kind !== "idle" ? <section
-									aria-label="Импорт своей GLB-модели"
+									aria-label={copy("Импорт своей GLB-модели", "Import your GLB model")}
 									className={styles.catalogImport}
 								>
 									{!localGreyboxCatalog ? <div>
-										<strong>Уже есть GLB?</strong>
+										<strong>{copy("Уже есть GLB?", "Already have a GLB?")}</strong>
 									</div> : null}
 									{customGlbImport.kind === "idle" ? (
 										<button
 											onClick={() => customGlbImportInputRef.current?.click()}
 											type="button"
 										>
-											Выбрать GLB
+											{copy("Выбрать GLB", "Choose GLB")}
 										</button>
 									) : null}
 									{customGlbImport.kind === "checking" ? (
 										<div className={styles.catalogImportStatus} role="status">
 											<span>
-												Проверяем {customGlbImport.filename} локально…
+												{copy("Проверяем", "Checking")} {customGlbImport.filename} {copy("локально…", "on this device…")}
 											</span>
 										</div>
 									) : null}
@@ -11148,7 +11137,7 @@ export function AppShell({
 												{customGlbImportFeedback(customGlbImport.reasonCode)}
 											</span>
 											<button onClick={discardCustomGlbImport} type="button">
-												Выбрать другой файл
+												{copy("Выбрать другой файл", "Choose another file")}
 											</button>
 										</div>
 									) : null}
@@ -11156,8 +11145,8 @@ export function AppShell({
 										<div className={styles.customGlbReview}>
 											<p className={styles.catalogNote}>
 												{customGlbImport.source === "fbx"
-													? `Конвертировано из FBX: ${customGlbImport.filename} · ${customGlbImport.textureCount} ${customGlbImport.textureCount === 1 ? "текстура встроена" : "текстуры встроены"} в GLB`
-													: `Выбран GLB: ${customGlbImport.filename}`}
+													? copy(`Конвертировано из FBX: ${customGlbImport.filename} · ${customGlbImport.textureCount} ${customGlbImport.textureCount === 1 ? "текстура встроена" : "текстуры встроены"} в GLB`, `Converted from FBX: ${customGlbImport.filename} · ${customGlbImport.textureCount} ${customGlbImport.textureCount === 1 ? "texture" : "textures"} embedded in the GLB`)
+													: copy(`Выбран GLB: ${customGlbImport.filename}`, `Selected GLB: ${customGlbImport.filename}`)}
 											</p>
 											<CustomGlbPreview
 												bytes={customGlbImport.bytes}
@@ -11166,7 +11155,7 @@ export function AppShell({
 											/>
 											<div className={styles.customGlbFields}>
 												<label>
-													<span>Название модели</span>
+													<span>{copy("Название модели", "Model name")}</span>
 													<input
 														autoComplete="off"
 														onChange={(event) =>
@@ -11179,7 +11168,7 @@ export function AppShell({
 													/>
 												</label>
 												<label>
-													<span>Ширина, мм</span>
+													<span>{copy("Ширина, мм", "Width, mm")}</span>
 													<input
 														inputMode="numeric"
 														onChange={(event) =>
@@ -11194,7 +11183,7 @@ export function AppShell({
 													/>
 												</label>
 												<label>
-													<span>Глубина, мм</span>
+													<span>{copy("Глубина, мм", "Depth, mm")}</span>
 													<input
 														inputMode="numeric"
 														onChange={(event) =>
@@ -11209,7 +11198,7 @@ export function AppShell({
 													/>
 												</label>
 												<label>
-													<span>Высота, мм</span>
+													<span>{copy("Высота, мм", "Height, mm")}</span>
 													<input
 														inputMode="numeric"
 														onChange={(event) =>
@@ -11235,7 +11224,7 @@ export function AppShell({
 													MiB
 												</span>
 												<button onClick={discardCustomGlbImport} type="button">
-													Другой файл
+													{copy("Другой файл", "Another file")}
 												</button>
 											</div>
 										</div>
@@ -11245,11 +11234,11 @@ export function AppShell({
 						</CatalogAuthoring>) : null}
 						{!localGreyboxCatalog ? <div className={styles.catalogFilters}>
 							<label>
-								<span>Поиск по названию, категории, креплению или размеру</span>
+								<span>{copy("Поиск по названию, категории, креплению или размеру", "Search by name, category, mounting or size")}</span>
 								<input
 									autoComplete="off"
 									onChange={(event) => setCatalogQuery(event.target.value)}
-									placeholder="Найти предмет"
+									placeholder={copy("Найти предмет", "Find an item")}
 									ref={catalogSearchInputRef}
 									value={catalogQuery}
 								/>
@@ -11259,7 +11248,7 @@ export function AppShell({
 							</output>
 						</div> : null}
 						{!localGreyboxCatalog ? <nav
-							aria-label="Категории каталога"
+							aria-label={copy("Категории каталога", "Catalog categories")}
 							className={styles.catalogCategoryTabs}
 						>
 							<button
@@ -11275,7 +11264,7 @@ export function AppShell({
 								>
 									<CatalogCategoryGlyph category="all" />
 								</span>
-								<span className={styles.catalogCategoryLabel}>Все</span>
+								<span className={styles.catalogCategoryLabel}>{copy("Все", "All")}</span>
 							</button>
 							<button
 								aria-pressed={catalogCategory === "custom"}
@@ -11290,7 +11279,7 @@ export function AppShell({
 								>
 									<CatalogCategoryGlyph category="custom" />
 								</span>
-								<span className={styles.catalogCategoryLabel}>Кастомное</span>
+								<span className={styles.catalogCategoryLabel}>{copy("Кастомное", "Custom")}</span>
 							</button>
 							{catalogSections.map((section) => (
 								<button
@@ -11325,7 +11314,7 @@ export function AppShell({
 									key={asset.definition.assetDefinitionId}
 								>
 									<button
-										aria-label={`${asset.definition.displayName} — ${asset.definition.widthMm} × ${asset.definition.depthMm} × ${asset.definition.heightMm} мм, ${localGreyboxCatalog ? "Мои модели" : "Кастомное"}${asset.resourceState === "unavailable" ? ", модель недоступна локально" : ""}`}
+										aria-label={copy(`${asset.definition.displayName} — ${asset.definition.widthMm} × ${asset.definition.depthMm} × ${asset.definition.heightMm} мм, ${localGreyboxCatalog ? "Мои модели" : "Кастомное"}${asset.resourceState === "unavailable" ? ", модель недоступна локально" : ""}`, `${asset.definition.displayName} · ${asset.definition.widthMm} × ${asset.definition.depthMm} × ${asset.definition.heightMm} mm, ${localGreyboxCatalog ? "My models" : "Custom"}${asset.resourceState === "unavailable" ? ", model unavailable locally" : ""}`)}
 										aria-pressed={
 											selectedCustomCatalogAsset?.definition
 												.assetDefinitionId ===
@@ -11352,8 +11341,8 @@ export function AppShell({
 										) : (
 											<div className={styles.customGlbCatalogPlaceholder}>
 												{asset.resourceState === "unavailable"
-													? "Модель недоступна локально. Импортируйте исходный GLB заново."
-													: "Загружаем локальную модель…"}
+													? copy("Модель недоступна локально. Импортируйте исходный GLB заново.", "The model is unavailable locally. Import the original GLB again.")
+													: copy("Загружаем локальную модель…", "Loading local model…")}
 											</div>
 										)}
 										{selectedCustomCatalogAsset?.definition
@@ -11371,22 +11360,22 @@ export function AppShell({
 											<strong>{asset.definition.displayName}</strong>
 											<small>
 												{asset.definition.widthMm} × {asset.definition.depthMm}{" "}
-												× {asset.definition.heightMm} мм
+												× {asset.definition.heightMm} {copy("мм", "mm")}
 											</small>
 											<span className={styles.catalogCardMeta}>
 												<span
 													className={styles.catalogCardCategory}
 													data-testid="catalog-card-category"
 												>
-															{localGreyboxCatalog ? "Мои модели" : "Кастомное"}
+															{localGreyboxCatalog ? copy("Мои модели", "My models") : copy("Кастомное", "Custom")}
 												</span>
 												<span
 													className={styles.catalogCardReadiness}
 													data-testid="catalog-card-readiness"
 												>
 													{asset.resourceState === "unavailable"
-														? "Нужен импорт"
-														: "Локально"}
+														? copy("Нужен импорт", "Import needed")
+														: copy("Локально", "Local")}
 												</span>
 											</span>
 										</div>
@@ -11394,7 +11383,7 @@ export function AppShell({
 									<button
 										className={styles.customCatalogRemove}
 										type="button"
-										aria-label={`Убрать ${asset.definition.displayName} из каталога`}
+										aria-label={copy(`Убрать ${asset.definition.displayName} из каталога`, `Remove ${asset.definition.displayName} from catalog`)}
 										disabled={removingCustomAssetId !== undefined}
 										onClick={() =>
 											void removeCustomCatalogAsset(asset.definition)
@@ -11402,12 +11391,11 @@ export function AppShell({
 									>
 										{removingCustomAssetId ===
 										asset.definition.assetDefinitionId
-											? "Убираем…"
-											: "Убрать из каталога"}
+											? copy("Убираем…", "Removing…")
+											: copy("Убрать из каталога", "Remove from catalog")}
 									</button>
 									<small>
-										Предметы в проектах останутся. Карточку можно вернуть
-										повторным импортом GLB.
+										{copy("Предметы в проектах останутся. Карточку можно вернуть повторным импортом GLB.", "Placed items will stay in your projects. Import the GLB again to restore its card.")}
 									</small>
 								</div>
 							))}
@@ -11421,7 +11409,7 @@ export function AppShell({
 								);
 								return (
 									<button
-										aria-label={`${asset.label} — ${asset.widthMm} × ${asset.depthMm} × ${asset.heightMm} мм, Встроенный каталог`}
+										aria-label={copy(`${asset.label} — ${asset.widthMm} × ${asset.depthMm} × ${asset.heightMm} мм, Встроенный каталог`, `${preloadedGlbCatalogLabelForDisplay(asset)} · ${asset.widthMm} × ${asset.depthMm} × ${asset.heightMm} mm, Built-in catalog`)}
 										aria-pressed={
 											selectedPreloadedCatalogAsset?.id === asset.id
 										}
@@ -11440,11 +11428,11 @@ export function AppShell({
 												className={styles.catalogThumbnailFallback}
 												data-testid="preloaded-catalog-thumbnail-fallback"
 											>
-												Превью недоступно
+												{copy("Превью недоступно", "Preview unavailable")}
 											</span>
 										) : (
 											<img
-												alt={`Превью предмета: ${asset.label}`}
+												alt={copy(`Превью предмета: ${asset.label}`, `Item preview: ${preloadedGlbCatalogLabelForDisplay(asset)}`)}
 												className={styles.catalogThumbnail}
 												height="191"
 												onError={() =>
@@ -11466,9 +11454,9 @@ export function AppShell({
 											</span>
 										) : null}
 										<div className={styles.catalogCardDetails}>
-											<strong>{asset.label}</strong>
+									<strong>{preloadedGlbCatalogLabelForDisplay(asset)}</strong>
 											<small>
-												{asset.widthMm} × {asset.depthMm} × {asset.heightMm} мм
+												{asset.widthMm} × {asset.depthMm} × {asset.heightMm} {copy("мм", "mm")}
 											</small>
 											<span className={styles.catalogCardMeta}>
 												<span
@@ -11483,15 +11471,15 @@ export function AppShell({
 												</span>
 												<span className={styles.catalogCardHost}>
 													{asset.anchorClass === "wall"
-														? "На стене"
-														: "На полу"}
+														? copy("На стене", "Wall-mounted")
+														: copy("На полу", "Floor-standing")}
 												</span>
 												{(asset.variantCount ?? 0) > 0 ? (
 													<span
 														className={styles.catalogCardVariantCount}
 														data-testid="catalog-card-variant-count"
 													>
-														Варианты: {asset.variantCount}
+														{copy("Варианты:", "Variants:")} {asset.variantCount}
 													</span>
 												) : null}
 												<span
@@ -11517,15 +11505,15 @@ export function AppShell({
 								role="status"
 							>
 								{catalogCategory === "custom" && catalogQuery.trim() === "" ? (
-									<strong>Нет своих моделей</strong>
+									<strong>{copy("Нет своих моделей", "No custom models yet")}</strong>
 								) : catalogQuery.trim() === "" && catalogCategory !== "all" ? (
-									`В локальном каталоге пока нет предметов в категории «${
+									copy(`В локальном каталоге пока нет предметов в категории «${
 										catalogSections.find(
 											(section) => section.id === catalogCategory,
 										)?.label ?? catalogCategory
-									}».`
+									}».`, `There are no items in the local “${catalogSections.find((section) => section.id === catalogCategory)?.label ?? catalogCategory}” category yet.`)
 								) : (
-									"В локальном каталоге нет предметов с такими параметрами."
+									copy("В локальном каталоге нет предметов с такими параметрами.", "No local items match these filters.")
 								)}
 							</p>
 						) : null}
@@ -11568,7 +11556,7 @@ export function AppShell({
 										? customGlbImport.displayName
 										: (selectedPreloadedCatalogAsset?.label ??
 											selectedCustomCatalogAsset?.definition.displayName ??
-											"Выберите предмет")}
+											copy("Выберите предмет", "Choose an item"))}
 								</strong>
 								<small>
 									{customGlbImport.kind === "ready" &&
@@ -11576,15 +11564,15 @@ export function AppShell({
 									!selectedCustomCatalogAsset
 										? `${customGlbImport.filename} · ${(customGlbImport.bytes.byteLength / 1024 / 1024).toFixed(1)} MiB`
 										: selectedPreloadedCatalogAsset
-											? `${selectedPreloadedCatalogAsset.widthMm} × ${selectedPreloadedCatalogAsset.depthMm} × ${selectedPreloadedCatalogAsset.heightMm} мм`
+											? copy(`${selectedPreloadedCatalogAsset.widthMm} × ${selectedPreloadedCatalogAsset.depthMm} × ${selectedPreloadedCatalogAsset.heightMm} мм`, `${selectedPreloadedCatalogAsset.widthMm} × ${selectedPreloadedCatalogAsset.depthMm} × ${selectedPreloadedCatalogAsset.heightMm} mm`)
 											: selectedCustomCatalogAsset
-												? `${selectedCustomCatalogAsset.definition.widthMm} × ${selectedCustomCatalogAsset.definition.depthMm} × ${selectedCustomCatalogAsset.definition.heightMm} мм`
+												? copy(`${selectedCustomCatalogAsset.definition.widthMm} × ${selectedCustomCatalogAsset.definition.depthMm} × ${selectedCustomCatalogAsset.definition.heightMm} мм`, `${selectedCustomCatalogAsset.definition.widthMm} × ${selectedCustomCatalogAsset.definition.depthMm} × ${selectedCustomCatalogAsset.definition.heightMm} mm`)
 												: ""}
 								</small>
 								{selectedPreloadedCatalogAsset?.resource ? (
 									<small data-testid="catalog-selected-resource-metadata">
-										Ресурс: {selectedPreloadedCatalogAsset.resource.byteLength}{" "}
-										байт · SHA-256{" "}
+										{copy("Ресурс:", "Resource:")} {selectedPreloadedCatalogAsset.resource.byteLength}{" "}
+										{copy("байт · SHA-256", "bytes · SHA-256")}{" "}
 										{selectedPreloadedCatalogAsset.resource.sha256}
 									</small>
 								) : null}
@@ -11600,13 +11588,13 @@ export function AppShell({
 												? preloadedGlbLoadingStatusCopy(
 														selectedPreloadedCatalogResourceState,
 													)
-												: "Готовим для офлайн…"}
+												: copy("Готовим для офлайн…", "Preparing for offline use…")}
 										</span>
 										{selectedPreloadedCatalogResourceState?.kind ===
 											"loading" &&
 										selectedPreloadedCatalogResourceState.totalBytes ? (
 											<progress
-												aria-label="Прогресс загрузки модели"
+												aria-label={copy("Прогресс загрузки модели", "Model download progress")}
 												max={selectedPreloadedCatalogResourceState.totalBytes}
 												value={Math.min(
 													selectedPreloadedCatalogResourceState.loadedBytes,
@@ -11614,7 +11602,7 @@ export function AppShell({
 												)}
 											/>
 										) : (
-											<progress aria-label="Прогресс загрузки модели" />
+											<progress aria-label={copy("Прогресс загрузки модели", "Model download progress")} />
 										)}
 									</small>
 								) : null}
@@ -11624,7 +11612,7 @@ export function AppShell({
 										data-testid="preloaded-catalog-ready-status"
 										role="status"
 									>
-										Готово для размещения
+										{copy("Готово для размещения", "Ready to place")}
 									</small>
 								) : null}
 								{selectedPreloadedCatalogAsset &&
@@ -11634,8 +11622,7 @@ export function AppShell({
 										data-testid="preloaded-catalog-resource-status"
 										role="status"
 									>
-										Не удалось подготовить предмет для офлайн. Проект не
-										изменён.
+										{copy("Не удалось подготовить предмет для офлайн. Проект не изменён.", "The item could not be prepared for offline use. The project is intact.")}
 									</small>
 								) : null}
 							</div>
@@ -11669,24 +11656,24 @@ export function AppShell({
 							!selectedPreloadedCatalogAsset &&
 							!selectedCustomCatalogAsset
 								? localGreyboxCatalog
-									? "Добавить в «Мои модели» и разместить"
-									: "Добавить в «Кастомное» и разместить"
+									? copy("Добавить в «Мои модели» и разместить", "Add to My models and place")
+									: copy("Добавить в «Кастомное» и разместить", "Add to Custom and place")
 								: selectedPreloadedCatalogAsset &&
 										isPreloadedCatalogResourcePreparing
-									? "Отмена"
+									? copy("Отмена", "Cancel")
 									: selectedPreloadedCatalogResourceState?.kind ===
 											"unavailable"
-										? "Повторить"
+										? copy("Повторить", "Retry")
 										: selectedCustomCatalogAsset?.resourceState ===
 												"unavailable"
-											? "Импортируйте GLB заново"
+											? copy("Импортируйте GLB заново", "Import the GLB again")
 											: selectedPreloadedCatalogAsset
-												? "Показать на плане"
-												: "Разместить на плане"}
+												? copy("Показать на плане", "Show on plan")
+												: copy("Разместить на плане", "Place on plan")}
 						</button>
 						{selectedPreloadedCatalogResourceState?.kind === "unavailable" ? (
 							<button data-editor-action="cancel" onClick={cancelPreloadedCatalogSelection} type="button">
-								{hostNavigation ? "Отменить" : "Отмена"}
+								{hostNavigation ? copy("Отменить", "Cancel") : copy("Отмена", "Cancel")}
 							</button>
 						) : null}
 					</div>
@@ -11698,11 +11685,11 @@ export function AppShell({
 			!isWriterLeaseReadOnly ? (
 				<ProjectConfirmationDialog
 						plainLabels={hostNavigation !== undefined}
-					label="Удалить проект"
-					title="Удалить проект навсегда?"
-					cancelLabel="Оставить проект"
-					confirmLabel="Удалить навсегда"
-					busyLabel="Удаляем…"
+					label={copy("Удалить проект", "Delete project")}
+					title={copy("Удалить проект навсегда?", "Delete this project permanently?")}
+					cancelLabel={copy("Оставить проект", "Keep project")}
+					confirmLabel={copy("Удалить навсегда", "Delete permanently")}
+					busyLabel={copy("Удаляем…", "Deleting…")}
 					busy={isDeletingProject}
 					error={projectDeletionError}
 					onCancel={() => setIsProjectDeletionConfirmationOpen(false)}
@@ -11714,8 +11701,7 @@ export function AppShell({
 						{projectDeletionTargetText(state.project.name)}
 					</p>
 					<p>
-						Проект и его локальные версии будут удалены без возможности
-						восстановления. Это действие нельзя отменить.
+						{copy("Проект и его локальные версии будут удалены без возможности восстановления. Это действие нельзя отменить.", "The project and its local versions will be permanently deleted.")}
 					</p>
 				</ProjectConfirmationDialog>
 			) : null}
@@ -11724,11 +11710,11 @@ export function AppShell({
 			!isWriterLeaseReadOnly ? (
 				<ProjectConfirmationDialog
 						plainLabels={hostNavigation !== undefined}
-					label="Очистить историю изменений"
-					title="Очистить историю изменений?"
-					cancelLabel="Оставить историю"
-					confirmLabel="Очистить историю"
-					busyLabel="Проверяем текущий план…"
+					label={copy("Очистить историю изменений", "Clear edit history")}
+					title={copy("Очистить историю изменений?", "Clear edit history?")}
+					cancelLabel={copy("Оставить историю", "Keep history")}
+					confirmLabel={copy("Очистить историю", "Clear history")}
+					busyLabel={copy("Проверяем текущий план…", "Checking the current plan…")}
 					busy={isDiscardingSessionHistory}
 					error={historyDiscardError}
 					onCancel={() => {
@@ -11742,24 +11728,22 @@ export function AppShell({
 				>
 					<p>
 						{historyResourceIssueHashes?.length === 1
-							? "Одна сохранённая правка ссылается на отсутствующую или повреждённую модель."
-							: "Сохранённые правки ссылаются на отсутствующие или повреждённые модели."}
+							? copy("Одна сохранённая правка ссылается на отсутствующую или повреждённую модель.", "One saved edit refers to a missing or damaged model.")
+							: copy("Сохранённые правки ссылаются на отсутствующие или повреждённые модели.", "Saved edits refer to missing or damaged models.")}
 					</p>
 					<p>
-						Текущий сохранённый план останется без изменений. Если очистить
-						историю, действия «Отменить» и «Повторить» будут потеряны и их
-						нельзя будет восстановить.
+						{copy("Текущий сохранённый план останется без изменений. Если очистить историю, действия «Отменить» и «Повторить» будут потеряны и их нельзя будет восстановить.", "Your saved plan will stay as it is. Clearing history permanently removes the edits you can undo or redo.")}
 					</p>
 				</ProjectConfirmationDialog>
 			) : null}
 			{state.kind === "recovery-needed" && isRecoveryRemovalConfirmationOpen ? (
 				<ProjectConfirmationDialog
 						plainLabels={hostNavigation !== undefined}
-					label="Удалить недоступные модели"
-					title="Удалить все недоступные модели?"
-					cancelLabel="Отмена"
-					confirmLabel="Подтвердить удаление всех недоступных моделей"
-					busyLabel="Удаляем недоступные модели…"
+					label={copy("Удалить недоступные модели", "Remove unavailable models")}
+					title={copy("Удалить все недоступные модели?", "Remove all unavailable models?")}
+					cancelLabel={copy("Отмена", "Cancel")}
+					confirmLabel={copy("Подтвердить удаление всех недоступных моделей", "Confirm removal of all unavailable models")}
+					busyLabel={copy("Удаляем недоступные модели…", "Removing unavailable models…")}
 					busy={isRemovingUnresolvedCustomGlb}
 					error={recoveryRemovalError}
 					onCancel={() => setIsRecoveryRemovalConfirmationOpen(false)}
@@ -11768,22 +11752,21 @@ export function AppShell({
 					fallbackFocusRef={editorHeaderMenuRef}
 				>
 					<p>
-						Будет сохранена одна новая версия без всех недоступных моделей. Это
-						действие нельзя отменить через историю.
+						{copy("Будет сохранена одна новая версия без всех недоступных моделей. Это действие нельзя отменить через историю.", "A new version will be saved with all unavailable models removed. This action cannot be undone.")}
 					</p>
 				</ProjectConfirmationDialog>
 			) : null}
 			{itemColorVariantDraft && pendingItemColorVariant ? (
 				<ProjectConfirmationDialog
 						plainLabels={hostNavigation !== undefined}
-					label="Подтвердить вариант цвета"
+					label={copy("Подтвердить вариант цвета", "Confirm color variant")}
 					confirmTone="primary"
-					title={`Применить ${localGreyboxCatalog ? "цвет" : "вариант"} «${pendingItemColorVariant.label}»?`}
-					cancelLabel="Отменить вариант"
+					title={copy(`Применить ${localGreyboxCatalog ? "цвет" : "вариант"} «${pendingItemColorVariant.label}»?`, `Apply ${localGreyboxCatalog ? "color" : "variant"} “${pendingItemColorVariant.label}”?`)}
+					cancelLabel={copy("Отменить вариант", "Cancel variant")}
 					confirmLabel={
-						isPersistenceFailure ? "Повторить сохранение" : "Применить вариант"
+						isPersistenceFailure ? copy("Повторить сохранение", "Retry save") : copy("Применить вариант", "Apply variant")
 					}
-					busyLabel="Сохраняем…"
+					busyLabel={copy("Сохраняем…", "Saving…")}
 					busy={isWorking}
 					error={dimensionError}
 					onCancel={() => setItemColorVariantDraft(undefined)}
@@ -11792,23 +11775,22 @@ export function AppShell({
 					fallbackFocusRef={editorHeaderMenuRef}
 				>
 					{localGreyboxCatalog ? null : <p>
-						Изменится только объявленный слот «Корпус». Габариты, положение и
-						привязка предмета останутся прежними.
+						{copy("Изменится только объявленный слот «Корпус». Габариты, положение и привязка предмета останутся прежними.", "Only the Body material will change. The item will keep its dimensions, position and attachment.")}
 					</p>}
 				</ProjectConfirmationDialog>
 			) : null}
 			{isRestartConfirmationOpen ? (
 				<ProjectConfirmationDialog
 						plainLabels={hostNavigation !== undefined}
-					label="Начать проект заново"
-					title="Начать проект заново?"
-					cancelLabel="Оставить чертёж"
+					label={copy("Начать проект заново", "Restart project")}
+					title={copy("Начать проект заново?", "Restart this project?")}
+					cancelLabel={copy("Оставить чертёж", "Keep current plan")}
 					confirmLabel={
 						isPersistenceFailure
-							? "Повторить сохранение"
-							: "Создать пустой план"
+							? copy("Повторить сохранение", "Retry save")
+							: copy("Создать пустой план", "Create blank plan")
 					}
-					busyLabel="Создаём…"
+					busyLabel={copy("Создаём…", "Creating…")}
 					busy={isRestartingProject || isWorking}
 					error={dimensionError}
 					onCancel={() => setIsRestartConfirmationOpen(false)}
@@ -11818,8 +11800,7 @@ export function AppShell({
 					testId="restart-project-sheet"
 				>
 					<p>
-						Будет создана новая пустая версия плана. Предыдущую версию можно
-						сразу вернуть кнопкой «Отменить».
+						{copy("Будет создана новая пустая версия плана. Предыдущую версию можно сразу вернуть кнопкой «Отменить».", "A new blank version will be saved. Select Undo to restore the previous version.")}
 					</p>
 				</ProjectConfirmationDialog>
 			) : null}

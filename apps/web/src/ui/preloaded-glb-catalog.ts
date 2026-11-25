@@ -4,6 +4,7 @@ import type {
 	VersionedCatalogAsset,
 	VersionedCatalogPublication,
 } from "../application/ports";
+import { copy } from "./editor-language";
 
 export type CatalogSection =
 	| "accessories"
@@ -20,15 +21,41 @@ export interface CatalogSectionDefinition {
 
 /** Alpha browse taxonomy. Empty sections stay visible instead of inventing assets. */
 export const catalogSections: readonly CatalogSectionDefinition[] = [
-	{ icon: "▱", id: "furniture", label: "Мебель" },
-	{ icon: "◉", id: "plumbing", label: "Сантехника" },
+	{
+		icon: "▱",
+		id: "furniture",
+		get label() {
+			return copy("Мебель", "Furniture");
+		},
+	},
+	{
+		icon: "◉",
+		id: "plumbing",
+		get label() {
+			return copy("Сантехника", "Plumbing");
+		},
+	},
 	{
 		icon: "▣",
 		id: "appliances-electronics",
-		label: "Техника и электроника",
+		get label() {
+			return copy("Техника и электроника", "Appliances & electronics");
+		},
 	},
-	{ icon: "✦", id: "lighting", label: "Освещение" },
-	{ icon: "◇", id: "accessories", label: "Аксессуары" },
+	{
+		icon: "✦",
+		id: "lighting",
+		get label() {
+			return copy("Освещение", "Lighting");
+		},
+	},
+	{
+		icon: "◇",
+		id: "accessories",
+		get label() {
+			return copy("Аксессуары", "Accessories");
+		},
+	},
 ];
 
 export interface PreloadedGlbCatalogAsset {
@@ -153,6 +180,20 @@ const catalogSectionSearchTerms: Record<CatalogSection, string> = {
 	plumbing: "сантехника plumbing",
 };
 
+const englishCatalogNames = new Map([
+	["antique-sofa", "Antique leather sofa"],
+	["dining-armchair", "Dining armchair"],
+	["ruined-chair", "Textured armchair"],
+	["single-bed", "Bed"],
+	["scandinavian-closet", "Scandinavian wardrobe"],
+]);
+
+export function preloadedGlbCatalogLabelForDisplay(
+	asset: Pick<PreloadedGlbCatalogAsset, "id" | "label">,
+): string {
+	return copy(asset.label, englishCatalogNames.get(asset.id) ?? asset.label);
+}
+
 export function filterPreloadedGlbCatalogAssets(
 	assets: readonly PreloadedGlbCatalogAsset[],
 	filter: PreloadedGlbCatalogFilter,
@@ -165,6 +206,7 @@ export function filterPreloadedGlbCatalogAssets(
 		if (query === "") return true;
 		return [
 			asset.label,
+			englishCatalogNames.get(asset.id),
 			asset.category,
 			catalogCategorySearchTerms[asset.category],
 			asset.section,

@@ -36,7 +36,7 @@ fi
 
 release=$(mktemp -d "$lib/release.XXXXXX")
 chmod 0755 "$release"
-for file in service.py support.py telegram_api.py; do
+for file in service.py support.py telegram_api.py messages.py; do
     install -m 0644 "$src/$file" "$release/$file"
 done
 python3 -B - "$lib" "$(basename "$release")" <<'PY'

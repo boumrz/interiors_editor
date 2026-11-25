@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type {
 	ProjectSourceRecoveryPort,
@@ -100,21 +101,48 @@ type Phase =
 	| "preparing"
 	| "prepared"
 	| "export-error";
-const copy: Record<Phase, string> = {
-	idle: "Покажите записи, чтобы выбрать исходные данные для отдельного файла.",
-	listing: "Поиск исходников…",
-	listed: "Выберите запись для подготовки исходника.",
-	empty: "Доступных исходников нет.",
-	"list-error": "Не удалось получить список исходников. Повторите попытку.",
-	reading: "Чтение выбранного исходника…",
-	stale:
-		"Запись изменилась или недоступна. Обновите список и выберите её снова.",
-	"read-error":
-		"Не удалось прочитать исходник. Обновите список или повторите попытку.",
-	preparing: "Подготовка исходника…",
-	prepared:
-		"Исходник подготовлен к передаче. Сохранение файла проверяется отдельно.",
-	"export-error": "Не удалось подготовить исходник. Повторите попытку.",
+const statusCopy: Record<Phase, () => string> = {
+	idle: () =>
+		copy(
+			"Покажите записи, чтобы выбрать исходные данные для отдельного файла.",
+			"Show available records to export source data as a separate file.",
+		),
+	listing: () => copy("Поиск исходников…", "Finding source records…"),
+	listed: () =>
+		copy(
+			"Выберите запись для подготовки исходника.",
+			"Choose a source record to prepare for export.",
+		),
+	empty: () =>
+		copy("Доступных исходников нет.", "No source records are available."),
+	"list-error": () =>
+		copy(
+			"Не удалось получить список исходников. Повторите попытку.",
+			"Could not list source records. Try again.",
+		),
+	reading: () =>
+		copy("Чтение выбранного исходника…", "Reading the selected source record…"),
+	stale: () =>
+		copy(
+			"Запись изменилась или недоступна. Обновите список и выберите её снова.",
+			"The record changed or is no longer available. Refresh the list and select it again.",
+		),
+	"read-error": () =>
+		copy(
+			"Не удалось прочитать исходник. Обновите список или повторите попытку.",
+			"Could not read the source record. Refresh the list or try again.",
+		),
+	preparing: () => copy("Подготовка исходника…", "Preparing source record…"),
+	prepared: () =>
+		copy(
+			"Исходник подготовлен к передаче. Сохранение файла проверяется отдельно.",
+			"The source record is ready to share. Check separately that the file was saved.",
+		),
+	"export-error": () =>
+		copy(
+			"Не удалось подготовить исходник. Повторите попытку.",
+			"Could not prepare the source record. Try again.",
+		),
 };
 
 export interface StoredSourceRecoveryProps {
@@ -237,30 +265,40 @@ export function StoredSourceRecovery({
 	return (
 		<aside
 			className={styles.panel}
-			aria-label="Непроверенные исходники"
+			aria-label={copy("Непроверенные исходники", "Unverified source records")}
 			aria-busy={busy}
 		>
-			<h2>Непроверенные исходники</h2>
+			<h2>{copy("Непроверенные исходники", "Unverified source records")}</h2>
 			<p>
-				Исходные данные записи можно выгрузить отдельно. Это не полный backup и
-				не восстановленный проект.
+				{copy(
+					"Исходные данные записи можно выгрузить отдельно. Это не полный backup и не восстановленный проект.",
+					"You can export the source record separately. It is a raw record without a complete project backup.",
+				)}
 			</p>
 			<button type="button" disabled={busy} onClick={() => void list()}>
-				{current.phase === "idle" ? "Показать записи" : "Обновить список"}
+				{current.phase === "idle"
+					? copy("Показать записи", "Show records")
+					: copy("Обновить список", "Refresh list")}
 			</button>
-			<p role="status">{copy[current.phase]}</p>
+			<p role="status">{statusCopy[current.phase]()}</p>
 			{current.sources.length ? (
 				<ul className={styles.list}>
 					{current.sources.map((source, index) => (
 						<li key={source.projectId}>
-							<span>Запись {index + 1}</span>
+							<span>
+								{copy("Запись ", "Record ")}
+								{index + 1}
+							</span>
 							<button
 								type="button"
 								disabled={busy}
-								aria-label={`Подготовить исходник записи ${index + 1}`}
+								aria-label={copy(
+									`Подготовить исходник записи ${index + 1}`,
+									`Prepare source record ${index + 1}`,
+								)}
 								onClick={() => void prepare(source)}
 							>
-								Подготовить исходник
+								{copy("Подготовить исходник", "Prepare source record")}
 							</button>
 						</li>
 					))}

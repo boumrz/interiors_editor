@@ -49,6 +49,10 @@ export default (environment, arguments_) => {
 						from: "../../docs/legal/telegram-support-direct-privacy.html",
 						to: "legal/2026-11-24.2/telegram-support-privacy.html",
 					},
+					{
+						from: "../../docs/legal/en/telegram-support-direct-privacy.html",
+						to: "legal/2026-11-24.2/en/telegram-support-privacy.html",
+					},
 					{ from: "./public/icon.svg", to: "icon.svg" },
 					{ from: "./public/interiors-lamp-v1.png", to: "interiors-lamp-v1.png" },
 					{ from: "./public/catalog", to: "catalog" },
@@ -58,7 +62,7 @@ export default (environment, arguments_) => {
 					},
 				],
 			}),
-			new LegalDocumentsPlugin(),
+			new LegalDocumentsPlugin({ english: true }),
 			new TelegramReleasePlugin(telegramPublicConfiguration(process.env)),
 		],
 		// Preview delivery is explicit and has no SPA fallback or inherited PWA proxy.

@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import type { DoorWallOpening } from "../domain/project";
 import styles from "./AppShell.module.css";
 import choices from "./DoorSwingPicker.module.css";
@@ -23,13 +24,25 @@ export function DoorSwingPicker({
 	if (showHingeOptions) {
 		const firstSide = insideSide ?? "left";
 		const directions = [
-			{ side: firstSide, label: insideSide ? "Внутрь" : "На себя" },
-			{ side: firstSide === "left" ? "right" : "left", label: insideSide ? "Наружу" : "От себя" },
+			{
+				side: firstSide,
+				label: insideSide
+					? copy("Внутрь", "Inward")
+					: copy("На себя", "Toward you"),
+			},
+			{
+				side: firstSide === "left" ? "right" : "left",
+				label: insideSide
+					? copy("Наружу", "Outward")
+					: copy("От себя", "Away from you"),
+			},
 		] as const;
 		return (
 			<div className={choices.rows}>
 				<fieldset className={choices.options}>
-					<legend className={styles.openingSwingLegend}>Петли</legend>
+					<legend className={styles.openingSwingLegend}>
+						{copy("Петли", "Hinges")}
+					</legend>
 					{([null, "end"] as const).map((selectedHinge) => (
 						<button
 							aria-pressed={selectedHinge === (hingeEnd ?? null)}
@@ -38,12 +51,14 @@ export function DoorSwingPicker({
 							onClick={() => onChange(value, selectedHinge)}
 							type="button"
 						>
-							{selectedHinge ? "Справа" : "Слева"}
+							{selectedHinge ? copy("Справа", "Right") : copy("Слева", "Left")}
 						</button>
 					))}
 				</fieldset>
 				<fieldset className={choices.options}>
-					<legend className={styles.openingSwingLegend}>Открывание</legend>
+					<legend className={styles.openingSwingLegend}>
+						{copy("Открывание", "Swing")}
+					</legend>
 					{directions.map(({ side, label }) => (
 						<button
 							aria-pressed={side === value}
@@ -63,7 +78,7 @@ export function DoorSwingPicker({
 	return (
 		<fieldset className={styles.openingCreationKindPicker}>
 			<legend className={styles.openingSwingLegend}>
-				Направление открывания
+				{copy("Направление открывания", "Swing direction")}
 			</legend>
 			{(["left", "right"] as const).map((side) => (
 				<button
@@ -73,7 +88,7 @@ export function DoorSwingPicker({
 					onClick={() => onChange(side)}
 					type="button"
 				>
-					{side === "left" ? "Влево" : "Вправо"}
+					{side === "left" ? copy("Влево", "Left") : copy("Вправо", "Right")}
 				</button>
 			))}
 		</fieldset>

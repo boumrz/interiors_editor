@@ -2238,6 +2238,123 @@ test("TMA-UI-33: cancelling the plain wall-move confirmation preserves the durab
 	expect(await rows(page, "a")).toEqual(before);
 });
 
+test("TMA-WALL-EXPAND: moving an outer wall expands an L-shaped room", async ({ page }) => {
+	const name = "Расширение комнаты";
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await page.getByRole("button", { name: "Новый проект", exact: true }).click();
+	await page.getByRole("textbox", { name: "Название проекта" }).fill(name);
+	await page.getByRole("button", { name: "Создать проект", exact: true }).click();
+	await saved(page);
+	const corners = [
+		{ xMm: 0, zMm: 0 }, { xMm: 4100, zMm: 0 }, { xMm: 4100, zMm: 3100 },
+		{ xMm: 1800, zMm: 3100 }, { xMm: 1800, zMm: 4700 }, { xMm: 0, zMm: 4700 },
+	];
+	for (const [index, start] of corners.entries()) {
+		await page.evaluate(input => window.__telegramRuntimeUi.addWall(input), {
+			start, end: corners[(index + 1) % corners.length], thicknessMm: 100,
+		});
+	}
+	await saved(page);
+	const source = await currentProject(page);
+	expect(source.level.rooms).toHaveLength(1);
+	const east = source.level.wallSegments.find(wall => [wall.startVertexId, wall.endVertexId].every(id =>
+		source.level.vertices.find(vertex => vertex.vertexId === id)?.xMm === 4100));
+	if (!east) throw new Error("Missing east wall of the L-shaped room");
+	const wall = page.locator(`[data-testid="wall-segment"][data-wall-id="${east.wallSegmentId}"]`);
+	await page.getByRole("button", { name: "Отдалить", exact: true }).click();
+	await wall.click();
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	await page.getByRole("button", { name: "Переместить стену жестом", exact: true }).click();
+	const [first, last] = await verticalWallScreenEndpoints(page, east.wallSegmentId);
+	const point = { x: first.x, y: (first.y + last.y) / 2 };
+	await dragPlanTouch(page, point, { ...point, x: point.x + Math.abs(first.y - last.y) / 3100 * 500 });
+	const draft = page.getByTestId("wall-move-draft");
+	await expect(draft).toBeVisible();
+	const before = await rows(page, "a");
+	expect(await currentProject(page)).toEqual(source);
+	await draft.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect.poll(async () => (await currentProject(page)).level.vertices.filter(vertex => vertex.xMm === 4600)).toHaveLength(2);
+	await saved(page);
+	const expanded = await currentProject(page);
+	expect(expanded.level.rooms[0]).toMatchObject({ roomId: source.level.rooms[0]?.roomId, heightMm: source.level.rooms[0]?.heightMm });
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
+	await page.reload();
+	await start(page, "a");
+	await open(page, name);
+	expect(await currentProject(page)).toEqual(expanded);
+});
+
+test("TMA-WALL-DETACHED: drawing beyond the room preserves a rotated floor item", async ({ page }) => {
+	const name = "Стена на свободном холсте";
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a"));
+	await createRoom(page, name);
+	const room = (await currentProject(page)).level.rooms[0];
+	if (!room) throw new Error("Missing room for the rotated table");
+	await page.evaluate(roomId => window.__telegramRuntimeUi.addRotatedTable(roomId), room.roomId);
+	await saved(page);
+	const source = await currentProject(page);
+	expect(source.assetInstances).toHaveLength(1);
+	const east = source.level.wallSegments.find(wall => [wall.startVertexId, wall.endVertexId].every(id =>
+		source.level.vertices.find(vertex => vertex.vertexId === id)?.xMm === 4100));
+	if (!east) throw new Error("Missing east wall of the room");
+	await page.getByRole("button", { name: "Отдалить", exact: true }).click();
+	await page.getByRole("button", { name: "Отдалить", exact: true }).click();
+	await page.getByTestId("editor-action-dock").getByRole("button", { name: "Стена", exact: true }).click();
+	const [first, last] = await verticalWallScreenEndpoints(page, east.wallSegmentId);
+	const x = first.x + Math.abs(first.y - last.y) / 3100 * 1200;
+	const top = Math.min(first.y, last.y);
+	const height = Math.abs(first.y - last.y);
+	const from = { x, y: top + height * 0.2 };
+	const to = { x, y: top + height * 0.75 };
+	const before = await rows(page, "a");
+	await dragPlanTouch(page, from, to);
+	const draft = page.getByTestId("wall-draft-actions");
+	await expect(draft).toBeVisible();
+	await draft.getByRole("button", { name: "Отменить", exact: true }).click();
+	expect(await rows(page, "a")).toEqual(before);
+	await dragPlanTouch(page, from, to);
+	await draft.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect.poll(async () => (await currentProject(page)).level.wallSegments.length).toBe(5);
+	await saved(page);
+	const added = await currentProject(page);
+	const newVertices = added.level.vertices.filter(vertex => vertex.xMm > 4100);
+	expect(newVertices).toHaveLength(2);
+	expect(newVertices[0]?.xMm).toBe(newVertices[1]?.xMm);
+	expect(added.level.rooms).toEqual(source.level.rooms);
+	expect(added.assetInstances).toEqual(source.assetInstances);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
+	await page.reload();
+	await start(page, "a");
+	await open(page, name);
+	expect(await currentProject(page)).toEqual(added);
+});
+
+function verticalWallScreenEndpoints(page: Page, wallId: string) {
+	return page.locator(`[data-testid="wall-line"][data-wall-id="${wallId}"]`).evaluate(element => {
+		if (!(element instanceof SVGLineElement)) throw new Error("Missing wall line");
+		const matrix = element.getScreenCTM();
+		if (!matrix) throw new Error("Missing plan projection");
+		return [
+			new DOMPoint(element.x1.baseVal.value, element.y1.baseVal.value),
+			new DOMPoint(element.x2.baseVal.value, element.y2.baseVal.value),
+		].map(point => {
+			const transformed = point.matrixTransform(matrix);
+			return { x: transformed.x, y: transformed.y };
+		});
+	});
+}
+
+async function dragPlanTouch(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
+	const cdp = await page.context().newCDPSession(page);
+	try {
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [to] });
+		await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+	} finally {
+		await cdp.detach();
+	}
+}
+
 test("BROWSER-DIRECTORY-UI-01: qualified same-ID card actions retain their selected owner at the shared UI boundary", async ({ page }) => {
  await page.evaluate(() => window.__telegramRuntimeUi.mountDirectoryContract());
  const card = page.locator('[data-project-storage="browser-registered"]');

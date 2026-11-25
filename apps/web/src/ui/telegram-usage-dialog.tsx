@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import type { UsageMetrics } from "../app/telegram-usage-metrics";
 import { LegalDocumentLink } from "./LegalDocumentLink";
@@ -76,32 +77,48 @@ export function TelegramUsageDialog({
 			}}
 		>
 			<SheetHeader
-				title="Статистика"
+				title={copy("Статистика", "Analytics")}
 				titleId={id}
 				titleRef={heading}
 				titleTabIndex={-1}
-				closeLabel="Закрыть статистику"
+				closeLabel={copy("Закрыть статистику", "Close analytics")}
 				onClose={metrics.closeSettings}
 			/>
 			<div className={`${sheetStyles.body} ${styles.content}`}>
-				<p>Статистика помогает улучшать сервис.</p>
+				<p>
+					{copy(
+						"Статистика помогает улучшать сервис.",
+						"Analytics help improve the service.",
+					)}
+				</p>
 				<StatisticsSwitch
-					label="Делиться статистикой"
+					label={copy("Делиться статистикой", "Share analytics")}
 					checked={state.aggregateEnabled}
 					disabled={state.busy}
 					onChange={(checked) => void metrics.setAggregate(checked)}
 				/>
 				{state.aggregateEnabled ? (
-					<section className={styles.additional} aria-labelledby={`${id}-additional`}>
-						<h3 id={`${id}-additional`}>Дополнительная статистика</h3>
+					<section
+						className={styles.additional}
+						aria-labelledby={`${id}-additional`}
+					>
+						<h3 id={`${id}-additional`}>
+							{copy("Дополнительная статистика", "Additional analytics")}
+						</h3>
 						<LegalDocumentLink telegram documentName="analytics-consent">
-							Согласие на дополнительную статистику
+							{copy(
+								"Согласие на дополнительную статистику",
+								"Consent for additional analytics",
+							)}
 						</LegalDocumentLink>
 						{state.studyOpen ? (
 							<>
 								<StatisticsSwitch
-									label="Разрешить"
-									accessibleName="Разрешить дополнительную статистику"
+									label={copy("Разрешить", "Allow")}
+									accessibleName={copy(
+										"Разрешить дополнительную статистику",
+										"Allow additional analytics",
+									)}
 									checked={state.permission === "granted"}
 									disabled={state.busy}
 									onChange={(checked) => void metrics.choose(checked)}
@@ -113,21 +130,28 @@ export function TelegramUsageDialog({
 										onClick={() => void metrics.choose(false)}
 										disabled={state.busy}
 									>
-										Отказаться
+										{copy("Отказаться", "Decline")}
 									</button>
 								)}
 							</>
 						) : (
-							<p>Дополнительная статистика выключена.</p>
+							<p>
+								{copy(
+									"Дополнительная статистика выключена.",
+									"Additional analytics are off.",
+								)}
+							</p>
 						)}
 					</section>
 				) : (
-					<p>Статистика выключена.</p>
+					<p>{copy("Статистика выключена.", "Analytics are off.")}</p>
 				)}
 				{state.error && (
 					<p role="alert">
-						Не удалось проверить или сохранить настройки. Отправка статистики
-						приостановлена. Повторите действие перед выходом.
+						{copy(
+							"Не удалось проверить или сохранить настройки. Отправка статистики приостановлена. Повторите действие перед выходом.",
+							"Could not verify or save your settings. Analytics are paused. Try again before leaving.",
+						)}
 					</p>
 				)}
 			</div>

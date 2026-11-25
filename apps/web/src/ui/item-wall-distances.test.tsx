@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@rstest/core";
 import { renderToStaticMarkup } from "react-dom/server";
+import { setEditorLanguage } from "./editor-language";
 import { ItemWallDistanceFields } from "./ItemWallDistances";
 import type { DerivedOrthogonalRoomFace } from "../domain/derived-orthogonal-plan-faces";
 import { itemWallDistancePositionFor, itemWallDistancesFor } from "./item-wall-distances";
@@ -60,4 +61,24 @@ it("offers four named fields with their current values and a shared unit", () =>
 	expect(html).toContain('aria-label="Сверху, мм"');
 	expect(html).toContain('aria-label="Снизу, мм"');
 	for (const value of [500, 2500, 750, 1750]) expect(html).toContain(`value="${value}"`);
+});
+
+it("uses English accessible names and keeps exact clearance values", () => {
+	setEditorLanguage("en");
+	try {
+		const html = renderToStaticMarkup(
+			<ItemWallDistanceFields
+				distances={itemWallDistancesFor([room], item)}
+				onApply={() => true}
+			/>,
+		);
+		expect(html).toContain("Wall clearances, mm");
+		for (const side of ["Left", "Right", "Top", "Bottom"]) {
+			expect(html).toContain(`aria-label="${side}, mm"`);
+		}
+		for (const value of [500, 2500, 750, 1750])
+			expect(html).toContain(`value="${value}"`);
+	} finally {
+		setEditorLanguage("ru");
+	}
 });

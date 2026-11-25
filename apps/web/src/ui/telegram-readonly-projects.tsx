@@ -1,3 +1,4 @@
+import { copy } from "./editor-language";
 import {
 	type ReactNode,
 	useLayoutEffect,
@@ -428,46 +429,64 @@ export function TelegramReadonlyProjectsContent({
 		>
 			<div className={styles.content}>
 				<header className={styles.header}>
-					<p className={styles.eyebrow}>Локальные данные</p>
-					<h1 id="telegram-readonly-heading">Просмотр проектов</h1>
+					<p className={styles.eyebrow}>
+						{copy("Локальные данные", "Local data")}
+					</p>
+					<h1 id="telegram-readonly-heading">
+						{copy("Просмотр проектов", "View projects")}
+					</h1>
 					<p>
-						Редактирование пока недоступно. Здесь можно подготовить файл проекта
-						или отдельно выгрузить непроверенную исходную запись.
+						{copy(
+							"Редактирование пока недоступно. Здесь можно подготовить файл проекта или отдельно выгрузить непроверенную исходную запись.",
+							"Editing is currently unavailable. You can prepare a project file or export an unverified source record separately.",
+						)}
 					</p>
 				</header>
 				<div className={styles.actions}>
 					<button type="button" onClick={onRetry}>
-						Повторить запуск
+						{copy("Повторить запуск", "Retry launch")}
 					</button>
 					<button type="button" onClick={onExit}>
-						Выйти
+						{copy("Выйти", "Exit")}
 					</button>
 				</div>
 				{state.kind === "loading" ? (
-					<p role="status">Читаем список проектов…</p>
+					<p role="status">
+						{copy("Читаем список проектов…", "Reading projects…")}
+					</p>
 				) : state.kind === "unavailable" ? (
 					<p className={styles.notice} role="status">
-						Не удалось получить список проектов. Повторите запуск. Данные не
-						изменены.
+						{copy(
+							"Не удалось получить список проектов. Повторите запуск. Данные не изменены.",
+							"Could not list your projects. Try launching again. Your data is intact.",
+						)}
 					</p>
 				) : state.kind === "closed" ? (
 					<p className={styles.notice} role="status">
-						Просмотр данных завершён. Можно повторить безопасный запуск.
+						{copy(
+							"Просмотр данных завершён. Можно повторить безопасный запуск.",
+							"Data preview is closed. You can retry the safe launch.",
+						)}
 					</p>
 				) : null}
 				{directory?.kind === "empty" ? (
 					<p className={styles.notice} role="status">
-						В этом локальном контексте пока нет проверенных проектов.
+						{copy(
+							"В этом локальном контексте пока нет проверенных проектов.",
+							"There are no verified projects in this local storage yet.",
+						)}
 					</p>
 				) : null}
 				{recovery ? (
 					<p className={styles.notice} role="status">
-						Часть локальных данных не удалось проверить. Непроверенные исходники
-						можно подготовить отдельно.
+						{copy(
+							"Часть локальных данных не удалось проверить. Непроверенные исходники можно подготовить отдельно.",
+							"Some local data could not be verified. You can prepare unverified source records separately.",
+						)}
 					</p>
 				) : null}
 				{directory?.kind === "populated" ? (
-					<section aria-label="Проверенные записи">
+					<section aria-label={copy("Проверенные записи", "Verified records")}>
 						<ul className={styles.projects}>
 							{directory.projects.map((row) => (
 								<li
@@ -475,7 +494,9 @@ export function TelegramReadonlyProjectsContent({
 									className={styles.card}
 								>
 									<div>
-										<p className={styles.cardLabel}>Проверенная запись</p>
+										<p className={styles.cardLabel}>
+											{copy("Проверенная запись", "Verified record")}
+										</p>
 										<h2>
 											<bdi>{row.name}</bdi>
 										</h2>
@@ -486,14 +507,16 @@ export function TelegramReadonlyProjectsContent({
 										disabled={!fileAvailable || busy}
 										onClick={() => onPrepareProject(row)}
 									>
-										Подготовить файл проекта
+										{copy("Подготовить файл проекта", "Prepare project file")}
 									</button>
 								</li>
 							))}
 						</ul>
 						<p className={styles.caption}>
-							Подготовка файла не означает его сохранение. Для передачи
-							потребуется отдельное нажатие.
+							{copy(
+								"Подготовка файла не означает его сохранение. Для передачи потребуется отдельное нажатие.",
+								"When the file is ready, use the sharing button to save or transfer it.",
+							)}
 						</p>
 					</section>
 				) : null}
@@ -501,7 +524,10 @@ export function TelegramReadonlyProjectsContent({
 					<>
 						{!fileAvailable ? (
 							<p className={styles.notice} role="status">
-								Передача файлов недоступна в этом клиенте.
+								{copy(
+									"Передача файлов недоступна в этом клиенте.",
+									"File sharing is unavailable in this client.",
+								)}
 							</p>
 						) : null}
 						<fieldset
@@ -510,10 +536,17 @@ export function TelegramReadonlyProjectsContent({
 						>
 							{sourceRecovery ?? (
 								<>
-									<h2>Непроверенные исходники</h2>
+									<h2>
+										{copy(
+											"Непроверенные исходники",
+											"Unverified source records",
+										)}
+									</h2>
 									<p>
-										Исходная запись не является полной резервной копией и не
-										восстанавливает проект автоматически.
+										{copy(
+											"Исходная запись не является полной резервной копией и не восстанавливает проект автоматически.",
+											"A raw source record contains only part of the data and cannot restore a project automatically.",
+										)}
 									</p>
 								</>
 							)}

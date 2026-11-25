@@ -94,6 +94,78 @@ function projectWithTable(xMm = 2000, zMm = 1500) {
 	return placed.project;
 }
 
+function projectWithSidewaysTable(
+	project = starterProject(),
+	roomId = "room-1",
+) {
+	const placed = createParametricFloorItem(
+		project,
+		{
+			color: "#2f80ed",
+			depthMm: 400,
+			heightMm: 750,
+			label: "Стол",
+			roomId,
+			widthMm: 1800,
+			xMm: 350,
+			yawStep: 2,
+			zMm: 1200,
+		},
+		ids("sideways-table"),
+		"2026-11-25T10:00:00.000Z",
+	);
+	if (placed.kind !== "accepted") {
+		throw new Error("Expected the rotated table to fit along the left wall");
+	}
+	return placed.project;
+}
+
+function concaveRoomProject(
+	points = [
+		{ xMm: 0, zMm: 0 },
+		{ xMm: 4000, zMm: 0 },
+		{ xMm: 4000, zMm: 2000 },
+		{ xMm: 2000, zMm: 2000 },
+		{ xMm: 2000, zMm: 4000 },
+		{ xMm: 0, zMm: 4000 },
+	],
+) {
+	const empty = createInitialProject({
+		createdAt: "2026-11-25T09:00:00.000Z",
+		levelId: "level-1",
+		name: "Комната с нишей",
+		projectId: "project-concave-room",
+	});
+	const timestamp = "2026-11-25T09:01:00.000Z";
+	const contourIds = ids(
+		"vertex-1",
+		"vertex-2",
+		"wall-1",
+		"vertex-3",
+		"wall-2",
+		"vertex-4",
+		"wall-3",
+		"vertex-5",
+		"wall-4",
+		"vertex-6",
+		"wall-5",
+		"wall-6",
+		"room-concave",
+	);
+	return points.reduce((project, start, index) => {
+		const end = points[(index + 1) % points.length];
+		if (!end) throw new Error("Expected a closed contour");
+		const added = addGeneralWallToProject(
+			project,
+			{ start, end, thicknessMm: 100 },
+			contourIds,
+			timestamp,
+		);
+		if (added.kind !== "accepted") throw new Error("Expected a valid contour");
+		return added.project;
+	}, empty);
+}
+
 function projectWithDoor() {
 	const added = addDoorOpeningToProject(
 		starterProject(),
@@ -3181,6 +3253,183 @@ describe("general Project wall mutations", () => {
 		expect(JSON.stringify(source)).toBe(before);
 	});
 
+	it("expands a furnished concave Room by moving its outer wall", () => {
+		const source = projectWithSidewaysTable(
+			concaveRoomProject(),
+			"room-concave",
+		);
+		const updatedAt = "2026-11-25T10:01:00.000Z";
+		const result = moveGeneralWall(
+			source,
+			{ positionMm: 4500, wallSegmentId: "wall-2" },
+			updatedAt,
+		);
+
+		expect(result).toEqual(expect.objectContaining({ kind: "accepted" }));
+		if (result.kind !== "accepted") return;
+		expect(result.project.updatedAt).toBe(updatedAt);
+		expect(result.project.assetInstances).toEqual(source.assetInstances);
+		expect(result.project.level.rooms).toEqual([
+			{
+				faceFingerprint:
+					"orthogonal-face:0:0|0:4000|2000:4000|2000:2000|4500:2000|4500:0",
+				heightMm: 2600,
+				roomId: "room-concave",
+			},
+		]);
+		const projection = resolveOrthogonalPlanFaces(result.project);
+		expect(projection).toMatchObject({
+			kind: "accepted",
+			plan: {
+				rooms: [
+					{
+						usableFloorPolygonMm: expect.arrayContaining([
+							{ xMm: 4450, zMm: 50 },
+							{ xMm: 4450, zMm: 1950 },
+						]),
+					},
+				],
+			},
+		});
+	});
+
+	it("preserves both room identities when expanding a concave room around its neighbour", () => {
+		const timestamp = "2026-11-25T10:01:00.000Z";
+		const side = addGeneralWallToProject(
+			concaveRoomProject(),
+			{
+				start: { xMm: 4000, zMm: 2000 },
+				end: { xMm: 4000, zMm: 4000 },
+				thicknessMm: 100,
+			},
+			ids("far-corner", "neighbour-side"),
+			timestamp,
+		);
+		if (side.kind !== "accepted") throw new Error("Expected a neighbour wall");
+		const adjacent = addGeneralWallToProject(
+			side.project,
+			{
+				start: { xMm: 4000, zMm: 4000 },
+				end: { xMm: 2000, zMm: 4000 },
+				thicknessMm: 100,
+			},
+			ids("neighbour-bottom", "room-neighbour"),
+			timestamp,
+		);
+		if (adjacent.kind !== "accepted")
+			throw new Error("Expected two closed rooms");
+		const source = {
+			...adjacent.project,
+			level: {
+				...adjacent.project.level,
+				rooms: adjacent.project.level.rooms.map((room) =>
+					room.roomId === "room-neighbour" ? { ...room, heightMm: 2800 } : room,
+				),
+			},
+		};
+		const result = moveGeneralWall(
+			source,
+			{ positionMm: -500, wallSegmentId: "wall-6" },
+			timestamp,
+		);
+		expect(result).toMatchObject({
+			kind: "accepted",
+			project: {
+				level: {
+					rooms: [
+						{
+							faceFingerprint:
+								"orthogonal-face:-500:0|-500:4000|2000:4000|2000:2000|4000:2000|4000:0",
+							heightMm: 2600,
+							roomId: "room-concave",
+						},
+						{
+							faceFingerprint: "grid:2000:4000:2000:4000:100",
+							heightMm: 2800,
+							roomId: "room-neighbour",
+						},
+					],
+				},
+			},
+		});
+	});
+
+	it("rejects a moved concave boundary when a rotated item would lose its host", () => {
+		const source = projectWithSidewaysTable(
+			concaveRoomProject(),
+			"room-concave",
+		);
+		const before = JSON.stringify(source);
+		expect(
+			moveGeneralWall(
+				source,
+				{ positionMm: 250, wallSegmentId: "wall-6" },
+				"2026-11-25T10:01:00.000Z",
+			),
+		).toEqual({ kind: "rejected", reasonCode: "ITEM_HOST_UNRESOLVABLE" });
+		expect(JSON.stringify(source)).toBe(before);
+	});
+
+	it("moves a freely drawn wall while the plan still has no room", () => {
+		const timestamp = "2026-11-25T10:01:00.000Z";
+		const empty = createInitialProject({
+			createdAt: timestamp,
+			levelId: "level-1",
+			name: "Незамкнутый план",
+			projectId: "project-open-plan",
+		});
+		const drawn = addGeneralWallToProject(
+			empty,
+			{
+				start: { xMm: 3000, zMm: 1000 },
+				end: { xMm: 3000, zMm: 2500 },
+				thicknessMm: 100,
+			},
+			ids("start", "end", "wall"),
+			timestamp,
+		);
+		if (drawn.kind !== "accepted") throw new Error("Expected one open wall");
+
+		const moved = moveGeneralWall(
+			drawn.project,
+			{ positionMm: 3500, wallSegmentId: "wall" },
+			timestamp,
+		);
+
+		expect(moved).toMatchObject({
+			kind: "accepted",
+			project: {
+				level: {
+					rooms: [],
+					vertices: [
+						{ vertexId: "start", xMm: 3500, zMm: 1000 },
+						{ vertexId: "end", xMm: 3500, zMm: 2500 },
+					],
+				},
+			},
+		});
+	});
+
+	it.each([
+		{ wallSegmentId: "wall-1", positionMm: 3600 },
+		{ wallSegmentId: "wall-2", positionMm: -500 },
+		{ wallSegmentId: "wall-3", positionMm: -500 },
+		{ wallSegmentId: "wall-4", positionMm: 4600 },
+	])(
+		"rejects dragging $wallSegmentId through the opposite boundary",
+		(input) => {
+			const source = starterProject();
+			const before = JSON.stringify(source);
+			expect(
+				moveGeneralWall(source, input, "2026-11-25T10:01:00.000Z"),
+			).toEqual({
+				kind: "rejected",
+				reasonCode: "INVALID_RESULTING_PROJECT",
+			});
+			expect(JSON.stringify(source)).toBe(before);
+		},
+	);
+
 	it("rejects a moved wall that would collapse a Room usable area without changing the current Project", () => {
 		const divided = addGeneralWallToProject(
 			starterProject(),
@@ -5905,6 +6154,162 @@ describe("general Project wall mutations", () => {
 			]),
 		);
 		expect(result.project.updatedAt).toBe("2026-08-12T10:03:00.000Z");
+	});
+
+	it("adds a detached wall outside a room with a rotated floor item against its boundary", () => {
+		const source = projectWithSidewaysTable();
+		const vertexStart = { xMm: 5000, zMm: 0 };
+		const vertexEnd = { xMm: 5000, zMm: 7300 };
+		const result = addGeneralWallToProject(
+			source,
+			{ start: vertexStart, end: vertexEnd, thicknessMm: 100 },
+			ids("guide-start", "guide-end", "guide-wall"),
+			"2026-11-25T10:02:00.000Z",
+		);
+
+		expect(result).toEqual(expect.objectContaining({ kind: "accepted" }));
+		if (result.kind !== "accepted") return;
+		expect(result.project.assetInstances).toEqual(source.assetInstances);
+		expect(result.project.level.rooms).toEqual(source.level.rooms);
+		expect(result.project.level.vertices).toEqual([
+			...source.level.vertices,
+			{ vertexId: "guide-start", ...vertexStart },
+			{ vertexId: "guide-end", ...vertexEnd },
+		]);
+		expect(result.project.level.wallSegments).toEqual([
+			...source.level.wallSegments,
+			{
+				endVertexId: "guide-end",
+				startVertexId: "guide-start",
+				thicknessMm: 100,
+				wallSegmentId: "guide-wall",
+			},
+		]);
+	});
+
+	it("closes a separate contour without relocating an item from the original room", () => {
+		const source = projectWithSidewaysTable();
+		const points = [
+			{ xMm: 5000, zMm: 0 },
+			{ xMm: 6600, zMm: 0 },
+			{ xMm: 6600, zMm: 1000 },
+			{ xMm: 5000, zMm: 1000 },
+			{ xMm: 5000, zMm: 0 },
+		];
+		const contourIds = ids(
+			"exterior-1",
+			"exterior-2",
+			"exterior-wall-1",
+			"exterior-3",
+			"exterior-wall-2",
+			"exterior-4",
+			"exterior-wall-3",
+			"exterior-wall-4",
+			"exterior-room",
+		);
+		const result = points
+			.slice(1)
+			.reduce<ReturnType<typeof addGeneralWallToProject>>(
+				(previous, end, index) => {
+					const start = points[index];
+					if (!start || previous.kind !== "accepted") {
+						throw new Error(
+							"Expected every open part of the detached contour to save",
+						);
+					}
+					return addGeneralWallToProject(
+						previous.project,
+						{ start, end, thicknessMm: 100 },
+						contourIds,
+						"2026-11-25T10:03:00.000Z",
+					);
+				},
+				{ kind: "accepted", project: source },
+			);
+
+		expect(result).toEqual(expect.objectContaining({ kind: "accepted" }));
+		if (result.kind !== "accepted") return;
+		expect(result.project.assetInstances).toEqual(source.assetInstances);
+		expect(resolveOrthogonalPlanFaces(result.project)).toMatchObject({
+			kind: "accepted",
+			plan: { rooms: [{ roomId: "room-1" }, { roomId: "exterior-room" }] },
+		});
+	});
+
+	it("keeps an existing concave room's ID and item when closing a triangle in its outer notch", () => {
+		const timestamp = "2026-11-25T10:03:00.000Z";
+		const concave = concaveRoomProject([
+			{ xMm: 1000, zMm: 0 },
+			{ xMm: 3000, zMm: 0 },
+			{ xMm: 3000, zMm: 3000 },
+			{ xMm: 0, zMm: 3000 },
+			{ xMm: 0, zMm: 1000 },
+			{ xMm: 1000, zMm: 1000 },
+		]);
+		const source = createParametricFloorItem(
+			concave,
+			{
+				color: "#2f80ed",
+				depthMm: 300,
+				heightMm: 400,
+				label: "Табурет",
+				roomId: "room-concave",
+				widthMm: 300,
+				xMm: 1500,
+				zMm: 650,
+			},
+			ids("stool"),
+			timestamp,
+		);
+		if (source.kind !== "accepted")
+			throw new Error("Expected stool to fit the room");
+		const added = addGeneralWallToProject(
+			source.project,
+			{
+				start: { xMm: 0, zMm: 1000 },
+				end: { xMm: 1000, zMm: 0 },
+				thicknessMm: 100,
+			},
+			ids("diagonal", "room-triangle"),
+			timestamp,
+		);
+		expect(added).toMatchObject({
+			kind: "accepted",
+			project: {
+				assetInstances: source.project.assetInstances,
+				level: {
+					rooms: expect.arrayContaining([
+						...source.project.level.rooms,
+						{
+							faceFingerprint: "orthogonal-face:0:1000|1000:0|1000:1000",
+							heightMm: 2600,
+							roomId: "room-triangle",
+						},
+					]),
+				},
+			},
+		});
+	});
+
+	it("keeps a retained floor item's position and assigns it to the correct successor after a room split", () => {
+		const source = projectWithTable(3000, 1500);
+		const result = addGeneralWallToProject(
+			source,
+			{
+				start: { xMm: 2050, zMm: 0 },
+				end: { xMm: 2050, zMm: 3100 },
+				thicknessMm: 100,
+			},
+			ids("start", "end", "top-tail", "bottom-tail", "divider", "room-right"),
+			"2026-11-25T10:03:00.000Z",
+		);
+
+		expect(result).toMatchObject({
+			kind: "accepted",
+			project: {
+				assetInstances: [{ ...source.assetInstances[0], roomId: "room-right" }],
+			},
+		});
 	});
 
 	it("normalizes two contiguous freehand pieces of the same detached wall into one segment", () => {

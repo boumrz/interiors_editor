@@ -18,8 +18,10 @@ import {
 } from "../adapters/telegram/host-environment";
 import { createTelegramHostFileBridge } from "../adapters/telegram/host-file-bridge";
 import { createTelegramProjectDownload } from "../adapters/telegram/project-download";
+import { botLanguageKey, languageForTelegram, selectTelegramLanguage } from "../adapters/telegram/editor-language";
 import type {
 	TelegramLaunchConfiguration,
+	TelegramLaunchResult,
 	VerifiedTelegramScope,
 } from "../adapters/telegram/signed-launch";
 import type {
@@ -27,6 +29,7 @@ import type {
 	CatalogPublicationResult,
 } from "../application/ports";
 import type { LocalFileTransferPort } from "../ui/local-file-transfer";
+import { copy, type EditorLanguage, setEditorLanguage } from "../ui/editor-language";
 import { TelegramLegalDocuments, TelegramLegalEntry, TelegramSettings } from "../ui/telegram-legal-access";
 import { bundledLegalDocument, currentLicenseReadable } from "./legal-release";
 import { licenseReceipts } from "./license-receipt";
@@ -221,6 +224,11 @@ export function createTelegramEntrySession(dependencies: {
 	readonly readCapabilities: () => ReleaseRuntimeCapabilities;
 	readonly readWorker: (signal: AbortSignal) => Promise<WorkerState>;
 	readonly source: TelegramSdkSource;
+	readonly deviceLanguage?: string;
+	readonly resolveLanguage?: (
+		launch: Extract<TelegramLaunchResult, { kind: "verified" }>,
+		configuration: TelegramLaunchConfiguration,
+	) => Promise<EditorLanguage>;
 	readonly createRuntime: (
 		approval: ApprovedTelegramRelease,
 		scope: VerifiedTelegramScope,
@@ -232,6 +240,7 @@ export function createTelegramEntrySession(dependencies: {
 	readonly connectHost?: (
 		capture: TelegramHostCapture,
 		onContextChanged: () => void,
+		scope: VerifiedTelegramScope,
 	) => TelegramHostEnvironment;
 	readonly nowEpochMs: () => number;
 	readonly onExit: () => void;
@@ -368,6 +377,7 @@ export function createTelegramEntrySession(dependencies: {
 		const drain = stopRuntime();
 		if (!disposed && generation === expected) {
 			diagnostics.reset();
+			if (dependencies.resolveLanguage) applyTelegramLanguage(languageForTelegram(undefined, dependencies.deviceLanguage));
 			if (isCurrent(expected)) update({ kind: "checking" });
 		}
 		void (async () => {
@@ -449,11 +459,16 @@ export function createTelegramEntrySession(dependencies: {
 					});
 					return;
 				}
+				if (dependencies.resolveLanguage) {
+					const language = await dependencies.resolveLanguage(launch, configuration.configuration);
+					if (!isCurrent(expected)) return;
+					applyTelegramLanguage(language);
+				}
 				if (dependencies.connectHost) {
 					if (!captured) throw new Error("Telegram host capture unavailable");
 					const connected = dependencies.connectHost(captured, () => {
 						void start();
-					});
+					}, launch.scope);
 					if (!isCurrent(expected)) {
 						connected.dispose();
 						return;
@@ -803,39 +818,39 @@ export function TelegramEditorApp({
 		<main aria-busy={checking} aria-labelledby="telegram-entry-heading">
 			<img src="/interiors-lamp-v1.png" alt="InteriorsEditor" width={56} height={56} style={{ borderRadius: 12 }} />
 			<h1 id="telegram-entry-heading">
-				{checking ? "Открытие редактора" : "Не удалось открыть редактор"}
+				{checking ? copy("Открытие редактора", "Opening the editor") : copy("Не удалось открыть редактор", "Could not open the editor")}
 			</h1>
 			<p role="status">
 				{checking
-					? "Проверяем запуск и локальное хранилище…"
+					? copy("Проверяем запуск и локальное хранилище…", "Checking the launch and local storage…")
 					: state.kind === "unavailable" && state.reason === "configuration"
 						? session.links.webURL
-							? "Этот Telegram-редактор пока не настроен. Можно открыть веб-редактор."
-							: "Этот Telegram-редактор пока не настроен. Повторите запуск позже."
+							? copy("Этот Telegram-редактор пока не настроен. Можно открыть веб-редактор.", "This Telegram editor is not configured yet. You can open the web editor.")
+							: copy("Этот Telegram-редактор пока не настроен. Повторите запуск позже.", "This Telegram editor is not configured yet. Try again later.")
 						: state.kind === "unavailable" && state.reason === "timeout"
-							? "Telegram не ответил вовремя. Повторите запуск."
-							: "Безопасный запуск не подтверждён. Повторите запуск из Telegram."}
+							? copy("Telegram не ответил вовремя. Повторите запуск.", "Telegram did not respond in time. Try again.")
+							: copy("Безопасный запуск не подтверждён. Повторите запуск из Telegram.", "The launch could not be verified. Reopen the editor from Telegram.")}
 			</p>
 			<TelegramLegalDocuments />
 			{!checking ? (
 				<>
 					<button type="button" onClick={() => void session.start()}>
-						Повторить запуск
+						{copy("Повторить запуск", "Try again")}
 					</button>
 					<button type="button" onClick={() => void session.exit()}>
-						Выйти
+						{copy("Выйти", "Exit")}
 					</button>
 				</>
 			) : null}
 			<TelegramDiagnosticDetails diagnostics={session.diagnostics} />
 			{session.links.telegramURL ? (
 				<p>
-					<a href={session.links.telegramURL}>Открыть в Telegram</a>
+					<a href={session.links.telegramURL}>{copy("Открыть в Telegram", "Open in Telegram")}</a>
 				</p>
 			) : null}
 			{session.links.webURL ? (
 				<p>
-					<a href={session.links.webURL}>Открыть веб-редактор</a>
+					<a href={session.links.webURL}>{copy("Открыть веб-редактор", "Open the web editor")}</a>
 				</p>
 			) : null}
 		</main>
@@ -860,7 +875,7 @@ function AdmittedReadonlyProjects({
 	return (
 		<TelegramSettings host={hostEnvironment} analytics={analytics}>
 		{(openSettings, navigation) => <>
-		<button type="button" onClick={(event) => openSettings(event.currentTarget)}>Настройки</button>
+		<button type="button" onClick={(event) => openSettings(event.currentTarget)}>{copy("Настройки", "Settings")}</button>
 		<TelegramReadonlyProjects
 			runtime={runtime}
 			fileTransfer={fileTransfer}
@@ -882,6 +897,10 @@ function AdmittedReadonlyProjects({
 		</TelegramSettings>
 	);
 }
+const unsubscribeEmpty = () => undefined;
+const subscribeWithoutTheme = () => unsubscribeEmpty;
+const noRoomTheme = () => undefined;
+
 function AdmittedEditor({
 	runtime,
 	hostEnvironment,
@@ -900,6 +919,10 @@ function AdmittedEditor({
 	useEffect(() => {
 		session.ready(runtime);
 	}, [runtime, session]);
+	const roomTheme = useSyncExternalStore(
+		hostEnvironment?.theme?.subscribe ?? subscribeWithoutTheme,
+		hostEnvironment?.theme?.snapshot ?? noRoomTheme,
+	);
 	const analytics = useMemo(
 		() => analyticsFor?.(runtime.scope, runtime),
 		[analyticsFor, runtime],
@@ -921,6 +944,7 @@ function AdmittedEditor({
 		{(openSettings, navigation) => <>
 		<EditorApp
 			localGreyboxCatalog
+			roomTheme={roomTheme}
 			exactFloorYaw={runtime.exactFloorYaw}
 			doorHingeAuthoring={runtime.doorHingeAuthoring}
 			onOpenSettings={openSettings}
@@ -1045,6 +1069,11 @@ function requestExit() {
 	window.close();
 }
 
+function applyTelegramLanguage(language: EditorLanguage): void {
+	setEditorLanguage(language);
+	if (typeof document !== "undefined") document.documentElement.lang = language;
+}
+
 /** Explicit Telegram entry only: imports never construct a browser singleton. */
 export function mountTelegramBrowserEditor(
 	element: HTMLElement,
@@ -1074,11 +1103,25 @@ export function mountTelegramBrowserEditor(
 		readCapabilities: readTelegramCapabilities,
 		readWorker: readTelegramWorkerState,
 		source,
-		connectHost: (capture, onContextChanged) =>
+		deviceLanguage: navigator.language,
+		resolveLanguage(launch, configuration) {
+			let storage: Storage | undefined;
+			try { storage = window.localStorage; } catch { /* Local preferences are optional. */ }
+			return selectTelegramLanguage(launch, {
+				storage,
+				key: botLanguageKey(configuration.botId, configuration.environment),
+				deviceLanguage: navigator.language,
+			});
+		},
+		connectHost: (capture, onContextChanged, scope) =>
 			capture.connect({
 				...createTelegramBrowserSignals({ window, document }),
 				readCurrentSdk: readWebApp,
 				onContextChanged,
+				themePreference: {
+					read: () => window.localStorage.getItem(`interiors-tma-theme:${scope}`),
+					write: (preference) => window.localStorage.setItem(`interiors-tma-theme:${scope}`, preference),
+				},
 			}),
 		nowEpochMs: readLaunchTime,
 		onExit: requestExit,

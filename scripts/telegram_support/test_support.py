@@ -40,7 +40,7 @@ class Telegram:
             if method == failure_method and payload.get("chat_id") == failure_recipient:
                 self.error = None
                 raise error
-        if method == "answerCallbackQuery":
+        if method in ("answerCallbackQuery", "setChatMenuButton"):
             return True
         if method not in ("sendMessage", "sendPhoto"):
             raise AssertionError(f"Unexpected Bot API call {method}")
@@ -78,6 +78,9 @@ class SupportTests(unittest.TestCase):
         self.update_id = 0
         self.support = Support(self.db_path, OWNER, clock=self.clock)
         self.addCleanup(lambda: self.support.close())
+        self.support.apply(self.message(OWNER, "/help"))
+        self.drain()
+        self.telegram = Telegram(self.clock)
 
     def restart(self):
         self.support.close()
@@ -94,13 +97,15 @@ class SupportTests(unittest.TestCase):
         self.update_id += 1
         return {"update_id": self.update_id, **payload}
 
-    def message(self, chat_id=REPORTER, text=None, *, sender=None, chat_type="private", **payload):
+    def message(self, chat_id=REPORTER, text=None, *, sender=None, chat_type="private",
+                language_code="ru", **payload):
         if text is not None:
             payload["text"] = text
         return self.update(message={
             "message_id": self.update_id + 1,
             "date": int(self.clock()),
-            "from": {"id": chat_id if sender is None else sender, "is_bot": False},
+            "from": {"id": chat_id if sender is None else sender, "is_bot": False,
+                     **({} if language_code is None else {"language_code": language_code})},
             "chat": {"id": chat_id, "type": chat_type},
             **payload,
         })
@@ -109,7 +114,7 @@ class SupportTests(unittest.TestCase):
         message, callback_data = self.telegram.button(chat_id, label)
         return self.update(callback_query={
             "id": f"callback-{self.update_id + 1}",
-            "from": {"id": chat_id, "is_bot": False},
+            "from": {"id": chat_id, "is_bot": False, "language_code": "ru"},
             "message": {
                 "message_id": message["message_id"],
                 "chat": {"id": chat_id, "type": "private"},
@@ -128,6 +133,142 @@ class SupportTests(unittest.TestCase):
         self.add_description(chat_id, text)
         self.drain()
         return self.telegram.last_text(OWNER)
+
+    def configure_language_token(self):
+        def token(chat_id, language, revision):
+            return f"lang1_{language}_{revision}_" + ("A" if chat_id == REPORTER else "B") * 86
+
+        self.support.close()
+        self.support = Support(self.db_path, OWNER, clock=self.clock, language_token=token)
+
+    def test_bot_uses_telegram_language_and_english_for_other_or_missing_languages(self):
+        for language, expected in (("ru-RU", "Открыть редактор"), ("en-US", "Open editor"),
+                                   ("fr", "Open editor"), (None, "Open editor")):
+            with self.subTest(language=language):
+                self.support.apply(self.message(text="/start", language_code=language))
+                self.drain()
+                keyboard = self.telegram.last_text(REPORTER)["reply_markup"]["inline_keyboard"]
+                self.assertEqual(keyboard[0][0]["text"], expected)
+
+    def test_language_choice_persists_and_personalizes_only_the_private_account(self):
+        self.configure_language_token()
+        self.support.apply(self.message(text="/language", language_code="en"))
+        self.drain()
+        reply = self.telegram.last_text(REPORTER)
+        self.assertIn("Choose a language", reply["text"])
+        wrong_account = self.press("Русский")
+        wrong_account["callback_query"]["from"]["id"] = OUTSIDER
+        self.support.apply(wrong_account)
+        choice = self.press("English")
+        self.assertTrue(self.support.apply(choice))
+        self.assertFalse(self.support.apply(choice))
+        self.drain()
+        menu, = [body for method, body in self.telegram.calls if method == "setChatMenuButton"]
+        self.assertEqual(menu["chat_id"], REPORTER)
+        self.assertEqual(menu["menu_button"]["text"], "Open editor")
+        link = menu["menu_button"]["web_app"]["url"]
+        self.assertEqual(link, "https://t.me/InteriorsEditorBot?startapp=lang1_en_1_" + "A" * 86)
+
+        self.configure_language_token()
+        self.support.apply(self.message(text="/start", language_code="ru"))
+        self.support.apply(self.message(OUTSIDER, "/start", language_code="ru"))
+        self.drain()
+        self.assertEqual(self.telegram.last_text(REPORTER)["reply_markup"]["inline_keyboard"][0][0],
+                         {"text": "Open editor", "url": link})
+        self.assertIn("Открыть редактор", str(self.telegram.last_text(OUTSIDER)["reply_markup"]))
+
+    def test_rapid_language_changes_replace_an_uncertain_menu_retry(self):
+        self.configure_language_token()
+        self.support.apply(self.message(text="/language"))
+        self.drain()
+        self.telegram.error = ("setChatMenuButton", REPORTER, DeliveryError("unknown", code="response-lost"))
+        self.support.apply(self.press("Русский"))
+        self.drain()
+        self.support.apply(self.press("English"))
+        self.support.apply(self.press("Русский"))
+        self.configure_language_token()
+        self.drain()
+        self.clock.now += 3600
+        self.drain()
+        menus = [body["menu_button"]["web_app"]["url"] for method, body in self.telegram.calls
+                 if method == "setChatMenuButton"]
+        self.assertEqual(menus, ["https://t.me/InteriorsEditorBot?startapp=lang1_ru_1_" + "A" * 86,
+                                 "https://t.me/InteriorsEditorBot?startapp=lang1_ru_3_" + "A" * 86])
+
+    def test_latest_menu_retries_after_an_ambiguous_failure(self):
+        self.configure_language_token()
+        self.support.apply(self.message(text="/language"))
+        self.drain()
+        self.telegram.error = ("setChatMenuButton", REPORTER, DeliveryError("unknown", code="response-lost"))
+        self.support.apply(self.press("English"))
+        self.drain()
+        self.configure_language_token()
+        self.clock.now += 3600
+        self.drain()
+        jobs = [body for method, body in self.telegram.calls if method == "setChatMenuButton"]
+        self.assertEqual(len(jobs), 2)
+        self.assertEqual(jobs[0], jobs[1])
+
+    def test_interrupted_menu_delivery_restarts_without_duplicate_confirmation(self):
+        self.configure_language_token()
+        self.support.apply(self.message(text="/language"))
+        self.drain()
+        self.support.apply(self.press("English"))
+        self.assertTrue(self.support.deliver_one(self.telegram.send))
+
+        def interrupted(method, body):
+            self.telegram.send(method, body)
+            raise KeyboardInterrupt
+
+        with self.assertRaises(KeyboardInterrupt):
+            self.support.deliver_one(interrupted)
+        self.configure_language_token()
+        self.drain()
+        menus = [body for method, body in self.telegram.calls if method == "setChatMenuButton"]
+        self.assertEqual(len(menus), 2)
+        self.assertEqual(menus[0], menus[1])
+        self.assertEqual([m["text"] for m in self.telegram.received(REPORTER)],
+                         ["Выберите язык", "English selected."])
+
+    def test_language_without_signer_keeps_support_available_and_sends_general_launch(self):
+        self.support.apply(self.message(text="/language"))
+        self.drain()
+        self.support.apply(self.press("English"))
+        self.drain()
+        response = self.telegram.last_text(REPORTER)
+        self.assertIn("currently unavailable", response["text"])
+        self.assertEqual(response["reply_markup"]["inline_keyboard"][0][0]["url"],
+                         "https://t.me/InteriorsEditorBot?startapp")
+        self.assertFalse(any(method == "setChatMenuButton" for method, _ in self.telegram.calls))
+        self.restart()
+        self.support.apply(self.message(text="/support"))
+        self.drain()
+        self.assertIn("screenshots", self.telegram.last_text(REPORTER)["text"])
+
+    def test_support_notification_uses_the_owners_language_after_restart(self):
+        self.support.apply(self.message(OWNER, "/help", language_code="en-GB"))
+        self.drain()
+        self.restart()
+        ticket = self.send_ticket()
+        self.assertIn("Report #", ticket["text"])
+        self.assertIn(DESCRIPTION, ticket["text"])
+
+    def test_english_ticket_receives_reply_in_english_from_russian_owner_after_restart(self):
+        self.support.apply(self.message(text="/support", language_code="en-US"))
+        self.drain()
+        self.assertIn("screenshots", self.telegram.last_text(REPORTER)["text"])
+        self.assertIn("https://domiknote.ru/legal/2026-11-24.2/en/telegram-support-privacy.html",
+                      self.telegram.last_text(REPORTER)["text"])
+        self.support.apply(self.message(text=DESCRIPTION, language_code="en-US"))
+        self.drain()
+        ticket = self.telegram.last_text(OWNER)
+        self.assertIn(DESCRIPTION, ticket["text"])
+        self.assertIn("was received", self.telegram.last_text(REPORTER)["text"])
+        self.restart()
+        self.support.apply(self.message(OWNER, REPLY, reply_to_message=ticket))
+        self.drain()
+        self.assertIn("Reply to report", self.telegram.last_text(REPORTER)["text"])
+        self.assertIn(REPLY, self.telegram.last_text(REPORTER)["text"])
 
     def test_private_input_outside_support_shows_same_commands_as_help(self):
         self.support.apply(self.message(text="Где список команд?"))

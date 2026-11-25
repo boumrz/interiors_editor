@@ -204,7 +204,7 @@ test(`TMA-ADD-OPENING: ${kind} moves by touch before creation is confirmed`, asy
 	expect(await rows(page, "a")).toEqual(before);
 	expect((await currentProject(page)).level.openings).toEqual([]);
 
-	await sheet.getByRole("button", { name: "Подтвердить", exact: true }).tap();
+	await sheet.getByRole("button", { name: "Подтвердить", exact: true }).click();
 	await saved(page);
 	await expect.poll(centreX).toBeCloseTo(draftPosition);
 	expect((await currentProject(page)).level.openings).toEqual([

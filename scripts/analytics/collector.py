@@ -21,6 +21,39 @@ PRIMARY = "114486792"
 TMA_URL = "https://domiknote.ru/tma"
 SERVICE_CID = "7000000000000000001"
 INTRADAY_SERVICE_CID = "7000000000000000002"
+PRODUCT_COUNTER = "114493478"
+PRODUCT_URL = "https://domiknote.ru/tma-editor-report"
+PRODUCT_GROUPS = {
+    "projects": (
+        "editor_entry", "project_created", "saved_project_opened", "room_created",
+        "backup_prepared", "backup_handoff_requested", "backup_imported",
+    ),
+    "tools": (
+        "wall_added", "wall_moved", "opening_added", "item_placed", "item_color_changed",
+        "view_3d_ready", "undo_committed", "redo_committed",
+    ),
+    "errors": (
+        "geometry_rejected", "item_collision", "opening_conflict", "save_quota", "save_failed",
+        "storage_unavailable", "resource_missing", "resource_corrupt", "scene_unavailable",
+        "scene_context_lost", "backup_invalid", "backup_incompatible", "backup_import_failed",
+        "backup_export_failed", "backup_handoff_failed",
+    ),
+}
+PRODUCT_PLATFORMS = ("ios", "android")
+PRODUCT_CIDS = {
+    ("projects", "ios"): "7000000000000000003",
+    ("projects", "android"): "7000000000000000004",
+    ("tools", "ios"): "7000000000000000005",
+    ("tools", "android"): "7000000000000000006",
+    ("errors", "ios"): "7000000000000000007",
+    ("errors", "android"): "7000000000000000008",
+}
+PRODUCT_ROUTES = {
+    f"/stats/tma-editor-v1/{platform}/{code}": (platform, code)
+    for platform in PRODUCT_PLATFORMS for codes in PRODUCT_GROUPS.values() for code in codes
+}
+PRODUCT_HEALTH = "/health/tma-editor-v1"
+RETRYABLE_DELIVERY = {"offline", "rejected"}
 DATABASE = "/var/lib/interiors-analytics/counts.sqlite3"
 OPEN = "/stats/tma-open-v2"
 MOBILE_OPEN = "/stats/tma-mobile-open-v1"
@@ -38,6 +71,11 @@ def slot_start(now):
 
 def moscow_instant(timestamp):
     return dt.datetime.fromtimestamp(timestamp, MOSCOW).isoformat()
+
+
+def product_day_end(day):
+    midnight = dt.datetime.combine(day + dt.timedelta(days=1), dt.time.min, tzinfo=MOSCOW)
+    return midnight - dt.timedelta(seconds=1)
 
 
 class Counts:
@@ -63,6 +101,10 @@ class Counts:
             db.execute("CREATE TABLE IF NOT EXISTS intraday_activation (id INTEGER PRIMARY KEY CHECK(id = 1), start INTEGER NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS intraday_counts (start INTEGER PRIMARY KEY, opens INTEGER NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS intraday_exports (start INTEGER PRIMARY KEY, state TEXT NOT NULL)")
+            db.execute("CREATE TABLE IF NOT EXISTS product_counts (day TEXT NOT NULL, platform TEXT NOT NULL, "
+                       "code TEXT NOT NULL, total INTEGER NOT NULL, PRIMARY KEY (day, platform, code))")
+            db.execute("CREATE TABLE IF NOT EXISTS product_exports (day TEXT NOT NULL, group_name TEXT NOT NULL, "
+                       "platform TEXT NOT NULL, state TEXT NOT NULL, PRIMARY KEY (day, group_name, platform))")
             # Establish the first observed day. Later closed days with no opens legitimately have zero.
             db.execute("INSERT INTO counts SELECT ?, 0 WHERE NOT EXISTS (SELECT 1 FROM counts)",
                        (self.today().isoformat(),))
@@ -88,6 +130,74 @@ class Counts:
                            "(SELECT start FROM intraday_activation WHERE id = 1) "
                            "ON CONFLICT(start) DO UPDATE SET opens = opens + 1", (start, start))
             return True
+
+    def increment_product(self, platform, code):
+        with self.transaction() as db:
+            day = self.today().isoformat()
+            db.execute("INSERT INTO product_counts VALUES (?, ?, ?, 1) "
+                       "ON CONFLICT(day, platform, code) DO UPDATE SET total = total + 1", (day, platform, code))
+        return True
+
+    @staticmethod
+    def product_totals(db, day):
+        return {(platform, code): total for platform, code, total in db.execute(
+            "SELECT platform, code, total FROM product_counts WHERE day = ?", (day,)
+        )}
+
+    def product_report(self, day):
+        date = day.isoformat()
+        with closing(sqlite3.connect(self.path, timeout=5)) as db:
+            earliest = db.execute("SELECT min(day) FROM product_counts").fetchone()[0]
+            totals = self.product_totals(db, date)
+            exports = {(group, platform): state for group, platform, state in db.execute(
+                "SELECT group_name, platform, state FROM product_exports WHERE day = ?", (date,)
+            )}
+        if earliest is None or date < earliest:
+            return []
+        now = self.now().astimezone(MOSCOW)
+        end = product_day_end(day)
+        reports = []
+        for group, platform in PRODUCT_CIDS:
+            state = exports.get((group, platform), "open" if day >= now.date() else "pending")
+            if state in RETRYABLE_DELIVERY | {"pending"} and now.timestamp() > end.timestamp() + MAX_BACKDATE_SECONDS:
+                state = "expired"
+            reports.append({"group": group, "platform": platform, "state": state,
+                            "params": {code: totals.get((platform, code), 0) for code in PRODUCT_GROUPS[group]}})
+        return reports
+
+    def claim_product_export(self, day, group, platform):
+        date = day.isoformat()
+        with self.transaction() as db:
+            now = self.now().timestamp()
+            end = product_day_end(day).timestamp()
+            if not end + 1 <= now <= end + MAX_BACKDATE_SECONDS:
+                return "expired", None
+            earliest = db.execute("SELECT min(day) FROM product_counts").fetchone()[0]
+            if earliest is None or date < earliest:
+                return "before-start", None
+            row = db.execute("SELECT state FROM product_exports WHERE day = ? AND group_name = ? AND platform = ?",
+                             (date, group, platform)).fetchone()
+            if row and row[0] not in RETRYABLE_DELIVERY:
+                return row[0], None
+            db.execute("INSERT OR REPLACE INTO product_exports VALUES (?, ?, ?, 'sending')",
+                       (date, group, platform))
+            totals = dict(db.execute("SELECT code, total FROM product_counts WHERE day = ? AND platform = ?",
+                                     (date, platform)))
+            return "claimed", {code: totals.get(code, 0) for code in PRODUCT_GROUPS[group]}
+
+    def finish_product_export(self, day, group, platform, state):
+        with self.transaction() as db:
+            db.execute("UPDATE product_exports SET state = ? WHERE day = ? AND group_name = ? AND platform = ? "
+                       "AND state = 'sending'", (state, day.isoformat(), group, platform))
+
+    def resolve_product_export(self, day, group, platform, state):
+        if (group, platform) not in PRODUCT_CIDS or state not in {"sent", "rejected"}:
+            raise ValueError("Unknown product report resolution")
+        with self.transaction() as db:
+            cursor = db.execute("UPDATE product_exports SET state = ? WHERE day = ? AND group_name = ? "
+                                "AND platform = ? AND state IN ('unknown', 'sending')",
+                                (state, day.isoformat(), group, platform))
+            return cursor.rowcount == 1
 
     def activate_intraday(self):
         with self.transaction() as db:
@@ -200,7 +310,17 @@ class Analytics:
             return counter, token
         return None
 
+    def product_enabled(self):
+        return self.env.get("INTERIORS_PRODUCT_METRICS_ENABLED") == "1"
+
+    def product_destination(self):
+        destination = self.destination()
+        return destination if destination and destination[0] == PRODUCT_COUNTER else None
+
     def record(self, route):
+        product = PRODUCT_ROUTES.get(route)
+        if product is not None:
+            return self.product_enabled() and self.store.increment_product(*product)
         if not self.aggregate_enabled():
             return False
         if route == REPEAT and self.env.get("INTERIORS_REPEAT_ENABLED", "1") != "1":
@@ -229,6 +349,31 @@ class Analytics:
         status = self.send(counter, token, [hit])
         self.store.finish_export(day, status)
         return status
+
+    def export_product(self):
+        if not self.product_enabled():
+            return {"state": "disabled", "reports": []}
+        now = self.store.now().astimezone(MOSCOW)
+        day = now.date() - dt.timedelta(days=1)
+        end = product_day_end(day)
+        if now.timestamp() > end.timestamp() + MAX_BACKDATE_SECONDS:
+            return {"state": "expired", "reports": []}
+        destination = self.product_destination()
+        if not destination:
+            return {"state": "unconfigured", "reports": []}
+        reports = []
+        for (group, platform), cid in PRODUCT_CIDS.items():
+            state, params = self.store.claim_product_export(day, group, platform)
+            if state == "before-start":
+                return {"state": state, "reports": []}
+            if state == "claimed":
+                hit = {"cid": cid, "t": "pageview", "dl": f"{PRODUCT_URL}/{group}/{platform}",
+                       "et": str(int(end.timestamp())), "params": json.dumps(params, separators=(",", ":"))}
+                state = self.send(*destination, [hit])
+                self.store.finish_product_export(day, group, platform, state)
+            reports.append({"group": group, "platform": platform, "state": state})
+        return {"state": "ok" if all(row["state"] == "sent" for row in reports) else "needs-review",
+                "day": day.isoformat(), "reports": reports}
 
     def export_intraday(self):
         if not self.aggregate_enabled():
@@ -266,21 +411,28 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def do_GET(self):
-        if self.path not in {"/health", "/health/aggregate-v2", "/health/mobile-open-v1"}:
+        if self.path not in {"/health", "/health/aggregate-v2", "/health/mobile-open-v1", PRODUCT_HEALTH}:
             return self.reply(404)
         app = self.server.app
         try:
-            app.store.totals(app.store.today().isoformat())
-            if self.path != "/health" and (not app.aggregate_enabled() or not app.destination()):
-                return self.reply(503)
-            if self.path == "/health/mobile-open-v1":
-                app.store.intraday_report(app.store.today())
+            today = app.store.today()
+            if self.path == PRODUCT_HEALTH:
+                if not app.product_destination():
+                    return self.reply(503)
+                app.store.product_report(today)
+            else:
+                app.store.totals(today.isoformat())
+                if self.path != "/health" and (not app.aggregate_enabled() or not app.destination()):
+                    return self.reply(503)
+                if self.path == "/health/mobile-open-v1":
+                    app.store.intraday_report(today)
         except sqlite3.Error:
             return self.reply(503)
         self.reply(204)
 
     def do_POST(self):
-        if self.path not in {OPEN, MOBILE_OPEN, REPEAT}:
+        product = self.path in PRODUCT_ROUTES
+        if not product and self.path not in {OPEN, MOBILE_OPEN, REPEAT}:
             return self.reply(404)
         if self.headers.get_all("Content-Length") != ["0"] or "Transfer-Encoding" in self.headers:
             return self.reply(400)
@@ -288,7 +440,7 @@ class Handler(BaseHTTPRequestHandler):
             accepted = self.server.app.record(self.path)
         except (OSError, sqlite3.Error):
             return self.reply(503)
-        self.reply(204 if accepted else 403)
+        self.reply(204 if accepted else 503 if product else 403)
 
 
 class Server(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
@@ -332,6 +484,13 @@ def main():
     report.add_argument("--day", type=dt.date.fromisoformat)
     intraday_report = sub.add_parser("report-intraday")
     intraday_report.add_argument("--day", type=dt.date.fromisoformat)
+    product_report = sub.add_parser("report-product")
+    product_report.add_argument("--day", type=dt.date.fromisoformat)
+    resolve_product = sub.add_parser("resolve-product")
+    resolve_product.add_argument("--day", type=dt.date.fromisoformat, required=True)
+    resolve_product.add_argument("--group", choices=PRODUCT_GROUPS, required=True)
+    resolve_product.add_argument("--platform", choices=PRODUCT_PLATFORMS, required=True)
+    resolve_product.add_argument("--confirmed", choices=("sent", "rejected"), required=True)
     args = parser.parse_args()
     store = Counts(os.environ.get("INTERIORS_ANALYTICS_DB", DATABASE))
     if args.action == "report":
@@ -343,12 +502,25 @@ def main():
         day = args.day or store.today()
         print(json.dumps({"day": day.isoformat(), "windows": store.intraday_report(day)}))
         return 0
+    if args.action == "report-product":
+        day = args.day or store.today() - dt.timedelta(days=1)
+        print(json.dumps({"day": day.isoformat(), "reports": store.product_report(day)}))
+        return 0
+    if args.action == "resolve-product":
+        resolved = store.resolve_product_export(args.day, args.group, args.platform, args.confirmed)
+        print(json.dumps({"resolved": resolved}))
+        return 0 if resolved else 1
     store.initialize()
     app = Analytics(store, os.environ)
     if args.action == "daily":
         state = app.export()
         print(state)
-        return 0 if state in ("sent", "before-start", "disabled") else 1
+        product = app.export_product()
+        if product["state"] != "disabled":
+            print(json.dumps(product))
+        daily_ok = state in ("sent", "before-start", "disabled")
+        product_ok = product["state"] in ("ok", "before-start", "disabled")
+        return 0 if daily_ok and product_ok else 1
     if args.action == "activate-intraday":
         print(json.dumps({"first_window": store.activate_intraday()}))
         return 0

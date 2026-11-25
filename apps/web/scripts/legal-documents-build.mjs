@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { rspack } from "@rspack/core";
 import { licenseRevision } from "../src/app/license-receipt.ts";
 import { privacyRevision } from "../src/app/privacy-revision.ts";
+import { productStatisticsRevision } from "../src/app/product-statistics-revision.ts";
 
 export const legalDocumentNames = [
 	"privacy-policy",
@@ -10,8 +11,13 @@ export const legalDocumentNames = [
 	"analytics-consent",
 ];
 const archivedPrivacy = `legal/${licenseRevision}/privacy-policy.html`;
-const archivePath = (name) =>
-	`legal/${name === "privacy-policy" ? privacyRevision : licenseRevision}/${name}.html`;
+const productConsent = "product-analytics-consent";
+const recentPrivacy = "2026-11-24.1";
+const archivePath = (name) => {
+	const edition = name === "privacy-policy" ? privacyRevision
+		: name === productConsent ? productStatisticsRevision : licenseRevision;
+	return `legal/${edition}/${name}.html`;
+};
 export const publicLegalPaths = [
 	...legalDocumentNames.flatMap((name) => [`legal/${name}.html`, archivePath(name)]),
 	archivedPrivacy,
@@ -37,7 +43,7 @@ export class LegalDocumentsPlugin {
 						if (!entry) return; // Unit-test compilations inherit the config without an HTML shell.
 						const documents = {};
 						const englishDocuments = {};
-						for (const name of legalDocumentNames) {
+						for (const name of this.english ? [...legalDocumentNames, productConsent] : legalDocumentNames) {
 							const sourcePath = fileURLToPath(
 								new URL(`../../../docs/legal/${name}.html`, import.meta.url),
 							);
@@ -67,6 +73,12 @@ export class LegalDocumentsPlugin {
 						));
 						compilation.fileDependencies.add(previous);
 						compilation.emitAsset(archivedPrivacy, new rspack.sources.RawSource(readFileSync(previous)));
+						for (const languagePath of this.english ? ["", "en/"] : [""]) {
+							const relative = `${recentPrivacy}/${languagePath}privacy-policy.html`;
+							const previous = fileURLToPath(new URL(`../../../docs/legal/archive/${relative}`, import.meta.url));
+							compilation.fileDependencies.add(previous);
+							compilation.emitAsset(`legal/${relative}`, new rspack.sources.RawSource(readFileSync(previous)));
+						}
 						const html = entry.source.source().toString();
 						const reader = (id, texts) => `<script type="application/json" id="${id}">${JSON.stringify(texts).replaceAll("<", "\\u003c")}</script>`;
 						const russianReader = reader(`legal-documents-${licenseRevision}`, documents);

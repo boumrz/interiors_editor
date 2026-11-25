@@ -6,6 +6,7 @@ import {
 } from "../app/telegram-usage-metrics";
 import type { VerifiedTelegramScope } from "../adapters/telegram/signed-launch";
 import { TelegramUsageDialog } from "./telegram-usage-dialog";
+import { setEditorLanguage } from "./editor-language";
 
 test("settings describe the purpose of sharing statistics and keep the optional consent separate", async () => {
 	const data = new Map<string, string>();
@@ -53,4 +54,40 @@ test("settings describe the purpose of sharing statistics and keep the optional 
 	html = renderToStaticMarkup(<TelegramUsageDialog metrics={model} />);
 	expect(html).toContain("Статистика выключена");
 	expect(html).not.toContain('aria-label="Разрешить дополнительную статистику"');
+});
+
+test("English settings offer independent editor use and error consent and link the current English form", async () => {
+	const data = new Map<string, string>();
+	const storage = () => ({
+		getItem: (key: string) => data.get(key) ?? null,
+		setItem: (key: string, value: string) => { data.set(key, value); },
+		removeItem: (key: string) => { data.delete(key); },
+	});
+	const now = Date.UTC(2026, 10, 25, 12);
+	const model = createUsageMetrics({
+		store: deviceStatisticsStore("tma-v1-test" as VerifiedTelegramScope, storage, storage),
+		clock: () => now,
+		launch: now / 1000,
+		platform: "ios",
+		product: { readable: () => true },
+		studyActive: () => true,
+		formDigest: "a".repeat(64),
+		readable: async () => true,
+		signal: new AbortController().signal,
+		lock: (work) => work(),
+		send: () => {},
+	});
+	setEditorLanguage("en");
+	try {
+		await model.openSettings();
+		let html = renderToStaticMarkup(<TelegramUsageDialog metrics={model} />);
+		expect(html).toContain('href="/legal/2026-11-25/en/product-analytics-consent.html"');
+		expect(html).toMatch(/<button\b(?=[^>]*role="switch")(?=[^>]*aria-checked="false")(?=[^>]*aria-label="Allow usage and error analytics")/);
+		await model.chooseProduct(true);
+		html = renderToStaticMarkup(<TelegramUsageDialog metrics={model} />);
+		expect(html).toMatch(/<button\b(?=[^>]*role="switch")(?=[^>]*aria-checked="true")(?=[^>]*aria-label="Allow usage and error analytics")/);
+		expect(html).toMatch(/<button\b(?=[^>]*role="switch")(?=[^>]*aria-checked="false")(?=[^>]*aria-label="Allow additional analytics")/);
+	} finally {
+		setEditorLanguage("ru");
+	}
 });

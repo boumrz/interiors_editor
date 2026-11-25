@@ -29,6 +29,7 @@ class ServiceTest(unittest.TestCase):
             self.assertEqual('114493478', values['INTERIORS_MP_AGGREGATE_COUNTER_ID'])
             self.assertNotIn('INTERIORS_MP_PRIMARY_TOKEN', values)
             self.assertEqual('', values['INTERIORS_MP_AGGREGATE_TOKEN'])
+            self.assertEqual('0', values['INTERIORS_PRODUCT_METRICS_ENABLED'])
             cfg.write_text('existing credential file must survive\n')
             subprocess.run(['sh', str(HERE/'install.sh'), '--stage', tmp], check=True)
             self.assertEqual('existing credential file must survive\n', cfg.read_text())
@@ -105,6 +106,9 @@ class ServiceTest(unittest.TestCase):
                                         capture_output=True, check=True)
                 self.assertEqual(1, json.loads(result.stdout)['tma_opens'])
                 self.assertEqual(int(study_open), json.loads(result.stdout)['tma_repeat_opens'])
+                product = subprocess.run([sys.executable, str(HERE/'collector.py'), 'report-product',
+                                          '--day', '2026-11-25'], env=env, capture_output=True, check=True)
+                self.assertEqual(json.loads(product.stdout), {"day": "2026-11-25", "reports": []})
             finally:
                 proc.terminate()
                 stdout, stderr = proc.communicate(timeout=5)

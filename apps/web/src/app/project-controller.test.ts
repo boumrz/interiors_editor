@@ -87,6 +87,7 @@ function createController(
 	storageEstimates?: StorageEstimatePort,
 	exportPortableBackup?: ExportPortableBackupUseCase,
 	importPortableBackup?: ImportPortableBackupUseCase,
+	probePinnedResourceByteLength?: (hash: string) => Promise<number | undefined>,
 ): ProjectController {
 	return new ProjectController(
 		new CreateProjectUseCase({
@@ -126,6 +127,9 @@ function createController(
 		storageEstimates,
 		exportPortableBackup,
 		importPortableBackup,
+		undefined,
+		undefined,
+		probePinnedResourceByteLength,
 	);
 }
 
@@ -301,11 +305,18 @@ describe("ProjectController", () => {
 			publishNextRevision: async () => { changes += 1; return { kind: "stale-base" }; },
 		};
 		const controller = createController(repository);
+		const metrics: string[] = [];
+		const unsubscribeMetrics = controller.subscribeProductMetrics((metric) => metrics.push(metric));
 		await controller.open();
+		expect(metrics).toEqual([]);
 		await controller.create("Новый план");
 		expect(controller.snapshot().kind).toBe("persist-failed");
+		expect(metrics).toEqual([]);
 		await controller.retry();
 		expect(controller.snapshot().kind).toBe("saved");
+		await controller.retry();
+		expect(metrics).toEqual(["project_created"]);
+		unsubscribeMetrics();
 		expect(creates).toBe(2);
 		expect(changes).toBe(0);
 		expect(bases).toEqual([undefined, undefined]);
@@ -322,14 +333,18 @@ describe("ProjectController", () => {
 		};
 		const dependencies = { checksum: { sha256: async () => "sum:valid" }, clock, ids: ids(), serializer: canonicalProjectSerializer, repository };
 		const controller = new ProjectController(new CreateProjectUseCase(dependencies), repository, new ConfigureRectangularRoomUseCase(dependencies));
+		const metrics: string[] = [];
+		controller.subscribeProductMetrics((metric) => metrics.push(metric));
 		await controller.open();
 		expect(await controller.configureRectangularRoom({ widthMm: "4000", depthMm: "3000", heightMm: "2600" })).toEqual({ kind: "persist-failed", reasonCode: "PERSISTENCE_QUOTA_EXCEEDED" });
 		expect(bases).toEqual(["opened-base"]);
 		expect(controller.snapshot().kind).toBe("persist-failed");
+		expect(metrics).toEqual([]);
 		await controller.retry();
 		expect(retryBases).toEqual(["opened-base"]);
 		expect(bases).toEqual(["opened-base"]);
 		expect(controller.snapshot().kind).toBe("saved");
+		expect(metrics).toEqual(["room_created"]);
 	});
 
 	it("reports advisory local-storage pressure without inventing a capacity after an estimate failure", async () => {
@@ -634,6 +649,8 @@ describe("ProjectController", () => {
 			binaryChecksumForTest,
 		);
 
+		const metrics: string[] = [];
+		controller.subscribeProductMetrics((metric) => metrics.push(metric));
 		await controller.open();
 
 		expect(controller.snapshot()).toEqual({
@@ -641,6 +658,46 @@ describe("ProjectController", () => {
 			reasonCode: "PERSISTENCE_CORRUPT",
 		});
 		expect(controller.writerAccess()).toEqual({ kind: "not-ready" });
+		expect(metrics).toEqual(["resource_corrupt"]);
+	});
+
+	it("shows integrity recovery before optional resource classification and drops detached observers", async () => {
+		const candidate = customResourceCandidate("plan", "План", "revision");
+		let completeRead: ((bytes: Uint8Array | undefined) => void) | undefined;
+		let deferRead = false;
+		const controller = createController(
+			{
+				loadCurrent: async () => ({ kind: "durable", candidate }),
+				publish: async () => ({ kind: "durable" }),
+				recover: async () => ({ kind: "recovered" }),
+			},
+			undefined, undefined, undefined, undefined, undefined,
+			{
+				delete: async () => undefined,
+				read: async () => deferRead
+					? new Promise((resolve) => { completeRead = resolve; })
+					: new Uint8Array(64).fill(0x61),
+				writeIfAbsent: async () => ({ kind: "stored" }),
+			},
+			binaryChecksumForTest, undefined, undefined, undefined, undefined, undefined,
+			async () => undefined,
+		);
+		await controller.open();
+		deferRead = true;
+		const report: string[] = [];
+		const unsubscribe = controller.subscribeProductMetrics((metric) => report.push(metric));
+		await expect(controller.refreshSessionHistoryIntegrity()).resolves.toEqual({ kind: "current-resource-issue" });
+		expect(controller.snapshot()).toMatchObject({ kind: "recovery-needed" });
+		expect(completeRead).toBeDefined();
+		expect(report).toEqual([]);
+
+		unsubscribe();
+		const newReport: string[] = [];
+		controller.subscribeProductMetrics((metric) => newReport.push(metric));
+		completeRead?.(new Uint8Array(64).fill(0x7f));
+		await new Promise<void>((resolve) => setTimeout(resolve, 0));
+		expect(report).toEqual([]);
+		expect(newReport).toEqual([]);
 	});
 
 	it("keeps the legacy one-file repair path from partially writing a multi-resource recovery set", async () => {
@@ -2330,6 +2387,39 @@ describe("ProjectController", () => {
 		expect(receivedCancellation).toBe(cancellation);
 	});
 
+	it("reports a Portable Backup import only when the exact failed candidate is durably retried", async () => {
+		const candidate = directoryCandidate("imported-plan", "Импортированный план", "imported-revision");
+		const published: DurablePublicationCandidate[] = [];
+		const repository: ProjectRepositoryPort = {
+			loadCurrent: async () => ({ kind: "empty" }),
+			publish: async (attempt) => {
+				published.push(attempt);
+				return { kind: "durable" };
+			},
+			recover: async () => ({ kind: "recovered" }),
+		};
+		const controller = createController(
+			repository, undefined, undefined, undefined, undefined, undefined,
+			undefined, undefined, undefined, undefined, undefined, undefined,
+			{
+				execute: async (_bytes, onStatus) => {
+					onStatus({ kind: "validating" });
+					onStatus({ kind: "saving" });
+					onStatus({ candidate, kind: "persist-failed", reasonCode: "PERSISTENCE_WRITE_FAILED" });
+					return { kind: "persist-failed", reasonCode: "PERSISTENCE_WRITE_FAILED" };
+				},
+			} as ImportPortableBackupUseCase,
+		);
+		const metrics: string[] = [];
+		controller.subscribeProductMetrics((metric) => metrics.push(metric));
+		await controller.open();
+		await expect(controller.importPortableBackup(new Uint8Array())).resolves.toMatchObject({ kind: "persist-failed" });
+		expect(metrics).toEqual([]);
+		await controller.retry();
+		expect(published).toEqual([candidate]);
+		expect(metrics).toEqual(["backup_imported"]);
+	});
+
 	it("opens an imported file as a new durable Project and drops prior session history", async () => {
 		const current = directoryCandidate(
 			"project-current",
@@ -2940,7 +3030,20 @@ describe("ProjectController", () => {
 					? { kind: "durable", candidate: second }
 					: { kind: "durable", candidate: first },
 		};
-		const controller = createController(repository, undefined, directory);
+		let writable = true;
+		const controller = createController(
+			repository, undefined, directory, undefined, undefined, undefined,
+			undefined, undefined, undefined,
+			{
+				consumeLostWriterLease: () => false,
+				inspectWriterAccess: async () => writable
+					? { kind: "writable", fencingToken: 1 }
+					: { kind: "read-only", reasonCode: "WRITER_LEASE_HELD" },
+				takeOverWriterLease: async () => ({ kind: "writable", fencingToken: 2 }),
+			},
+		);
+		const metrics: string[] = [];
+		controller.subscribeProductMetrics((metric) => metrics.push(metric));
 
 		await controller.open();
 		expect(controller.snapshot()).toEqual({
@@ -2967,6 +3070,16 @@ describe("ProjectController", () => {
 			project: { name: "Второй план", projectId: "project-2" },
 			revisionId: "revision-2",
 		});
+		expect(metrics.splice(0)).toEqual(["saved_project_opened"]);
+
+		await controller.showProjects();
+		await controller.openProject("project-1", { initialAction: "rename" });
+		expect(metrics).toEqual([]);
+
+		await controller.showProjects();
+		writable = false;
+		await controller.openProject("project-1");
+		expect(metrics).toEqual([]);
 	});
 
 	it("opens an empty local directory as the Projects hub instead of a creation flow", async () => {
@@ -5255,10 +5368,13 @@ describe("ProjectController", () => {
 			}
 		).undoStack.push(historyOnlyBroken);
 
+		const metrics: string[] = [];
+		controller.subscribeProductMetrics((metric) => metrics.push(metric));
 		await expect(controller.refreshSessionHistoryIntegrity()).resolves.toEqual({
 			kind: "history-resource-issue",
 			resourceHashes: [missingHistoryResourceHash],
 		});
+		expect(metrics.splice(0)).toEqual(["resource_missing"]);
 		expect(controller.snapshot()).toMatchObject({
 			kind: "history-recovery-needed",
 			resourceHashes: [missingHistoryResourceHash],
@@ -5273,6 +5389,7 @@ describe("ProjectController", () => {
 			kind: "history-resource-issue",
 			resourceHashes: [missingHistoryResourceHash],
 		});
+		expect(metrics).toEqual(["resource_missing"]);
 
 		historyResourceAvailable = true;
 		await expect(controller.refreshSessionHistoryIntegrity()).resolves.toEqual({
@@ -6927,6 +7044,8 @@ describe("ProjectController", () => {
 			{ addGeneralWall: new AddGeneralWallToProjectUseCase(dependencies) },
 		);
 
+		const metrics: string[] = [];
+		controller.subscribeProductMetrics((metric) => metrics.push(metric));
 		await controller.open();
 		await controller.create("Квартира");
 		await controller.configureRectangularRoom({
@@ -6951,6 +7070,25 @@ describe("ProjectController", () => {
 				expect.objectContaining({ wallSegmentId: "free-wall" }),
 			]),
 		);
+		expect(metrics).toEqual(["project_created", "room_created", "wall_added"]);
+		await controller.undo();
+		await controller.redo();
+		expect(metrics.slice(3)).toEqual(["undo_committed", "redo_committed"]);
+
+		const exteriorRoomCorners = [
+			{ xMm: 6500, zMm: 5000 },
+			{ xMm: 6500, zMm: 6500 },
+			{ xMm: 5000, zMm: 6500 },
+			{ xMm: 5000, zMm: 5000 },
+		];
+		metrics.length = 0;
+		for (const [index, end] of exteriorRoomCorners.slice(1).entries()) {
+			const start = exteriorRoomCorners[index];
+			if (!start) throw new Error("Expected contiguous exterior walls.");
+			await expect(controller.addGeneralWall({ start, end, thicknessMm: 100 }))
+				.resolves.toMatchObject({ kind: "durable" });
+		}
+		expect(metrics).toEqual(["wall_added", "wall_added", "wall_added", "room_created"]);
 	});
 
 	it("routes an automatic Room-height split through one durable revision", async () => {
@@ -7264,7 +7402,7 @@ describe("ProjectController", () => {
 				return { kind: "durable" };
 			},
 			publishNextRevision: async (candidate, expectedBaseRevisionId) => {
-				expect(expectedBaseRevisionId).toBe("revision-3");
+				expect(expectedBaseRevisionId).toBe(published.at(-1)?.revision.revisionId);
 				published.push(candidate);
 				return { kind: "durable" };
 			},
@@ -7327,6 +7465,8 @@ describe("ProjectController", () => {
 			}): Promise<unknown>;
 		};
 
+		const metrics: string[] = [];
+		controller.subscribeProductMetrics((metric) => metrics.push(metric));
 		await controller.open();
 		await controller.create("Квартира");
 		await controller.configureRectangularRoom({
@@ -7373,6 +7513,12 @@ describe("ProjectController", () => {
 			canUndo: true,
 		});
 		expect(published).toHaveLength(4);
+		expect(metrics).toEqual(["project_created", "room_created", "item_placed", "item_color_changed"]);
+		await expect(recoloringController.recolorParametricFloorItem({
+			assetInstanceId: "item-1",
+			variantId: "alpha-blue",
+		})).resolves.toMatchObject({ kind: "durable" });
+		expect(metrics).toHaveLength(4);
 	});
 
 	it("reloads the actual Durable Revision after a deletion CAS rejects the previewed base", async () => {

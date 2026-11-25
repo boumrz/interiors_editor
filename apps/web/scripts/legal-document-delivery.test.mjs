@@ -13,7 +13,7 @@ const web = fileURLToPath(new URL("../", import.meta.url));
 const source = new URL("../../../docs/legal/", import.meta.url);
 const names = ["privacy-policy", "license-agreement", "analytics-consent"];
 const edition = "2026-11-22.2";
-const privacyEdition = "2026-11-24.1";
+const privacyEdition = "2026-11-25";
 
 test("Telegram publishes the unmodified legal editions, provides prelaunch reading and permits saving without JavaScript", {
 	timeout: 60_000,
@@ -88,6 +88,25 @@ test("Telegram publishes the unmodified legal editions, provides prelaunch readi
 	assert.equal(retainedPrivacy.status, 200);
 	assert.match(retainedPrivacy.headers.get("cache-control"), /immutable/);
 	assert.equal(await retainedPrivacy.text(), await readFile(new URL(`archive/${edition}/privacy-policy.html`, source), "utf8"));
+	for (const [lang, segment] of [["ru", ""], ["en", "en/"]]) {
+		const previousPath = `/legal/2026-11-24.1/${segment}privacy-policy.html`;
+		const previous = await fetch(origin + previousPath);
+		assert.equal(previous.status, 200, previousPath);
+		assert.match(previous.headers.get("cache-control"), /immutable/);
+		assert.equal(await previous.text(), await readFile(new URL(`archive/2026-11-24.1/${segment}privacy-policy.html`, source), "utf8"));
+		const productPath = `/legal/2026-11-25/${segment}product-analytics-consent.html`;
+		const product = await fetch(origin + productPath);
+		assert.equal(product.status, 200, productPath);
+		assert.match(product.headers.get("cache-control"), /immutable/);
+		const consent = await readFile(new URL(`${segment}product-analytics-consent.html`, source), "utf8");
+		assert.match(consent, new RegExp(`<html lang="${lang}">`));
+		assert.equal(await product.text(), consent);
+		const payload = await page.locator(`[id="legal-documents-${lang === "en" ? "en-" : ""}${edition}"]`).textContent();
+		assert.equal(JSON.parse(payload)["product-analytics-consent"], consent);
+	}
+	const currentProduct = await fetch(origin + "/legal/product-analytics-consent.html");
+	assert.equal(currentProduct.status, 200);
+	assert.equal(currentProduct.headers.get("cache-control"), "no-store");
 	const supportPath = "/legal/2026-11-24/telegram-support-privacy.html";
 	const support = await fetch(origin + supportPath);
 	assert.equal(support.status, 200, supportPath);

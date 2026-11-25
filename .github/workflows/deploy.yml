@@ -67,7 +67,7 @@ jobs:
         env:
           INTERIORS_EXACT_FLOOR_YAW: '1'
           INTERIORS_DOOR_HINGE_AUTHORING: '1'
-        run: pnpm exec node scripts/run-telegram-entry.mjs --grep 'TMA-(ENTRY-[0-9]{2}|ITEM-FLUSH-01|CAMERA-FRAMING|OPENINGS|DOOR-HINGE|THEME-[0-9]{2}|LANGUAGE-01):'
+        run: pnpm exec node scripts/run-telegram-entry.mjs --grep 'TMA-(ENTRY-[0-9]{2}|ITEM-FLUSH-01|CAMERA-FRAMING|OPENINGS|DOOR-HINGE|THEME-[0-9]{2}|LANGUAGE-01|PRODUCT-METRICS):'
       - name: Verify the scoped Telegram editor and exact project transfer
         working-directory: apps/web
         run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-(EXACT-YAW|EXACT-TRANSFER|UI-PLAN-RING|ROTATION-EXPLICIT|WALL-CONTINUITY|WALL-CONSEQUENCES|WALL-EXPAND|WALL-DETACHED|DOOR-HINGE-TRANSFER|ADD-OPENING|MOVE-OPENING|SCENE-WALL-PICK|SCENE-ITEM-PICK|UI-RESOURCE-03|ENCRYPTED-DOWNLOAD):'

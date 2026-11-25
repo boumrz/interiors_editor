@@ -29,7 +29,7 @@ import type {
 	CatalogPublicationResult,
 } from "../application/ports";
 import type { LocalFileTransferPort } from "../ui/local-file-transfer";
-import { copy, type EditorLanguage, setEditorLanguage } from "../ui/editor-language";
+import { copy, editorLanguage, type EditorLanguage, setEditorLanguage } from "../ui/editor-language";
 import { TelegramLegalDocuments, TelegramLegalEntry, TelegramSettings } from "../ui/telegram-legal-access";
 import { bundledLegalDocument, currentLicenseReadable } from "./legal-release";
 import { licenseReceipts } from "./license-receipt";
@@ -80,6 +80,7 @@ declare const __INTERIORS_EXACT_FLOOR_YAW__: boolean;
 declare const __INTERIORS_DOOR_HINGE_AUTHORING__: boolean;
 declare const __INTERIORS_RETURN_STUDY__: {
 	readonly digest: string;
+	readonly digestEnglish: string;
 	readonly active: boolean;
 };
 
@@ -898,8 +899,9 @@ function AdmittedReadonlyProjects({
 	);
 }
 const unsubscribeEmpty = () => undefined;
-const subscribeWithoutTheme = () => unsubscribeEmpty;
+const subscribeEmpty = () => unsubscribeEmpty;
 const noRoomTheme = () => undefined;
+const noUsageSnapshot = () => undefined;
 
 function AdmittedEditor({
 	runtime,
@@ -920,12 +922,17 @@ function AdmittedEditor({
 		session.ready(runtime);
 	}, [runtime, session]);
 	const roomTheme = useSyncExternalStore(
-		hostEnvironment?.theme?.subscribe ?? subscribeWithoutTheme,
+		hostEnvironment?.theme?.subscribe ?? subscribeEmpty,
 		hostEnvironment?.theme?.snapshot ?? noRoomTheme,
 	);
 	const analytics = useMemo(
 		() => analyticsFor?.(runtime.scope, runtime),
 		[analyticsFor, runtime],
+	);
+	const analyticsState = useSyncExternalStore(
+		analytics?.subscribe ?? subscribeEmpty,
+		analytics?.snapshot ?? noUsageSnapshot,
+		analytics?.snapshot ?? noUsageSnapshot,
 	);
 	useEffect(() => { void analytics?.start(); }, [analytics]);
 	const observedGateway = useMemo<CatalogGatewayPort>(
@@ -958,6 +965,8 @@ function AdmittedEditor({
 			drawingDimensionPreferences={runtime.drawingDimensions}
 			sourceRecovery={runtime.sourceRecovery}
 			fileTransfer={fileTransfer}
+			onProductMetric={analyticsState?.productGranted ? analytics?.recordProduct : undefined}
+			onProductMetricsReady={analytics?.startProduct}
 			readReleaseStartupInput={runtime.readReleaseStartupInput}
 		/>
 		</>}
@@ -1239,6 +1248,7 @@ export function mountTelegramBrowserEditor(
 			typeof __INTERIORS_RETURN_STUDY__ === "undefined"
 				? undefined
 				: __INTERIORS_RETURN_STUDY__;
+		const productConsentReadable = bundledLegalDocument("product-analytics-consent") !== undefined;
 		const model = createUsageMetrics({
 			store,
 			launch: entry.kind === "editor" ? entry.authenticatedAt : undefined,
@@ -1247,6 +1257,9 @@ export function mountTelegramBrowserEditor(
 			clock: Date.now,
 			studyActive: () => study?.active === true,
 			formDigest: study?.digest ?? "",
+			product: {
+				readable: () => productConsentReadable,
+			},
 			async readable() {
 				const form = bundledLegalDocument("analytics-consent");
 				if (!form || !study) return false;
@@ -1257,7 +1270,7 @@ export function mountTelegramBrowserEditor(
 				return (
 					Array.from(new Uint8Array(bytes), (n) =>
 						n.toString(16).padStart(2, "0"),
-					).join("") === study.digest
+					).join("") === (editorLanguage() === "en" ? study.digestEnglish : study.digest)
 				);
 			},
 			async lock(work) {

@@ -16,6 +16,7 @@ import {
 	AppShell,
 	catalogResultCountCopy,
 	dimensionsAfterCustomGlbPreviewMeasurement,
+	editRejectionMetric,
 	errorCopy,
 	fbxConversionFeedback,
 	hasProjectRevisionChanged,
@@ -29,6 +30,7 @@ import {
 	projectDirectoryUpdatedCopy,
 	projectNameErrorCopy,
 	projectTransferImportFeedback,
+	projectTransferImportMetric,
 	persistenceFailureActionCopy,
 	renamePersistenceFailureCopy,
 	shouldConsumeConfirmedWallDraft,
@@ -349,6 +351,40 @@ describe("AppShell project transfer surface", () => {
 		expect(
 			projectTransferImportFeedback("PORTABLE_BACKUP_LIMIT_EXCEEDED"),
 		).toContain("безопасный размер или количество файлов");
+	});
+});
+
+describe("product failure classification", () => {
+	it("uses only reason families for edit rejections", () => {
+		const families = {
+			geometry_rejected: [
+				"COLLINEAR_OVERLAP", "ROOM_USABLE_AREA_COLLAPSE", "USABLE_POLYGON_COLLAPSED",
+				"INVALID_RESULTING_PROJECT", "INVALID_PLAN_GRAPH", "TOO_SHORT_WALL",
+				"UNSUPPORTED_FACE_SHAPE", "PROJECT_BOUNDS_EXCEEDED", "UNSUPPORTED_DIRECTION",
+				"DIAGONAL_WALL_CONTACT_UNSUPPORTED", "WALL_NOT_MOVABLE", "VERTEX_NOT_MOVABLE",
+				"ROOM_NOT_DETACHED", "ROOM_OVERLAP",
+			],
+			item_collision: ["ITEM_COLLISION", "WALL_ITEM_COLLISION", "DOOR_CLEARANCE_COLLISION", "ITEM_HOST_UNRESOLVABLE"],
+			opening_conflict: [
+				"OPENING_OVERLAP", "WALL_OPENING_COLLISION", "WALL_DOOR_OPENING_COLLISION",
+				"OPENING_HOST_UNRESOLVABLE", "OPENING_OUTSIDE_WALL_INTERVAL", "OPENING_OUT_OF_BOUNDS",
+				"DOOR_WIDTH_EXCEEDS_WALL_LENGTH", "WINDOW_WIDTH_EXCEEDS_WALL_LENGTH", "ROOM_HEIGHT_OPENING_CONFLICT",
+			],
+		};
+		for (const [metric, reasons] of Object.entries(families))
+			for (const reason of reasons) expect(editRejectionMetric(reason)).toBe(metric);
+		expect(editRejectionMetric("WALL_POSITION_UNCHANGED")).toBeUndefined();
+		expect(editRejectionMetric("unexpected reason")).toBeUndefined();
+	});
+
+	it("distinguishes backup corruption, compatibility, unavailable verification and cancellation", () => {
+		expect(projectTransferImportMetric("PORTABLE_BACKUP_CHECKSUM_MISMATCH")).toBe("backup_invalid");
+		expect(projectTransferImportMetric("PORTABLE_BACKUP_FUTURE_SCHEMA")).toBe("backup_incompatible");
+		expect(projectTransferImportMetric("BACKUP_CONTAINER_UNSUPPORTED")).toBe("backup_incompatible");
+		expect(projectTransferImportMetric("verification-unavailable")).toBe("backup_import_failed");
+		expect(projectTransferImportMetric("TRANSFER_CRYPTO_UNAVAILABLE")).toBe("backup_import_failed");
+		for (const reason of ["BACKUP_CANCELLED", "PORTABLE_BACKUP_CANCELLED", "TRANSFER_CANCELLED", "INVALID_TRANSFER_PASSWORD"] as const)
+			expect(projectTransferImportMetric(reason)).toBeUndefined();
 	});
 });
 

@@ -9,6 +9,7 @@ export function returnStudyConfiguration(environment) {
 	return {
 		active: environment.INTERIORS_STOP_REPEAT_STUDY !== "1",
 		digest: createHash("sha256").update(readFileSync(file)).digest("hex"),
+		digestEnglish: createHash("sha256").update(readFileSync(new URL("../../../docs/legal/en/analytics-consent.html", import.meta.url))).digest("hex"),
 	};
 }
 const loopback = /^http:\/\/127\.0\.0\.1:\d+$/;

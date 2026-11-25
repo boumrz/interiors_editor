@@ -146,6 +146,27 @@ export function TelegramUsageDialog({
 				) : (
 					<p>{copy("Статистика выключена.", "Analytics are off.")}</p>
 				)}
+				{state.aggregateEnabled && state.productAvailable && (
+					<section className={styles.additional} aria-labelledby={`${id}-product`}>
+						<h3 id={`${id}-product`}>
+							{copy("Использование и ошибки редактора", "Editor usage and errors")}
+						</h3>
+						<p>{copy(
+							"По вашему разрешению мы считаем запуски с действиями и ошибками редактора. Яндекс Метрика получает только суточные суммы. Вы можете отключить этот учёт здесь.",
+							"With your permission, we count launches where editor actions and errors occur. Yandex Metrica receives daily totals only. You can turn off this counting here.",
+						)}</p>
+						<LegalDocumentLink telegram documentName="product-analytics-consent">
+							{copy("Согласие на статистику использования и ошибок", "Consent for usage and error analytics")}
+						</LegalDocumentLink>
+						<StatisticsSwitch
+							label={copy("Разрешить", "Allow")}
+							accessibleName={copy("Разрешить статистику использования и ошибок", "Allow usage and error analytics")}
+							checked={state.productGranted}
+							disabled={state.busy}
+							onChange={(checked) => void metrics.chooseProduct(checked)}
+						/>
+					</section>
+				)}
 				{state.error && (
 					<p role="alert">
 						{copy(

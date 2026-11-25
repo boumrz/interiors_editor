@@ -22,6 +22,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 CONTROLS = {
     "/index.html", "/release-manifest.json", "/release-set.json", "/sw.js", "/manifest.webmanifest",
     "/legal/privacy-policy.html", "/legal/license-agreement.html", "/legal/analytics-consent.html",
+    "/legal/product-analytics-consent.html",
 }
 ORIGINS = {"web": "https://www.domiknote.ru", "telegram": "https://domiknote.ru"}
 # Historical release pools and immutable catalog versions keep their exact bytes.
@@ -53,6 +54,20 @@ self.addEventListener("fetch", event => {
 '''
 PROJECT_TRANSFER_PATH = "/project-transfer/v1/files"
 MOBILE_OPEN_PATH = "/stats/tma-mobile-open-v1"
+PRODUCT_METRIC_CONSENT = "/legal/2026-11-25/product-analytics-consent.html"
+PRODUCT_METRIC_PREFIX = "/stats/tma-editor-v1/"
+PRODUCT_METRIC_NGINX_MARKER = b"    # interiors-tma-editor-v1 product metrics"
+PRODUCT_METRIC_PLATFORMS = ("ios", "android")
+PRODUCT_METRIC_CODES = (
+    "editor_entry", "project_created", "saved_project_opened", "room_created",
+    "backup_prepared", "backup_handoff_requested", "backup_imported",
+    "wall_added", "wall_moved", "opening_added", "item_placed", "item_color_changed",
+    "view_3d_ready", "undo_committed", "redo_committed",
+    "geometry_rejected", "item_collision", "opening_conflict", "save_quota", "save_failed",
+    "storage_unavailable", "resource_missing", "resource_corrupt", "scene_unavailable",
+    "scene_context_lost", "backup_invalid", "backup_incompatible", "backup_import_failed",
+    "backup_export_failed", "backup_handoff_failed",
+)
 PROJECT_TRANSFER_TOKEN_PATTERN = "^" + PROJECT_TRANSFER_PATH + "/[A-Za-z0-9_-]{43}$"
 PROJECT_TRANSFER_LIMIT_ZONES = (
     b"limit_req_zone $binary_remote_addr zone=interiors_project_transfer_requests:1m rate=6r/m;\n"
@@ -285,7 +300,7 @@ def project_transfer_locations():
     return upload + relay + download + relay
 
 
-def nginx_site(root, paths, *, project_transfer_relay=False):
+def nginx_site(root, paths, *, project_transfer_relay=False, product_metrics=False):
     """Preserve the accepted HTTPS, ACME, read-only catalog and exact-path policy."""
     root = str(root)
     require(re.fullmatch(r"/[A-Za-z0-9_./-]+", root), "Unsafe frontend root")
@@ -295,10 +310,15 @@ def nginx_site(root, paths, *, project_transfer_relay=False):
         if target == "telegram":
             # The complete original request target excludes query strings and URI aliases on writes.
             relay_path = "|" + PROJECT_TRANSFER_PATH if project_transfer_relay else ""
+            product_path = ""
+            if product_metrics:
+                lines.append(PRODUCT_METRIC_NGINX_MARKER.decode())
+                product_path = (f"|{PRODUCT_METRIC_PREFIX}({'|'.join(PRODUCT_METRIC_PLATFORMS)})/"
+                                f"({'|'.join(PRODUCT_METRIC_CODES)})")
             lines.extend([
                 '    set $frontend_method_path "$request_method:$request_uri";',
                 '    if ($frontend_method_path !~ "^(GET:|HEAD:|POST:(/stats/tma-(open|repeat)-v2|' + MOBILE_OPEN_PATH
-                + relay_path + ')$)") { return 405; }',
+                + relay_path + product_path + ')$)") { return 405; }',
             ])
         else:
             lines.append("    if ($request_method !~ ^(GET|HEAD)$) { return 405; }")
@@ -306,6 +326,10 @@ def nginx_site(root, paths, *, project_transfer_relay=False):
         if target == "telegram":
             for path in ("/stats/tma-open-v2", MOBILE_OPEN_PATH, "/stats/tma-repeat-v2"):
                 lines.extend(aggregate_stats_location(path))
+            if product_metrics:
+                for platform in PRODUCT_METRIC_PLATFORMS:
+                    for code in PRODUCT_METRIC_CODES:
+                        lines.extend(aggregate_stats_location(f"{PRODUCT_METRIC_PREFIX}{platform}/{code}"))
             if project_transfer_relay:
                 lines.extend(project_transfer_locations())
         for path in sorted(WITHDRAWN_CATALOG_PATHS):
@@ -325,15 +349,18 @@ def nginx_site(root, paths, *, project_transfer_relay=False):
     return PROJECT_TRANSFER_LIMIT_ZONES + config if project_transfer_relay else config
 
 
-def telegram_nginx_site(root, paths, current, *, enable_project_transfer_relay=False):
+def telegram_nginx_site(root, paths, current, *, enable_project_transfer_relay=False, product_metrics=None):
     """Replace only the final Telegram block of the installed managed site."""
     block = b"\nserver {\n"
     web, separator, telegram = current.rpartition(block)
     require(separator and b"\n    server_name www.domiknote.ru;\n" in web
             and b"\n    server_name domiknote.ru;\n" in telegram, "Unexpected installed frontend site")
     enabled = PROJECT_TRANSFER_LIMIT_ZONES in web
+    if product_metrics is None:
+        product_metrics = PRODUCT_METRIC_NGINX_MARKER in telegram
     replacement = nginx_site(root, {"web": set(), "telegram": paths},
-                             project_transfer_relay=enabled or enable_project_transfer_relay).rpartition(block)[2]
+                             project_transfer_relay=enabled or enable_project_transfer_relay,
+                             product_metrics=product_metrics).rpartition(block)[2]
     prefix = PROJECT_TRANSFER_LIMIT_ZONES if enable_project_transfer_relay and not enabled else b""
     return prefix + web + separator + replacement
 
@@ -388,18 +415,27 @@ def run_command(arguments):
     subprocess.run(arguments, check=True, timeout=60)
 
 
-def verify_collector_ready(socket_path="/run/interiors-analytics/collect.sock"):
-    """Check compatibility on the private socket without creating a count or sending a report."""
+def _verify_analytics_health(socket_path, version):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
         client.settimeout(4)
         try:
             client.connect(socket_path)
-            client.sendall(b"GET /health/mobile-open-v1 HTTP/1.0\r\nHost: localhost\r\n\r\n")
+            client.sendall(f"GET /health/{version} HTTP/1.0\r\nHost: localhost\r\n\r\n".encode("ascii"))
             with http.client.HTTPResponse(client) as response:
                 response.begin()
-                require(response.status == 204, "Install and configure the mobile-open-v1 collector before release")
+                require(response.status == 204, f"Install and configure the {version} collector before release")
         except (OSError, http.client.HTTPException) as error:
-            raise ValueError("The mobile-open-v1 collector is unavailable on its private socket") from error
+            raise ValueError(f"The {version} collector is unavailable on its private socket") from error
+
+
+def verify_collector_ready(socket_path="/run/interiors-analytics/collect.sock"):
+    """Check compatibility on the private socket without creating a count or sending a report."""
+    _verify_analytics_health(socket_path, "mobile-open-v1")
+
+
+def verify_product_collector_ready(socket_path="/run/interiors-analytics/collect.sock"):
+    """Check feature compatibility while the product collector can still be disabled."""
+    _verify_analytics_health(socket_path, "tma-editor-v1")
 
 
 def _carry_active_web(root, previous, staging, telegram):
@@ -570,6 +606,9 @@ def _activate_release(archive, root, site, command, health, expected_commit, rea
             targets = {"telegram": inventory["targets"]["telegram"]} if telegram_only else inventory["targets"]
             public_inventory = {**inventory, "targets": targets}
             verify_collector_ready()
+            product_metrics = any(row["path"] == PRODUCT_METRIC_CONSENT for row in targets["telegram"])
+            if product_metrics:
+                verify_product_collector_ready()
             retained = root / "retained"
             require(not retained.is_symlink(), "Linked retained pool")
             paths = {}
@@ -592,9 +631,11 @@ def _activate_release(archive, root, site, command, health, expected_commit, rea
             relay_was_enabled = PROJECT_TRANSFER_LIMIT_ZONES in old_config
             if telegram_only:
                 new_config = telegram_nginx_site(root, paths["telegram"], old_config,
-                                                 enable_project_transfer_relay=enable_project_transfer_relay)
+                                                 enable_project_transfer_relay=enable_project_transfer_relay,
+                                                 product_metrics=product_metrics)
             else:
-                new_config = nginx_site(root, paths, project_transfer_relay=relay_was_enabled)
+                new_config = nginx_site(root, paths, project_transfer_relay=relay_was_enabled,
+                                        product_metrics=product_metrics)
             release = root / "releases" / inventory["release"]
             public_directory(release.parent)
             require(not release.parent.is_symlink() and not release.is_symlink(), "Linked release storage")

@@ -70,8 +70,10 @@ import {
 } from "./three-dimensional-viewport";
 import { disposeThreeObject3D } from "./three-resource-disposal";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
+import type { ProductMetricSink } from "../application/editor-product-metrics";
 
 interface RoomScene3dProps {
+	readonly onProductMetric?: ProductMetricSink | undefined;
 	readonly plainLabels?: boolean;
 	readonly roomTheme?: RoomRenderTheme | undefined;
 	readonly resizeDrawingBufferOnChangeOnly?: boolean;
@@ -260,6 +262,7 @@ function centre(first: Point, second: Point): Point {
 }
 
 export function RoomScene3d({
+	onProductMetric,
 	plainLabels = false,
 	roomTheme,
 	resizeDrawingBufferOnChangeOnly = false,
@@ -393,6 +396,22 @@ export function RoomScene3d({
 	const rendererReadyRef = useRef(false);
 	rendererReadyRef.current = state.kind === "ready";
 	const rendererReady = state.kind === "ready";
+	useEffect(() => {
+		if (readOnly || !onProductMetric) return;
+		switch (state.kind) {
+			case "ready":
+				onProductMetric("view_3d_ready");
+				break;
+			case "context-lost":
+				onProductMetric("scene_context_lost");
+				break;
+			case "unavailable":
+			case "failed":
+			case "two-dimensional-fallback":
+				onProductMetric("scene_unavailable");
+				break;
+		}
+	}, [onProductMetric, readOnly, state.kind]);
 	const initialViewportForCurrentScene = (): ThreeDimensionalViewport => {
 		const roomViewport = initialThreeDimensionalViewportForRoom(scene);
 		if (plainLabels) return roomViewport;

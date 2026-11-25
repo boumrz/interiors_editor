@@ -137,9 +137,13 @@ test("the ordinary build computes the form digest and supports independent early
 	const html = await readFile(
 		new URL("../../../docs/legal/analytics-consent.html", import.meta.url),
 	);
+	const english = await readFile(
+		new URL("../../../docs/legal/en/analytics-consent.html", import.meta.url),
+	);
 	assert.deepEqual(returnStudyConfiguration({}), {
 		active: true,
 		digest: digest(html),
+		digestEnglish: digest(english),
 	});
 	assert.equal(
 		returnStudyConfiguration({ INTERIORS_STOP_REPEAT_STUDY: "1" }).active,

@@ -23,11 +23,13 @@ describe("explicit local file handoff", () => {
 		const stage = rstest.fn(async () => "/download-capability");
 		let attempts = 0;
 		const download = rstest.fn(async () => ++attempts === 1 ? "cancelled" as const : "requested" as const);
+		const metrics: string[] = [];
 		const session = new LocalFileTransferSession({
 			...createHostFileBridge({ maximumBytes: 20, system: {} }),
 			encryptedDownload: { available: () => true, stage, download },
-		}, () => undefined);
+		}, () => undefined, (metric) => metrics.push(metric));
 		await session.prepare(async () => archive());
+		expect(metrics).toEqual(["backup_prepared"]);
 		const markup = renderToStaticMarkup(<LocalFileTransferPanel session={session} state={session.snapshot()} telegram />);
 		expect(markup).toContain("Пароль для копии");
 		expect(stage).not.toHaveBeenCalled();
@@ -38,10 +40,12 @@ describe("explicit local file handoff", () => {
 		expect(stage).toHaveBeenCalledTimes(1);
 		expect(download).toHaveBeenCalledWith("/download-capability", expect.any(AbortSignal));
 		expect(session.snapshot()).toMatchObject({ notice: expect.stringContaining("Скачивание отменено") });
+		expect(metrics).toEqual(["backup_prepared"]);
 		await session.downloadEncrypted();
 		expect(stage).toHaveBeenCalledTimes(1);
 		expect(download).toHaveBeenCalledTimes(2);
 		expect(session.snapshot()).toMatchObject({ notice: expect.stringContaining("Проверьте файл project.interiors") });
+		expect(metrics).toEqual(["backup_prepared", "backup_handoff_requested"]);
 	});
 
 	it.each([8_999, 9_000])("reuses the staged Android copy after %d ms of work", async (elapsed) => {
@@ -419,6 +423,7 @@ describe("explicit local file handoff", () => {
 	});
 	it("keeps unsupported, failed and cancelled outcomes distinct and prevents duplicate active handoffs", async () => {
 		for (const outcome of ["unsupported", "failed", "cancelled"] as const) {
+			const metrics: string[] = [];
 			const session = new LocalFileTransferSession(
 				createHostFileBridge({
 					maximumBytes: 20,
@@ -438,10 +443,14 @@ describe("explicit local file handoff", () => {
 								},
 				}),
 				() => undefined,
+				(metric) => metrics.push(metric),
 			);
 			await session.prepare(async () => archive());
 			await session.handoff();
 			expect(session.snapshot().kind).toBe(outcome);
+			expect(metrics).toEqual(outcome === "cancelled"
+				? ["backup_prepared"]
+				: ["backup_prepared", "backup_handoff_failed"]);
 			const markup = renderToStaticMarkup(
 				<LocalFileTransferPanel session={session} state={session.snapshot()} />,
 			);
@@ -500,10 +509,13 @@ describe("explicit local file handoff", () => {
 			await session.prepare(produce);
 			expect(session.snapshot().kind).toBe("failed");
 		}
+		const metrics: string[] = [];
 		const session = new LocalFileTransferSession(
 			createHostFileBridge({ maximumBytes: 20, system: {} }),
 			() => undefined,
+			(metric) => metrics.push(metric),
 		);
+		await session.prepare(async () => undefined, "recovery-draft");
 		await session.prepare(async () => ({
 			...archive(),
 			fileKind: "recovery-draft",
@@ -513,6 +525,8 @@ describe("explicit local file handoff", () => {
 		);
 		expect(markup).toContain("Несохранённая правка");
 		expect(markup).toContain("не полный backup");
+		await session.handoff();
+		expect(metrics).toEqual([]);
 		session.close();
 		expect(
 			renderToStaticMarkup(
@@ -548,14 +562,17 @@ it("explains an incomplete local save without attributing it to the user", async
 it("offers retry after a preparation failure and keeps the next transfer user-initiated", async () => {
 	let attempts = 0;
 	let shares = 0;
+	const metrics: string[] = [];
 	const session = new LocalFileTransferSession(
 		createHostFileBridge({ maximumBytes: 20, system: {
 			canShare: () => true,
 			share: async () => { shares++; },
 		} }),
 		() => undefined,
+		(metric) => metrics.push(metric),
 	);
-	await session.prepare(async () => ++attempts === 1 ? undefined : archive());
+	await session.prepare(async () => ++attempts === 1 ? undefined : archive(), "portable-backup");
+	expect(metrics).toEqual(["backup_export_failed"]);
 	const markup = renderToStaticMarkup(
 		<LocalFileTransferPanel session={session} state={session.snapshot()} telegram />,
 	);
@@ -564,8 +581,10 @@ it("offers retry after a preparation failure and keeps the next transfer user-in
 	await session.retry();
 	expect(session.snapshot().kind).toBe("prepared");
 	expect(shares).toBe(0);
+	expect(metrics.at(-1)).toBe("backup_prepared");
 	await session.handoff();
 	expect(shares).toBe(1);
+	expect(metrics.at(-1)).toBe("backup_handoff_requested");
 	session.close();
 	await session.retry();
 	expect(attempts).toBe(2);
@@ -575,6 +594,7 @@ it("offers retry after a preparation failure and keeps the next transfer user-in
 it("retries a transfer failure with the same file without recreating the archive", async () => {
 	const bytes = archive();
 	const attempted: File[] = [];
+	const metrics: string[] = [];
 	let preparations = 0;
 	const session = new LocalFileTransferSession(
 		createHostFileBridge({ maximumBytes: 20, system: {
@@ -585,6 +605,7 @@ it("retries a transfer failure with the same file without recreating the archive
 			},
 		} }),
 		() => undefined,
+		(metric) => metrics.push(metric),
 	);
 	await session.prepare(async () => {
 		preparations++;
@@ -592,6 +613,7 @@ it("retries a transfer failure with the same file without recreating the archive
 	});
 	await session.handoff();
 	expect(session.snapshot().kind).toBe("failed");
+	expect(metrics).toEqual(["backup_prepared", "backup_handoff_failed"]);
 	await session.retry();
 	expect(session.snapshot().kind).toBe("handoff-attempted");
 	expect(preparations).toBe(1);

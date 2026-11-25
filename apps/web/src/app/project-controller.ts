@@ -1,5 +1,6 @@
 import {copyProject} from "../domain/copy-project";
 import {freezeBrowserBackupValue} from "../application/browser-backup-representability";
+import type { ProductMetric, ProductMetricSink } from "../application/editor-product-metrics";
 import type {
 	AddConstrainedPartitionStatus,
 	AddConstrainedPartitionUseCase,
@@ -542,6 +543,11 @@ function describeForwardHistoryCommand(
  * be restored. It is intentionally process-local and never becomes Project
  * or Revision data.
  */
+type ResourceProductMetric = Extract<
+	ProductMetric,
+	"resource_missing" | "resource_corrupt" | "storage_unavailable"
+>;
+
 type HistoryResourceIssue = {
 	readonly direction: "redo" | "undo";
 	readonly resourceHashes: readonly string[];
@@ -608,6 +614,8 @@ export class ProjectController {
 	private navigationRequestId = 0;
 	private publicationActive = false;
 	private state: ProjectScreenState = { kind: "loading" };
+	private readonly productMetricListeners = new Set<ProductMetricSink>();
+	private readonly pendingProductMetrics = new WeakMap<DurablePublicationCandidate, ProductMetric>();
 	private pending: DurablePublicationCandidate | undefined;
 	private pendingForwardPrevious: DurablePublicationCandidate | undefined;
 	/** An exact-base command such as rename must retain its CAS precondition on retry. */
@@ -781,9 +789,12 @@ export class ProjectController {
 		if (!current) return { kind: "not-ready" };
 		if (this.publicationInFlight) return { kind: "in-progress" };
 		const probe = this.probePinnedResourceByteLength;
+		const resourceMetrics = new Set<ResourceProductMetric>();
 		if (!probe) {
-			return this.scanSessionHistoryIntegrity(current, (candidate) =>
-				this.unresolvedPinnedCustomGlbResourceHashes(candidate),
+			return this.scanSessionHistoryIntegrity(
+				current,
+				(candidate) => this.unresolvedPinnedCustomGlbResourceHashes(candidate, resourceMetrics),
+				resourceMetrics,
 			);
 		}
 		if (this.integrityRefresh?.current === current) return this.integrityRefresh.result;
@@ -791,6 +802,7 @@ export class ProjectController {
 		// Deduplicate exact storage addresses within one sweep, including undo/redo.
 		// Each new sweep must read again so it can detect a real loss after resume.
 		const proofs = new Map<string, Promise<number | undefined>>();
+		const ambiguousResourceCandidates = new Set<DurablePublicationCandidate>();
 		const result = this.scanSessionHistoryIntegrity(current, async (candidate) => {
 			if (!isV1Candidate(candidate)) return [];
 			const invalid = await Promise.all(
@@ -800,10 +812,23 @@ export class ProjectController {
 						proof = probe(asset.resourceHash);
 						proofs.set(asset.resourceHash, proof);
 					}
-					return (await proof) !== asset.byteLength ? asset.resourceHash : undefined;
+					const length = await proof;
+					if (length === asset.byteLength) return undefined;
+					if (length === undefined) ambiguousResourceCandidates.add(candidate);
+					else resourceMetrics.add("resource_corrupt");
+					return asset.resourceHash;
 				}),
 			);
 			return [...new Set(invalid.filter((hash) => hash !== undefined))];
+		}, resourceMetrics, () => {
+			if (ambiguousResourceCandidates.size === 0 || this.productMetricListeners.size === 0) return;
+			// The probe cannot distinguish absence from invalid bytes. Classification
+			// must never delay displaying the already established recovery state.
+			const visibleRecovery = this.state;
+			const observers = [...this.productMetricListeners];
+			void this.reportAmbiguousResourceMetrics(
+				ambiguousResourceCandidates, visibleRecovery, resourceMetrics, observers,
+			);
 		}).catch((): SessionHistoryIntegrityResult => {
 			// A failed read proves neither corruption nor recovery. Publication
 			// and destructive repair still run their independent exact checks.
@@ -821,6 +846,8 @@ export class ProjectController {
 	private async scanSessionHistoryIntegrity(
 		current: DurablePublicationCandidate,
 		check: (candidate: DurablePublicationCandidate) => Promise<readonly string[]>,
+		resourceMetrics: ReadonlySet<ResourceProductMetric>,
+		reportAmbiguousResources?: () => void,
 	): Promise<SessionHistoryIntegrityResult> {
 		const currentResourceHashes = await check(current);
 		if (this.current !== current || this.publicationInFlight) {
@@ -828,6 +855,8 @@ export class ProjectController {
 		}
 		if (currentResourceHashes.length > 0) {
 			this.enterCurrentResourceRecovery(current, currentResourceHashes);
+			for (const metric of resourceMetrics) this.emitProductMetric(metric);
+			reportAmbiguousResources?.();
 			return { kind: "current-resource-issue" };
 		}
 
@@ -864,6 +893,8 @@ export class ProjectController {
 				...firstIssue,
 				resourceHashes,
 			});
+			for (const metric of resourceMetrics) this.emitProductMetric(metric);
+			reportAmbiguousResources?.();
 			return { kind: "history-resource-issue", resourceHashes };
 		}
 
@@ -872,6 +903,25 @@ export class ProjectController {
 			this.setDurableState(current);
 		}
 		return { kind: "healthy" };
+	}
+
+	private async reportAmbiguousResourceMetrics(
+		candidates: ReadonlySet<DurablePublicationCandidate>,
+		visibleRecovery: ProjectScreenState,
+		reported: ReadonlySet<ResourceProductMetric>,
+		observers: readonly ProductMetricSink[],
+	): Promise<void> {
+		const exactMetrics = new Set<ResourceProductMetric>();
+		await Promise.all(
+			[...candidates].map((candidate) =>
+				this.unresolvedPinnedCustomGlbResourceHashes(candidate, exactMetrics),
+			),
+		);
+		if (this.state !== visibleRecovery) return;
+		const activeObservers = observers.filter((observer) => this.productMetricListeners.has(observer));
+		for (const metric of exactMetrics) {
+			if (!reported.has(metric)) this.emitProductMetric(metric, activeObservers);
+		}
 	}
 
 	/** Presentation can show this separately from durable Project state. */
@@ -1474,6 +1524,20 @@ export class ProjectController {
 		return () => this.listeners.delete(listener);
 	}
 
+	public subscribeProductMetrics(listener: ProductMetricSink): () => void {
+		this.productMetricListeners.add(listener);
+		return () => this.productMetricListeners.delete(listener);
+	}
+
+	private emitProductMetric(
+		metric: ProductMetric,
+		observers: Iterable<ProductMetricSink> = this.productMetricListeners,
+	): void {
+		for (const listener of observers) {
+			try { listener(metric); } catch { /* An observer cannot affect the editor. */ }
+		}
+	}
+
 	public open(): Promise<void> {
 		if (this.directoryRenameUnsettled) return Promise.resolve();
 		if (this.openInFlight) {
@@ -1611,10 +1675,14 @@ export class ProjectController {
 	}
 
 	/** Loads only the current Durable Revision named by the selected card. */
-	public async openProject(
+	public openProject(
 		projectId: string,
-		_options?: ProjectOpenOptions,
+		options?: ProjectOpenOptions,
 	): Promise<void> {
+		return this.openStoredProject(projectId, options?.initialAction !== "rename");
+	}
+
+	private async openStoredProject(projectId: string, userSelected: boolean): Promise<void> {
 		if (!this.projectDirectory || this.directoryRenameUnsettled) {
 			return;
 		}
@@ -1631,6 +1699,10 @@ export class ProjectController {
 			}
 			if (loaded.kind === "durable") {
 				await this.acceptOpenedCandidate(loaded.candidate, requestId);
+				if (userSelected && this.isCurrentNavigationRequest(requestId) &&
+					this.current === loaded.candidate && this.writerAccess().kind === "writable") {
+					this.emitProductMetric("saved_project_opened");
+				}
 				return;
 			}
 			this.setState(
@@ -1726,8 +1798,9 @@ export class ProjectController {
 		requestId: number,
 		mayAccept: () => boolean = () => true,
 	): Promise<void> {
+		const resourceMetrics = new Set<ResourceProductMetric>();
 		const unresolvedResourceHashes =
-			await this.unresolvedPinnedCustomGlbResourceHashes(candidate);
+			await this.unresolvedPinnedCustomGlbResourceHashes(candidate, resourceMetrics);
 		if (!this.isCurrentNavigationRequest(requestId) || !mayAccept()) {
 			return;
 		}
@@ -1743,6 +1816,7 @@ export class ProjectController {
 		this.writerLeaseAccess = writerAccess;
 		if (unresolvedResourceHashes.length > 0) {
 			this.enterCurrentResourceRecovery(candidate, unresolvedResourceHashes);
+			for (const metric of resourceMetrics) this.emitProductMetric(metric);
 			return;
 		}
 		this.clearRecoveryCustomGlbResourceState();
@@ -1752,6 +1826,7 @@ export class ProjectController {
 
 	private async unresolvedPinnedCustomGlbResourceHashes(
 		candidate: DurablePublicationCandidate,
+		resourceMetrics?: Set<ResourceProductMetric>,
 	): Promise<readonly string[]> {
 		if (
 			!isV1Candidate(candidate) ||
@@ -1760,6 +1835,7 @@ export class ProjectController {
 			return [];
 		}
 		if (!this.customAssetResources || !this.binaryChecksum) {
+			resourceMetrics?.add("storage_unavailable");
 			return [
 				...new Set(
 					candidate.project.assetDefinitionRefs.map(
@@ -1772,9 +1848,11 @@ export class ProjectController {
 			return (
 				(await this.verifiedUnresolvedPinnedCustomGlbResourceHashes(
 					candidate,
+					resourceMetrics,
 				)) ?? []
 			);
 		} catch {
+			resourceMetrics?.add("storage_unavailable");
 			return [
 				...new Set(
 					candidate.project.assetDefinitionRefs.map(
@@ -1788,6 +1866,7 @@ export class ProjectController {
 	/** Returns undefined when no verifier exists; read/checksum errors stay observable to destructive recovery. */
 	private async verifiedUnresolvedPinnedCustomGlbResourceHashes(
 		candidate: PublicationCandidate,
+		resourceMetrics?: Set<ResourceProductMetric>,
 	): Promise<readonly string[] | undefined> {
 		const resourceStore = this.customAssetResources;
 		const checksum = this.binaryChecksum;
@@ -1797,13 +1876,16 @@ export class ProjectController {
 		const resourcesAreExact = await Promise.all(
 			candidate.project.assetDefinitionRefs.map(async (asset) => {
 				const bytes = await resourceStore.read(asset.resourceHash);
-				if (!bytes || bytes.byteLength !== asset.byteLength) {
+				if (!bytes) {
+					resourceMetrics?.add("resource_missing");
 					return false;
 				}
-				return sameSha256ResourceHashBits(
+				const isExact = bytes.byteLength === asset.byteLength && sameSha256ResourceHashBits(
 					asset.resourceHash,
 					await checksum.sha256Bytes(bytes),
 				);
+				if (!isExact) resourceMetrics?.add("resource_corrupt");
+				return isExact;
 			}),
 		);
 		return [
@@ -1852,7 +1934,7 @@ export class ProjectController {
 		recoveryProjectId: string | undefined,
 	): Promise<void> {
 		return this.projectDirectory && recoveryProjectId
-			? this.openProject(recoveryProjectId)
+			? this.openStoredProject(recoveryProjectId, false)
 			: this.open();
 	}
 
@@ -2009,10 +2091,10 @@ export class ProjectController {
 						} catch {
 							/* An observer cannot change a verified import's outcome. */
 						}
-						this.acceptImportedProjectStatus(ownedStatus);
+						this.acceptImportedProjectStatus(ownedStatus, "backup_imported");
 					} else {
 						options?.onStatus?.(status);
-						this.acceptImportedProjectStatus(status);
+						this.acceptImportedProjectStatus(status, "backup_imported");
 					}
 				},
 				options?.signal,
@@ -2445,7 +2527,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: CreateParametricWallItemStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "item_placed"),
 			);
 			if (result.kind === "stale-base") {
 				await this.reloadCurrentDurableRevision(current);
@@ -2510,7 +2592,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: RecolorParametricWallItemStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "item_color_changed"),
 			);
 			if (result.kind === "stale-base") {
 				await this.reloadCurrentDurableRevision(current);
@@ -2638,7 +2720,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: CreateCustomGlbFloorItemStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "item_placed"),
 				options?.signal,
 			);
 		} catch {
@@ -2869,7 +2951,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: GeneralWallProjectMutationStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "wall_added"),
 			);
 		} catch {
 			this.setState({
@@ -2903,7 +2985,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: GeneralWallProjectMutationStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "wall_added"),
 			);
 		} catch {
 			this.setState({
@@ -3132,7 +3214,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: GeneralWallProjectMutationStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "wall_moved"),
 			);
 		} catch {
 			this.setState({
@@ -3424,7 +3506,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: RecolorParametricFloorItemStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "item_color_changed"),
 			);
 			if (result.kind === "stale-base") {
 				await this.reloadCurrentDurableRevision(current);
@@ -3528,7 +3610,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: DoorOpeningProjectMutationStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "opening_added"),
 			);
 		} catch {
 			this.setState({
@@ -3562,7 +3644,7 @@ export class ProjectController {
 				current,
 				input,
 				(status: DoorOpeningProjectMutationStatus) =>
-					this.acceptMutationStatus(status, current),
+					this.acceptMutationStatus(status, current, "opening_added"),
 			);
 		} catch {
 			this.setState({
@@ -3904,14 +3986,17 @@ export class ProjectController {
 				return;
 			}
 			const previous = this.pendingForwardPrevious;
+			const metric = this.pendingProductMetrics.get(pending);
+			this.pendingProductMetrics.delete(pending);
 			this.pending = undefined;
 			this.pendingForwardPrevious = undefined;
 			this.pendingForwardExpectedBaseRevisionId = undefined;
 			if (previous) {
-				this.completeForwardPublication(previous, pending);
+				this.completeForwardPublication(previous, pending, metric);
 			} else {
 				this.current = pending;
 				this.setDurableState(pending);
+				if (metric) this.emitProductMetric(metric);
 			}
 		} catch {
 			this.setState({
@@ -4002,6 +4087,7 @@ export class ProjectController {
 				return;
 			}
 			this.pending = status.candidate;
+			this.pendingProductMetrics.set(status.candidate, "project_created");
 			this.pendingForwardPrevious = undefined;
 			this.pendingForwardExpectedBaseRevisionId = undefined;
 			this.setState(status);
@@ -4010,6 +4096,7 @@ export class ProjectController {
 		this.clearSessionHistory();
 		this.current = status.candidate;
 		this.setDurableState(status.candidate);
+		this.emitProductMetric("project_created");
 		this.pending = undefined;
 		this.pendingForwardPrevious = undefined;
 		this.pendingForwardExpectedBaseRevisionId = undefined;
@@ -4017,6 +4104,7 @@ export class ProjectController {
 
 	private acceptImportedProjectStatus(
 		status: ImportLocalProjectJsonStatus | ImportPortableBackupStatus,
+		metric?: "backup_imported",
 	): void {
 		if (
 			status.kind === "validating" ||
@@ -4043,6 +4131,7 @@ export class ProjectController {
 				return;
 			}
 			this.pending = status.candidate;
+			if (metric) this.pendingProductMetrics.set(status.candidate, metric);
 			this.pendingForwardPrevious = undefined;
 			this.pendingForwardExpectedBaseRevisionId = undefined;
 			const current = this.current;
@@ -4060,6 +4149,7 @@ export class ProjectController {
 		this.clearSessionHistory();
 		this.current = status.candidate;
 		this.setDurableState(status.candidate);
+		if (metric) this.emitProductMetric(metric);
 		this.pending = undefined;
 		this.pendingForwardPrevious = undefined;
 		this.pendingForwardExpectedBaseRevisionId = undefined;
@@ -4069,7 +4159,7 @@ export class ProjectController {
 		status: ConfigureRectangularRoomStatus,
 		previous: PublicationCandidate,
 	): void {
-		this.acceptMutationStatus(status, previous);
+		this.acceptMutationStatus(status, previous, "room_created");
 	}
 
 	private acceptRenameStatus(
@@ -4118,7 +4208,7 @@ export class ProjectController {
 		status: CreateParametricFloorItemStatus,
 		previous: PublicationCandidate,
 	): void {
-		this.acceptMutationStatus(status, previous);
+		this.acceptMutationStatus(status, previous, "item_placed");
 	}
 
 	private acceptMovedFloorItemStatus(
@@ -4185,12 +4275,13 @@ export class ProjectController {
 		status: CreateRectangularRoomLoopStatus,
 		previous: PublicationCandidate,
 	): void {
-		this.acceptMutationStatus(status, previous);
+		this.acceptMutationStatus(status, previous, "room_created");
 	}
 
 	private acceptMutationStatus(
 		status: MutationPublicationStatus,
 		previous: DurablePublicationCandidate,
+		metric?: ProductMetric,
 	): void {
 		if (status.kind === "saving") {
 			this.setState({
@@ -4209,6 +4300,7 @@ export class ProjectController {
 				return;
 			}
 			this.pending = status.candidate;
+			if (metric) this.pendingProductMetrics.set(status.candidate, metric);
 			this.pendingForwardPrevious = previous;
 			this.pendingForwardExpectedBaseRevisionId = previous.revision.revisionId;
 			this.setState({
@@ -4218,7 +4310,7 @@ export class ProjectController {
 			});
 			return;
 		}
-		this.completeForwardPublication(previous, status.candidate);
+		this.completeForwardPublication(previous, status.candidate, metric);
 	}
 
 	/**
@@ -4251,6 +4343,7 @@ export class ProjectController {
 	private completeForwardPublication(
 		previous: DurablePublicationCandidate,
 		candidate: DurablePublicationCandidate,
+		metric?: ProductMetric,
 	): void {
 		this.undoStack.push(previous);
 		this.historyCommandLabels.set(
@@ -4263,6 +4356,16 @@ export class ProjectController {
 		this.pendingForwardPrevious = undefined;
 		this.pendingForwardExpectedBaseRevisionId = undefined;
 		this.setDurableState(candidate);
+		if (!metric) return;
+		if (metric === "item_color_changed") {
+			const oldColors = new Map(previous.project.assetInstances.map((item) => [item.assetInstanceId, item.color]));
+			if (!candidate.project.assetInstances.some((item) => oldColors.get(item.assetInstanceId) !== item.color)) return;
+		}
+		if (metric !== "room_created") this.emitProductMetric(metric);
+		if ((metric === "room_created" || metric === "wall_added") && isV1Candidate(previous) && isV1Candidate(candidate)) {
+			const previousRoomIds = new Set(previous.project.level.rooms.map((room) => room.roomId));
+			if (candidate.project.level.rooms.some((room) => !previousRoomIds.has(room.roomId))) this.emitProductMetric("room_created");
+		}
 	}
 
 	private async travelSessionHistory(
@@ -4280,8 +4383,9 @@ export class ProjectController {
 			return { kind: "empty-history" };
 		}
 		const source = this.current;
+		const resourceMetrics = new Set<ResourceProductMetric>();
 		const unresolvedResourceHashes =
-			await this.unresolvedPinnedCustomGlbResourceHashes(target);
+			await this.unresolvedPinnedCustomGlbResourceHashes(target, resourceMetrics);
 		if (this.current !== source || this.publicationInFlight) {
 			return { kind: "in-progress" };
 		}
@@ -4291,6 +4395,7 @@ export class ProjectController {
 				resourceHashes: unresolvedResourceHashes,
 				targetRevisionId: target.revision.revisionId,
 			});
+			for (const metric of resourceMetrics) this.emitProductMetric(metric);
 			return {
 				kind: "history-resource-issue",
 				resourceHashes: unresolvedResourceHashes,
@@ -4378,6 +4483,7 @@ export class ProjectController {
 		this.current = travel.target;
 		this.historyResourceIssue = undefined;
 		this.setDurableState(travel.target);
+		this.emitProductMetric(travel.direction === "undo" ? "undo_committed" : "redo_committed");
 	}
 
 	private clearSessionHistory(): void {

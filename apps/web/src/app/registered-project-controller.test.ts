@@ -172,6 +172,26 @@ describe("shared registered controller guard", () => {
 		observeUnexpectedAsync(value.controller.subscribe(listener))();
 		expect(value.subscriptions.size).toBe(0);
 	});
+	it("subscribes to product outcomes synchronously and stops observing when the runtime closes", async () => {
+		const value = fixture();
+		const observed: string[] = [];
+		const stop = observeUnexpectedAsync(value.controller.subscribeProductMetrics((metric) => {
+			observed.push(metric);
+		}));
+		expect(typeof stop).toBe("function");
+		expect(value.tracked).toBe(0);
+		expect(value.subscriptions.size).toBe(1);
+		await value.controller.create("Project");
+		expect(observed).toEqual(["project_created"]);
+		value.revoke();
+		await value.core.create("Next project");
+		expect(observed).toEqual(["project_created"]);
+		stop();
+		stop();
+		expect(value.subscriptions.size).toBe(0);
+		observeUnexpectedAsync(value.controller.subscribeProductMetrics(() => {}))();
+		expect(value.subscriptions.size).toBe(0);
+	});
 	it("keeps registered transfer on the portable dispatcher and forwards actual cancellation/status", async () => {
 		const value = fixture(),
 			bytes = new Uint8Array([0x7b]),

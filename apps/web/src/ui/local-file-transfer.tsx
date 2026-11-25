@@ -1,4 +1,5 @@
 import { copy } from "./editor-language";
+import type { ProductMetric, ProductMetricSink } from "../application/editor-product-metrics";
 import { type FormEvent, type MouseEvent, type PointerEvent, useId, useLayoutEffect, useRef, useState } from "react";
 import {
 	encryptProjectTransfer,
@@ -54,11 +55,12 @@ function hasFreshDownloadTap(tappedAt: number | undefined): boolean {
 export class LocalFileTransferSession {
 	private state: LocalFileTransferState = { kind: "idle" };
 	private operation = new AbortController();
-	private prepareArchive: PrepareArchive | undefined;
+	private prepareArchive: { readonly produce: PrepareArchive; readonly fileKind?: HostFileKind | undefined } | undefined;
 	private encryptedHandle?: { readonly path: string; readonly expiresAt: number };
 	public constructor(
 		private readonly port: LocalFileTransferPort,
 		private readonly changed: (state: LocalFileTransferState) => void,
+		private readonly onProductMetric?: ProductMetricSink,
 	) {}
 	public snapshot(): LocalFileTransferState {
 		return this.state;
@@ -67,6 +69,10 @@ export class LocalFileTransferSession {
 		this.state = state;
 		this.changed(state);
 	}
+	private report(metric: ProductMetric, signal: AbortSignal): void {
+		if (signal.aborted) return;
+		try { this.onProductMetric?.(metric); } catch { /* File transfer remains independent. */ }
+	}
 	public close() {
 		this.operation.abort();
 		this.operation = new AbortController();
@@ -74,9 +80,9 @@ export class LocalFileTransferSession {
 		this.encryptedHandle = undefined;
 		this.update({ kind: "idle" });
 	}
-	public async prepare(produce: PrepareArchive): Promise<void> {
+	public async prepare(produce: PrepareArchive, fileKind?: HostFileKind): Promise<void> {
 		this.close();
-		this.prepareArchive = produce;
+		this.prepareArchive = { produce, fileKind };
 		const operation = this.operation;
 		this.update({ kind: "preparing" });
 		try {
@@ -89,16 +95,19 @@ export class LocalFileTransferSession {
 			if (result?.kind === "prepared") {
 				this.prepareArchive = undefined;
 				this.update({ kind: "prepared", prepared: result });
+				if (result.fileKind === "portable-backup") this.report("backup_prepared", operation.signal);
 			} else {
 				this.update({ kind: "failed" });
+				if ((archive?.fileKind ?? fileKind) === "portable-backup") this.report("backup_export_failed", operation.signal);
 			}
 		} catch {
 			if (!operation.signal.aborted) this.update({ kind: "failed" });
+			if (fileKind === "portable-backup") this.report("backup_export_failed", operation.signal);
 		}
 	}
 	public retry(): Promise<void> {
 		return this.state.kind === "failed" && this.prepareArchive
-			? this.prepare(this.prepareArchive)
+			? this.prepare(this.prepareArchive.produce, this.prepareArchive.fileKind)
 			: this.handoff();
 	}
 	public usesEncryptedDownload(prepared: PreparedHostFile): boolean {
@@ -132,6 +141,7 @@ export class LocalFileTransferSession {
 						"Could not prepare the backup. Check your connection and enter the password again.",
 					),
 				});
+			this.report("backup_export_failed", signal);
 			return;
 		}
 		if (!hasFreshDownloadTap(tappedAt)) {
@@ -154,6 +164,7 @@ export class LocalFileTransferSession {
 		if (state.kind !== "encrypted-ready" || !state.prepared || !relay || !handle) return;
 		const { prepared } = state;
 		if (Date.now() >= handle.expiresAt) {
+			const { signal } = this.operation;
 			this.encryptedHandle = undefined;
 			this.update({
 				kind: "encrypted-failed",
@@ -163,6 +174,7 @@ export class LocalFileTransferSession {
 					"The download expired. Enter the password to download a new copy.",
 				),
 			});
+			this.report("backup_handoff_failed", signal);
 			return;
 		}
 		await this.requestEncryptedDownload(prepared, relay, handle.path);
@@ -193,6 +205,8 @@ export class LocalFileTransferSession {
 									"Telegram did not open the download. Try again.",
 								),
 			});
+		if (result === "requested") this.report("backup_handoff_requested", signal);
+		else if (result === "unavailable") this.report("backup_handoff_failed", signal);
 	}
 	public async handoff(): Promise<void> {
 		if (
@@ -212,8 +226,13 @@ export class LocalFileTransferSession {
 				kind: result.kind === "rejected" ? "failed" : result.kind,
 				prepared,
 			});
+			if (prepared.fileKind === "portable-backup") {
+				if (result.kind === "handoff-attempted") this.report("backup_handoff_requested", operation.signal);
+				else if (result.kind !== "cancelled") this.report("backup_handoff_failed", operation.signal);
+			}
 		} catch {
 			if (!operation.signal.aborted) this.update({ kind: "failed", prepared });
+			if (prepared.fileKind === "portable-backup") this.report("backup_handoff_failed", operation.signal);
 		}
 	}
 }

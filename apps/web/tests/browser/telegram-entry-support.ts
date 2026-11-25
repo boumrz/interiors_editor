@@ -53,6 +53,7 @@ export async function installEntryAudit(
 	sdk: "missing" | "invalid" | "signed" | "signed-ready-fails",
 	signedExample = "",
 	legalFirstUse = false,
+	platform?: "ios" | "android" | "tdesktop",
 ) {
 	const returning = !legalFirstUse && (sdk === "signed" || sdk === "signed-ready-fails");
 	let receiptKey: string | undefined;
@@ -66,7 +67,7 @@ export async function installEntryAudit(
 		receiptKey = `interiors:${launch.scope}:license:${licenseRevision}`;
 	}
 	await page.addInitScript(
-		({ sdk, signedExample, legalFirstUse, receiptKey, acceptedAt }) => {
+		({ sdk, signedExample, legalFirstUse, receiptKey, acceptedAt, platform }) => {
 			if (receiptKey) localStorage.setItem(receiptKey, acceptedAt);
 			const audit: TelegramEntryAudit = {
 				opens: [],
@@ -144,6 +145,7 @@ export async function installEntryAudit(
 					calls: string[] = [];
 				const app = {
 					version: "8.0",
+					platform,
 					...(legalFirstUse ? {
 						SettingsButton: {
 							isVisible: false,
@@ -263,7 +265,7 @@ export async function installEntryAudit(
 				},
 			});
 		},
-		{ sdk, signedExample, legalFirstUse, receiptKey, acceptedAt: new Date(fixtureEditionTime).toISOString() },
+		{ sdk, signedExample, legalFirstUse, receiptKey, acceptedAt: new Date(fixtureEditionTime).toISOString(), platform },
 	);
 }
 export const audit = (page: Page) =>

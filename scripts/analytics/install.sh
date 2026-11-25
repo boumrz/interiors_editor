@@ -45,6 +45,7 @@ target = directory / "service.env"
 with tempfile.NamedTemporaryFile(dir=directory, mode="w", encoding="ascii") as file:
     file.write("INTERIORS_MP_AGGREGATE_COUNTER_ID=114493478\n")
     file.write("INTERIORS_MP_AGGREGATE_TOKEN=\n")
+    file.write("INTERIORS_PRODUCT_METRICS_ENABLED=0\n")
     file.flush()
     os.fsync(file.fileno())
     try:

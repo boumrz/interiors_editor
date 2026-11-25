@@ -25,7 +25,9 @@ test("Telegram config loads in a checkout without the Web/PWA build or entry", a
 				"scripts/telegram-sdk-asset.mjs",
 				"src/app/license-receipt.ts",
 				"src/app/privacy-revision.ts",
+				"src/app/product-statistics-revision.ts",
 				"../../docs/legal/analytics-consent.html",
+				"../../docs/legal/en/analytics-consent.html",
 			].map(async (name) => {
 				const destination = join(app, name);
 				await mkdir(dirname(destination), { recursive: true });

@@ -1,11 +1,19 @@
 import type { VerifiedTelegramScope } from "../adapters/telegram/signed-launch";
+import { isProductMetric, type ProductMetric } from "../application/editor-product-metrics";
+import { productStatisticsRevision } from "./product-statistics-revision";
 
 export const statisticsRevision = "2026-11-22.2";
 const publishedAt = Date.parse("2026-11-22T00:00:00+03:00");
 const endsAt = Date.parse("2027-04-01T00:00:00+03:00");
+const productPublishedAt = Date.parse("2026-11-25T00:00:00+03:00");
 
 type Permission = "unknown" | "granted" | "denied";
-type Stop = "all" | "repeat";
+type Stop = "all" | "repeat" | "product";
+interface ProductGrant {
+	revision: string;
+	at: number;
+	generation: string;
+}
 interface Preferences {
 	form: string | null;
 	opens: boolean;
@@ -13,6 +21,7 @@ interface Preferences {
 	decisionAt: number;
 	lastOpen: number;
 	baseline: number;
+	product?: ProductGrant;
 }
 function initial(): Preferences {
 	return {
@@ -26,6 +35,15 @@ function initial(): Preferences {
 }
 const integer = (value: unknown): value is number =>
 	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+function decodeProduct(value: unknown): ProductGrant | undefined {
+	if (
+		value && typeof value === "object" &&
+		"revision" in value && value.revision === productStatisticsRevision &&
+		"at" in value && integer(value.at) && value.at >= productPublishedAt &&
+		"generation" in value && typeof value.generation === "string" &&
+		/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/.test(value.generation)
+	) return { revision: value.revision, at: value.at, generation: value.generation };
+}
 function decode(raw: string | null): Preferences {
 	if (raw === null) return initial();
 	const v: unknown = JSON.parse(raw);
@@ -56,6 +74,7 @@ function decode(raw: string | null): Preferences {
 		(v.permission !== "granted" && v.baseline !== 0)
 	)
 		throw Error("Unreadable statistics choice");
+	const product = v.opens && "product" in v ? decodeProduct(v.product) : undefined;
 	return {
 		form: v.form,
 		opens: v.opens,
@@ -63,6 +82,7 @@ function decode(raw: string | null): Preferences {
 		lastOpen: v.lastOpen,
 		decisionAt: v.decisionAt,
 		baseline: v.baseline,
+		...(product ? { product } : {}),
 	};
 }
 
@@ -74,6 +94,7 @@ export function deviceStatisticsStore(
 	session: () => Local,
 ) {
 	const key = `interiors:${scope}:statistics:${statisticsRevision}`;
+	const productLaunchKey = `${key}:product:launch`;
 	const memory = new Set<Stop>();
 	const stores = [local, session];
 	return {
@@ -108,18 +129,39 @@ export function deviceStatisticsStore(
 				storage().removeItem(`${key}:stop:${which}`);
 			memory.delete(which);
 		},
+		claimProduct(launch: number, code: ProductMetric) {
+			const storage = session();
+			const raw = storage.getItem(productLaunchKey);
+			let codes: ProductMetric[] = [];
+			if (raw !== null) {
+				const prior: unknown = JSON.parse(raw);
+				if (
+					!prior || typeof prior !== "object" ||
+					!("launch" in prior) || !integer(prior.launch) || prior.launch > launch ||
+					!("codes" in prior) || !Array.isArray(prior.codes) || !prior.codes.every(isProductMetric)
+				) return false;
+				if (prior.launch === launch) codes = prior.codes;
+			}
+			if (codes.includes(code)) return false;
+			const next = JSON.stringify({ launch, codes: [...codes, code] });
+			storage.setItem(productLaunchKey, next);
+			return storage.getItem(productLaunchKey) === next;
+		},
 	};
 }
 type Path =
 	| "/stats/tma-open-v2"
 	| "/stats/tma-mobile-open-v1"
-	| "/stats/tma-repeat-v2";
+	| "/stats/tma-repeat-v2"
+	| `/stats/tma-editor-v1/${"ios" | "android"}/${ProductMetric}`;
 type View = "closed" | "settings";
 interface Snapshot {
 	view: View;
 	aggregateEnabled: boolean;
 	permission: Permission;
 	studyOpen: boolean;
+	productAvailable: boolean;
+	productGranted: boolean;
 	busy: boolean;
 	error: boolean;
 }
@@ -131,6 +173,7 @@ export function createUsageMetrics(opts: {
 	readonly clock: () => number;
 	readonly readable: () => Promise<boolean>;
 	readonly formDigest: string;
+	readonly product?: { readonly readable: () => boolean };
 	readonly studyActive: () => boolean;
 	readonly lock: (work: () => Promise<void>) => Promise<void>;
 	readonly send: (path: Path) => void;
@@ -138,22 +181,44 @@ export function createUsageMetrics(opts: {
 	const listeners = new Set<() => void>();
 	const active = () =>
 		opts.clock() >= publishedAt && opts.clock() < endsAt && opts.studyActive();
+	const platform = opts.platform === "ios" || opts.platform === "android" ? opts.platform : undefined;
+	const productLaunch = platform && integer(opts.launch) && opts.launch > 0
+		? opts.launch
+		: undefined;
+	function productAvailable() {
+		try {
+			const now = opts.clock();
+			return !!opts.product && productLaunch !== undefined && now >= productPublishedAt &&
+				productLaunch <= now / 1000 && opts.product.readable();
+		} catch {
+			return false;
+		}
+	}
+	function currentGrant(p: Preferences) {
+		return p.opens && p.product && p.product.at <= opts.clock() ? p.product.generation : undefined;
+	}
 	let state: Snapshot = {
 		view: "closed",
 		aggregateEnabled: true,
 		permission: "unknown",
 		studyOpen: active(),
+		productAvailable: false,
+		productGranted: false,
 		error: false,
 		busy: false,
 	};
 	let launched = false;
+	let productStarted = false;
 	function update(change: Partial<Snapshot>) {
 		if (opts.signal.aborted) return;
 		state = { ...state, ...change };
 		for (const listener of listeners) listener();
 	}
 	function deny(p: Preferences, all: boolean) {
-		if (all) p.opens = false;
+		if (all) {
+			p.opens = false;
+			delete p.product;
+		}
 		p.permission = "denied";
 		p.form = null;
 		p.decisionAt = opts.clock();
@@ -161,10 +226,13 @@ export function createUsageMetrics(opts: {
 	}
 	function reflect(p: Preferences, readable: boolean) {
 		const open = active() && readable;
+		const productOpen = productAvailable();
 		update({
 			aggregateEnabled: p.opens,
 			permission: open ? p.permission : "denied",
 			studyOpen: open,
+			productAvailable: productOpen,
+			productGranted: productOpen && currentGrant(p) !== undefined,
 			error: false,
 		});
 	}
@@ -183,12 +251,15 @@ export function createUsageMetrics(opts: {
 				const readable = active() && (await opts.readable().catch(() => false));
 				if (opts.signal.aborted) return;
 				const all = opts.store.pending("all"),
-					repeat = opts.store.pending("repeat");
-				if (all || repeat) {
-					deny(p, all);
+					repeat = opts.store.pending("repeat"),
+					product = opts.store.pending("product");
+				if (all || repeat || product) {
+					if (all || repeat) deny(p, all);
+					if (product) delete p.product;
 					opts.store.write(p);
 					if (all) opts.store.clear("all");
 					if (repeat) opts.store.clear("repeat");
+					if (product) opts.store.clear("product");
 				}
 				if (p.permission === "granted" && p.decisionAt > opts.clock())
 					throw Error("Invalid consent timestamp");
@@ -201,6 +272,8 @@ export function createUsageMetrics(opts: {
 				permission: "denied",
 				error: true,
 				studyOpen: false,
+				productAvailable: false,
+				productGranted: false,
 			});
 		}
 	}
@@ -208,6 +281,29 @@ export function createUsageMetrics(opts: {
 		update({ busy: true });
 		await transact(action);
 		update({ busy: false });
+	}
+	function productGrant() {
+		try {
+			if (!productStarted || opts.signal.aborted || !productAvailable() ||
+				opts.store.pending("all") || opts.store.pending("product")) return;
+			return currentGrant(opts.store.read());
+		} catch {
+			return;
+		}
+	}
+	function recordProduct(metric: ProductMetric) {
+		if (!isProductMetric(metric) || productLaunch === undefined || !platform) return;
+		const grant = productGrant();
+		if (!grant) return;
+		void opts.lock(async () => {
+			const signals: ProductMetric[] = metric === "editor_entry" ? [metric] : ["editor_entry", metric];
+			for (const signal of signals) {
+				if (productGrant() !== grant) return;
+				if (opts.store.claimProduct(productLaunch, signal) && productGrant() === grant) {
+					opts.send(`/stats/tma-editor-v1/${platform}/${signal}`);
+				}
+			}
+		}).catch(() => { /* Unavailable session storage or transport drops this signal. */ });
 	}
 	return {
 		snapshot: () => state,
@@ -244,6 +340,11 @@ export function createUsageMetrics(opts: {
 					opts.send("/stats/tma-repeat-v2");
 			});
 		},
+		startProduct() {
+			productStarted = true;
+			recordProduct("editor_entry");
+		},
+		recordProduct,
 		async openSettings() {
 			update({ view: "settings", busy: true });
 			await transact(() => {});
@@ -280,6 +381,20 @@ export function createUsageMetrics(opts: {
 				}
 				opts.store.write(p);
 			});
+		},
+		async chooseProduct(allow: boolean) {
+			if (opts.signal.aborted) return;
+			if (!allow) opts.store.stop("product");
+			await edit((p) => {
+				if (!allow || !p.opens || !productAvailable() || currentGrant(p)) return;
+				p.product = {
+					revision: productStatisticsRevision,
+					at: opts.clock(),
+					generation: globalThis.crypto.randomUUID(),
+				};
+				opts.store.write(p);
+			});
+			if (allow) recordProduct("editor_entry");
 		},
 	};
 }

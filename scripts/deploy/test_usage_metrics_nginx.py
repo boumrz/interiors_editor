@@ -25,6 +25,7 @@ TOTAL = "/stats/tma-open-v2"
 MOBILE_TOTAL = "/stats/tma-mobile-open-v1"
 REPEAT = "/stats/tma-repeat-v2"
 RETURN = "/stats/tma-return"
+PRODUCT = "/stats/tma-editor-v1/ios/editor_entry"
 
 
 class ProductionRouteContract(unittest.TestCase):
@@ -35,6 +36,27 @@ class ProductionRouteContract(unittest.TestCase):
         self.assertIn("location = "+MOBILE_TOTAL+" {",config)
         self.assertIn("location = "+REPEAT+" {",config)
         self.assertIn("collect.sock",config)
+        self.assertNotIn(PRODUCT, config)
+
+    def test_only_product_capable_release_generates_the_aggregate_routes(self):
+        config = frontend.nginx_site("/tmp/fixture", {"web": set(), "telegram": set()},
+                                     product_metrics=True).decode()
+        telegram = config.split("server_name domiknote.ru;", maxsplit=1)[1]
+        self.assertIn("location = " + PRODUCT + " {", telegram)
+        self.assertIn("location = /stats/tma-editor-v1/android/backup_handoff_failed {", telegram)
+        self.assertNotIn("location = /stats/tma-editor-v1/desktop/", telegram)
+        self.assertNotIn("location = /health/tma-editor-v1", config)
+
+    def test_collector_and_nginx_share_exactly_the_closed_product_catalog(self):
+        source = Path(__file__).resolve().parents[1] / "analytics" / "collector.py"
+        spec = importlib.util.spec_from_file_location("production_aggregate_catalog", source)
+        collector = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(collector)
+        config = frontend.nginx_site("/tmp/fixture", {"web": set(), "telegram": set()},
+                                     product_metrics=True).decode()
+        routed = re.findall(r"location = (/stats/tma-editor-v1/[a-z0-9_/]+) \{", config)
+        self.assertEqual(len(routed), 60)
+        self.assertEqual(set(routed), set(collector.PRODUCT_ROUTES))
 
 
 @unittest.skipUnless(NGINX, "Set INTERIORS_NGINX_BIN or install Nginx to run this integration test")
@@ -85,7 +107,8 @@ class NginxFixture(unittest.TestCase):
         with socket.socket() as reserved:
             reserved.bind(("127.0.0.1", 0))
             self.port = reserved.getsockname()[1]
-        site = frontend.nginx_site(root, {"web": {"/index.html"}, "telegram": {"/index.html"}}).decode()
+        site = frontend.nginx_site(root, {"web": {"/index.html"}, "telegram": {"/index.html"}},
+                                   **({"product_metrics": True} if getattr(self, "use_product_metrics", False) else {})).decode()
         # Only adapt listeners, TLS/ACME, directories and the catalog include to local fixtures.
         site = "server {" + site.split("\nserver {", maxsplit=1)[1]
         site = site.replace("listen 443 ssl;", f"listen 127.0.0.1:{self.port};")
@@ -170,6 +193,37 @@ class AggregateIngressTests(NginxFixture):
                 self.assertIn(self.request(path, **options), (400, 403, 404, 405, 413, 415))
         self.assertEqual(self.calls, [])
 
+
+class ProductIngressTests(NginxFixture):
+    use_product_metrics = True
+
+    def test_only_fixed_platform_and_code_pairs_pass_without_client_headers_or_body(self):
+        self.assertEqual(self.request(PRODUCT), 204)
+        self.assertEqual(self.request("/stats/tma-editor-v1/android/save_quota"), 204)
+        for path, options in [
+            (PRODUCT, {"method": "GET"}),
+            (PRODUCT, {"method": "OPTIONS"}),
+            (PRODUCT, {"body": b"nonempty"}),
+            (PRODUCT, {"Content-Length": None, "Transfer-Encoding": "chunked"}),
+            (PRODUCT, {"Origin": "https://other.invalid"}),
+            (PRODUCT, {"X-Interiors-Stats": None}),
+            (PRODUCT, {"host": "www.domiknote.ru"}),
+            (PRODUCT + "?", {}),
+            (PRODUCT + "?private=1", {}),
+            (PRODUCT + "/", {}),
+            (PRODUCT.replace("/ios/", "/desktop/"), {}),
+            (PRODUCT.replace("/ios/", "/%69os/"), {}),
+            (PRODUCT.replace("editor_entry", "unrecognized"), {}),
+            ("/health/tma-editor-v1", {"method": "GET"}),
+        ]:
+            with self.subTest(path=path, options=options):
+                self.assertIn(self.request(path, **options), (400, 403, 404, 405, 413))
+        self.assertEqual(self.calls, [
+            (PRODUCT, {"host": "localhost", "connection": "close", "content-length": "0"}, b""),
+            ("/stats/tma-editor-v1/android/save_quota",
+             {"host": "localhost", "connection": "close", "content-length": "0"}, b""),
+        ])
+
 class AggregatePipelineTest(NginxFixture):
     use_aggregate_collector = True
 
@@ -186,3 +240,27 @@ class AggregatePipelineTest(NginxFixture):
         self.app.env["INTERIORS_MP_AGGREGATE_TOKEN"] = ""
         with self.assertRaisesRegex(ValueError,"mobile-open-v1"):
             frontend.verify_collector_ready(self.socket_path)
+
+
+class ProductPipelineTest(NginxFixture):
+    use_aggregate_collector = True
+    use_product_metrics = True
+
+    def test_private_preflight_stages_with_collection_off_then_exports_only_eligible_signals(self):
+        frontend.verify_product_collector_ready(self.socket_path)
+        self.assertEqual(self.request(PRODUCT), 503)
+        self.assertEqual(self.request(MOBILE_TOTAL), 204)
+        self.assertEqual(self.reports, [])
+        self.app.env["INTERIORS_PRODUCT_METRICS_ENABLED"] = "1"
+        self.assertEqual(self.request(PRODUCT), 204)
+        self.assertGreaterEqual(self.request(PRODUCT + "?private=x"), 400)
+        self.assertGreaterEqual(self.request(PRODUCT, body=b"private"), 400)
+        self.clock += dt.timedelta(minutes=6)
+        self.assertEqual(self.app.export(), "sent")
+        self.assertEqual(self.app.export_product()["state"], "ok")
+        self.assertEqual(len(self.reports), 7)
+        self.assertEqual(json.loads(self.reports[0][0]["params"]), {"tma_opens": 1, "tma_repeat_opens": 0})
+        self.assertEqual(json.loads(self.reports[1][0]["params"])["editor_entry"], 1)
+        self.app.env["INTERIORS_MP_AGGREGATE_COUNTER_ID"] = "123"
+        with self.assertRaisesRegex(ValueError, "tma-editor-v1"):
+            frontend.verify_product_collector_ready(self.socket_path)

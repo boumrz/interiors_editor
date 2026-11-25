@@ -13,6 +13,7 @@ const documentNames: readonly LegalDocumentName[] = [
 	"privacy-policy",
 	"license-agreement",
 	"analytics-consent",
+	"product-analytics-consent",
 ];
 
 export function closeActiveLegalDocument(): boolean {

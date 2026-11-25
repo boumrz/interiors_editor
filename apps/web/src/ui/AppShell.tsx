@@ -1,4 +1,5 @@
 import { copy, editorLanguage } from "./editor-language";
+import type { ProductMetric, ProductMetricSink } from "../application/editor-product-metrics";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
 import { DoorSwingPicker } from "./door-swing-picker";
 import type { ReleaseRecoveryRecord } from "../app/release-startup";
@@ -208,6 +209,8 @@ export interface PwaInstall {
 }
 
 interface AppShellProps {
+	readonly onProductMetric?: ProductMetricSink | undefined;
+	readonly onProductMetricsReady?: (() => void) | undefined;
  readonly diagnosticDetails?: ReactNode;
  readonly readonlyDetails?:ReactNode;
  readonly readonlyRecoveryDetails?:ReactNode;
@@ -724,6 +727,41 @@ const itemCollisionCopy: Record<FloorItemEdit, string> = {
 	get size() { return copy("Пересечение с другим предметом. Размеры не изменились.", "This overlaps another item. The dimensions stayed the same."); },
 };
 
+export function editRejectionMetric(reasonCode: string): ProductMetric | undefined {
+	switch (reasonCode) {
+		case "ITEM_COLLISION":
+		case "WALL_ITEM_COLLISION":
+		case "DOOR_CLEARANCE_COLLISION":
+		case "ITEM_HOST_UNRESOLVABLE":
+			return "item_collision";
+		case "WALL_OPENING_COLLISION":
+		case "WALL_DOOR_OPENING_COLLISION":
+		case "OPENING_HOST_UNRESOLVABLE":
+		case "OPENING_OVERLAP":
+		case "OPENING_OUTSIDE_WALL_INTERVAL":
+		case "OPENING_OUT_OF_BOUNDS":
+		case "DOOR_WIDTH_EXCEEDS_WALL_LENGTH":
+		case "WINDOW_WIDTH_EXCEEDS_WALL_LENGTH":
+		case "ROOM_HEIGHT_OPENING_CONFLICT":
+			return "opening_conflict";
+		case "ROOM_USABLE_AREA_COLLAPSE":
+		case "USABLE_POLYGON_COLLAPSED":
+		case "INVALID_RESULTING_PROJECT":
+		case "INVALID_PLAN_GRAPH":
+		case "COLLINEAR_OVERLAP":
+		case "TOO_SHORT_WALL":
+		case "UNSUPPORTED_FACE_SHAPE":
+		case "PROJECT_BOUNDS_EXCEEDED":
+		case "UNSUPPORTED_DIRECTION":
+		case "DIAGONAL_WALL_CONTACT_UNSUPPORTED":
+		case "WALL_NOT_MOVABLE":
+		case "VERTEX_NOT_MOVABLE":
+		case "ROOM_NOT_DETACHED":
+		case "ROOM_OVERLAP":
+			return "geometry_rejected";
+	}
+}
+
 export function errorCopy(reasonCode: string, itemEdit?: FloorItemEdit): string {
 	switch (reasonCode) {
 		case "OUTSIDE_ROOM_HOST":
@@ -947,6 +985,32 @@ export function projectDirectoryUpdatedCopy(updatedAt: string): string {
 		month: "short",
 	}).format(timestamp);
 	return copy(`Изменён · ${formatted}`, `Edited · ${formatted}`);
+}
+
+type ProjectTransferImportRejection =
+	| Extract<Awaited<ReturnType<ProjectController["importProjectTransfer"]>>, { readonly kind: "rejected" }>["reasonCode"]
+	| Extract<Awaited<ReturnType<typeof decryptProjectTransfer>>, { readonly kind: "rejected" }>["reasonCode"]
+	| "BACKUP_LIMIT_EXCEEDED"
+	| "FILE_LIMIT_EXCEEDED"
+	| "FILE_SIZE_MISMATCH"
+	| "verification-unavailable";
+
+export function projectTransferImportMetric(reasonCode: ProjectTransferImportRejection): ProductMetric | undefined {
+	switch (reasonCode) {
+		case "BACKUP_CANCELLED":
+		case "PORTABLE_BACKUP_CANCELLED":
+		case "TRANSFER_CANCELLED":
+		case "INVALID_TRANSFER_PASSWORD":
+			return undefined;
+		case "PORTABLE_BACKUP_FUTURE_SCHEMA":
+		case "BACKUP_CONTAINER_UNSUPPORTED":
+			return "backup_incompatible";
+		case "verification-unavailable":
+		case "TRANSFER_CRYPTO_UNAVAILABLE":
+			return "backup_import_failed";
+		default:
+			return "backup_invalid";
+	}
 }
 
 export function projectTransferImportFeedback(reasonCode: string): string {
@@ -1536,6 +1600,8 @@ function WriterLeaseNotice({
 }
 
 export function AppShell({
+	onProductMetric,
+	onProductMetricsReady,
  diagnosticDetails,
  readonlyDetails,
  readonlyRecoveryDetails,
@@ -1571,6 +1637,20 @@ export function AppShell({
  // Existing browser storage retains its editing behavior while recovery protections remain active.
  const fullTransientNavigationProtection = hostNavigation !== undefined || (navigationProtection !== undefined && editorStorageNamespace === "browser-registered");
 	const [state, setState] = useState<ProjectScreenState>(controller.snapshot());
+	const metricSink = useRef(onProductMetric);
+	metricSink.current = onProductMetric;
+	const reportProductMetric = useCallback<ProductMetricSink>((metric) => {
+		try { metricSink.current?.(metric); } catch { /* Statistics must not change the editor's outcome. */ }
+	}, []);
+	const reportEditRejection = (reasonCode: string) => {
+		const metric = editRejectionMetric(reasonCode);
+		if (metric) reportProductMetric(metric);
+	};
+	useEffect(() => {
+		if (onProductMetric) {
+			return controller.subscribeProductMetrics?.((metric) => reportProductMetric(metric));
+		}
+	}, [controller, onProductMetric, reportProductMetric]);
 	const projectDirectoryRef = useRef<HTMLUListElement>(null);
 	useEffect(() => {
 		if (state.kind !== "projects") return;
@@ -1647,7 +1727,7 @@ export function AppShell({
 		};
 	}, [hostNavigation]);
 	const [localFileState, setLocalFileState] = useState<LocalFileTransferState>({ kind: "idle" });
-	const localFileSession = useMemo(() => fileTransfer ? new LocalFileTransferSession(fileTransfer, setLocalFileState) : undefined, [fileTransfer]);
+	const localFileSession = useMemo(() => fileTransfer ? new LocalFileTransferSession(fileTransfer, setLocalFileState, reportProductMetric) : undefined, [fileTransfer, reportProductMetric]);
 	useEffect(() => () => localFileSession?.close(), [localFileSession]);
 	const sourceRecoveryPanel = sourceRecovery && localFileSession && (state.kind === "recovery-needed" || (state.kind === "projects" && state.recoveryNeeded)) ? <StoredSourceRecovery port={sourceRecovery} onExport={async (source) => {
 		await localFileSession.prepare(async (signal) => {
@@ -1749,6 +1829,10 @@ export function AppShell({
 	const setDimensionError = useCallback((message: string | undefined, kind: "notice" | "item-collision" = "notice") => {
 		setDimensionNotice(message === undefined ? undefined : { kind, message });
 	}, []);
+	const showEditRejection = (reasonCode: string) => {
+		setDimensionError(errorCopy(reasonCode));
+		reportEditRejection(reasonCode);
+	};
 	const [directoryDeletionTarget, setDirectoryDeletionTarget] = useState<{
 		readonly projectId: string;
 		readonly name: string;
@@ -2533,6 +2617,27 @@ export function AppShell({
 		isWriterLeaseReadOnly ||
 		isHistoryResourceRecovery ||
 		Boolean(state.kind === "recovery-needed");
+	const productMetricsReady = legacyCreationAllowed && (
+		(state.kind === "projects" && !state.recoveryNeeded) ||
+		state.kind === "first-run" ||
+		(state.kind === "saved" && !isEditorReadOnly && controller.writerAccess().kind === "writable")
+	);
+	useEffect(() => {
+		if (!productMetricsReady || !onProductMetricsReady) return;
+		const announceReady = () => {
+			if (hostLifecycle?.snapshot().active === false) return;
+			try { onProductMetricsReady(); } catch { /* The editor remains available. */ }
+		};
+		announceReady();
+		return hostLifecycle?.subscribe(announceReady);
+	}, [hostLifecycle, onProductMetricsReady, productMetricsReady]);
+	useEffect(() => {
+		if (state.kind === "persist-failed") {
+			reportProductMetric(state.reasonCode === "PERSISTENCE_QUOTA_EXCEEDED" ? "save_quota" : "save_failed");
+		} else if (state.kind === "projects" && state.storageSources?.some((source) => source.kind === "unavailable")) {
+			reportProductMetric("storage_unavailable");
+		}
+	}, [reportProductMetric, state]);
 	useEffect(() => {
 		if (isEditorReadOnly) {
 			setOpeningDraft(undefined);
@@ -3296,6 +3401,11 @@ export function AppShell({
 		if (!file || projectTransferAbortRef.current || projectTransferImport.kind !== "idle" ||
 			(repairing && isRepairingCustomGlb)) return;
 		const setError = repairing ? setCustomGlbRepairError : setProjectTransferError;
+		const reportImportRejection = (reasonCode: ProjectTransferImportRejection) => {
+			if (repairing) return;
+			const metric = projectTransferImportMetric(reasonCode);
+			if (metric) reportProductMetric(metric);
+		};
 		const sizeError = repairing ? copy("Резервная копия превышает допустимый размер.", "This backup exceeds the size limit.") : projectTransferImportFeedback("BACKUP_LIMIT_EXCEEDED");
 		const readError = repairing ? copy("Не удалось прочитать резервную копию.", "The backup could not be read.") : copy("Не удалось прочитать файл. Существующие проекты не изменены.", "The file could not be read. Existing projects are intact.");
 		setError(undefined);
@@ -3307,6 +3417,7 @@ export function AppShell({
 		try {
 			if (file.size > 200 * 1024 * 1024) {
 				setError(sizeError);
+				reportImportRejection("BACKUP_LIMIT_EXCEEDED");
 				return;
 			}
 			const prefix = hostNavigation && new Uint8Array(await file.slice(0, 8).arrayBuffer());
@@ -3314,6 +3425,7 @@ export function AppShell({
 			const encrypted = !!prefix && isEncryptedProjectTransfer(prefix);
 			if (encrypted && file.size > MAX_ENCRYPTED_PROJECT_TRANSFER_BYTES) {
 				setError(sizeError);
+				reportImportRejection("BACKUP_LIMIT_EXCEEDED");
 				return;
 			}
 			if (encrypted && password === undefined) {
@@ -3323,6 +3435,10 @@ export function AppShell({
 			const read = fileTransfer ? await fileTransfer.read(file, abortController.signal) : undefined;
 			if (read && read.kind !== "read") {
 				setError(read.kind === "cancelled" ? projectTransferImportFeedback("BACKUP_CANCELLED") : readError);
+				if (!abortController.signal.aborted) {
+					if (read.kind === "rejected") reportImportRejection(read.reasonCode);
+					if (read.kind === "failed" && !repairing) reportProductMetric("backup_import_failed");
+				}
 				return;
 			}
 			let bytes = read?.kind === "read" ? read.bytes : new Uint8Array(await file.arrayBuffer());
@@ -3343,6 +3459,7 @@ export function AppShell({
 								? copy("Введите пароль, заданный при экспорте.", "Enter the password you set during export.")
 								: copy("Не удалось открыть зашифрованный файл.", "The encrypted file could not be opened."),
 					});
+					reportImportRejection(unlocked.reasonCode);
 					return;
 				}
 				bytes = unlocked.bytes;
@@ -3385,6 +3502,7 @@ export function AppShell({
 				setProjectTransferError(
 					projectTransferImportFeedback(result.reasonCode),
 				);
+				if (!abortController.signal.aborted) reportImportRejection(result.reasonCode);
 				return;
 			}
 			if (result.kind !== "durable") {
@@ -3393,10 +3511,13 @@ export function AppShell({
 						? projectTransferImportFeedback(result.kind)
 						: copy("Не удалось импортировать проект. Существующие проекты не изменены.", "The project could not be imported. Existing projects are intact."),
 				);
+				if (!abortController.signal.aborted && (result.kind === "persist-failed" || result.kind === "verification-unavailable"))
+					reportProductMetric("backup_import_failed");
 			}
 		} catch {
 			if (abortController.signal.aborted) return;
 			setError(readError);
+			if (!repairing) reportProductMetric("backup_import_failed");
 		} finally {
 			if (projectTransferAbortRef.current === abortController) {
 				projectTransferAbortRef.current = undefined;
@@ -3600,7 +3721,7 @@ export function AppShell({
 			await localFileSession.prepare(async (signal) => {
 				const result = await prepare(signal);
 				return result.kind === "ready" ? { bytes: result.bytes, filename: result.filename, fileKind: "portable-backup" } : undefined;
-			});
+			}, "portable-backup");
 			return;
 		}
 		try {
@@ -3700,6 +3821,7 @@ export function AppShell({
 							? copy("В хранилище недостаточно места. Освободите место на устройстве и нажмите «Повторить сохранение».", "Storage is full. Free up space on this device and select Retry save.")
 							: copy("Сохранение имени не подтверждено. Нажмите «Повторить сохранение», чтобы проверить ту же правку.", "The name could not be confirmed. Select Retry save to check the same edit.")
 						: renamePersistenceFailureCopy(result.reasonCode));
+					reportProductMetric(result.reasonCode === "PERSISTENCE_QUOTA_EXCEEDED" ? "save_quota" : "save_failed");
 					break;
 				default:
 					setRenameProjectError(copy("Не удалось открыть сохранённую версию проекта. Повторите попытку.", "The saved version could not be opened. Try again."));
@@ -3755,7 +3877,7 @@ export function AppShell({
 		settlePendingCreation(creationBase, result);
 		if (result.kind === "rejected") {
 			pendingCreationRef.current = undefined;
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 		}
 	};
 
@@ -4004,6 +4126,7 @@ export function AppShell({
 		const result = await controller.configureRectangularRoom(dimensions);
 		if (result.kind === "rejected") {
 			setPlanDimensionError(errorCopy(result.reasonCode));
+			reportEditRejection(result.reasonCode);
 		}
 	};
 
@@ -4071,7 +4194,7 @@ export function AppShell({
 			const acceptedCreation = settlePendingCreation(creationBase, result);
 			if (result.kind === "rejected") {
 				pendingCreationRef.current = undefined;
-				setDimensionError(errorCopy(result.reasonCode));
+				showEditRejection(result.reasonCode);
 				if (result.reasonCode === "WALL_ADD_CONFLICT_STALE") {
 					const refreshed =
 						project?.schemaVersion === 1
@@ -4112,6 +4235,7 @@ export function AppShell({
 		setDimensionError(edit
 			? errorCopy("ITEM_COLLISION", edit)
 			: itemPlacementPreviewFeedback({ isValid: false, reasonCode: "ITEM_COLLISION" }), "item-collision");
+		reportProductMetric("item_collision");
 	};
 
 	const rotateItem = async (input: {
@@ -4137,7 +4261,7 @@ export function AppShell({
 				if (selectedItem?.assetInstanceId === input.assetInstanceId) {
 					setSelectedItemAngleRaw(degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)));
 				}
-			} else setDimensionError(errorCopy(result.reasonCode));
+			} else showEditRejection(result.reasonCode);
 			return false;
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
@@ -5150,7 +5274,10 @@ export function AppShell({
 		if (result.kind !== "durable") {
 			if (hostNavigation && result.kind === "rejected" && result.reasonCode === "ITEM_COLLISION") {
 				showItemCollisionRejection();
-			} else setDimensionError(feedback);
+			} else {
+				setDimensionError(feedback);
+				if (result.kind === "rejected") reportEditRejection(result.reasonCode);
+			}
 			if (acceptedCreation) {
 				consumeCreationSurface();
 				setSelectedItemId(undefined);
@@ -5196,7 +5323,7 @@ export function AppShell({
 		const result = await controller.moveParametricFloorItem(input);
 		if (result.kind === "rejected") {
 			if (hostNavigation && result.reasonCode === "ITEM_COLLISION") showItemCollisionRejection("move");
-			else setDimensionError(errorCopy(result.reasonCode));
+			else showEditRejection(result.reasonCode);
 			return false;
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
@@ -5286,6 +5413,7 @@ export function AppShell({
 		);
 		setWallMutationCorrectionState(correction);
 		setDimensionError(correction?.message ?? fallbackCopy(result.reasonCode));
+		reportEditRejection(result.reasonCode);
 	};
 
 	const clearSelection = () => {
@@ -5429,7 +5557,7 @@ export function AppShell({
 					})
 			: await controller.createParametricWallItem(draft);
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		if (result.kind === "durable") {
@@ -5453,7 +5581,7 @@ export function AppShell({
 			assetInstanceId,
 		});
 		if (result.kind === "rejected")
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 	};
 
 	const setWallItemLock = async (assetInstanceId: string, locked: boolean) => {
@@ -5464,7 +5592,7 @@ export function AppShell({
 			locked,
 		});
 		if (result.kind === "rejected")
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 	};
 
 	const updateWallItemPositionField = (
@@ -5514,7 +5642,7 @@ export function AppShell({
 			offsetMm,
 		});
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		if (result.kind === "durable" && result.warnings?.length) {
@@ -5540,7 +5668,7 @@ export function AppShell({
 			assetInstanceId: selectedItem.assetInstanceId,
 		});
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		if (result.kind === "durable") {
@@ -5709,16 +5837,16 @@ export function AppShell({
 					wallRunSegmentIds: wallDeletionConflict.wallRunSegmentIds,
 				});
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		if (result.kind === "stale-base") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			setWallDeletionConflict(undefined);
 			return;
 		}
 		if (result.kind === "writer-lease-lost") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			setWallDeletionConflict(undefined);
 			return;
 		}
@@ -5813,7 +5941,7 @@ export function AppShell({
 					};
 				}
 			}
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return { kind: "rejected" };
 		}
 		return result.kind === "durable"
@@ -5837,11 +5965,11 @@ export function AppShell({
 		setDimensionError(undefined);
 		const result = await controller.resolveHostConflictAndSplitWall(input);
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return "rejected";
 		}
 		if (result.kind === "stale-base") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return "stale-base";
 		}
 		return result.kind === "durable" ? "durable" : "rejected";
@@ -5866,16 +5994,16 @@ export function AppShell({
 		});
 		setIsDeletingVertex(false);
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		if (result.kind === "stale-base") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			setVertexDeletionCandidate(undefined);
 			return;
 		}
 		if (result.kind === "writer-lease-lost") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			setVertexDeletionCandidate(undefined);
 			return;
 		}
@@ -5974,7 +6102,7 @@ export function AppShell({
 		const accepted = settlePendingCreation(creationBase, result);
 		if (result.kind === "rejected") {
 			pendingCreationRef.current = undefined;
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		if (accepted) {
@@ -6023,7 +6151,7 @@ export function AppShell({
 		const accepted = settlePendingCreation(creationBase, result);
 		if (result.kind === "rejected") {
 			pendingCreationRef.current = undefined;
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		if (accepted) {
@@ -6089,7 +6217,7 @@ export function AppShell({
 		setDimensionError(undefined);
 		const result = await controller.deleteDoorOpening({ openingId });
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 		}
 	};
 
@@ -6114,7 +6242,7 @@ export function AppShell({
 		if (hostNavigation) {
 			setDimensionError(undefined);
 			const result = await controller.moveDoorOpening(input);
-			if (result.kind === "rejected") setDimensionError(errorCopy(result.reasonCode));
+			if (result.kind === "rejected") showEditRejection(result.reasonCode);
 			return result.kind === "durable";
 		}
 		const preview = moveDoorOpeningInProject(project, input, project.updatedAt);
@@ -6182,7 +6310,7 @@ export function AppShell({
 			? { kind: "align-matching-windows", openingId: input.openingId }
 			: input);
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		const settled = controller.snapshot();
@@ -6253,6 +6381,7 @@ export function AppShell({
 				return;
 			}
 			report(errorCopy(result.reasonCode));
+			reportEditRejection(result.reasonCode);
 			return;
 		}
 		if (edit && (result.kind === "in-progress" || result.kind === "not-ready")) {
@@ -6294,7 +6423,7 @@ export function AppShell({
 						variantId: draft.variantId,
 					});
 		if (result.kind === "rejected" || result.kind === "persist-failed") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 			return;
 		}
 		setItemColorVariantDraft(undefined);
@@ -6308,7 +6437,7 @@ export function AppShell({
 			locked,
 		});
 		if (result.kind === "rejected") {
-			setDimensionError(errorCopy(result.reasonCode));
+			showEditRejection(result.reasonCode);
 		}
 	};
 
@@ -7700,6 +7829,7 @@ export function AppShell({
 				) : null}
 				{viewMode === "three-dimensional" && threeDimensionalScene ? (
 					<RoomScene3d
+						onProductMetric={reportProductMetric}
 						roomTheme={roomTheme}
 						plainLabels={hostNavigation !== undefined}
 						resizeDrawingBufferOnChangeOnly={hostNavigation !== undefined}

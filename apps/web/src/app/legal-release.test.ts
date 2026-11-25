@@ -51,6 +51,9 @@ test("only readable documents from the edition shown by the entry can support ac
 		"/legal/2026-11-22.2/analytics-consent.html",
 	);
 	expect(legalArchivePath("privacy-policy")).toBe(
-		"/legal/2026-11-24.1/privacy-policy.html",
+		"/legal/2026-11-25/privacy-policy.html",
+	);
+	expect(legalArchivePath("product-analytics-consent")).toBe(
+		"/legal/2026-11-25/product-analytics-consent.html",
 	);
 });

@@ -1,5 +1,5 @@
 [Unit]
-Description=Export one closed Moscow day's total Telegram opens to Yandex Metrica
+Description=Export closed Moscow day Telegram aggregates to Yandex Metrica
 After=network-online.target
 Wants=network-online.target
 

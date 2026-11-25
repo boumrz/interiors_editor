@@ -1,14 +1,19 @@
 import { licenseRevision } from "./license-receipt";
 import { privacyRevision } from "./privacy-revision";
+import { productStatisticsRevision } from "./product-statistics-revision";
 import { editorLanguage } from "../ui/editor-language";
 
 export type LegalDocumentName =
 	| "privacy-policy"
 	| "license-agreement"
-	| "analytics-consent";
+	| "analytics-consent"
+	| "product-analytics-consent";
 
-export const legalArchivePath = (name: LegalDocumentName) =>
-	`/legal/${name === "privacy-policy" ? privacyRevision : licenseRevision}${editorLanguage() === "en" ? "/en" : ""}/${name}.html`;
+export function legalArchivePath(name: LegalDocumentName) {
+	const edition = name === "privacy-policy" ? privacyRevision
+		: name === "product-analytics-consent" ? productStatisticsRevision : licenseRevision;
+	return `/legal/${edition}${editorLanguage() === "en" ? "/en" : ""}/${name}.html`;
+}
 
 export function bundledLegalDocument(
 	name: LegalDocumentName,

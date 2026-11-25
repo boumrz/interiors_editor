@@ -24,6 +24,23 @@ export function guardRegisteredProjectController(
 		"recoveryReadOnlyProject",
 		"recoveryCustomGlbRemovalSummary",
 	]);
+	function guardSubscription<T>(subscribe: (listener: (value: T) => void) => () => void) {
+		return (listener: (value: T) => void) => {
+			if (signal.aborted) return () => undefined;
+			let observing = true;
+			const unsubscribe = subscribe((value) => {
+				if (observing && !signal.aborted) listener(value);
+			});
+			const stop = () => {
+				if (!observing) return;
+				observing = false;
+				subscriptions.delete(stop);
+				unsubscribe();
+			};
+			subscriptions.add(stop);
+			return stop;
+		};
+	}
 	const bound = new Map<PropertyKey, unknown>();
 	// Proxy retains the real ProjectController prototype/private nominal type;
 	// its methods execute against the one actual shared core instance.
@@ -36,21 +53,9 @@ export function guardRegisteredProjectController(
 			let wrapped: unknown;
 			if (synchronousQueries.has(property)) wrapped = method.bind(target);
 			else if (property === "subscribe") {
-				wrapped = (listener: Parameters<ProjectController["subscribe"]>[0]) => {
-					if (signal.aborted) return () => undefined;
-					let observing = true;
-					const unsubscribe = target.subscribe((state) => {
-						if (observing && !signal.aborted) listener(state);
-					});
-					const stop = () => {
-						if (!observing) return;
-						observing = false;
-						subscriptions.delete(stop);
-						unsubscribe();
-					};
-					subscriptions.add(stop);
-					return stop;
-				};
+				wrapped = guardSubscription(target.subscribe.bind(target));
+			} else if (property === "subscribeProductMetrics") {
+				wrapped = guardSubscription(target.subscribeProductMetrics.bind(target));
 			} else if (property === "importProjectTransfer") {
 				wrapped = (
 					bytes: Uint8Array,

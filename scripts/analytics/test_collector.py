@@ -31,6 +31,8 @@ ENV = {
 OPEN = "/stats/tma-open-v2"
 MOBILE_OPEN = "/stats/tma-mobile-open-v1"
 REPEAT = "/stats/tma-repeat-v2"
+PRODUCT_PREFIX = "/stats/tma-editor-v1/"
+PRODUCT_FLAG = "INTERIORS_PRODUCT_METRICS_ENABLED"
 CUTOFF = dt.datetime(2027, 3, 31, 21, tzinfo=dt.timezone.utc)
 
 class CollectorTest(unittest.TestCase):
@@ -164,6 +166,134 @@ class CollectorTest(unittest.TestCase):
             self.assertGreaterEqual(request('POST',route,headers={'Transfer-Encoding':'chunked'}),400)
         self.assertEqual((0,0),self.store.totals('2026-11-22'))
         self.assertEqual([],self.sent)
+
+    def test_product_endpoint_accepts_only_empty_approved_mobile_signals_when_enabled(self):
+        request = self.serve()
+        ios_project = PRODUCT_PREFIX + "ios/project_created"
+        self.assertEqual(request("GET", "/health/tma-editor-v1"), 204)
+        self.assertEqual(request("POST", ios_project), 503)
+        self.assertEqual(request("POST", MOBILE_OPEN), 204)
+        self.app.env[PRODUCT_FLAG] = "1"
+        self.assertEqual(request("POST", ios_project), 204)
+        self.assertEqual(request("POST", PRODUCT_PREFIX + "android/save_failed"), 204)
+        for path, options in [
+            (PRODUCT_PREFIX + "desktop/project_created", {}),
+            (PRODUCT_PREFIX + "ios/unknown", {}),
+            (ios_project + "/", {}),
+            (ios_project + "?private=x", {}),
+            (ios_project.replace("ios", "%69os"), {}),
+            (ios_project, {"headers": {"Transfer-Encoding": "chunked"}}),
+            (ios_project, {"body": b"private"}),
+        ]:
+            with self.subTest(path=path, options=options):
+                self.assertGreaterEqual(request("POST", path, **options), 400)
+        with sqlite3.connect(self.db) as connection:
+            self.assertEqual(connection.execute("SELECT * FROM product_counts ORDER BY platform").fetchall(), [
+                ("2026-11-22", "android", "save_failed", 1),
+                ("2026-11-22", "ios", "project_created", 1),
+            ])
+        self.now = START + dt.timedelta(seconds=1)
+        self.assertEqual(request("POST", ios_project), 204)
+        self.assertEqual((1, 0), self.store.totals("2026-11-22"))
+        self.assertEqual((0, 0), self.store.totals("2026-11-23"))
+        self.assertEqual([], self.sent)
+        self.app.env["INTERIORS_MP_AGGREGATE_COUNTER_ID"] = "123"
+        self.assertEqual(request("GET", "/health/tma-editor-v1"), 503)
+
+    def test_sends_six_product_reports_once_for_the_closed_moscow_day(self):
+        self.app.env[PRODUCT_FLAG] = "1"
+        self.now = START.replace(hour=0, minute=6, second=0)
+        self.assertEqual(self.app.export_product()["state"], "before-start")
+        self.now = START
+        request = self.serve()
+        for suffix in ("ios/editor_entry", "ios/project_created", "ios/project_created",
+                       "ios/wall_moved", "android/scene_context_lost"):
+            self.assertEqual(request("POST", PRODUCT_PREFIX + suffix), 204)
+        self.assertEqual(self.sent, [])
+        self.now = CLOSED
+        with concurrent.futures.ThreadPoolExecutor(6) as pool:
+            list(pool.map(lambda _: self.app.export_product(), range(6)))
+        self.assertEqual(len(self.sent), 6)
+        reports = {}
+        cids = set()
+        for counter, token, hits in self.sent:
+            self.assertEqual((counter, token), ("114493478", "aggregate-test"))
+            self.assertEqual(len(hits), 1)
+            self.assertEqual(set(hits[0]), {"cid", "t", "dl", "et", "params"})
+            self.assertEqual(hits[0]["t"], "pageview")
+            self.assertEqual(hits[0]["et"], str(int(START.timestamp())))
+            self.assertNotIn(hits[0]["cid"], {c.SERVICE_CID, c.INTRADAY_SERVICE_CID})
+            cids.add(hits[0]["cid"])
+            reports[hits[0]["dl"]] = json.loads(hits[0]["params"])
+        root = "https://domiknote.ru/tma-editor-report/"
+        self.assertEqual(set(reports), {root + group + "/" + platform
+                                        for group in ("projects", "tools", "errors")
+                                        for platform in ("ios", "android")})
+        self.assertEqual(len(cids), 6)
+        self.assertEqual(reports[root + "projects/ios"]["editor_entry"], 1)
+        self.assertEqual(reports[root + "projects/ios"]["project_created"], 2)
+        self.assertEqual(reports[root + "projects/android"]["project_created"], 0)
+        self.assertEqual(reports[root + "tools/ios"]["wall_moved"], 1)
+        self.assertNotIn("project_created", reports[root + "tools/ios"])
+        self.assertEqual(reports[root + "errors/android"]["scene_context_lost"], 1)
+        self.assertEqual(self.app.export_product()["state"], "ok")
+        self.assertEqual(len(self.sent), 6)
+        self.assertEqual(self.app.export(), "sent")
+
+    def test_product_journal_retries_only_definite_failure_and_offline_reports(self):
+        self.app.env[PRODUCT_FLAG] = "1"
+        self.assertTrue(self.app.record(PRODUCT_PREFIX + "ios/editor_entry"))
+        self.now = CLOSED
+        outcomes = {"projects/ios": "rejected", "tools/ios": "offline", "errors/android": "unknown"}
+        attempts = []
+
+        def first_send(_counter, _token, hits):
+            suffix = hits[0]["dl"].split("tma-editor-report/")[1]
+            attempts.append(suffix)
+            return outcomes.get(suffix, "sent")
+
+        self.app.send = first_send
+        self.assertEqual(self.app.export_product()["state"], "needs-review")
+        self.app.send = self.sender
+        self.assertEqual(self.app.export_product()["state"], "needs-review")
+        self.assertEqual(len(attempts), 6)
+        self.assertEqual({hits[0]["dl"].split("tma-editor-report/")[1] for _, _, hits in self.sent},
+                         {"projects/ios", "tools/ios"})
+        day = dt.date(2026, 11, 22)
+        report = self.store.product_report(day)
+        self.assertEqual({row["state"] for row in report}, {"sent", "unknown"})
+        self.assertFalse(self.store.resolve_product_export(day, "tools", "ios", "rejected"))
+        self.assertTrue(self.store.resolve_product_export(day, "errors", "android", "rejected"))
+        self.assertEqual(self.app.export_product()["state"], "ok")
+        self.assertEqual(len(self.sent), 3)
+        self.now = START + dt.timedelta(hours=12, seconds=1)
+        self.assertEqual(self.app.export_product()["state"], "expired")
+        self.assertEqual(len(self.sent), 3)
+        self.app.env[PRODUCT_FLAG] = "0"
+        self.assertFalse(self.app.record(PRODUCT_PREFIX + "ios/editor_entry"))
+        self.assertEqual(self.app.export_product()["state"], "disabled")
+
+    def test_product_crash_considers_only_the_reserved_pair_indeterminate(self):
+        self.app.env[PRODUCT_FLAG] = "1"
+        self.assertTrue(self.app.record(PRODUCT_PREFIX + "ios/editor_entry"))
+        self.now = CLOSED
+
+        def crash(*_):
+            raise RuntimeError("interrupted after claim")
+
+        self.app.send = crash
+        with self.assertRaisesRegex(RuntimeError, "interrupted after claim"):
+            self.app.export_product()
+        self.app.send = self.sender
+        self.assertEqual(self.app.export_product()["state"], "needs-review")
+        self.assertEqual(len(self.sent), 5)
+        day = dt.date(2026, 11, 22)
+        reports = self.store.product_report(day)
+        self.assertEqual([(row["group"], row["platform"]) for row in reports if row["state"] == "sending"],
+                         [("projects", "ios")])
+        self.assertTrue(self.store.resolve_product_export(day, "projects", "ios", "sent"))
+        self.assertEqual(self.app.export_product()["state"], "ok")
+        self.assertEqual(len(self.sent), 5)
 
     def test_disabled_receivers_and_exact_moscow_study_cutoff(self):
         request = self.serve()

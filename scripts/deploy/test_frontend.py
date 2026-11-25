@@ -413,6 +413,37 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(site.read_bytes(), before)
         self.assertFalse((root / "retained/telegram/telegram.456.js").exists())
 
+    def test_product_health_and_routes_follow_the_active_archive_not_retained_documents(self):
+        root, site, _, rollback, rollback_inventory = self.telegram_update()
+        (self.telegram / "release-manifest.json").write_text(json.dumps({"appBuildId": "f" * 16}))
+        document = self.telegram / "legal/2026-11-25/product-analytics-consent.html"
+        document.parent.mkdir(parents=True)
+        document.write_text("Synthetic consent fixture")
+        (self.telegram / "legal/product-analytics-consent.html").write_bytes(document.read_bytes())
+        self.seal_telegram("telegram.456.js")
+        candidate = self.base / "product-only.tar.gz"
+        incoming = frontend.package_telegram_release(self.telegram, candidate, "f" * 40)
+        options = {"root": root, "site": site, "command": lambda _: None,
+                   "health": lambda _: None, "ready": lambda _: None}
+        previous = (root / "current").readlink()
+        original_config = site.read_bytes()
+        with patch.object(frontend, "verify_product_collector_ready", side_effect=ValueError("product health failed")):
+            with self.assertRaisesRegex(ValueError, "product health failed"):
+                frontend.activate_telegram_release(candidate, incoming["commit"], **options)
+        self.assertEqual((root / "current").readlink(), previous)
+        self.assertEqual(site.read_bytes(), original_config)
+        with patch.object(frontend, "verify_product_collector_ready") as product_health:
+            frontend.activate_telegram_release(candidate, incoming["commit"], **options)
+            product_health.assert_called_once_with()
+            self.assertIn(b"location = /stats/tma-editor-v1/ios/editor_entry {", site.read_bytes())
+            consent_location = site.read_bytes().split(b"location = /legal/product-analytics-consent.html {")[1].split(b"}", 1)[0]
+            self.assertIn(b'Cache-Control "no-store"', consent_location)
+            self.assertTrue((root / "retained/telegram" / document.relative_to(self.telegram)).is_file())
+            frontend.activate_telegram_release(rollback, rollback_inventory["commit"], **options)
+            product_health.assert_called_once_with()
+        self.assertNotIn(b"/stats/tma-editor-v1/", site.read_bytes())
+        self.assertIn(b"/legal/2026-11-25/product-analytics-consent.html", site.read_bytes())
+
     def test_replaying_the_same_telegram_build_preserves_the_previous_release(self):
         root, site, old, archive, incoming = self.telegram_update()
         options = {"root": root, "site": site, "command": lambda _: None,

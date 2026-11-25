@@ -699,6 +699,68 @@ test("TMA-LANGUAGE-01: the saved bot language localizes a direct signed launch, 
 	await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Saved");
 	expect(await semanticRows(page)).toEqual(durable);
 });
+
+for (const platform of ["ios", "android", "tdesktop"] as const) {
+	test(`TMA-PRODUCT-METRICS: ${platform} reports consented editor outcomes once per launch`, async ({ page }) => {
+		const sent: string[] = [];
+		await page.route("**/stats/tma-editor-v1/**", async (route) => {
+			const req = route.request();
+			expect(req.method()).toBe("POST");
+			expect(req.postData()).toBeNull();
+			expect(req.headers()["x-interiors-stats"]).toBe("1");
+			expect(req.headers().cookie).toBeUndefined();
+			expect(req.headers().referer).toBeUndefined();
+			const url = new URL(req.url());
+			expect(url.search).toBe("");
+			sent.push(url.pathname);
+			await route.fulfill({ status: 204 });
+		});
+		await page.clock.setFixedTime(new Date(fixtureEditionTime));
+		await installEntryAudit(page, "signed", signedExample, false, platform);
+		await page.goto("/");
+		await page.getByRole("button", { name: "Настройки", exact: true }).click();
+		await page.getByRole("button", { name: "Настройки статистики", exact: true }).click();
+		const toggle = page.getByRole("switch", { name: "Разрешить статистику использования и ошибок", exact: true });
+		if (platform === "tdesktop") {
+			await expect(toggle).toHaveCount(0);
+			expect(sent).toEqual([]);
+			return;
+		}
+		await expect(toggle).toHaveAttribute("aria-checked", "false");
+		expect(sent).toEqual([]);
+		await toggle.click();
+		const prefix = `/stats/tma-editor-v1/${platform}/`;
+		const paths = ["editor_entry", "backup_incompatible", "project_created", "room_created", "view_3d_ready"].map((code) => prefix + code);
+		await expect.poll(() => sent.slice()).toEqual(paths.slice(0, 1));
+		await page.getByRole("button", { name: "Закрыть статистику", exact: true }).click();
+		await page.getByRole("button", { name: "Закрыть настройки", exact: true }).click();
+		await page.locator("#import-project-transfer").evaluate((input) => {
+			if (!(input instanceof HTMLInputElement)) throw new Error("Missing backup picker");
+			const transfer = new DataTransfer();
+			transfer.items.add(new File(["Not a valid backup"], "Частное имя.interiors", {
+				type: "application/octet-stream",
+			}));
+			input.files = transfer.files;
+			input.dispatchEvent(new Event("change", { bubbles: true }));
+		});
+		await expect.poll(() => sent.slice()).toEqual(paths.slice(0, 2));
+		await createRoom(page, "Частное имя проекта");
+		await page.getByRole("button", { name: "3D", exact: true }).click();
+		await expect.poll(() => sent.slice()).toEqual(paths);
+		await page.reload();
+		await page.getByRole("button", { name: "Настройки", exact: true }).click();
+		await page.getByRole("button", { name: "Настройки статистики", exact: true }).click();
+		await expect(toggle).toHaveAttribute("aria-checked", "true");
+		await toggle.click();
+		await expect(toggle).toHaveAttribute("aria-checked", "false");
+		await page.getByRole("button", { name: "Закрыть статистику", exact: true }).click();
+		await page.getByRole("button", { name: "Закрыть настройки", exact: true }).click();
+		await page.getByRole("button", { name: "Открыть Частное имя проекта", exact: true }).click();
+		await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Сохранено");
+		expect(sent).toEqual(paths);
+	});
+}
+
 for (const direction of ["release", "rollback"] as const)
 	test(`TMA-ENTRY-${direction === "release" ? "08" : "09"}: old loaded shell resolves its pending application module after ${direction}`, async ({
 		page,

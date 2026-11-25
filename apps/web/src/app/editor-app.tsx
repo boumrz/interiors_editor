@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState } from "react";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
+import type { ProductMetricSink } from "../application/editor-product-metrics";
 import type {
 	CatalogGatewayPort,
 	ProjectSourceRecoveryPort,
@@ -26,6 +27,8 @@ import type {
 type StartupState = { readonly kind: "checking" } | ReleaseStartupOutcome;
 
 export type EditorAppProps = {
+	readonly onProductMetric?: ProductMetricSink | undefined;
+	readonly onProductMetricsReady?: (() => void) | undefined;
 	readonly onOpenSettings?: (restoreFocus?: HTMLElement) => void;
 	readonly diagnosticDetails?: ReactNode;
 	readonly projectsSupplement?: ReactNode;
@@ -97,6 +100,8 @@ export function ReleaseRecoveryScreen({
 }
 
 export function EditorApp({
+	onProductMetric,
+	onProductMetricsReady,
 	diagnosticDetails,
 	projectsSupplement,
 	onOpenSettings,
@@ -170,6 +175,8 @@ export function EditorApp({
 	}
 	return (
 		<AppShell
+			onProductMetric={onProductMetric}
+			onProductMetricsReady={onProductMetricsReady}
 			diagnosticDetails={diagnosticDetails}
 			projectsSupplement={projectsSupplement}
 			onOpenSettings={onOpenSettings}

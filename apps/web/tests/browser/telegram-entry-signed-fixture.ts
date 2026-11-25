@@ -5,5 +5,5 @@ export const signedExample =
 
 // Keep receipt and project timestamps after the current edition. Only the test entry
 // maps this date onto the published Telegram signature's historical verification clock.
-export const fixtureEditionTime = Date.parse("2026-11-22T12:00:00Z");
+export const fixtureEditionTime = Date.parse("2026-11-25T12:00:00Z");
 export const fixtureSignedTime = 1_733_584_787_000;

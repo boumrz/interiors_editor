@@ -4,6 +4,7 @@ import {
 	deviceStatisticsStore,
 } from "./telegram-usage-metrics";
 import type { VerifiedTelegramScope } from "../adapters/telegram/signed-launch";
+import type { ProductMetric } from "../application/editor-product-metrics";
 
 const now = Date.UTC(2026, 10, 22, 12);
 const cutoff = Date.UTC(2027, 2, 31, 21);
@@ -21,6 +22,8 @@ function fixture() {
 		time: now,
 		active: true,
 		form: true,
+		productForm: true,
+		failSession: false,
 		digest: "a".repeat(64),
 		failRead: false,
 		reads: 0,
@@ -37,6 +40,7 @@ function fixture() {
 			return map.get(key) ?? null;
 		},
 		setItem(key: string, value: string) {
+			if (env.failSession && map === session) throw Error();
 			if (env.failWrite || (env.failPrimary && !key.includes(":stop:")))
 				throw Error();
 			if (!env.ignoreWrite) map.set(key, value);
@@ -71,14 +75,292 @@ function fixture() {
 			studyActive: () => env.active,
 			readable: async () => env.form,
 			formDigest: env.digest,
+			product: { readable: () => env.productForm },
 			lock,
 			send(path) {
 				sent.push(path);
 				env.onSent?.();
 			},
 		});
-	return { local, session, model, sent, env };
+	return { local, session, model, sent, env, drain: () => lock(async () => {}) };
 }
+
+const productLaunch = Date.parse("2026-11-25T12:00:00+03:00") / 1000;
+const productPath = (metric: ProductMetric, platform = "ios") => `/stats/tma-editor-v1/${platform}/${metric}`;
+
+test("product consent defaults off independently of repeat consent and counts actual editor entry and approved actions", async () => {
+	const f = fixture();
+	f.env.time = productLaunch * 1000;
+	const editor = f.model(productLaunch, scope, undefined, "ios");
+	await editor.choose(true);
+	await editor.openSettings();
+	expect(editor.snapshot()).toMatchObject({ permission: "granted", productAvailable: true, productGranted: false });
+	editor.startProduct();
+	editor.recordProduct("wall_added");
+	await f.drain();
+	expect(f.sent).toEqual([]);
+	await editor.chooseProduct(true);
+	editor.recordProduct("item_placed");
+	editor.recordProduct("item_placed");
+	editor.recordProduct("user_text" as ProductMetric);
+	await f.drain();
+	expect(f.sent).toEqual([productPath("editor_entry"), productPath("item_placed")]);
+	await editor.chooseProduct(false);
+	editor.recordProduct("save_failed");
+	await f.drain();
+	expect(editor.snapshot()).toMatchObject({ permission: "granted", productGranted: false });
+	expect(f.sent).toHaveLength(2);
+	await editor.chooseProduct(true);
+	await editor.choose(false);
+	expect(editor.snapshot()).toMatchObject({ permission: "denied", productGranted: true });
+	editor.recordProduct("save_failed");
+	await f.drain();
+	expect(f.sent).toEqual([productPath("editor_entry"), productPath("item_placed"), productPath("save_failed")]);
+});
+
+test("product records deduplicate across reload on the same verified launch and keep accounts isolated", async () => {
+	const f = fixture();
+	f.env.time = (productLaunch + 20) * 1000;
+	const editorFor = (launch: number, area = scope) => f.model(launch, area, undefined, "android");
+	const firstEditor = editorFor(productLaunch);
+	await firstEditor.chooseProduct(true);
+	await f.drain();
+	expect(f.sent).toEqual([]);
+	firstEditor.startProduct();
+	firstEditor.recordProduct("wall_added");
+	await f.drain();
+	const reload = editorFor(productLaunch);
+	reload.startProduct();
+	reload.recordProduct("wall_added");
+	editorFor(productLaunch, other).startProduct();
+	await f.drain();
+	const next = editorFor(productLaunch + 1);
+	next.startProduct();
+	next.recordProduct("wall_added");
+	await f.drain();
+	reload.recordProduct("save_failed");
+	await f.drain();
+	expect(f.sent).toEqual([
+		productPath("editor_entry", "android"), productPath("wall_added", "android"),
+		productPath("editor_entry", "android"), productPath("wall_added", "android"),
+	]);
+});
+
+test("aggregate opt-out stops an action queued in another context and removes product consent across re-enabling", async () => {
+	const f = fixture();
+	f.env.time = productLaunch * 1000;
+	const editor = f.model(productLaunch, scope, undefined, "ios");
+	editor.startProduct();
+	await editor.chooseProduct(true);
+	await f.drain();
+	editor.recordProduct("save_quota");
+	await f.model().setAggregate(false);
+	await f.model().setAggregate(true);
+	editor.recordProduct("project_created");
+	await f.drain();
+	expect(f.sent).toEqual([productPath("editor_entry")]);
+});
+
+test("product consent fails closed without a verified mobile entry, displayed form or the session watermark", async () => {
+	const f = fixture();
+	f.env.time = productLaunch * 1000;
+	for (const editor of [f.model(undefined, scope, undefined, "ios"), f.model(productLaunch, scope, undefined, "tdesktop")]) {
+		await editor.chooseProduct(true);
+		editor.startProduct();
+		editor.recordProduct("wall_added");
+	}
+	const editor = f.model(productLaunch, scope, undefined, "ios");
+	f.env.productForm = false;
+	editor.startProduct();
+	await editor.chooseProduct(true);
+	editor.recordProduct("wall_added");
+	f.env.productForm = true;
+	f.env.failSession = true;
+	await editor.chooseProduct(true);
+	editor.recordProduct("wall_added");
+	await f.drain();
+	expect(f.sent).toEqual([]);
+});
+
+test("a choice from another open window counts a mounted editor only with its subsequent activity", async () => {
+	const f = fixture();
+	f.env.time = (productLaunch + 1) * 1000;
+	const editor = f.model(productLaunch, scope, undefined, "ios");
+	editor.startProduct();
+	editor.recordProduct("wall_added");
+	await f.model(productLaunch + 1, scope, undefined, "ios").chooseProduct(true);
+	await f.drain();
+	expect(f.sent).toEqual([]);
+	editor.recordProduct("item_placed");
+	await f.drain();
+	expect(f.sent).toEqual([productPath("editor_entry"), productPath("item_placed")]);
+});
+
+test("an old product consent edition or a failed withdrawal cannot permit later signals", async () => {
+	const f = fixture();
+	f.env.time = (productLaunch + 20) * 1000;
+	const current = f.model(productLaunch, scope, undefined, "ios");
+	await current.chooseProduct(true);
+	const [key, raw] = [...f.local.entries()][0];
+	const previous = JSON.parse(raw);
+	f.local.set(key, JSON.stringify({ ...previous, product: { ...previous.product, revision: "2026-11-24" } }));
+	current.startProduct();
+	current.recordProduct("item_placed");
+	await f.drain();
+	expect(f.sent).toEqual([]);
+	await current.chooseProduct(true);
+	await f.drain();
+	f.env.failPrimary = true;
+	await current.chooseProduct(false);
+	f.env.failPrimary = false;
+	const next = f.model(productLaunch + 1, scope, undefined, "ios");
+	next.startProduct();
+	next.recordProduct("save_failed");
+	await next.openSettings();
+	await f.drain();
+	expect(next.snapshot()).toMatchObject({ productGranted: false, aggregateEnabled: true });
+	expect(f.sent).toEqual([productPath("editor_entry")]);
+});
+
+test("product permission opens on publication and requires a current positive whole-second launch", async () => {
+	const f = fixture();
+	const publication = Date.parse("2026-11-25T00:00:00+03:00");
+	f.env.time = publication - 1;
+	const before = f.model(Math.floor(f.env.time / 1000), scope, undefined, "ios");
+	await before.openSettings();
+	expect(before.snapshot().productAvailable).toBe(false);
+	await before.chooseProduct(true);
+	before.startProduct();
+	await f.drain();
+	expect(f.sent).toEqual([]);
+
+	f.env.time = publication;
+	const at = publication / 1000;
+	for (const launch of [0, -1, at - 0.5, at + 1]) {
+		const editor = f.model(launch, scope, undefined, "ios");
+		await editor.openSettings();
+		expect(editor.snapshot().productAvailable).toBe(false);
+		await editor.chooseProduct(true);
+		editor.startProduct();
+	}
+	await f.drain();
+	expect(f.sent).toEqual([]);
+
+	const editor = f.model(at, scope, undefined, "ios");
+	await editor.chooseProduct(true);
+	editor.startProduct();
+	await f.drain();
+	expect(editor.snapshot().productGranted).toBe(true);
+	expect(f.sent).toEqual([productPath("editor_entry")]);
+});
+
+test("malformed or future product consent leaves opens and a separate repeat choice intact", async () => {
+	const f = fixture();
+	f.env.time = productLaunch * 1000;
+	const editor = f.model(productLaunch, scope, undefined, "ios");
+	await editor.choose(true);
+	await editor.chooseProduct(true);
+	const [key, raw] = [...f.local.entries()][0];
+	const saved = JSON.parse(raw);
+	for (const product of [
+		null,
+		"granted",
+		{ ...saved.product, at: now },
+		{ ...saved.product, at: f.env.time + 1 },
+		{ ...saved.product, generation: `invalid-${saved.product.generation}` },
+		{ ...saved.product, generation: `${saved.product.generation}-invalid` },
+	]) {
+		f.local.set(key, JSON.stringify({ ...saved, product }));
+		await editor.openSettings();
+		expect(editor.snapshot()).toMatchObject({ aggregateEnabled: true, permission: "granted", productGranted: false, error: false });
+		editor.startProduct();
+		editor.recordProduct("wall_added");
+	}
+	await f.drain();
+	expect(f.sent).toEqual([]);
+});
+
+test("product signals require an intact session watermark and a confirmed write", async () => {
+	const f = fixture();
+	f.env.time = productLaunch * 1000;
+	const editor = f.model(productLaunch, scope, undefined, "ios");
+	await editor.chooseProduct(true);
+	f.env.ignoreWrite = true;
+	editor.startProduct();
+	editor.recordProduct("wall_added");
+	await f.drain();
+	expect(f.sent).toEqual([]);
+
+	f.env.ignoreWrite = false;
+	editor.startProduct();
+	await f.drain();
+	const [key] = [...f.session.keys()];
+	for (const corrupt of [
+		null,
+		42,
+		{},
+		{ launch: productLaunch, codes: ["editor_entry", "project details"] },
+	]) {
+		f.session.set(key, JSON.stringify(corrupt));
+		editor.recordProduct("wall_added");
+		await f.drain();
+	}
+	expect(f.sent).toEqual([productPath("editor_entry")]);
+});
+
+test("two consenting accounts keep independent session watermarks even at the same launch time", async () => {
+	const f = fixture();
+	f.env.time = productLaunch * 1000;
+	for (const area of [scope, other]) {
+		const editor = f.model(productLaunch, area, undefined, "ios");
+		await editor.chooseProduct(true);
+		editor.startProduct();
+		editor.recordProduct("wall_added");
+		await f.drain();
+	}
+	expect(f.sent).toEqual([
+		productPath("editor_entry"), productPath("wall_added"),
+		productPath("editor_entry"), productPath("wall_added"),
+	]);
+});
+
+test("closing during a product claim suppresses transport and makes later settings calls inert", async () => {
+	const f = fixture();
+	f.env.time = productLaunch * 1000;
+	const abort = new AbortController();
+	const editor = f.model(productLaunch, scope, abort, "ios");
+	await editor.chooseProduct(true);
+	editor.startProduct();
+	await f.drain();
+	f.env.onSaved = () => abort.abort();
+	editor.recordProduct("wall_added");
+	await f.drain();
+	await editor.chooseProduct(false);
+
+	const reloaded = f.model(productLaunch, scope, undefined, "ios");
+	await reloaded.openSettings();
+	expect(reloaded.snapshot().productGranted).toBe(true);
+	expect(f.sent).toEqual([productPath("editor_entry")]);
+});
+
+test("granting again after withdrawal counts later actions once without replay", async () => {
+	const f = fixture();
+	f.env.time = productLaunch * 1000;
+	const editor = f.model(productLaunch, scope, undefined, "ios");
+	editor.startProduct();
+	await editor.chooseProduct(true);
+	editor.recordProduct("wall_added");
+	await f.drain();
+	editor.recordProduct("item_placed");
+	await f.model().chooseProduct(false);
+	editor.recordProduct("room_created");
+	await editor.chooseProduct(true);
+	editor.recordProduct("wall_added");
+	editor.recordProduct("item_placed");
+	await f.drain();
+	expect(f.sent).toEqual([productPath("editor_entry"), productPath("wall_added"), productPath("item_placed")]);
+});
+
 test("only iOS and Android select the empty mobile route in place of the daily route", async () => {
 	const f = fixture();
 	const platforms = [

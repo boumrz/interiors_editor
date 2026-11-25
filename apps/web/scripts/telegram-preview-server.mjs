@@ -138,6 +138,7 @@ const controls = new Set([
 	"/legal/privacy-policy.html",
 	"/legal/license-agreement.html",
 	"/legal/analytics-consent.html",
+	"/legal/product-analytics-consent.html",
 ]);
 const contentType = (path) =>
 	path.endsWith(".html")

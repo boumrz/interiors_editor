@@ -676,6 +676,11 @@ test("TMA-LANGUAGE-01: the saved bot language localizes a direct signed launch, 
 	});
 	await page.goto("/");
 	await expect(page.locator("html")).toHaveAttribute("lang", "en");
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+	await expect(settings.getByRole("switch", { name: "Night mode", exact: true })).toHaveText(/Day.*Night/);
+	await expect(settings.getByRole("button", { name: "Use Telegram theme", exact: true })).toBeVisible();
+	await settings.getByRole("button", { name: "Close settings", exact: true }).click();
 	await page.getByRole("button", { name: "New project", exact: true }).click();
 	const name = "План A";
 	await page.getByRole("textbox", { name: "Project name" }).fill(name);
@@ -1379,11 +1384,15 @@ for (const backend of ["Three", "procedural fallback"]) {
 		const planBackground = () => page.evaluate(() =>
 			getComputedStyle(document.documentElement).getPropertyValue("--editor-host-plan-canvas").trim(),
 		);
-		const setTheme = async (choice: "auto" | "light" | "dark") => {
+		const toggleTheme = async (night: boolean) => {
 			await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
 			await page.getByRole("button", { name: "Настройки", exact: true }).click();
 			const dialog = page.getByRole("dialog", { name: "Настройки" });
-			await dialog.getByLabel("Тема").selectOption(choice, { timeout: 3_000 });
+			const themeSwitch = dialog.getByRole("switch", { name: "Ночная тема", exact: true });
+			await expect(themeSwitch).toHaveText(/День.*Ночь/, { timeout: 3_000 });
+			await expect(themeSwitch).toHaveAttribute("aria-checked", String(!night));
+			await themeSwitch.click();
+			await expect(themeSwitch).toHaveAttribute("aria-checked", String(night));
 			await dialog.getByRole("button", { name: "Закрыть настройки" }).click();
 		};
 		const canvas = page.getByTestId("three-dimensional-canvas");
@@ -1422,7 +1431,7 @@ for (const backend of ["Three", "procedural fallback"]) {
 		await expect.poll(() => drawnBackgroundCount(253, 253, 252)).toBeGreaterThan(40);
 		const originalCanvas = await canvas.elementHandle();
 		if (!originalCanvas) throw new Error("3D canvas was not mounted");
-		await setTheme("dark");
+		await toggleTheme(true);
 		expect(await planBackground()).toBe("#1d252c");
 		await expect.poll(() => drawnBackgroundCount(29, 37, 44)).toBeGreaterThan(40);
 		expect(await originalCanvas.evaluate((element) => element.isConnected)).toBe(true);
@@ -1430,14 +1439,25 @@ for (const backend of ["Three", "procedural fallback"]) {
 		await setHostTheme("dark");
 		await setHostTheme("light");
 		expect(await planBackground()).toBe("#1d252c");
+		await toggleTheme(false);
+		await expect.poll(() => drawnBackgroundCount(253, 253, 252)).toBeGreaterThan(40);
+		await toggleTheme(true);
 		expect(await semanticRows(page)).toEqual(before);
 		await page.reload();
 		await expect.poll(planBackground).toBe("#1d252c");
 		await page.getByRole("button", { name: "Настройки", exact: true }).click();
 		const settings = page.getByRole("dialog", { name: "Настройки" });
-		await expect(settings.getByLabel("Тема")).toHaveValue("dark");
-		await settings.getByLabel("Тема").selectOption("auto");
+		const themeSwitch = settings.getByRole("switch", { name: "Ночная тема", exact: true });
+		await expect(themeSwitch).toBeChecked();
+		const reset = settings.getByRole("button", { name: "Как в Telegram", exact: true });
+		await reset.click();
+		await expect(reset).toBeDisabled();
+		await expect(reset).toBeFocused();
+		await expect(themeSwitch).not.toBeChecked();
 		await expect.poll(planBackground).toBe("#fdfdfc");
+		await setHostTheme("dark");
+		await expect(themeSwitch).toBeChecked();
+		await expect.poll(planBackground).toBe("#1d252c");
 	});
 }
 
@@ -1459,6 +1479,32 @@ test("TMA-THEME-05: the loading shell follows the system before any app code run
 		color: "rgb(245, 247, 250)",
 		scheme: "dark",
 	});
+});
+
+test("TMA-THEME-06: keyboard-operated theme controls fit a 360px screen with enlarged text", async ({ page }) => {
+	await page.setViewportSize({ width: 360, height: 700 });
+	await page.emulateMedia({ reducedMotion: "reduce" });
+	await signed(page);
+	await page.goto("/");
+	await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+	await page.getByRole("button", { name: "Настройки", exact: true }).click();
+	const settings = page.getByRole("dialog", { name: "Настройки" });
+	const themeSwitch = settings.getByRole("switch", { name: "Ночная тема", exact: true });
+	const reset = settings.getByRole("button", { name: "Как в Telegram", exact: true });
+	await expect(themeSwitch).not.toBeChecked();
+	await expect(reset).toBeDisabled();
+	await themeSwitch.focus();
+	await themeSwitch.press("Space");
+	await expect(themeSwitch).toBeChecked();
+	await expect(themeSwitch).toBeFocused();
+	for (const control of [themeSwitch, reset]) {
+		const box = await control.boundingBox();
+		expect(box && box.height >= 44 && box.x >= 12 && box.x + box.width <= 348).toBe(true);
+	}
+	await reset.press("Enter");
+	await expect(reset).toBeDisabled();
+	await expect(reset).toBeFocused();
+	await expect(themeSwitch).not.toBeChecked();
 });
 
 async function allScopedRecords(page: Page) {

@@ -36,27 +36,75 @@
 .settingsContent nav { margin: 12px 0 0; }
 
 .themeSetting {
-	align-items: center;
-	display: flex;
-	flex-wrap: wrap;
-	font-weight: 600;
-	gap: 8px;
-	justify-content: space-between;
-	margin-block-end: 16px;
+	display: grid;
+	gap: 4px;
+	margin-block-end: 12px;
 }
 
-.themeSetting select {
+.themeSwitch {
 	background: var(--editor-host-canvas, var(--canvas));
 	border: 1px solid var(--editor-host-line, var(--line));
 	border-radius: var(--editor-host-radius, 12px);
 	color: var(--editor-host-ink, var(--ink));
+	cursor: pointer;
+	display: grid;
 	font: inherit;
-	max-width: 100%;
-	min-height: 44px;
-	padding: 6px 10px;
+	font-weight: 600;
+	gap: 4px;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	padding: 4px;
 }
 
-.themeSetting select:focus-visible {
+.themeSwitch span {
+	align-items: center;
+	border: 1px solid transparent;
+	border-radius: calc(var(--editor-host-radius, 12px) - 4px);
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	justify-content: center;
+	min-height: 44px;
+	overflow-wrap: anywhere;
+	padding: 4px;
+	text-align: center;
+}
+
+.themeSwitch svg {
+	block-size: 1em;
+	flex: none;
+	inline-size: 1em;
+}
+
+.themeSwitch[aria-checked="false"] span:first-child,
+.themeSwitch[aria-checked="true"] span:last-child {
+	background: var(--editor-host-primary-fill, #1976b9);
+	border-color: var(--editor-host-primary, #1976b9);
+	color: var(--editor-host-on-primary, #fff);
+}
+
+.themeReset {
+	background: transparent;
+	border: 0;
+	color: var(--editor-host-focus, #0b5d8e);
+	cursor: pointer;
+	font: inherit;
+	justify-self: start;
+	max-width: 100%;
+	min-height: 44px;
+	overflow-wrap: anywhere;
+	padding: 4px;
+	text-align: start;
+	text-decoration: underline;
+	text-underline-offset: .15em;
+}
+
+.themeReset[aria-disabled="true"] {
+	color: var(--editor-host-muted, var(--muted));
+	cursor: default;
+	text-decoration: none;
+}
+
+.themeSetting button:focus-visible {
 	outline: 2px solid var(--editor-host-focus, #0b5d8e);
 	outline-offset: -2px;
 }

@@ -166,15 +166,20 @@ class SupportTests(unittest.TestCase):
         menu, = [body for method, body in self.telegram.calls if method == "setChatMenuButton"]
         self.assertEqual(menu["chat_id"], REPORTER)
         self.assertEqual(menu["menu_button"]["text"], "Open editor")
+        self.assertEqual(menu["menu_button"]["type"], "web_app")
         link = menu["menu_button"]["web_app"]["url"]
-        self.assertEqual(link, "https://t.me/InteriorsEditorBot?startapp=lang1_en_1_" + "A" * 86)
+        token = "lang1_en_1_" + "A" * 86
+        self.assertEqual(link, "https://domiknote.ru/?language_token=" + token)
+        inline_url = "https://t.me/InteriorsEditorBot?startapp=" + token
+        self.assertEqual(self.telegram.last_text(REPORTER)["reply_markup"]["inline_keyboard"][0][0],
+                         {"text": "Open editor", "url": inline_url})
 
         self.configure_language_token()
         self.support.apply(self.message(text="/start", language_code="ru"))
         self.support.apply(self.message(OUTSIDER, "/start", language_code="ru"))
         self.drain()
         self.assertEqual(self.telegram.last_text(REPORTER)["reply_markup"]["inline_keyboard"][0][0],
-                         {"text": "Open editor", "url": link})
+                         {"text": "Open editor", "url": inline_url})
         self.assertIn("Открыть редактор", str(self.telegram.last_text(OUTSIDER)["reply_markup"]))
 
     def test_rapid_language_changes_replace_an_uncertain_menu_retry(self):
@@ -192,8 +197,8 @@ class SupportTests(unittest.TestCase):
         self.drain()
         menus = [body["menu_button"]["web_app"]["url"] for method, body in self.telegram.calls
                  if method == "setChatMenuButton"]
-        self.assertEqual(menus, ["https://t.me/InteriorsEditorBot?startapp=lang1_ru_1_" + "A" * 86,
-                                 "https://t.me/InteriorsEditorBot?startapp=lang1_ru_3_" + "A" * 86])
+        self.assertEqual(menus, ["https://domiknote.ru/?language_token=lang1_ru_1_" + "A" * 86,
+                                 "https://domiknote.ru/?language_token=lang1_ru_3_" + "A" * 86])
 
     def test_latest_menu_retries_after_an_ambiguous_failure(self):
         self.configure_language_token()

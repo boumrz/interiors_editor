@@ -102,6 +102,12 @@ test("TMA-UI-POLISH-01: healthy Projects has only user actions and a readable bl
 	await page.goto("/");
 	const hub = page.getByTestId("project-hub");
 	await expect(hub).toBeVisible();
+	const logo = hub.getByRole("heading", { name: "Проекты", exact: true }).locator("img");
+	await expect(logo).toBeVisible();
+	expect(await logo.evaluate(async (image) => {
+		await (image as HTMLImageElement).decode();
+		return (image as HTMLImageElement).naturalWidth;
+	})).toBeGreaterThanOrEqual(96);
 	await expect(page.getByText("Данные для проверки", { exact: true })).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Восстановить несохранённую правку", exact: true })).toHaveCount(0);
 	const create = hub.getByRole("button", { name: "Новый проект", exact: true });
@@ -758,6 +764,11 @@ test("TMA-ENTRY-10: a missing application chunk gives retry and Web fallback wit
 	await expect(page.getByRole("status")).toHaveText(
 		"Не удалось загрузить редактор. Повторите запуск.",
 	);
+	const logo = page.getByRole("img", { name: "InteriorsEditor", exact: true });
+	await expect(logo).toBeVisible();
+	const iconPath = await page.locator('link[rel~="icon"]').getAttribute("href");
+	if (!iconPath) throw new Error("The Telegram entry must declare its app icon");
+	await expect(logo).toHaveAttribute("src", iconPath);
 	await expect(
 		page.getByRole("link", { name: "Открыть веб-редактор" }),
 	).toBeVisible();
@@ -769,6 +780,7 @@ test("TMA-ENTRY-10: a missing application chunk gives retry and Web fallback wit
 	await expect(
 		page.getByText(/Безопасный запуск не подтверждён/),
 	).toBeVisible();
+	await expect(logo).toHaveAttribute("src", iconPath);
 	await expect.poll(async () => (await audit(page)).ready).toBe(1);
 	await noStorage(page, 1);
 });

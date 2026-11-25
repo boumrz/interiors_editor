@@ -50,6 +50,7 @@ export default (environment, arguments_) => {
 						to: "legal/2026-11-24.2/telegram-support-privacy.html",
 					},
 					{ from: "./public/icon.svg", to: "icon.svg" },
+					{ from: "./public/interiors-lamp-v1.png", to: "interiors-lamp-v1.png" },
 					{ from: "./public/catalog", to: "catalog" },
 					{
 						from: "../catalog-control-plane/src/main/resources/catalog/evidence-assets/*.glb",

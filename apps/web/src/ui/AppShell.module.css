@@ -744,6 +744,9 @@
 
 .projectHubHeading h1:focus { outline:0; }
 
+[data-editor-host="telegram"] .projectHubHeading h1 { display: flex; align-items: center; gap: 12px; }
+.projectHubLogo { flex: none; border-radius: 10px; }
+
 .projectHubActions { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 
 .projectHubActions .primaryAction,

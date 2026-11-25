@@ -6686,6 +6686,7 @@ export function AppShell({
 				>
 					<header className={styles.projectHubHeading}>
 						<h1 id="projects-heading" ref={projectsHeadingRef} tabIndex={-1}>
+							{hostNavigation && <img src="/interiors-lamp-v1.png" alt="" width={40} height={40} className={styles.projectHubLogo} />}
 							Проекты
 						</h1>
 						<p>Планы на этом устройстве</p>

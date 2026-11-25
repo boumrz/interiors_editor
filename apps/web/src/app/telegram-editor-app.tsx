@@ -801,6 +801,7 @@ export function TelegramEditorApp({
 	const checking = state.kind === "checking";
 	return (
 		<main aria-busy={checking} aria-labelledby="telegram-entry-heading">
+			<img src="/interiors-lamp-v1.png" alt="InteriorsEditor" width={56} height={56} style={{ borderRadius: 12 }} />
 			<h1 id="telegram-entry-heading">
 				{checking ? "Открытие редактора" : "Не удалось открыть редактор"}
 			</h1>

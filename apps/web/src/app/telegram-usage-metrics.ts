@@ -153,7 +153,7 @@ type Path =
 	| "/stats/tma-open-v2"
 	| "/stats/tma-mobile-open-v1"
 	| "/stats/tma-repeat-v2"
-	| `/stats/tma-editor-v1/${"ios" | "android"}/${ProductMetric}`;
+	| `/stats/tma-editor-v2/${ProductMetric}`;
 type View = "closed" | "settings";
 interface Snapshot {
 	view: View;
@@ -181,8 +181,8 @@ export function createUsageMetrics(opts: {
 	const listeners = new Set<() => void>();
 	const active = () =>
 		opts.clock() >= publishedAt && opts.clock() < endsAt && opts.studyActive();
-	const platform = opts.platform === "ios" || opts.platform === "android" ? opts.platform : undefined;
-	const productLaunch = platform && integer(opts.launch) && opts.launch > 0
+	const mobile = opts.platform === "ios" || opts.platform === "android";
+	const productLaunch = mobile && integer(opts.launch) && opts.launch > 0
 		? opts.launch
 		: undefined;
 	function productAvailable() {
@@ -292,7 +292,7 @@ export function createUsageMetrics(opts: {
 		}
 	}
 	function recordProduct(metric: ProductMetric) {
-		if (!isProductMetric(metric) || productLaunch === undefined || !platform) return;
+		if (!isProductMetric(metric) || productLaunch === undefined) return;
 		const grant = productGrant();
 		if (!grant) return;
 		void opts.lock(async () => {
@@ -300,7 +300,7 @@ export function createUsageMetrics(opts: {
 			for (const signal of signals) {
 				if (productGrant() !== grant) return;
 				if (opts.store.claimProduct(productLaunch, signal) && productGrant() === grant) {
-					opts.send(`/stats/tma-editor-v1/${platform}/${signal}`);
+					opts.send(`/stats/tma-editor-v2/${signal}`);
 				}
 			}
 		}).catch(() => { /* Unavailable session storage or transport drops this signal. */ });
@@ -326,7 +326,7 @@ export function createUsageMetrics(opts: {
 				opts.store.write(p);
 				if (opts.signal.aborted || opts.store.pending("all")) return;
 				opts.send(
-					opts.platform === "ios" || opts.platform === "android"
+				mobile
 						? "/stats/tma-mobile-open-v1"
 						: "/stats/tma-open-v2",
 				);

@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import socket
+import sqlite3
 import stat
 import subprocess
 import sys
@@ -114,6 +115,35 @@ class ServiceTest(unittest.TestCase):
                 stdout, stderr = proc.communicate(timeout=5)
             self.assertEqual(b'', stdout)
             self.assertEqual(b'', stderr)
+
+    def test_two_hour_product_operator_commands_read_or_reconcile_exact_window(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "db"
+            env = dict(os.environ, INTERIORS_ANALYTICS_DB=str(db), INTERIORS_PRODUCT_METRICS_ENABLED="0",
+                       INTERIORS_MP_AGGREGATE_TOKEN="", PYTHONDONTWRITEBYTECODE="1")
+
+            def run(*arguments):
+                return subprocess.run([sys.executable, str(HERE / "collector.py"), *arguments], env=env,
+                                      capture_output=True, text=True)
+
+            run("daily")
+            start = dt.datetime.fromisoformat("2026-11-22T22:00:00+03:00")
+            with sqlite3.connect(db) as conn:
+                conn.execute("INSERT INTO product_intraday_counts VALUES (?, 'wall_moved', 3)",
+                             (int(start.timestamp()),))
+                conn.execute("INSERT INTO product_intraday_exports VALUES (?, 'tools', 'unknown')",
+                             (int(start.timestamp()),))
+            report = run("report-product-intraday", "--start", start.isoformat())
+            self.assertEqual(report.returncode, 0, report.stderr)
+            [window] = json.loads(report.stdout)["windows"]
+            [tools] = [row for row in window["reports"] if row["group"] == "tools"]
+            self.assertEqual((tools["params"]["wall_moved"], tools["state"]), (3, "unknown"))
+            self.assertEqual(run("report-product-intraday", "--start", "2026-11-22T22:05:00+03:00").returncode, 2)
+            result = run("resolve-product-intraday", "--start", start.isoformat(), "--group", "tools",
+                         "--confirmed", "sent")
+            self.assertEqual(json.loads(result.stdout), {"resolved": True})
+            with sqlite3.connect(db) as conn:
+                self.assertEqual(conn.execute("SELECT state FROM product_intraday_exports").fetchall(), [("sent",)])
 
 
 if __name__ == '__main__':

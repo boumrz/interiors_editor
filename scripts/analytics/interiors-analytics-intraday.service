@@ -1,5 +1,5 @@
 [Unit]
-Description=Export closed two-hour mobile Telegram opens to Yandex Metrica
+Description=Export closed two-hour Telegram opens and product aggregates to Yandex Metrica
 After=network-online.target
 Wants=network-online.target
 

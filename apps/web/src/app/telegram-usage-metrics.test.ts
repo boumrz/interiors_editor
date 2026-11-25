@@ -86,7 +86,7 @@ function fixture() {
 }
 
 const productLaunch = Date.parse("2026-11-25T12:00:00+03:00") / 1000;
-const productPath = (metric: ProductMetric, platform = "ios") => `/stats/tma-editor-v1/${platform}/${metric}`;
+const productPath = (metric: ProductMetric) => `/stats/tma-editor-v2/${metric}`;
 
 test("product consent defaults off independently of repeat consent and counts actual editor entry and approved actions", async () => {
 	const f = fixture();
@@ -141,8 +141,8 @@ test("product records deduplicate across reload on the same verified launch and 
 	reload.recordProduct("save_failed");
 	await f.drain();
 	expect(f.sent).toEqual([
-		productPath("editor_entry", "android"), productPath("wall_added", "android"),
-		productPath("editor_entry", "android"), productPath("wall_added", "android"),
+		productPath("editor_entry"), productPath("wall_added"),
+		productPath("editor_entry"), productPath("wall_added"),
 	]);
 });
 
@@ -203,7 +203,7 @@ test("an old product consent edition or a failed withdrawal cannot permit later 
 	await current.chooseProduct(true);
 	const [key, raw] = [...f.local.entries()][0];
 	const previous = JSON.parse(raw);
-	f.local.set(key, JSON.stringify({ ...previous, product: { ...previous.product, revision: "2026-11-24" } }));
+	f.local.set(key, JSON.stringify({ ...previous, product: { ...previous.product, revision: "2026-11-25" } }));
 	current.startProduct();
 	current.recordProduct("item_placed");
 	await f.drain();
@@ -220,6 +220,35 @@ test("an old product consent edition or a failed withdrawal cannot permit later 
 	await f.drain();
 	expect(next.snapshot()).toMatchObject({ productGranted: false, aggregateEnabled: true });
 	expect(f.sent).toEqual([productPath("editor_entry")]);
+});
+
+test("daily consent expires at the switch to two-hour reports while a launch keeps its prior code watermark", async () => {
+	const f = fixture();
+	f.env.time = (productLaunch + 20) * 1000;
+	const current = f.model(productLaunch, scope, undefined, "ios");
+	await current.chooseProduct(true);
+	const [key, raw] = [...f.local.entries()][0];
+	const saved = JSON.parse(raw);
+	f.local.set(key, JSON.stringify({ ...saved, product: { ...saved.product, revision: "2026-11-25" } }));
+	f.session.set(`${key}:product:launch`, JSON.stringify({ launch: productLaunch, codes: ["editor_entry", "wall_added"] }));
+	current.startProduct();
+	current.recordProduct("item_placed");
+	await f.drain();
+	expect(f.sent).toEqual([]);
+	await current.openSettings();
+	expect(current.snapshot()).toMatchObject({ productAvailable: true, productGranted: false });
+	await current.chooseProduct(true);
+	expect(JSON.parse(f.local.get(key) ?? "{}")).toMatchObject({ product: { revision: "2026-11-25.2" } });
+	current.recordProduct("wall_added");
+	current.recordProduct("save_failed");
+	await f.drain();
+	expect(f.sent).toEqual([productPath("save_failed")]);
+
+	const next = f.model(productLaunch + 1, scope, undefined, "ios");
+	next.startProduct();
+	next.recordProduct("wall_added");
+	await f.drain();
+	expect(f.sent).toEqual([productPath("save_failed"), productPath("editor_entry"), productPath("wall_added")]);
 });
 
 test("product permission opens on publication and requires a current positive whole-second launch", async () => {

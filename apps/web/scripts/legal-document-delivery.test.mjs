@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,7 +14,13 @@ const web = fileURLToPath(new URL("../", import.meta.url));
 const source = new URL("../../../docs/legal/", import.meta.url);
 const names = ["privacy-policy", "license-agreement", "analytics-consent"];
 const edition = "2026-11-22.2";
-const privacyEdition = "2026-11-25";
+const privacyEdition = "2026-11-25.2";
+const dailyProductArchive = {
+	"privacy-policy.html": "025254e14393e6445ea474e137356cebf88a39a56ce6a944b1174f84b29c49ec",
+	"product-analytics-consent.html": "504a6c161eb786a7c1705e8de5de8c04b9b7334561a4d3d0f131e29f94f251cf",
+	"en/privacy-policy.html": "52e0a26a7147760d1cd6c15df2aac16be182b72b9cdd6ce9b3c623cb938dc176",
+	"en/product-analytics-consent.html": "238be28553f579e94f4644ad194e2ef279498e1111597d8c61859c2954c6de67",
+};
 
 test("Telegram publishes the unmodified legal editions, provides prelaunch reading and permits saving without JavaScript", {
 	timeout: 60_000,
@@ -94,12 +101,14 @@ test("Telegram publishes the unmodified legal editions, provides prelaunch readi
 		assert.equal(previous.status, 200, previousPath);
 		assert.match(previous.headers.get("cache-control"), /immutable/);
 		assert.equal(await previous.text(), await readFile(new URL(`archive/2026-11-24.1/${segment}privacy-policy.html`, source), "utf8"));
-		const productPath = `/legal/2026-11-25/${segment}product-analytics-consent.html`;
+		const productPath = `/legal/${privacyEdition}/${segment}product-analytics-consent.html`;
 		const product = await fetch(origin + productPath);
 		assert.equal(product.status, 200, productPath);
 		assert.match(product.headers.get("cache-control"), /immutable/);
 		const consent = await readFile(new URL(`${segment}product-analytics-consent.html`, source), "utf8");
 		assert.match(consent, new RegExp(`<html lang="${lang}">`));
+		assert.match(consent, lang === "en" ? /two-hour interval/ : /двухчасового интервала/);
+		assert.match(consent, new RegExp(`/legal/${privacyEdition.replace(".", "\\.")}/${segment}privacy-policy\\.html`));
 		assert.equal(await product.text(), consent);
 		const payload = await page.locator(`[id="legal-documents-${lang === "en" ? "en-" : ""}${edition}"]`).textContent();
 		assert.equal(JSON.parse(payload)["product-analytics-consent"], consent);
@@ -107,6 +116,13 @@ test("Telegram publishes the unmodified legal editions, provides prelaunch readi
 	const currentProduct = await fetch(origin + "/legal/product-analytics-consent.html");
 	assert.equal(currentProduct.status, 200);
 	assert.equal(currentProduct.headers.get("cache-control"), "no-store");
+	for (const [name, digest] of Object.entries(dailyProductArchive)) {
+		const path = `/legal/2026-11-25/${name}`;
+		const previous = await fetch(origin + path);
+		assert.equal(previous.status, 200, path);
+		assert.equal(previous.headers.get("cache-control"), "public, max-age=31536000, immutable");
+		assert.equal(createHash("sha256").update(Buffer.from(await previous.arrayBuffer())).digest("hex"), digest, path);
+	}
 	const supportPath = "/legal/2026-11-24/telegram-support-privacy.html";
 	const support = await fetch(origin + supportPath);
 	assert.equal(support.status, 200, supportPath);

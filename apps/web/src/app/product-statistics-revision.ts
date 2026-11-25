@@ -1,1 +1,1 @@
-export const productStatisticsRevision = "2026-11-25";
+export const productStatisticsRevision = "2026-11-25.2";

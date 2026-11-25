@@ -54,9 +54,10 @@ self.addEventListener("fetch", event => {
 '''
 PROJECT_TRANSFER_PATH = "/project-transfer/v1/files"
 MOBILE_OPEN_PATH = "/stats/tma-mobile-open-v1"
-PRODUCT_METRIC_CONSENT = "/legal/2026-11-25/product-analytics-consent.html"
-PRODUCT_METRIC_PREFIX = "/stats/tma-editor-v1/"
-PRODUCT_METRIC_NGINX_MARKER = b"    # interiors-tma-editor-v1 product metrics"
+PRODUCT_METRIC_CONSENTS = {
+    "tma-editor-v2": "/legal/2026-11-25.2/product-analytics-consent.html",
+    "tma-editor-v1": "/legal/2026-11-25/product-analytics-consent.html",
+}
 PRODUCT_METRIC_PLATFORMS = ("ios", "android")
 PRODUCT_METRIC_CODES = (
     "editor_entry", "project_created", "saved_project_opened", "room_created",
@@ -300,10 +301,21 @@ def project_transfer_locations():
     return upload + relay + download + relay
 
 
+def product_metric_marker(version):
+    return f"    # interiors-{version} product metrics"
+
+
+def installed_product_metric_version(config):
+    return next((version for version in PRODUCT_METRIC_CONSENTS
+                 if product_metric_marker(version).encode() in config), False)
+
+
 def nginx_site(root, paths, *, project_transfer_relay=False, product_metrics=False):
     """Preserve the accepted HTTPS, ACME, read-only catalog and exact-path policy."""
     root = str(root)
     require(re.fullmatch(r"/[A-Za-z0-9_./-]+", root), "Unsafe frontend root")
+    require(product_metrics is False or product_metrics in PRODUCT_METRIC_CONSENTS,
+            "Unknown product metrics route version")
     lines = ["server {", "    listen 80;", "    listen [::]:80;", "    server_name domiknote.ru www.domiknote.ru;", "    location ^~ /.well-known/acme-challenge/ {", "        root /var/lib/letsencrypt;", "        default_type text/plain;", "        try_files $uri =404;", "    }", "    location / { return 301 https://$host$request_uri; }", "}"]
     for target, origin in ORIGINS.items():
         lines.extend(["server {", "    listen 443 ssl;", "    listen [::]:443 ssl;", "    ssl_certificate /etc/letsencrypt/live/interiors-domiknote/fullchain.pem;", "    ssl_certificate_key /etc/letsencrypt/live/interiors-domiknote/privkey.pem;", "    ssl_protocols TLSv1.2 TLSv1.3;", "    server_name " + origin.split("//")[1] + ";", "    access_log off;", "    error_log /dev/null crit;"])
@@ -312,9 +324,9 @@ def nginx_site(root, paths, *, project_transfer_relay=False, product_metrics=Fal
             relay_path = "|" + PROJECT_TRANSFER_PATH if project_transfer_relay else ""
             product_path = ""
             if product_metrics:
-                lines.append(PRODUCT_METRIC_NGINX_MARKER.decode())
-                product_path = (f"|{PRODUCT_METRIC_PREFIX}({'|'.join(PRODUCT_METRIC_PLATFORMS)})/"
-                                f"({'|'.join(PRODUCT_METRIC_CODES)})")
+                lines.append(product_metric_marker(product_metrics))
+                platform_pattern = f"({'|'.join(PRODUCT_METRIC_PLATFORMS)})/" if product_metrics == "tma-editor-v1" else ""
+                product_path = f"|/stats/{product_metrics}/{platform_pattern}({'|'.join(PRODUCT_METRIC_CODES)})"
             lines.extend([
                 '    set $frontend_method_path "$request_method:$request_uri";',
                 '    if ($frontend_method_path !~ "^(GET:|HEAD:|POST:(/stats/tma-(open|repeat)-v2|' + MOBILE_OPEN_PATH
@@ -327,9 +339,10 @@ def nginx_site(root, paths, *, project_transfer_relay=False, product_metrics=Fal
             for path in ("/stats/tma-open-v2", MOBILE_OPEN_PATH, "/stats/tma-repeat-v2"):
                 lines.extend(aggregate_stats_location(path))
             if product_metrics:
-                for platform in PRODUCT_METRIC_PLATFORMS:
+                segments = tuple(f"{platform}/" for platform in PRODUCT_METRIC_PLATFORMS) if product_metrics == "tma-editor-v1" else ("",)
+                for segment in segments:
                     for code in PRODUCT_METRIC_CODES:
-                        lines.extend(aggregate_stats_location(f"{PRODUCT_METRIC_PREFIX}{platform}/{code}"))
+                        lines.extend(aggregate_stats_location(f"/stats/{product_metrics}/{segment}{code}"))
             if project_transfer_relay:
                 lines.extend(project_transfer_locations())
         for path in sorted(WITHDRAWN_CATALOG_PATHS):
@@ -357,7 +370,7 @@ def telegram_nginx_site(root, paths, current, *, enable_project_transfer_relay=F
             and b"\n    server_name domiknote.ru;\n" in telegram, "Unexpected installed frontend site")
     enabled = PROJECT_TRANSFER_LIMIT_ZONES in web
     if product_metrics is None:
-        product_metrics = PRODUCT_METRIC_NGINX_MARKER in telegram
+        product_metrics = installed_product_metric_version(telegram)
     replacement = nginx_site(root, {"web": set(), "telegram": paths},
                              project_transfer_relay=enabled or enable_project_transfer_relay,
                              product_metrics=product_metrics).rpartition(block)[2]
@@ -433,9 +446,10 @@ def verify_collector_ready(socket_path="/run/interiors-analytics/collect.sock"):
     _verify_analytics_health(socket_path, "mobile-open-v1")
 
 
-def verify_product_collector_ready(socket_path="/run/interiors-analytics/collect.sock"):
+def verify_product_collector_ready(socket_path="/run/interiors-analytics/collect.sock", *, version="tma-editor-v1"):
     """Check feature compatibility while the product collector can still be disabled."""
-    _verify_analytics_health(socket_path, "tma-editor-v1")
+    require(version in PRODUCT_METRIC_CONSENTS, "Unknown product metrics collector version")
+    _verify_analytics_health(socket_path, version)
 
 
 def _carry_active_web(root, previous, staging, telegram):
@@ -606,9 +620,11 @@ def _activate_release(archive, root, site, command, health, expected_commit, rea
             targets = {"telegram": inventory["targets"]["telegram"]} if telegram_only else inventory["targets"]
             public_inventory = {**inventory, "targets": targets}
             verify_collector_ready()
-            product_metrics = any(row["path"] == PRODUCT_METRIC_CONSENT for row in targets["telegram"])
+            active_telegram_paths = {row["path"] for row in targets["telegram"]}
+            product_metrics = next((version for version, consent in PRODUCT_METRIC_CONSENTS.items()
+                                    if consent in active_telegram_paths), False)
             if product_metrics:
-                verify_product_collector_ready()
+                verify_product_collector_ready(version=product_metrics)
             retained = root / "retained"
             require(not retained.is_symlink(), "Linked retained pool")
             paths = {}
@@ -629,6 +645,7 @@ def _activate_release(archive, root, site, command, health, expected_commit, rea
                     require(not existing.exists() or (existing.is_file() and not existing.is_symlink() and sha(existing.read_bytes()) == row["sha256"]), "Immutable retained URL collision: " + target + path)
                     paths[target].add(path)
             relay_was_enabled = PROJECT_TRANSFER_LIMIT_ZONES in old_config
+            previous_product_metrics = installed_product_metric_version(old_config)
             if telegram_only:
                 new_config = telegram_nginx_site(root, paths["telegram"], old_config,
                                                  enable_project_transfer_relay=enable_project_transfer_relay,
@@ -683,8 +700,13 @@ def _activate_release(archive, root, site, command, health, expected_commit, rea
                     # A shell may already be loaded. Keep its new immutable URLs
                     # alongside the old ones after reverting the active controls.
                     restored_config = new_config if switched else old_config
-                    if switched and enable_project_transfer_relay and not relay_was_enabled:
-                        restored_config = telegram_nginx_site(root, paths["telegram"], old_config)
+                    if switched and (product_metrics != previous_product_metrics or
+                                     (enable_project_transfer_relay and not relay_was_enabled)):
+                        if telegram_only:
+                            restored_config = telegram_nginx_site(root, paths["telegram"], old_config)
+                        else:
+                            restored_config = nginx_site(root, paths, project_transfer_relay=relay_was_enabled,
+                                                        product_metrics=previous_product_metrics)
                     atomic_bytes(site, restored_config)
                     command(["nginx", "-t"])
                     command(["systemctl", "reload", "nginx"])

@@ -571,7 +571,7 @@ describe("WebGl2RoomRendererController", () => {
 				heightM: 0.75,
 				outline: [{ xM: 1, zM: 1 }, { xM: 2, zM: 1 }, { xM: 2, zM: 2 }, { xM: 1, zM: 2 }],
 			}],
-			openingParts: [{ role: "glass", wallSegmentId: "window",
+			openingParts: [{ role: "glass", wallSegmentId: "window", openingId: "pane",
 				box: { centerXM: 1, centerYM: 1, centerZM: 2, widthM: 1, heightM: 1, depthM: 0.04 } }],
 		};
 		rstest.stubGlobal("window", { devicePixelRatio: 1 });

@@ -6,8 +6,11 @@ import type {
 	WallSide,
 } from "../domain/project";
 import { floorFinishColors, wallFinishColors } from "../domain/interior-materials";
+import { resolveOrthogonalPlanFaces } from "../domain/derived-orthogonal-plan-faces";
 import { copy } from "./editor-language";
 import styles from "./AppShell.module.css";
+import sceneStyles from "./RoomScene3d.module.css";
+import doorOptions from "./DoorSwingPicker.module.css";
 
 export type FinishDraft =
 	| { readonly kind: "floor"; readonly roomId: string; readonly finish: SurfaceFinish<FloorFinishId> | undefined }
@@ -26,15 +29,55 @@ const floorFinishes: readonly FinishOption<FloorFinishId>[] = [
 	{ id: "plain-floor", ru: "Однотонное покрытие", en: "Solid finish", color: floorFinishColors["plain-floor"] },
 ];
 
-const wallFinishes: readonly FinishOption<WallFinishId>[] = [
-	{ id: "warm-white-paint", ru: "Тёплая белая краска", en: "Warm white paint", color: wallFinishColors["warm-white-paint"] },
-	{ id: "sand-paint", ru: "Песочная краска", en: "Sand paint", color: wallFinishColors["sand-paint"] },
-	{ id: "muted-green-paint", ru: "Приглушённая зелёная краска", en: "Muted green paint", color: wallFinishColors["muted-green-paint"] },
-	{ id: "neutral-wall-tile", ru: "Светлая плитка", en: "Light tile", color: wallFinishColors["neutral-wall-tile"] },
-];
+const wallColors = [
+	{ id: undefined, ru: "По умолчанию", en: "Default", color: "var(--editor-host-line, var(--line))" },
+	{ id: "warm-white-paint", ru: "Тёплый белый", en: "Warm white", color: wallFinishColors["warm-white-paint"] },
+	{ id: "sand-paint", ru: "Песочный", en: "Sand", color: wallFinishColors["sand-paint"] },
+	{ id: "muted-green-paint", ru: "Приглушённый зелёный", en: "Muted green", color: wallFinishColors["muted-green-paint"] },
+] as const;
+
+type WallPoint = { readonly xMm: number; readonly zMm: number };
+
+export function interiorWallSide(project: Project, wallId: string, target?: WallSide | WallPoint): WallSide | undefined {
+	const wall = project.level.wallSegments.find(candidate => candidate.wallSegmentId === wallId);
+	const start = project.level.vertices.find(vertex => vertex.vertexId === wall?.startVertexId);
+	const end = project.level.vertices.find(vertex => vertex.vertexId === wall?.endVertexId);
+	if (!start || !end) return undefined;
+	const dx = end.xMm - start.xMm;
+	const dz = end.zMm - start.zMm;
+	const projection = resolveOrthogonalPlanFaces(project);
+	const outward = projection.kind === "accepted"
+		? projection.plan.walls.find(candidate => candidate.wallSegmentId === wallId)?.exteriorNormal
+		: undefined;
+	if (outward) return dx * outward.z - dz * outward.x > 0 ? "right" : "left";
+	if (target === undefined || typeof target === "string") return target;
+	return dx * (target.zMm - start.zMm) - dz * (target.xMm - start.xMm) < 0 ? "right" : "left";
+}
+
+export function WallColorControls({ draft, disabled, onChange }: {
+	readonly draft: Extract<FinishDraft, { kind: "wall" }>;
+	readonly disabled: boolean;
+	readonly onChange: (draft: FinishDraft) => void;
+}) {
+	return (
+		<fieldset aria-label={copy("Палитра стены", "Wall color palette")} className={styles.wallColorPalette} disabled={disabled}>
+			<div className={sceneStyles.colorOptions}>
+				{wallColors.map(({ id, ru, en, color }) => (
+					<button key={en} type="button" aria-pressed={draft.finish?.presetId === id}
+						onClick={() => onChange({ ...draft, finish: id ? { presetId: id, version: 1 } : undefined })}>
+						<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: color }}>
+							{draft.finish?.presetId === id ? "✓" : ""}
+						</span>
+						<span>{copy(ru, en)}</span>
+					</button>
+				))}
+			</div>
+		</fieldset>
+	);
+}
 
 export function finishLabel(finish?: SurfaceFinish) {
-	const option = [...floorFinishes, ...wallFinishes].find(candidate => candidate.id === finish?.presetId);
+	const option = floorFinishes.find(candidate => candidate.id === finish?.presetId);
 	return option ? copy(option.ru, option.en) : copy("По умолчанию", "Default");
 }
 
@@ -72,7 +115,7 @@ export function projectWithFinishPreview(project: Project, draft: FinishDraft): 
 }
 
 type RoomFinishControlsProps = {
-	readonly draft: FinishDraft;
+	readonly draft: Extract<FinishDraft, { kind: "floor" }>;
 	readonly disabled: boolean;
 	readonly onChange: (draft: FinishDraft) => void;
 };
@@ -92,9 +135,7 @@ export function RoomFinishControls({ draft, disabled, onChange }: RoomFinishCont
 	return (
 		<>
 			{defaultButton}
-			{draft.kind === "floor"
-				? floorFinishes.map(option => renderOption(option, () => onChange({ ...draft, finish: { presetId: option.id, version: 1 } })))
-				: wallFinishes.map(option => renderOption(option, () => onChange({ ...draft, finish: { presetId: option.id, version: 1 } })))}
+			{floorFinishes.map(option => renderOption(option, () => onChange({ ...draft, finish: { presetId: option.id, version: 1 } })))}
 		</>
 	);
 }
@@ -126,11 +167,11 @@ export function OpeningVariantControls<Draft extends OpeningControlsDraft>({
 	] as const;
 	return (
 		<>
-			<fieldset className={styles.interiorChoices}>
-				<legend>{copy("Вариант", "Variant")}</legend>
+			<fieldset className={draft.kind === "Window" ? doorOptions.options : styles.interiorChoices}>
+				<legend className={draft.kind === "Window" ? styles.windowSectionLegend : undefined}>{copy("Вариант", "Variant")}</legend>
 				{draft.kind === "Window" ? (
 					<>
-						{draft.sections === undefined ? <span>{copy("Автоделение по ширине", "Sections by width")}</span> : null}
+						{draft.sections === undefined ? <span className={styles.windowSectionDefault}>{copy("Автоделение по ширине", "Sections by width")}</span> : null}
 						{([1, 2] as const).map(sections => (
 							<button type="button" disabled={disabled} key={sections} aria-pressed={draft.sections === sections}
 								onClick={() => onChange({ ...draft, sections })}>

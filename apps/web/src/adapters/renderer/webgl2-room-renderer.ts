@@ -228,8 +228,8 @@ export class WebGl2RoomRendererController {
 		return this.renderer?.pickHit ? this.pickHit(point)?.assetInstanceId : this.renderer?.pickItem?.(point);
 	}
 
-	public pickHit(point: NormalizedCanvasPoint): WebGl2SceneHit | undefined {
-		return this.renderer?.pickHit?.(point);
+	public pickHit(point: NormalizedCanvasPoint, includeGlazing?: boolean): WebGl2SceneHit | undefined {
+		return this.renderer?.pickHit?.(point, includeGlazing);
 	}
 
 	public dispose(): void {
@@ -751,13 +751,14 @@ function createProceduralWebGl2RoomSceneRenderer(
 	};
 
 	return {
-		pickHit: (point) => pickProceduralSceneHit(
+		pickHit: (point, includeGlazing) => pickProceduralSceneHit(
 			activeScene,
 			lastCamera,
 			context.canvas.width / context.canvas.height,
 			point,
 			cutaway?.hiddenWallSegmentIds,
 			shouldUseDetailedFurniture(activeScene.items.length),
+			includeGlazing,
 		),
 		dispose: () => {
 			context.deleteBuffer(vertexBuffer);

@@ -16,6 +16,7 @@ export interface OpeningPart {
 	readonly box: SceneBox;
 	readonly role: keyof typeof OPENING_FINISH;
 	readonly wallSegmentId: string;
+	readonly openingId: string;
 }
 
 /** Frame and leaf share the opening's wall-local axes with its plan symbol. */
@@ -48,6 +49,7 @@ export function openingTemplateFor(
 		const distance = opening.offsetMm - w / 2 + along;
 		parts.push({
 			role,
+			openingId: opening.openingId,
 			wallSegmentId: opening.wallSegmentId,
 			box: {
 				centerXM: (start.xMm - minimumXmm + distance * dx - across * dz) / 1000,

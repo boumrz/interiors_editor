@@ -10,7 +10,7 @@ import {
 	supportOptions,
 } from "./supported-item-controls";
 import { availableSupportOptions, supportAddressAt, supportPlacementCommand } from "./supported-placement-targets";
-import { finishLabel, OpeningVariantControls, projectWithFinishPreview, RoomFinishControls, type FinishDraft } from "./room-interior-controls";
+import { finishLabel, interiorWallSide, OpeningVariantControls, projectWithFinishPreview, RoomFinishControls, WallColorControls, type FinishDraft } from "./room-interior-controls";
 import type { ProductMetric, ProductMetricSink } from "../application/editor-product-metrics";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
 import { DoorSwingPicker } from "./door-swing-picker";
@@ -49,8 +49,7 @@ import type {
 } from "../application/storage-pressure";
 import type { ImportPortableBackupStatus } from "../application/import-portable-backup";
 import type { AddWallSegmentInput } from "../domain/add-wall-segment";
-import { wallOpeningHostsForProject, windowsWithMixedSillsOnSameWall } from "../domain/door-opening-project";
-import { resolveOrthogonalPlanFaces } from "../domain/derived-orthogonal-plan-faces";
+import { updateDoorOpeningInProject, wallOpeningHostsForProject, windowsWithMixedSillsOnSameWall } from "../domain/door-opening-project";
 import {
 	type AddGeneralWallHostResolutionInput,
 	type DeleteGeneralWallRoomMetadataResolution,
@@ -1391,19 +1390,20 @@ function nonNegativeSafeInteger(raw: string): number | undefined {
 	return Number.isSafeInteger(value) ? value : undefined;
 }
 
-function canEditOpeningOffset(draft: OpeningDraftFields, telegram: boolean): boolean {
-	return draft.isMove === true || (telegram && draft.kind === "Door");
+function canEditOpeningOffset(draft: OpeningDraftFields, telegram: boolean, scene = false): boolean {
+	return draft.isMove === true || (telegram && (draft.kind === "Door" || scene));
 }
 
 export function openingEditInputFor(
 	draft: OpeningDraftFields,
 	saved: Pick<Project["level"]["openings"][number], "kind" | "offsetMm" | "openingId" | "sillMm"> | undefined,
 	telegram: boolean,
+	scene = false,
 ): UpdateWallOpeningInput | undefined {
 	if (saved?.openingId !== draft.openingId || saved.kind !== draft.kind) return undefined;
 	const widthMm = positiveInteger(draft.widthMm);
 	const heightMm = positiveInteger(draft.heightMm);
-	const offsetMm = canEditOpeningOffset(draft, telegram) ? nonNegativeSafeInteger(draft.offsetMm) : saved.offsetMm;
+	const offsetMm = canEditOpeningOffset(draft, telegram, scene) ? nonNegativeSafeInteger(draft.offsetMm) : saved.offsetMm;
 	if (widthMm === undefined || heightMm === undefined || offsetMm === undefined) return undefined;
 	return {
 		openingId: saved.openingId,
@@ -1890,6 +1890,7 @@ export function AppShell({
 		useState<WallMutationCorrection | undefined>();
 	const wallMutationCorrectionActionRef = useRef<HTMLButtonElement>(null);
 	const openingDraftWidthInputRef = useRef<HTMLInputElement>(null);
+	const openingContextSettingsRef = useRef<HTMLButtonElement>(null);
 	const [itemPlacementConfirmation, setItemPlacementConfirmation] = useState<
 		string | undefined
 	>();
@@ -2248,6 +2249,11 @@ export function AppShell({
 	>({});
 	const [selectedItemAngleRaw, setSelectedItemAngleRaw] = useState("0");
 	const [selectedWallId, setSelectedWallId] = useState<string | undefined>();
+	const [selectedWallPaintTarget, setSelectedWallPaintTarget] = useState<{
+		readonly wallId: string;
+		readonly point: WallSide | { readonly xMm: number; readonly zMm: number };
+	}>();
+	const [selectedSceneRoomId, setSelectedSceneRoomId] = useState<string>();
 	const skipNextNumericBlurCommitRef = useRef<boolean | HTMLInputElement>(false);
 	const [wallItemDraft, setWallItemDraft] = useState<
 		ParametricWallItemInput | undefined
@@ -2291,6 +2297,7 @@ export function AppShell({
 	}, [wallItemDraft]);
 	const catalogDialogRef = useRef<HTMLElement>(null);
 	const roomDirectoryDialogRef = useRef<HTMLElement>(null);
+	const sceneRoomPropertiesRef = useRef<HTMLButtonElement>(null);
 	const planInspectorRef = useRef<HTMLElement>(null);
 	const roomDockActionRef = useRef<HTMLButtonElement>(null);
 	const catalogSearchInputRef = useRef<HTMLInputElement>(null);
@@ -2774,6 +2781,10 @@ export function AppShell({
 	const selectedWall = project?.level.wallSegments.find(
 		(wall) => wall.wallSegmentId === selectedWallId,
 	);
+	const wallPaintSide = useMemo(() => roomInteriorEnabled && project?.schemaVersion === 1 && selectedWall
+		? interiorWallSide(project, selectedWall.wallSegmentId,
+			selectedWallPaintTarget?.wallId === selectedWall.wallSegmentId ? selectedWallPaintTarget.point : undefined)
+		: undefined, [project, roomInteriorEnabled, selectedWall, selectedWallPaintTarget]);
 	const selectedWallRun = hostNavigation && project?.schemaVersion === 1 && selectedWall
 		? uninterruptedWallRun(project, selectedWall.wallSegmentId)
 		: undefined;
@@ -2833,17 +2844,7 @@ export function AppShell({
 		: openingDraft?.kind === "Door" ? selectedOpening?.wallSegmentId : undefined;
 	const doorInsideSide = useMemo(() => {
 		if (!doorHingeAuthoring || project?.schemaVersion !== 1 || !doorDraftWallId) return undefined;
-		const wall = project.level.wallSegments.find(candidate => candidate.wallSegmentId === doorDraftWallId);
-		if (!wall) return undefined;
-		const start = project.level.vertices.find(vertex => vertex.vertexId === wall.startVertexId);
-		const end = project.level.vertices.find(vertex => vertex.vertexId === wall.endVertexId);
-		const plan = resolveOrthogonalPlanFaces(project);
-		const exterior = plan.kind === "accepted"
-			? plan.plan.walls.find(candidate => candidate.wallSegmentId === doorDraftWallId)?.exteriorNormal
-			: undefined;
-		if (!start || !end || !exterior) return undefined;
-		return (end.xMm - start.xMm) * exterior.z - (end.zMm - start.zMm) * exterior.x > 0
-			? "right" as const : "left" as const;
+		return interiorWallSide(project, doorDraftWallId);
 	}, [doorDraftWallId, doorHingeAuthoring, project]);
 	const isWallOpeningDockContext =
 		viewMode === "plan" &&
@@ -2904,6 +2905,9 @@ export function AppShell({
 							wallRunSegmentIds?.includes(item.wallSegmentId) === true),
 				)
 			: [];
+	const sceneWallItem = viewMode === "three-dimensional"
+		? selectedWallItems.find(item => item.assetInstanceId === selectedItemId)
+		: undefined;
 	const selectedWallItemWarningsById = new Map<
 		string,
 		readonly ParametricWallItemPlacementWarning[]
@@ -3072,6 +3076,7 @@ export function AppShell({
 			? {
 					color: source.color,
 					...("catalogPreset" in source && source.catalogPreset ? { catalogPreset: source.catalogPreset } : {}),
+					...(customGlbPlacementDraft || reusedItemDefinitionId ? { modelBacked: true as const } : {}),
 					...("colorVariantId" in source && typeof source.colorVariantId === "string" ? { colorVariantId: source.colorVariantId } : {}),
 					...(furnitureKind === undefined ? {} : { furnitureKind }),
 					yawRadians: itemPlacementYawRadians,
@@ -3111,6 +3116,7 @@ export function AppShell({
 	const selectedRoomProperty = editableRooms.find(
 		({ room }) => room.roomId === selectedRoomPropertyId,
 	);
+	const selectedSceneRoom = editableRooms.find(({ room }) => room.roomId === selectedSceneRoomId)?.room;
 	const selectableSupports = useMemo(() => visibleProject?.schemaVersion === 1
 		? supportOptions(visibleProject) : [], [visibleProject]);
 	const supportsInView = useMemo(() => visibleProject?.schemaVersion === 1
@@ -3150,8 +3156,17 @@ export function AppShell({
 		[supportAssessment, layoutPreferences]);
 	const previewProject = useMemo(() => {
 		const source = supportPreviewProject ?? visibleProject;
-		return finishDraft && source?.schemaVersion === 1 ? projectWithFinishPreview(source, finishDraft) : source;
-	}, [finishDraft, supportPreviewProject, visibleProject]);
+		if (source?.schemaVersion !== 1) return source;
+		if (finishDraft) return projectWithFinishPreview(source, finishDraft);
+		if (hostNavigation && viewMode === "three-dimensional" && openingDraft) {
+			const input = openingEditInputFor(openingDraft, selectedOpening, true, true);
+			if (input) {
+				const preview = updateDoorOpeningInProject(source, input, source.updatedAt);
+				if (preview.kind === "accepted") return preview.project;
+			}
+		}
+		return source;
+	}, [finishDraft, hostNavigation, openingDraft, selectedOpening, supportPreviewProject, viewMode, visibleProject]);
 	const threeDimensionalScene = useMemo(
 		() => previewProject ? projectRectangularRoomForWebGl(previewProject, localGreyboxCatalog ? telegramGreyboxKindForLabel : undefined, hostNavigation !== undefined) : undefined,
 		[previewProject, localGreyboxCatalog, hostNavigation],
@@ -4009,15 +4024,15 @@ export function AppShell({
 		setRoomHeightOpeningConflict(undefined);
 	};
 
-	const openRoomDirectory = () => {
-		const firstRoom = editableRooms[0];
-		if (!firstRoom) return;
+	const openRoomDirectory = (roomId?: string) => {
+		const roomToOpen = roomId ? editableRooms.find(({ room }) => room.roomId === roomId) : editableRooms[0];
+		if (!roomToOpen) return;
 		restoreFocusRef.current =
 			document.activeElement instanceof HTMLElement
 				? document.activeElement
 				: undefined;
-		setSelectedRoomPropertyId(firstRoom.room.roomId);
-		setRoomPropertyFields(firstRoom.fields);
+		setSelectedRoomPropertyId(roomToOpen.room.roomId);
+		setRoomPropertyFields(roomToOpen.fields);
 		setRoomPropertyError(undefined);
 		setRoomPropertyConfirmation(undefined);
 		setRoomHeightOpeningConflict(undefined);
@@ -4033,12 +4048,12 @@ export function AppShell({
 		setRoomHeightOpeningConflict(undefined);
 		const restoreTarget = restoreFocusRef.current;
 		restoreFocusRef.current = undefined;
-		queueMicrotask(() => {
+		requestAnimationFrame(() => {
 			const visibleTarget =
 				restoreTarget?.isConnected &&
 				getComputedStyle(restoreTarget).opacity !== "0"
 					? restoreTarget
-					: (roomDockActionRef.current ?? editorHeaderMenuRef.current);
+					: (sceneRoomPropertiesRef.current ?? roomDockActionRef.current ?? editorHeaderMenuRef.current);
 			visibleTarget?.focus();
 		});
 	};
@@ -4085,14 +4100,14 @@ export function AppShell({
 		setDimensionError(undefined);
 		requestAnimationFrame(() => (finishTriggerRef.current ?? editorHeaderMenuRef.current)?.focus());
 	};
-	const chooseWallFinishSide = (side: WallSide) => {
-		if (!selectedWall) return;
+	const openWallColor = () => {
+		if (!selectedWall || !wallPaintSide) return;
 		setDimensionError(undefined);
 		setFinishDraft({
 			kind: "wall",
 			wallSegmentId: selectedWall.wallSegmentId,
-			side,
-			finish: "sideFinishes" in selectedWall ? selectedWall.sideFinishes?.[side] : undefined,
+			side: wallPaintSide,
+			finish: "sideFinishes" in selectedWall ? selectedWall.sideFinishes?.[wallPaintSide] : undefined,
 		});
 	};
 	const confirmFinishDraft = async () => {
@@ -5569,6 +5584,12 @@ export function AppShell({
 		if (!item) {
 			return;
 		}
+		if (hostNavigation && viewMode === "three-dimensional" && item.anchorClass === "wall") {
+			selectWall(item.wallSegmentId, item.side);
+			setSelectedItemId(item.assetInstanceId);
+			setIsSelectionInspectorExpanded(true);
+			return;
+		}
 		setDimensionError(undefined);
 		setFloorItemTab("sizes");
 		setItemWallDrafts({});
@@ -5579,6 +5600,7 @@ export function AppShell({
 		setVertexDeletionCandidate(undefined);
 
 		setSelectedItemId(assetInstanceId);
+		setSelectedSceneRoomId(undefined);
 		setSelectedWallId(undefined);
 		setSelectedOpeningId(undefined);
 		setWallDeletionConflict(undefined);
@@ -5747,6 +5769,8 @@ export function AppShell({
 		setSelectedItemId(undefined);
 		setSelectedItemFields(undefined);
 		setSelectedWallId(undefined);
+		setSelectedWallPaintTarget(undefined);
+		setSelectedSceneRoomId(undefined);
 		setSelectedOpeningId(undefined);
 		setIsSelectionInspectorExpanded(false);
 		setOpeningDraft(undefined);
@@ -5756,7 +5780,7 @@ export function AppShell({
 		setWallDeletionConflict(undefined);
 	};
 
-	const selectWall = (wallSegmentId: string) => {
+	const selectWall = (wallSegmentId: string, target?: WallSide | { readonly xMm: number; readonly zMm: number }) => {
 		setSelectedOpeningId(undefined);
 		if (
 			!project?.level.wallSegments.some(
@@ -5777,6 +5801,8 @@ export function AppShell({
 		setWallItemDraftFields(undefined);
 		setWallDeletionConflict(undefined);
 		setSelectedWallId(wallSegmentId);
+		setSelectedSceneRoomId(undefined);
+		setSelectedWallPaintTarget(target === undefined ? undefined : { wallId: wallSegmentId, point: target });
 	};
 
 	const selectOpening = (openingId: string) => {
@@ -5787,7 +5813,13 @@ export function AppShell({
 		setSelectedOpeningId(openingId);
 		setSelectedWallId(opening.wallSegmentId);
 		setSelectedItemId(undefined);
+		setSelectedSceneRoomId(undefined);
 		setIsSelectionInspectorExpanded(false);
+	};
+
+	const selectSceneRoom = (roomId: string) => {
+		clearSelection();
+		setSelectedSceneRoomId(roomId);
 	};
 
 	const duplicateWallItem = (
@@ -6651,7 +6683,7 @@ export function AppShell({
 		const currentOpening = latest.project.level.openings.find(
 			(opening) => opening.openingId === openingDraft.openingId,
 		);
-		const input = openingEditInputFor(openingDraft, currentOpening, hostNavigation !== undefined);
+		const input = openingEditInputFor(openingDraft, currentOpening, hostNavigation !== undefined, viewMode === "three-dimensional");
 		if (!input) {
 			setDimensionError(copy("Укажите положительные целые ширину и высоту.", "Enter a positive whole width and height."));
 			return;
@@ -6672,12 +6704,14 @@ export function AppShell({
 		) {
 			// The confirmed candidate now belongs to save/recovery.
 			setOpeningDraft(undefined);
+			if (result.kind === "durable") requestAnimationFrame(() => openingContextSettingsRef.current?.focus());
 		}
 	};
 
 	const cancelOpeningDraft = () => {
 		setDimensionError(undefined);
 		setOpeningDraft(undefined);
+		requestAnimationFrame(() => (openingContextSettingsRef.current ?? editorHeaderMenuRef.current)?.focus());
 	};
 
 	const setFloorDimensionError = (field: keyof DimensionFields, message: string | undefined) => {
@@ -6865,6 +6899,8 @@ export function AppShell({
 			setSelectedItemId(undefined);
 			setSelectedWallId(undefined);
 			setSelectedOpeningId(undefined);
+			setSelectedWallPaintTarget(undefined);
+			setSelectedSceneRoomId(undefined);
 			setWallDeletionConflict(undefined);
 			setVertexDeletionCandidate(undefined);
 			return;
@@ -6988,6 +7024,9 @@ export function AppShell({
 		setSelectedItemId(undefined);
 		setSelectedWallId(undefined);
 		setSelectedOpeningId(undefined);
+		setSelectedWallPaintTarget(undefined);
+		setSelectedSceneRoomId(undefined);
+		setIsSelectionInspectorExpanded(false);
 		setWallDeletionConflict(undefined);
 		setVertexDeletionCandidate(undefined);
 		const chromeReset = projectHubChromeReset();
@@ -7077,7 +7116,7 @@ export function AppShell({
 		const footerToggle = state.kind === "projects"
 			? projectsHeadingRef.current?.closest("section")?.querySelector<HTMLButtonElement>('[data-projects-footer-toggle][aria-expanded="true"]')
 			: undefined;
-		const panel = !explicitProjects && (!!finishDraft || !!onCleanPanelClose || !!footerToggle || (fullTransientNavigationProtection && (!!nativePanel || isRenameProjectOpen || isEditorActionMenuOpen || (hasTelegramEditorSheet && isOpeningDialogOpen) || isPlanInspectorOpen || isRoomDirectoryOpen || isBuiltInCatalogOpen || (viewMode === "plan" && isSelectionInspectorExpanded) || localFileState.kind !== "idle")));
+		const panel = !explicitProjects && (!!finishDraft || !!onCleanPanelClose || !!footerToggle || (fullTransientNavigationProtection && (!!nativePanel || isRenameProjectOpen || isEditorActionMenuOpen || (hasTelegramEditorSheet && isOpeningDialogOpen) || isPlanInspectorOpen || isRoomDirectoryOpen || isBuiltInCatalogOpen || isSelectionInspectorExpanded || localFileState.kind !== "idle")));
 		const recoveryExit = !panel ? controller.writerRecoveryCopy?.() : undefined;
 		const decision = editorBackDecision({
 			pending: hasPendingEditorCommand(),
@@ -7111,6 +7150,7 @@ export function AppShell({
 			else if (isPlanInspectorOpen) closePlanInspector();
 			else if (isSelectionInspectorExpanded) {
 				if (hasTelegramEditorSheet && selectedItem) closeFloorItemProperties();
+				else if (hasTelegramEditorSheet && selectedWall) closeWallProperties();
 				else setIsSelectionInspectorExpanded(false);
 			}
 			else if (footerToggle) {
@@ -8208,13 +8248,26 @@ export function AppShell({
 				) : null}
 				{!isStarterContourVisible ? storagePressureNotice : null}
 
-				{hostNavigation && selectedItem && viewMode === "three-dimensional" && !isItemPlacementActive && !selectionBehindSheet ? (
-					<button
-						className={`${styles.tmaDuplicateAction} ${styles.tmaSceneDuplicateAction}`}
-						disabled={isEditorReadOnly || isMutationBlocked}
-						onClick={duplicateSelectedItem}
-						type="button"
-					>{copy("Дублировать", "Duplicate")}</button>
+				{hostNavigation && viewMode === "three-dimensional" && !isItemPlacementActive && !supportDraft &&
+					!selectionBehindSheet && !isSelectionInspectorExpanded && !finishDraft && !selectedOpening &&
+					(selectedItem || selectedWall || selectedSceneRoom) ? (
+					<div className={styles.tmaSceneSelectionActions}>
+						{selectedItem ? <>
+							<button ref={floorPropertiesTriggerRef} className={styles.tmaDuplicateAction} type="button"
+								onClick={openSelectionProperties}>{copy("Параметры", "Settings")}</button>
+							<button className={styles.tmaDuplicateAction} type="button"
+								disabled={isEditorReadOnly || isMutationBlocked} onClick={duplicateSelectedItem}>
+								{copy("Дублировать", "Duplicate")}
+							</button>
+						</> : selectedWall ? <>
+							{wallPaintSide && !sceneWallItem ? <button className={styles.tmaDuplicateAction} type="button" ref={finishTriggerRef}
+								disabled={isEditorReadOnly || isMutationBlocked} onClick={openWallColor}>{copy("Цвет стены", "Wall color")}</button> : null}
+							<button ref={selectionPropertiesTriggerRef} className={styles.tmaDuplicateAction} type="button"
+								onClick={openSelectionProperties}>{sceneWallItem ? copy("Параметры", "Settings") : copy("Свойства стены", "Wall properties")}</button>
+						</> : selectedSceneRoom ?
+							<button ref={sceneRoomPropertiesRef} className={styles.tmaDuplicateAction} type="button"
+								onClick={() => openRoomDirectory(selectedSceneRoom.roomId)}>{copy("Помещение", "Room")}</button> : null}
+					</div>
 				) : null}
 				{viewMode === "three-dimensional" && threeDimensionalScene ? (
 					<RoomScene3d
@@ -8349,6 +8402,9 @@ export function AppShell({
 						}}
 						onRotateItem={rotateItem}
 						onSelectItem={selectItem}
+						onSelectWall={hostNavigation ? selectWall : undefined}
+						onSelectOpening={hostNavigation ? selectOpening : undefined}
+						onSelectRoom={hostNavigation ? selectSceneRoom : undefined}
 						readOnly={isEditorReadOnly || isMutationBlocked}
 						scene={threeDimensionalScene}
 						selectedItemId={selectedItemId}
@@ -8487,8 +8543,7 @@ export function AppShell({
 					</button>
 					<span
 						aria-live="polite"
-						className={styles.editorSaveState}
-						data-editor-preview={isEditorPreview || undefined}
+						className={styles.visuallyHidden}
 						role="status"
 					>
 						{editorSaveState}
@@ -8686,7 +8741,7 @@ export function AppShell({
 											isEditorReadOnly ||
 											editableRooms.length === 0
 										}
-										onClick={openRoomDirectory}
+										onClick={() => openRoomDirectory()}
 										type="button"
 									>
 										<svg
@@ -9024,7 +9079,7 @@ export function AppShell({
 						aria-expanded={isRoomDirectoryOpen}
 						className={styles.roomDirectoryToggle}
 						disabled={isWorking}
-						onClick={openRoomDirectory}
+						onClick={() => openRoomDirectory()}
 						type="button"
 					>
 						<svg
@@ -9069,7 +9124,8 @@ export function AppShell({
 					</output>
 				) : null}
 
-				{viewMode === "plan" && selectedOpening && !isOpeningDialogOpen && (!hostNavigation || !hasTransientPlanEdit) ? (
+				{(viewMode === "plan" || hasTelegramEditorSheet) && selectedOpening && !selectionBehindSheet &&
+					!isItemPlacementActive && !supportDraft && (!hostNavigation || !hasTransientPlanEdit) ? (
 					<TelegramSheetFrame telegram={hostNavigation !== undefined} canvasAnchored
 						className={styles.openingContext}
 						aria-label={
@@ -9087,6 +9143,7 @@ export function AppShell({
 						</span>
 						<button
 							type="button"
+							ref={openingContextSettingsRef}
 							disabled={isEditorReadOnly || isMutationBlocked}
 							onClick={() => openOpeningDraft(selectedOpening)}
 						>
@@ -9400,12 +9457,12 @@ export function AppShell({
 					</ProjectConfirmationDialog>
 				) : null}
 
-				{viewMode === "plan" && openingDraft && !openingDraft.isMove ? (
+				{(viewMode === "plan" || hasTelegramEditorSheet) && openingDraft && !openingDraft.isMove ? (
 					<EditorModalSheet
 						telegramModal={canOpenTelegramEditorSheet}
 						busy={isWorking}
 						onRequestClose={() => requestEditorBack(false, cancelOpeningDraft)}
-						restoreFocus={() => editorHeaderMenuRef.current}
+						restoreFocus={() => openingContextSettingsRef.current ?? editorHeaderMenuRef.current}
 						aria-label={
 							openingDraft.kind === "Door"
 								? copy("Параметры дверного проёма", "Door opening settings")
@@ -9436,7 +9493,7 @@ export function AppShell({
 							/>
 
 							<div className={styles.openingCreationFields}>
-								{canEditOpeningOffset(openingDraft, hostNavigation !== undefined) && <label>
+								{canEditOpeningOffset(openingDraft, hostNavigation !== undefined, viewMode === "three-dimensional") && <label>
 									<span>{copy("Смещение вдоль стены", "Offset along the wall")}</span>
 									<input aria-label={copy("Смещение вдоль стены, мм", "Offset along the wall, mm")} inputMode="numeric"
 										value={openingDraft.offsetMm}
@@ -10012,7 +10069,7 @@ export function AppShell({
 				{activeTool === "select" &&
 				selectedItem &&
 				selectedItemFields &&
-				viewMode === "plan" ? (
+				(viewMode === "plan" || hasTelegramEditorSheet && isSelectionInspectorExpanded) ? (
 					<EditorModalSheet
 						telegramModal={canOpenTelegramEditorSheet && isSelectionInspectorExpanded && !selectionBehindSheet && selectedOpening === undefined}
 						busy={isWorking}
@@ -10225,13 +10282,13 @@ export function AppShell({
 					!vertexDeletionCandidate &&
 					!wallDeletionConflict &&
 					!wallAddHostConflict &&
-					viewMode === "plan" ? (
+					(viewMode === "plan" || hasTelegramEditorSheet) ? (
 					<EditorModalSheet
 						telegramModal={canOpenTelegramEditorSheet && !selectedWallItemDraft && !selectionBehindSheet && selectedOpening === undefined && !finishDraft}
 						busy={isWorking}
 						onRequestClose={() => requestEditorBack(false, closeWallProperties)}
 						restoreFocus={() => selectionPropertiesTriggerRef.current}
-						aria-label={copy("Свойства выбранной стены", "Selected wall properties")}
+						aria-label={sceneWallItem?.label ?? copy("Свойства выбранной стены", "Selected wall properties")}
 						className={`${styles.selectionPanel} ${styles.selectionInspectorPanel}${hasTelegramEditorSheet ? ` ${styles.wallPropertiesSheet}` : ""}`}
 						data-inspector-expanded={true}
 						data-testid="selected-wall-inspector"
@@ -10244,8 +10301,8 @@ export function AppShell({
 					>
 						{localGreyboxCatalog ? (
 						<SheetHeader
-							title={copy("Свойства стены", "Wall properties")}
-							closeLabel={copy("Закрыть свойства стены", "Close wall properties")}
+							title={sceneWallItem?.label ?? copy("Свойства стены", "Wall properties")}
+							closeLabel={sceneWallItem ? copy("Закрыть свойства предмета", "Close item properties") : copy("Закрыть свойства стены", "Close wall properties")}
 							protectEditorDraft={fullTransientNavigationProtection}
 							onClose={() => {
 								if (isNavigationProtected) requestEditorBack(false, closeWallProperties);
@@ -10285,19 +10342,16 @@ export function AppShell({
 						</div>
 						)}
 
-						{roomInteriorEnabled ? (
-							<button type="button" ref={finishDraft?.kind === "floor" ? undefined : finishTriggerRef}
+						{wallPaintSide && !sceneWallItem ? (
+							<button type="button" ref={finishTriggerRef}
 								disabled={isEditorReadOnly || isMutationBlocked}
-								aria-label={copy("Отделка стороны", "Wall side finish")}
-								onClick={() => chooseWallFinishSide("left")}>
-								{copy("Отделка стороны", "Wall side finish")}
+								onClick={openWallColor}>
+								{copy("Цвет стены", "Wall color")}
 							</button>
 						) : null}
-						{roomInteriorEnabled || ("profile" in selectedWall && selectedWall.profile !== undefined) ? (
+						{!sceneWallItem && "profile" in selectedWall && selectedWall.profile !== undefined ? (
 							<p className={styles.openingRow}>
-								{"profile" in selectedWall && selectedWall.profile === "bearing" ? copy("Несущая", "Bearing wall")
-									: "profile" in selectedWall && selectedWall.profile === "partition" ? copy("Перегородка", "Partition")
-									: copy("Тип не указан", "Type not specified")} · {formatLengthMm(selectedWall.thicknessMm)}
+								{selectedWall.profile === "bearing" ? copy("Несущая", "Bearing wall") : copy("Перегородка", "Partition")}
 							</p>
 						) : null}
 						{selectedWallItemDraft ? (
@@ -10401,7 +10455,7 @@ export function AppShell({
 								</button>
 							</div>
 						) : null}
-						{selectedWallItems.map((item) => {
+						{(sceneWallItem ? [sceneWallItem] : selectedWallItems).map((item) => {
 							const warnings = selectedWallItemWarningsById.get(
 								item.assetInstanceId,
 							);
@@ -10590,7 +10644,7 @@ export function AppShell({
 								</div>
 							);
 						})}
-						{canMoveSelectedWallWithGesture ? (
+						{viewMode === "plan" && canMoveSelectedWallWithGesture ? (
 							<button
 								aria-pressed={isWallMoveMode}
 								className={styles.wallMoveGestureAction}
@@ -10612,7 +10666,7 @@ export function AppShell({
 									: copy("Переместить стену жестом", "Drag to move wall")}
 							</button>
 						) : null}
-						{removableSelectedWallVertexIds.map((vertexId) => (
+						{!sceneWallItem && removableSelectedWallVertexIds.map((vertexId) => (
 							<button
 								aria-label={
 									removableSelectedWallVertexIds.length === 1
@@ -10650,7 +10704,7 @@ export function AppShell({
 										: copy("Удалить конечную вершину", "Delete end vertex")}
 							</button>
 						))}
-						{movableSelectedWallVertexIds.length > 0 ? (
+						{viewMode === "plan" && movableSelectedWallVertexIds.length > 0 ? (
 							<button
 								aria-pressed={isWallVertexMoveMode}
 								className={styles.wallMoveGestureAction}
@@ -10673,14 +10727,9 @@ export function AppShell({
 									: copy("Переместить вершину жестом", "Drag to move vertex")}
 							</button>
 						) : null}
-						{selectedWallOpenings.map((opening) => (
+						{!hasTelegramEditorSheet && selectedWallOpenings.map((opening) => (
 							<div className={styles.openingRow} key={opening.openingId}>
-								{hasTelegramEditorSheet ? (
-									<dl className={styles.wallOpeningWidth} data-testid="wall-opening-width">
-										<dt>{opening.kind === "Door" ? copy("Ширина дверного проёма", "Door opening width") : copy("Ширина окна", "Window width")}</dt>
-										<dd>{formatLengthMm(opening.widthMm)}</dd>
-									</dl>
-								) : <div>
+								<div>
 									<span>
 										{opening.kind === "Door"
 											? copy("Ширина дверного проёма, мм", "Door opening width, mm")
@@ -10688,7 +10737,7 @@ export function AppShell({
 									</span>
 
 									<output>{formatLengthMm(opening.widthMm)}</output>
-								</div>}
+								</div>
 								<button
 									disabled={
 										isEditorReadOnly ||
@@ -10715,7 +10764,7 @@ export function AppShell({
 								</button>
 							</div>
 						))}
-						<button
+						{!sceneWallItem && <button
 							className={styles.deleteAction}
 							disabled={
 								isEditorReadOnly ||
@@ -10727,7 +10776,7 @@ export function AppShell({
 							type="button"
 						>
 							{copy("Удалить стену", "Delete wall")}
-						</button>
+						</button>}
 					</EditorModalSheet>
 				) : activeTool === "select" && metrics && viewMode === "plan" ? (
 					<EditorModalSheet
@@ -11262,39 +11311,26 @@ export function AppShell({
 			) : null}
 			{finishDraft ? (
 				<EditorModalSheet
-					aria-label={finishDraft.kind === "floor" ? copy("Пол", "Floor") : copy("Отделка стороны", "Wall side finish")}
+					aria-label={finishDraft.kind === "floor" ? copy("Пол", "Floor") : copy("Цвет стены", "Wall color")}
 					busy={isWorking}
 					className={styles.interiorEditorSheet}
 					onRequestClose={() => requestEditorBack(false, closeFinishDraft)}
 					restoreFocus={() => finishTriggerRef.current}
 					telegramModal={canOpenTelegramEditorSheet}
 				>
-					<SheetHeader title={finishDraft.kind === "floor" ? copy("Пол", "Floor") : copy("Отделка стороны", "Wall side finish")}
-						closeLabel={copy("Закрыть отделку", "Close finish selection")}
+					<SheetHeader title={finishDraft.kind === "floor" ? copy("Пол", "Floor") : copy("Цвет стены", "Wall color")}
+						closeLabel={copy("Закрыть палитру", "Close palette")}
 						closeDisabled={isWorking}
 						onClose={() => requestEditorBack(false, closeFinishDraft)} />
-					{finishDraft.kind === "wall" ? (
-						<fieldset className={styles.interiorChoices}>
-							<legend className={styles.visuallyHidden}>{copy("Сторона стены", "Wall side")}</legend>
-							{(["left", "right"] as const).map(side => (
-								<button type="button" key={side} aria-pressed={finishDraft.side === side} disabled={isWorking}
-									onClick={() => chooseWallFinishSide(side)}>{finishWallSideName(side)}</button>
-							))}
-						</fieldset>
-					) : null}
-					<div className={styles.interiorChoices}>
-						<RoomFinishControls draft={finishDraft} disabled={isWorking || isEditorReadOnly} onChange={setFinishDraft} />
-					</div>
-					<fieldset className={styles.interiorChoices}>
-						<legend className={styles.visuallyHidden}>{copy("Вид предпросмотра", "Preview view")}</legend>
-						<button type="button" aria-pressed={viewMode === "plan"} onClick={() => setViewMode("plan")}>{copy("План", "Plan")}</button>
-						<button type="button" aria-pressed={viewMode === "three-dimensional"} disabled={!threeDimensionalScene}
-							onClick={() => setViewMode("three-dimensional")}>3D</button>
-					</fieldset>
+					{finishDraft.kind === "wall"
+						? <WallColorControls draft={finishDraft} disabled={isWorking || isEditorReadOnly} onChange={setFinishDraft} />
+						: <div className={styles.interiorChoices}>
+							<RoomFinishControls draft={finishDraft} disabled={isWorking || isEditorReadOnly} onChange={setFinishDraft} />
+						</div>}
 					{dimensionError ? <p role="alert">{dimensionError}</p> : null}
 					<div className={styles.interiorChoices}>
 						<button type="button" disabled={isWorking} onClick={closeFinishDraft}>{copy("Отменить", "Cancel")}</button>
-						<button type="button" disabled={!finishChanged || isEditorReadOnly || isMutationBlocked}
+						<button type="button" data-editor-action="confirm" disabled={!finishChanged || isEditorReadOnly || isMutationBlocked}
 							onClick={() => void confirmFinishDraft()}>{copy("Подтвердить", "Confirm")}</button>
 					</div>
 				</EditorModalSheet>

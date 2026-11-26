@@ -1,7 +1,7 @@
 import type { CatalogProfile } from "./catalog-model-parts";
 import { catalogProfileGeometry } from "./catalog-profile-geometry";
 import type { RectangularRoomWebGlScene, SceneBox } from "./rectangular-room-projection";
-import { cameraEyeAndTargetFor, furnitureGreyboxPartsFor, type NormalizedCanvasPoint, type WebGl2Camera, type WebGl2SceneHit } from "./webgl2-room-renderer-shared";
+import { cameraEyeAndTargetFor, furnitureGreyboxPartsFor, type NormalizedCanvasPoint, wallSideAtHit, type WebGl2Camera, type WebGl2SceneHit } from "./webgl2-room-renderer-shared";
 
 interface Vector3 {
 	readonly x: number;
@@ -28,6 +28,7 @@ export function pickProceduralSceneHit(
 	point: NormalizedCanvasPoint,
 	hiddenWallSegmentIds: ReadonlySet<string> | undefined,
 	detailedFurniture: boolean,
+	includeGlazing = false,
 ): WebGl2SceneHit | undefined {
 	if (!(aspect > 0)) return undefined;
 	const { eye: [x, y, z], target } = cameraEyeAndTargetFor(scene, camera);
@@ -41,17 +42,22 @@ export function pickProceduralSceneHit(
 	const near = 0.1 / forwardComponent;
 	const far = 100 / forwardComponent;
 	let closestDistance = far;
+	let closest: WebGl2SceneHit | undefined;
 	for (const wall of scene.walls) {
-		if (!wall.wall || !hiddenWallSegmentIds?.has(wall.wall.wallSegmentId)) {
-			closestDistance = Math.min(closestDistance, rayDistanceToBox(eye, ray, wall, near));
-		}
+		const wallSegmentId = wall.wall?.wallSegmentId;
+		if (wallSegmentId !== undefined && hiddenWallSegmentIds?.has(wallSegmentId)) continue;
+		const distanceM = rayDistanceToBox(eye, ray, wall, near);
+		if (distanceM >= closestDistance) continue;
+		closestDistance = distanceM;
+		closest = { distanceM, wallSegmentId, wallSide: wallSideAtHit(wall, add(eye, scale(ray, distanceM)), eye) };
 	}
 	for (const part of scene.openingParts ?? []) {
-		if (part.role !== "glass" && !hiddenWallSegmentIds?.has(part.wallSegmentId)) {
-			closestDistance = Math.min(closestDistance, rayDistanceToBox(eye, ray, part.box, near));
-		}
+		if (hiddenWallSegmentIds?.has(part.wallSegmentId) || (part.role === "glass" && !includeGlazing)) continue;
+		const distanceM = rayDistanceToBox(eye, ray, part.box, near);
+		if (distanceM >= closestDistance) continue;
+		closest = { distanceM, openingId: part.openingId };
+		closestDistance = distanceM;
 	}
-	let closestItem: string | undefined;
 	for (const item of scene.items) {
 		for (const { box, opacity, profile } of furnitureGreyboxPartsFor(item, detailedFurniture)) {
 			if (opacity !== undefined) continue;
@@ -60,11 +66,11 @@ export function pickProceduralSceneHit(
 			const distance = profile ? rayDistanceToProfile(eye, ray, box, profile, near) : boundsDistance;
 			if (distance < closestDistance) {
 				closestDistance = distance;
-				closestItem = item.assetInstanceId;
+				closest = { distanceM: distance, assetInstanceId: item.assetInstanceId };
 			}
 		}
 	}
-	return closestDistance < far ? { assetInstanceId: closestItem, distanceM: closestDistance } : undefined;
+	return closest;
 }
 
 function rayDistanceToBox(origin: Vector3, direction: Vector3, box: SceneBox, near: number): number {

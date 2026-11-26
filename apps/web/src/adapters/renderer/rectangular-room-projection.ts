@@ -93,6 +93,8 @@ export interface SceneBox {
 	readonly showSupportLevels?: true;
 	readonly wall?: {
 		readonly wallSegmentId: string;
+		readonly leftNormal?: { readonly x: number; readonly z: number };
+		readonly halfThicknessM?: number;
 		readonly finishFaces?: SceneWallFinishes;
 		readonly vertexIds?: readonly [string, string];
 		readonly exteriorNormal?: {
@@ -525,10 +527,11 @@ function wallBoxesForProjection(input: {
 	) {
 		return [];
 	}
+	const leftNormal = { x: (start.zMm - end.zMm) / lengthMm, z: (end.xMm - start.xMm) / lengthMm };
 	const finishFaces = wall.sideFinishes && {
 		...wall.sideFinishes,
-		normalX: (start.zMm - end.zMm) / lengthMm,
-		normalZ: (end.xMm - start.xMm) / lengthMm,
+		normalX: leftNormal.x,
+		normalZ: leftNormal.z,
 		anchorXM: metres(minimumXmm),
 		anchorZM: metres(minimumZmm),
 	};
@@ -572,6 +575,8 @@ function wallBoxesForProjection(input: {
 			heightM: metres(heightMm),
 			wall: {
 				wallSegmentId: wall.wallSegmentId,
+				leftNormal,
+				halfThicknessM: metres(wall.thicknessMm) / 2,
 				...(projection.exteriorNormal ? {
 					exteriorNormal: projection.exteriorNormal,
 					vertexIds: [wall.startVertexId, wall.endVertexId] as const,

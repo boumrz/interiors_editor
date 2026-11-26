@@ -1,4 +1,5 @@
 import type { Object3D } from "three";
+import type { WallSide } from "../../domain/project";
 
 import type { CatalogProfile } from "./catalog-model-parts";
 import { catalogPartsFor } from "./catalog-models";
@@ -21,8 +22,8 @@ export interface WebGl2SceneRenderer {
 	): void;
 	/** Selects an item from the most recently drawn frame. */
 	pickItem?(point: NormalizedCanvasPoint): string | undefined;
-	/** Returns the nearest opaque surface on the same ray, including room geometry. */
-	pickHit?(point: NormalizedCanvasPoint): WebGl2SceneHit | undefined;
+	/** Glass is pass-through for item and support rays; a dedicated selection can also pick glazing. */
+	pickHit?(point: NormalizedCanvasPoint, includeGlazing?: boolean): WebGl2SceneHit | undefined;
 	/** Replaces only decoded local model roots; shell/camera state stays live. */
 	updateRuntimeModels?(runtimeModels: WebGl2RuntimeModels): void;
 	dispose(): void;
@@ -37,6 +38,29 @@ export interface NormalizedCanvasPoint {
 export interface WebGl2SceneHit {
 	readonly distanceM: number;
 	readonly assetInstanceId?: string | undefined;
+	readonly openingId?: string | undefined;
+	readonly wallSegmentId?: string | undefined;
+	readonly wallSide?: WallSide | undefined;
+}
+
+/** Uses the physical face, or the eye's side of the centerline for caps and jambs. */
+export function wallSideAtHit(
+	wall: SceneBox,
+	hit: { readonly x: number; readonly y: number; readonly z: number },
+	eye: { readonly x: number; readonly z: number },
+): WallSide | undefined {
+	const normal = wall.wall?.leftNormal;
+	const halfThickness = wall.wall?.halfThicknessM;
+	if (!normal || halfThickness === undefined) return undefined;
+	const toleranceM = 0.00001;
+	const signedDistance = (point: { readonly x: number; readonly z: number }) =>
+		(point.x - wall.centerXM) * normal.x + (point.z - wall.centerZM) * normal.z;
+	const hitDistance = signedDistance(hit);
+	const hitsWallSide = Math.abs(hit.y - wall.centerYM) < wall.heightM / 2 - toleranceM &&
+		Math.abs(Math.abs(hitDistance) - halfThickness) <= toleranceM;
+	const sideDistance = hitsWallSide ? hitDistance : signedDistance(eye);
+	if (Math.abs(sideDistance) <= toleranceM) return undefined;
+	return sideDistance > 0 ? "left" : "right";
 }
 
 export interface WebGl2OrbitCamera {

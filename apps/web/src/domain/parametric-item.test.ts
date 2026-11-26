@@ -97,6 +97,64 @@ it("places and moves objects independently in each room layout", () => {
 	expect(createParametricFloorItem(moved.project, { ...item, roomLayoutId: "b" }, idsThatMustNotAllocate(), project.updatedAt, "reject")).toEqual({ kind: "rejected", reasonCode: "ITEM_COLLISION" });
 });
 
+describe("floor rugs and furniture", () => {
+	const table = {
+		roomId: "room-1", label: "Столик", color: "#536d62",
+		xMm: 1800, zMm: 1400, widthMm: 600, depthMm: 400, heightMm: 400,
+	};
+	const legacyRug = { ...table, label: "Ковёр", widthMm: 1000, depthMm: 900, heightMm: 15 };
+	const catalogRug = { ...legacyRug, label: "Ковровая дорожка", catalogPreset: { presetId: "rug", version: 1 as const } };
+
+	it.each([legacyRug, catalogRug])("allows table and rug placement in either order ($label)", (rug) => {
+		const project = roomProject();
+		for (const [first, second] of [[rug, table], [table, rug]] as const) {
+			const placed = createParametricFloorItem(project, first, ids("existing"), project.updatedAt, "reject");
+			if (placed.kind !== "accepted") throw new Error("Expected the first floor item");
+			expect(assessParametricFloorItemPlacement(placed.project, second, undefined, "reject")).toEqual({ kind: "valid" });
+			expect(findParametricFloorItemCollisionTargets(placed.project, second)).toEqual([]);
+			const overlap = createParametricFloorItem(placed.project, second, ids("new"), project.updatedAt, "reject");
+			if (overlap.kind !== "accepted") throw new Error("Expected the table and rug to overlap");
+			expect(overlap.project.assetInstances).toMatchObject([
+				{ label: first.label, xMm: 1800, zMm: 1400 },
+				{ label: second.label, xMm: 1800, zMm: 1400 },
+			]);
+		}
+	});
+
+	it("keeps same-layer and wall collisions, including solid models named like a rug", () => {
+		const project = roomProject();
+		const placed = createParametricFloorItem(project, table, ids("table"), project.updatedAt, "reject");
+		const covered = createParametricFloorItem(project, catalogRug, ids("rug"), project.updatedAt, "reject");
+		if (placed.kind !== "accepted" || covered.kind !== "accepted") throw new Error("Expected the floor fixtures");
+		const modelsNamedLikeARug = [
+			{ ...table, label: legacyRug.label, catalogPreset: { presetId: "table", version: 1 as const } },
+			{ ...table, label: legacyRug.label, modelBacked: true as const },
+			{ ...table, label: legacyRug.label, assetDefinitionId: "stored-model" },
+		];
+		for (const footprint of modelsNamedLikeARug) {
+			expect(findParametricFloorItemCollisionTargets(placed.project, footprint)).toEqual([{ kind: "item", assetInstanceId: "table" }]);
+		}
+		expect(assessParametricFloorItemPlacement(covered.project, legacyRug, undefined, "reject")).toEqual({ kind: "invalid", reasonCode: "ITEM_COLLISION" });
+		expect(assessParametricFloorItemPlacement(project, { ...catalogRug, xMm: 200 }, undefined, "reject")).toEqual({ kind: "invalid", reasonCode: "OUTSIDE_ROOM_HOST" });
+	});
+
+	it("moves, rotates and resizes a table across a rug without changing the rug", () => {
+		const project = roomProject();
+		const covered = createParametricFloorItem(project, catalogRug, ids("rug"), project.updatedAt, "reject");
+		if (covered.kind !== "accepted") throw new Error("Expected a rug");
+		const placed = createParametricFloorItem(covered.project, { ...table, xMm: 3200 }, ids("table"), project.updatedAt, "reject");
+		if (placed.kind !== "accepted") throw new Error("Expected a table beside the rug");
+		const moved = moveParametricFloorItem(placed.project, { assetInstanceId: "table", xMm: table.xMm, zMm: table.zMm }, project.updatedAt, "reject");
+		if (moved.kind !== "accepted") throw new Error("Expected the table to move onto the rug");
+		const turned = setParametricFloorItemYaw(moved.project, { assetInstanceId: "table", yawRadians: Math.PI / 6, exact: true }, project.updatedAt, "reject");
+		if (turned.kind !== "accepted") throw new Error("Expected rotation on the rug");
+		const resized = resizeParametricFloorItem(turned.project, { assetInstanceId: "table", widthMm: 700, depthMm: 450, heightMm: 400 }, project.updatedAt, "reject");
+		if (resized.kind !== "accepted") throw new Error("Expected resize on the rug");
+		expect(resized.project.assetInstances[0]).toEqual(covered.project.assetInstances[0]);
+		expect(resized.project.assetInstances[1]).toMatchObject({ xMm: table.xMm, zMm: table.zMm, yawMilliDeg: 30000, widthMm: 700, depthMm: 450 });
+	});
+});
+
 describe("the initial floor-item pose", () => {
 	it("rejects malformed initial steps before allocating a durable item", () => {
 		const project = roomProject();

@@ -8,6 +8,7 @@ import type {
 	ProjectScreenState,
 } from "../app/project-controller";
 import { addWindowOpeningToProject, updateDoorOpeningInProject } from "../domain/door-opening-project";
+import { addGeneralWallToProject } from "../domain/general-wall-project";
 import { createInitialProject } from "../domain/initial-project";
 import { createParametricFloorItem } from "../domain/parametric-item";
 import type { Project } from "../domain/project";
@@ -43,6 +44,7 @@ import { defaultDrawingDimensionVisibility } from "./drawing-dimension-visibilit
 import { initialEditorViewport } from "./editor-viewport";
 import { setEditorLanguage } from "./editor-language";
 import { PlanProjection } from "./PlanProjection";
+import { interiorWallSide } from "./room-interior-controls";
 import { telegramGreyboxKindForLabel } from "./telegram-greybox-catalog";
 
 describe("healthy local offline status", () => {
@@ -1299,8 +1301,56 @@ describe("saved opening edits", () => {
 		} as const;
 		expect(openingEditInputFor(draft, door, true)).toMatchObject({ offsetMm: 1301, swingSide: "left", hingeEnd: "end" });
 		expect(openingEditInputFor(draft, door, false)).toMatchObject({ offsetMm: 1737 });
+		expect(openingEditInputFor(draft, door, false, true)).toMatchObject({ offsetMm: 1737 });
 		expect(openingEditInputFor({ ...draft, isMove: true }, door, false)).toMatchObject({ offsetMm: 1301 });
 		expect(openingEditInputFor({ ...draft, offsetMm: "-1" }, door, true)).toBeUndefined();
+	});
+
+	it("lets Telegram windows change offset in 3D with the same exact sill", () => {
+		const saved = { openingId: "window", kind: "Window", offsetMm: 1737, sillMm: 837 } as const;
+		const draft = {
+			baseRevisionId: "revision", kind: "Window", openingId: saved.openingId,
+			widthMm: "1050", heightMm: "1250", offsetMm: "1301",
+		} as const;
+		expect(openingEditInputFor(draft, saved, true, true)).toMatchObject({ offsetMm: 1301, sillMm: 837 });
+		expect(openingEditInputFor(draft, saved, false, true)).toMatchObject({ offsetMm: 1737, sillMm: 837 });
+		expect(openingEditInputFor({ ...draft, offsetMm: "-1" }, saved, true, true)).toBeUndefined();
+	});
+});
+
+describe("wall color side", () => {
+	it("targets an exterior wall's interior even from its other face", () => {
+		const state = rectangularFixtureController().snapshot();
+		if (state.kind !== "saved" || state.project.schemaVersion !== 1) throw new Error("Missing room fixture");
+		expect(interiorWallSide(state.project, "wall-1", "right")).toBe("left");
+		expect(interiorWallSide(state.project, "wall-1", { xMm: 1000, zMm: -40 })).toBe("left");
+		expect(interiorWallSide(state.project, "missing", "right")).toBeUndefined();
+		const reversed = { ...state.project, level: {
+			...state.project.level,
+			wallSegments: state.project.level.wallSegments.map(wall => wall.wallSegmentId === "wall-1"
+				? { ...wall, startVertexId: wall.endVertexId, endVertexId: wall.startVertexId }
+				: wall),
+		} };
+		expect(interiorWallSide(reversed, "wall-1", "left")).toBe("right");
+	});
+
+	it("addresses each partition face independently without a left/right UI choice", () => {
+		const state = rectangularFixtureController().snapshot();
+		if (state.kind !== "saved" || state.project.schemaVersion !== 1) throw new Error("Missing room fixture");
+		const { project } = state;
+		let id = 0;
+		const added = addGeneralWallToProject(project, {
+			start: { xMm: 2000, zMm: 0 }, end: { xMm: 2000, zMm: 3100 }, thicknessMm: 100,
+		}, { next: () => `partition-test-${id++}` }, project.updatedAt);
+		if (added.kind !== "accepted") throw new Error(`Expected two rooms, got ${added.reasonCode}`);
+		const wall = added.project.level.wallSegments.find(segment =>
+			[segment.startVertexId, segment.endVertexId].every(vertexId =>
+				added.project.level.vertices.find(vertex => vertex.vertexId === vertexId)?.xMm === 2000));
+		if (!wall) throw new Error("Expected the new partition");
+		expect(interiorWallSide(added.project, wall.wallSegmentId, { xMm: 1960, zMm: 1500 })).toBe("left");
+		expect(interiorWallSide(added.project, wall.wallSegmentId, { xMm: 2040, zMm: 1500 })).toBe("right");
+		expect(interiorWallSide(added.project, wall.wallSegmentId, "right")).toBe("right");
+		expect(interiorWallSide(added.project, wall.wallSegmentId)).toBeUndefined();
 	});
 });
 

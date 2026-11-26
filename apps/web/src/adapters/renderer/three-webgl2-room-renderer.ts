@@ -51,6 +51,7 @@ import {
 	SOFA_FOOT_COLOR,
 	type FurnitureGreyboxPart,
 	wallCutawayForCamera,
+	wallSideAtHit,
 	type NormalizedCanvasPoint,
 	type WebGl2Camera,
 	type WebGl2CutawayMode,
@@ -174,10 +175,12 @@ export function createThreeWebGl2RoomSceneRenderer(
 	];
 	for (const floor of floorMeshes) roomGroup.add(floor);
 	const usableFloorMeshes = floorMeshes.filter((_, index) => index >= scene.floors.length || scene.floors[index]?.floor?.roomId);
-	const addWallPart = (part: Mesh, wallSegmentId?: string) => {
+	const roomPickSurfaces: ThreePickSurface[] = floorMeshes.map(root => ({ root }));
+	const addWallPart = (part: Mesh, wallSegmentId: string | undefined, owner: Omit<ThreePickSurface, "root">) => {
 		const wallGroup = new Group();
 		wallGroup.add(part);
 		roomGroup.add(wallGroup);
+		roomPickSurfaces.push({ root: wallGroup, ...owner });
 		if (wallSegmentId) {
 			wallGroups.set(wallSegmentId, [
 				...(wallGroups.get(wallSegmentId) ?? []),
@@ -188,10 +191,10 @@ export function createThreeWebGl2RoomSceneRenderer(
 	const wallMeshes = scene.walls.map((wall) => {
 		const mesh = createThreeWallMesh(wall);
 		applyWallInteriorFinish(mesh.material, wall.wall?.finishFaces, qualityTier === "standard");
-		addWallPart(mesh, wall.wall?.wallSegmentId);
+		addWallPart(mesh, wall.wall?.wallSegmentId, { wall });
 		return mesh;
 	});
-	for (const { box, role, wallSegmentId } of scene.openingParts ?? []) {
+	for (const { box, role, wallSegmentId, openingId } of scene.openingParts ?? []) {
 		const mesh = boxMesh(box, OPENING_FINISH[role], "wall");
 		if (role === "glass") {
 			mesh.material.transparent = true;
@@ -199,18 +202,18 @@ export function createThreeWebGl2RoomSceneRenderer(
 			mesh.material.depthWrite = false;
 			mesh.material.roughness = 0.25;
 		}
-		addWallPart(mesh, wallSegmentId);
+		addWallPart(mesh, wallSegmentId, { openingId });
 	}
 	syncItems(scene.items, itemGroup, itemNodes, activeRuntimeModels);
 
 	return {
-		pickHit: (point) => pickThreeSceneHit(camera, point, [
-			{ root: roomGroup },
+		pickHit: (point, includeGlazing) => pickThreeSceneHit(camera, point, [
+			...roomPickSurfaces,
 			...Array.from(itemNodes.values(), (node) => ({
 				root: node.group,
 				assetInstanceId: node.assetInstanceId,
 			})),
-		]),
+		], includeGlazing),
 		dispose: () => {
 			for (const node of itemNodes.values()) disposeItemNode(node);
 			itemNodes.clear();
@@ -316,25 +319,34 @@ export function createThreeSupportGlow() {
 	};
 }
 
+interface ThreePickSurface {
+	readonly root: Object3D;
+	readonly assetInstanceId?: string | undefined;
+	readonly openingId?: string | undefined;
+	readonly wall?: SceneBox;
+}
+
 /** Pick rendered meshes, including nested GLB transforms and opaque room geometry. */
 export function pickThreeSceneItem(
 	camera: PerspectiveCamera,
 	point: NormalizedCanvasPoint,
-	surfaces: readonly { readonly root: Object3D; readonly assetInstanceId?: string | undefined }[],
+	surfaces: readonly ThreePickSurface[],
 ): string | undefined {
 	return pickThreeSceneHit(camera, point, surfaces)?.assetInstanceId;
 }
 
-function pickThreeSceneHit(
+export function pickThreeSceneHit(
 	camera: PerspectiveCamera,
 	point: NormalizedCanvasPoint,
-	surfaces: readonly { readonly root: Object3D; readonly assetInstanceId?: string | undefined }[],
+	surfaces: readonly ThreePickSurface[],
+	includeGlazing = false,
 ): WebGl2SceneHit | undefined {
-	const ownerByMesh = new Map<Object3D, string | undefined>();
-	for (const { root, assetInstanceId } of surfaces) {
-		root.traverseVisible((node) => {
-			if (node instanceof Mesh && asMaterials(node.material).some((material) => material.visible && material.depthWrite)) {
-				ownerByMesh.set(node, assetInstanceId);
+	const ownerByMesh = new Map<Object3D, ThreePickSurface>();
+	for (const surface of surfaces) {
+		const pickGlazing = includeGlazing && surface.openingId !== undefined;
+		surface.root.traverseVisible((node) => {
+			if (node instanceof Mesh && asMaterials(node.material).some(material => material.visible && (material.depthWrite || pickGlazing))) {
+				ownerByMesh.set(node, surface);
 			}
 		});
 	}
@@ -344,7 +356,15 @@ function pickThreeSceneHit(
 	raycaster.near = camera.near / forwardComponent;
 	raycaster.far = camera.far / forwardComponent;
 	const closest = raycaster.intersectObjects([...ownerByMesh.keys()], false)[0];
-	return closest ? { assetInstanceId: ownerByMesh.get(closest.object), distanceM: closest.distance } : undefined;
+	if (!closest) return undefined;
+	const surface = ownerByMesh.get(closest.object);
+	if (surface?.openingId !== undefined) return { openingId: surface.openingId, distanceM: closest.distance };
+	if (surface?.wall?.wall) return {
+		wallSegmentId: surface.wall.wall.wallSegmentId,
+		wallSide: wallSideAtHit(surface.wall, closest.point, raycaster.ray.origin),
+		distanceM: closest.distance,
+	};
+	return { assetInstanceId: surface?.assetInstanceId, distanceM: closest.distance };
 }
 
 const initialWebGl2Camera: WebGl2Camera = {

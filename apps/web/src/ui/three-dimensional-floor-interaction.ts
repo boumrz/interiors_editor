@@ -193,16 +193,17 @@ export function visibleRoomFloorAtCanvasPoint(
 	size: CanvasSize,
 	point: CanvasPoint,
 	hit: WebGl2SceneHit | undefined,
-): ThreeDimensionalFloorPoint | undefined {
+): (ThreeDimensionalFloorPoint & { readonly roomId: string }) | undefined {
 	if (hit?.assetInstanceId !== undefined) return undefined;
 	const floorPoint = floorPointForCanvas(scene, camera, size, point);
 	if (!floorPoint) return undefined;
 	const { eye } = cameraEyeAndTargetFor(scene, camera);
 	const distanceM = Math.hypot(eye[0] - floorPoint.xM, eye[1], eye[2] - floorPoint.zM);
 	if (hit && hit.distanceM + 0.002 < distanceM) return undefined;
-	return roomIdAtFloorPoint(scene.floors, floorPoint) !== undefined ||
-		scene.floorPolygons?.some(floor => floor.floor.roomId && pointInFloorPolygon(floorPoint, floor.vertices))
-		? floorPoint : undefined;
+	const roomId = roomIdAtFloorPoint(scene.floors, floorPoint) ?? scene.floorPolygons?.find(
+		floor => floor.floor.roomId && pointInFloorPolygon(floorPoint, floor.vertices),
+	)?.floor.roomId;
+	return roomId === undefined ? undefined : { ...floorPoint, roomId };
 }
 
 function pointInFloorPolygon(point: ThreeDimensionalFloorPoint, vertices: readonly ThreeDimensionalFloorPoint[]): boolean {

@@ -23,6 +23,7 @@ import {
 	cloneRuntimeRootAsNeutralClay,
 	createThreeGreyboxItemGroup,
 	createThreeSupportGlow,
+	pickThreeSceneHit,
 	pickThreeSceneItem,
 	THREE_DIMENSIONAL_RUNTIME_CLAY,
 	threeDimensionalShadowFlagsFor,
@@ -442,5 +443,39 @@ describe("picking drawn 3D surfaces", () => {
 		wall.material.depthWrite = true;
 		wallGroup.visible = false;
 		expect(pickThreeSceneItem(view, centre, surfaces)).toBe("visible-through-gap");
+	});
+
+	it("selects glazing in front of an item and keeps legacy item queries transparent", () => {
+		const glass = boxAt(0, 3);
+		glass.material.transparent = true;
+		glass.material.depthWrite = false;
+		const window = { root: glass, openingId: "window" };
+		const centre = { x: 0, y: 0 };
+		expect(pickThreeSceneHit(view, centre, [window], true)).toMatchObject({ openingId: "window" });
+		expect(pickThreeSceneHit(view, centre, [window])).toBeUndefined();
+		const item = { root: boxAt(0, 0), assetInstanceId: "item" };
+		expect(pickThreeSceneHit(view, centre, [window, item], true)).toMatchObject({ openingId: "window" });
+		expect(pickThreeSceneItem(view, centre, [window, item])).toBe("item");
+		const nearItem = { root: boxAt(0, 5), assetInstanceId: "near-item" };
+		expect(pickThreeSceneHit(view, centre, [window, nearItem], true)).toMatchObject({ assetInstanceId: "near-item" });
+		const blocker = { root: boxAt(0, 5) };
+		expect(pickThreeSceneHit(view, centre, [window, blocker], true)?.openingId).toBeUndefined();
+		glass.material.visible = false;
+		expect(pickThreeSceneHit(view, centre, [window], true)).toBeUndefined();
+		glass.material.visible = true;
+		glass.visible = false;
+		expect(pickThreeSceneHit(view, centre, [window], true)).toBeUndefined();
+	});
+
+	it("identifies the visible wall face and opaque opening geometry", () => {
+		const wall = {
+			centerXM: 0, centerYM: 0, centerZM: 3, depthM: 0.5, heightM: 1, widthM: 1,
+			wall: { wallSegmentId: "wall", leftNormal: { x: 0, z: -1 }, halfThicknessM: 0.25 },
+		};
+		const wallSurface = { root: boxAt(0, 3), wall };
+		const leaf = { root: boxAt(0, 4), openingId: "door" };
+		const centre = { x: 0, y: 0 };
+		expect(pickThreeSceneHit(view, centre, [wallSurface], true)).toMatchObject({ wallSegmentId: "wall", wallSide: "right" });
+		expect(pickThreeSceneHit(view, centre, [wallSurface, leaf], true)).toMatchObject({ openingId: "door" });
 	});
 });

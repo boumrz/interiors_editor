@@ -17,7 +17,7 @@ import {
 	yawRadiansFor,
 } from "../domain/parametric-item";
 import type { ParametricWallItemPlacementWarning } from "../domain/parametric-wall-item";
-import type { Project, Vertex } from "../domain/project";
+import type { CatalogPresetReference, Project, Vertex } from "../domain/project";
 import type { ProjectV2 } from "../domain/project-v2";
 import type { EditorViewport } from "./editor-viewport";
 import type { FloorItemWallSnap } from "./floor-item-wall-snap";
@@ -304,6 +304,8 @@ export interface PlanProjectionProps {
 	readonly onItemPlacementYawChange: (yawRadians: number) => void;
 	readonly itemDraft:
 		| {
+				readonly catalogPreset?: CatalogPresetReference;
+				readonly modelBacked?: true;
 				readonly color: string;
 				readonly yawRadians: number;
 				readonly depthMm: number;
@@ -353,7 +355,7 @@ export interface PlanProjectionProps {
 		readonly zMm: number;
 	}) => Promise<void> | void;
 	readonly onSelectItem: (assetInstanceId: string) => void;
-	readonly onSelectWall: (wallSegmentId: string) => void;
+	readonly onSelectWall: (wallSegmentId: string, point?: { readonly xMm: number; readonly zMm: number }) => void;
 	readonly onWallMoveModeChange: (isActive: boolean) => void;
 	readonly onWallSplitModeChange: (isActive: boolean) => void;
 	readonly onWallVertexMoveModeChange: (isActive: boolean) => void;

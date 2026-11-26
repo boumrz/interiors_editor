@@ -4,7 +4,7 @@ import { floorFinishColors, wallFinishColors } from "./interior-materials";
 import { isSupportedDecorPreset, supportedItemConflict, type SupportAddress } from "./interior-support";
 import {
 	createParametricFloorItem, deleteParametricFloorItem, findRoomForFloorItem,
-	footprintsOverlap, type FloorItemFootprint,
+	floorItemFootprintsCollide, type ParametricFloorItemInput,
 } from "./parametric-item";
 import type {
 	FloorFinishId, FloorSchematicAssetInstance, Project, SupportedSchematicAssetInstance,
@@ -94,11 +94,11 @@ export function selectedInteriorLayoutId(project: Project, roomId: string, prefe
 	return visible.kind === "accepted" ? visible.activeLayouts.get(roomId)?.layoutId : undefined;
 }
 
-function validFloorTarget(project: Project, footprint: FloorItemFootprint & { readonly roomId: string; readonly roomLayoutId?: string }, ownId?: string): boolean {
+function validFloorTarget(project: Project, footprint: ParametricFloorItemInput, ownId?: string): boolean {
 	return findRoomForFloorItem(project, footprint) === footprint.roomId
 		&& !project.assetInstances.some(other => other.anchorClass === "floor"
 			&& other.assetInstanceId !== ownId && other.roomId === footprint.roomId && other.roomLayoutId === footprint.roomLayoutId
-			&& footprintsOverlap(footprint, other));
+			&& floorItemFootprintsCollide(footprint, other));
 }
 
 export function applyInteriorCommand(

@@ -49,7 +49,7 @@ describe("three-dimensional floor interaction", () => {
 		const { eye } = cameraEyeAndTargetFor(fixture, camera);
 		const distanceM = Math.hypot(eye[0] - point.xM, eye[1], eye[2] - point.zM);
 		const pick = (hit?: { distanceM: number; assetInstanceId?: string }) => visibleRoomFloorAtCanvasPoint(fixture, camera, size, contact, hit);
-		expect(pick()).toMatchObject({ xM: expect.closeTo(point.xM, 6), zM: expect.closeTo(point.zM, 6) });
+		expect(pick()).toMatchObject({ roomId: "room", xM: expect.closeTo(point.xM, 6), zM: expect.closeTo(point.zM, 6) });
 		expect(pick({ distanceM })).toBeDefined();
 		expect(pick({ distanceM, assetInstanceId: "book" })).toBeUndefined();
 		expect(pick({ distanceM: distanceM - 0.02 })).toBeUndefined();
@@ -59,7 +59,7 @@ describe("three-dimensional floor interaction", () => {
 		const tile = { widthM: 1, depthM: 1, heightM: 0.04, centerXM: 1.4, centerYM: 0, centerZM: 2 };
 		expect(visibleRoomFloorAtCanvasPoint({ ...scene, floors: [tile] }, camera, size, contact, undefined)).toBeUndefined();
 		expect(visibleRoomFloorAtCanvasPoint({ ...scene, floors: [{ ...tile, floor: { roomId: "room" } }] }, camera, size, contact, undefined))
-			.toMatchObject({ xM: expect.closeTo(point.xM, 6), zM: expect.closeTo(point.zM, 6) });
+			.toMatchObject({ roomId: "room", xM: expect.closeTo(point.xM, 6), zM: expect.closeTo(point.zM, 6) });
 		expect(visibleRoomFloorAtCanvasPoint(fixture, camera, { width: 0, height: size.height }, contact, undefined)).toBeUndefined();
 	});
 
@@ -75,8 +75,8 @@ describe("three-dimensional floor interaction", () => {
 			if (!point) throw new Error("Expected on-screen contact");
 			return visibleRoomFloorAtCanvasPoint(fixture, camera, size, point, undefined);
 		};
-		expect(tap(1.15, 2.67)).toBeDefined();
-		expect(tap(1.81, 1.97)).toBeDefined();
+		expect(tap(1.15, 2.67)?.roomId).toBe("diagonal");
+		expect(tap(1.81, 1.97)?.roomId).toBe("diagonal");
 		expect(tap(1.91, 2.1)).toBeUndefined();
 		expect(tap(0.85, 1.5)).toBeUndefined();
 	});

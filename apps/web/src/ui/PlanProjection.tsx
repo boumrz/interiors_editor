@@ -1,4 +1,5 @@
 import { resolveSupportedPlacements } from "../domain/interior-support";
+import { wallFinishColors } from "../domain/interior-materials";
 import { supportSurfaceLabel, supportSurfacePlanVertices, type SupportOption } from "./supported-item-controls";
 import { telegramGreyboxLabelForDisplay } from "./telegram-greybox-catalog";
 import { copy } from "./editor-language";
@@ -28,6 +29,7 @@ import {
 	findRoomForFloorItem,
 	floorItemFootprintCorners,
 	floorYawFieldsForRadians,
+	isFloorRug,
 	rotationStepForYawRadians,
 	yawRadiansFor,
 } from "../domain/parametric-item";
@@ -317,6 +319,13 @@ export function PlanProjection({
 	}
 	const liveProjectRef = useRef(project);
 	liveProjectRef.current = project;
+	const planFloorItems = useMemo(() => {
+		const items = project.assetInstances.filter(isFloorEditorAsset);
+		if (plainLabels && project.schemaVersion === 1) {
+			items.sort((first, second) => Number(isFloorRug(second)) - Number(isFloorRug(first)));
+		}
+		return items;
+	}, [plainLabels, project.schemaVersion, project.assetInstances]);
 	function hasHostContactDraft(): boolean {
 		return !!(wallDraftRef.current || wallMoveDraftRef.current || wallSplitDraftRef.current || wallVertexMoveDraftRef.current || itemDragRef.current || itemRotationRef.current || doorOpeningDragRef.current || itemPlacementDragRef.current || placementRotationContact.current);
 	}
@@ -1511,8 +1520,8 @@ export function PlanProjection({
 		) {
 			return undefined;
 		}
-		const { color, depthMm, heightMm, label, widthMm } = itemDraft;
-		const dimensions = { color, depthMm, heightMm, label, widthMm };
+		const { catalogPreset, modelBacked, color, depthMm, heightMm, label, widthMm } = itemDraft;
+		const dimensions = { catalogPreset, modelBacked, color, depthMm, heightMm, label, widthMm };
 		const footprint = { depthMm, widthMm, ...floorYawFieldsForRadians(itemDraft.yawRadians, exactFloorYaw) };
 		const point = itemPointIsExact
 			? itemPoint
@@ -1557,6 +1566,8 @@ export function PlanProjection({
 		const candidate = itemWallDistancePositionFor(derivedPlan.rooms, itemPlacementPreview, side, valueMm);
 		if (!candidate) return false;
 		const assessed = assessParametricFloorItemPlacement(project, {
+			catalogPreset: itemDraft.catalogPreset,
+			modelBacked: itemDraft.modelBacked,
 			color: itemDraft.color,
 			depthMm: itemDraft.depthMm,
 			heightMm: itemDraft.heightMm,
@@ -1839,7 +1850,9 @@ export function PlanProjection({
 			const itemIds = hits.flatMap(element => {
 				if (element.getAttribute("data-testid") !== "schematic-item") return [];
 				const id = element.closest("[data-item-id]")?.getAttribute("data-item-id");
-				return id && id !== supportFloorPreviewItemId ? [id] : [];
+				if (!id || id === supportFloorPreviewItemId) return [];
+				const item = planFloorItems.find(candidate => candidate.assetInstanceId === id);
+				return supportFloorPick && item && isFloorRug(item) ? [] : [id];
 			});
 			const onOpening = hits.some(element => element.closest("[data-opening-id]") !== null);
 			const onUsableFloor = hits.some(element => element.hasAttribute("data-support-floor-room-id"));
@@ -2911,7 +2924,7 @@ export function PlanProjection({
 							if (Number.isSafeInteger(offsetMm)) onChooseOpeningHost(wall.wallSegmentId, offsetMm);
 						}
 					} else if (pendingSelection.wallSegmentId) {
-						onSelectWall(pendingSelection.wallSegmentId);
+						onSelectWall(pendingSelection.wallSegmentId, projectPointFor(event));
 					} else {
 						onClearSelection?.();
 					}
@@ -4172,10 +4185,10 @@ export function PlanProjection({
 						const from = pointFor(start.xMm - offset * dz, start.zMm + offset * dx);
 						const to = pointFor(end.xMm - offset * dz, end.zMm + offset * dx);
 						return <line className={planStyles.finishPreview} data-testid="wall-finish-preview" pointerEvents="none"
+							style={finishPreview.finish ? { stroke: wallFinishColors[finishPreview.finish.presetId] } : undefined}
 							x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
 					})() : null}
-					{project.assetInstances.map((item) => {
-						if (!isFloorEditorAsset(item)) return null;
+					{planFloorItems.map((item) => {
 						const position = renderedItemPosition(item);
 						const start = pointFor(
 							position.xMm - item.widthMm / 2,

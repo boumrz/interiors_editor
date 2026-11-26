@@ -17,14 +17,20 @@ import { rectangularRoomLoopBoundsForRoom } from "./rectangular-room-loop";
 import { slidingDoorSweepFor } from "./sliding-door-geometry";
 import { wallOpeningIntervalMm } from "./wall-opening";
 
-export interface ParametricFloorItemInput {
-	readonly colorVariantId?: string;
+interface FloorItemCollisionIdentity {
 	readonly assetDefinitionId?: string;
+	readonly catalogPreset?: FloorSchematicAssetInstance["catalogPreset"];
+	readonly label?: string;
+	/** Model preview before its resource is registered in the Project. */
+	readonly modelBacked?: true;
+}
+
+export interface ParametricFloorItemInput extends FloorItemCollisionIdentity {
+	readonly colorVariantId?: string;
 	readonly yawStep?: RotationStep;
 	readonly yawMilliDeg?: number;
 	readonly roomId: string;
 	readonly roomLayoutId?: string;
-	readonly catalogPreset?: FloorSchematicAssetInstance["catalogPreset"];
 	readonly label: string;
 	readonly xMm: number;
 	readonly zMm: number;
@@ -68,6 +74,8 @@ export interface FloorItemFootprint {
 	readonly yawMilliDeg?: number;
 	readonly yawRadians?: number;
 }
+
+type FloorCollisionFootprint = FloorItemFootprint & FloorItemCollisionIdentity;
 
 export interface MoveParametricFloorItemInput {
 	readonly assetInstanceId: string;
@@ -220,7 +228,7 @@ export function assessParametricFloorItemPlacement(
  */
 export function findParametricFloorItemCollisionTargets(
 	project: Project,
-	footprint: FloorItemFootprint,
+	footprint: FloorCollisionFootprint,
 	excludedAssetInstanceId?: string,
 ): readonly ParametricFloorItemCollisionTarget[] {
 	if (!isValidFootprint(footprint)) return [];
@@ -771,7 +779,7 @@ function isValidFootprint(footprint: FloorItemFootprint): boolean {
 
 function assessFloorItemCollisions(
 	project: Project,
-	footprint: FloorItemFootprint,
+	footprint: FloorCollisionFootprint,
 	excludedAssetInstanceId: string | undefined,
 	collisionPolicy: FloorItemCollisionPolicy,
 ): ParametricFloorItemPlacementAssessment {
@@ -796,7 +804,7 @@ function assessFloorItemCollisions(
 
 function floorItemCollisionItems(
 	project: Project,
-	footprint: FloorItemFootprint,
+	footprint: FloorCollisionFootprint,
 	excludedAssetInstanceId?: string,
 ): readonly FloorSchematicAssetInstance[] {
 	return project.assetInstances.filter(
@@ -804,8 +812,19 @@ function floorItemCollisionItems(
 			isFloorSchematicAssetInstance(item) &&
 			item.assetInstanceId !== excludedAssetInstanceId &&
 			item.roomLayoutId === footprint.roomLayoutId &&
-			footprintsOverlap(footprint, item),
+			floorItemFootprintsCollide(footprint, item),
 	);
+}
+
+export function isFloorRug(item: FloorItemCollisionIdentity): boolean {
+	if (item.assetDefinitionId !== undefined || item.modelBacked) return false;
+	// Older Telegram catalog placements saved the canonical display label alone.
+	return item.catalogPreset ? item.catalogPreset.presetId === "rug" : item.label === "Ковёр";
+}
+
+/** A rug can lie under floor furniture. Two objects on the same layer still collide. */
+export function floorItemFootprintsCollide(first: FloorCollisionFootprint, second: FloorCollisionFootprint): boolean {
+	return isFloorRug(first) === isFloorRug(second) && footprintsOverlap(first, second);
 }
 
 function floorItemCollisionWalls(

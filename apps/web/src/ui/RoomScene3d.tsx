@@ -73,6 +73,7 @@ import {
 } from "./three-dimensional-viewport";
 import { disposeThreeObject3D } from "./three-resource-disposal";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
+import type { WallSide } from "../domain/project";
 import type { ProductMetricSink } from "../application/editor-product-metrics";
 
 function sceneItemAlongSupport(item: SceneBox, source: SceneBox, target: SceneBox): SceneBox {
@@ -160,6 +161,9 @@ interface RoomScene3dProps {
 	/** Safe local view change after recovery exhausts transient renderer retries. */
 	readonly onOpenPlan?: () => void;
 	readonly onSelectItem?: (assetInstanceId: string) => void;
+	readonly onSelectOpening?: (openingId: string) => void;
+	readonly onSelectWall?: (wallSegmentId: string, side?: WallSide) => void;
+	readonly onSelectRoom?: (roomId: string) => void;
 }
 
 interface Point {
@@ -191,7 +195,7 @@ const ROTATION_GIZMO_RADIUS = 73;
 const ROTATION_GIZMO_SIZE = 200;
 const ROTATION_DOME_HEIGHT = 128;
 const ROTATION_TAP_MOVE_LIMIT_PX = 6;
-const SUPPORT_TAP_MOVE_LIMIT_PX = 6;
+const TAP_MOVE_LIMIT_PX = 6;
 
 export type CustomGlbPresentation = "loading" | "rendered" | "unavailable";
 
@@ -323,6 +327,9 @@ export function RoomScene3d({
 	onClearSelection,
 	onOpenPlan,
 	onSelectItem,
+	onSelectOpening,
+	onSelectWall,
+	onSelectRoom,
 }: RoomScene3dProps) {
 	const scenePanelRef = useRef<HTMLElement>(null);
 	const supportTapRef = useRef<{ readonly pointerId: number; readonly point: Point } | undefined>(undefined);
@@ -402,6 +409,7 @@ export function RoomScene3d({
 				readonly camera: ThreeDimensionalViewport;
 				readonly kind: "orbit";
 				readonly point: Point;
+				readonly selectionPointerId?: number;
 		  }
 		| {
 				readonly camera: ThreeDimensionalViewport;
@@ -1139,6 +1147,27 @@ export function RoomScene3d({
 			y: 1 - 2 * point.y / size.height,
 		});
 	};
+	const pickRenderedGeometry = (point: Point, size: { readonly width: number; readonly height: number }) => {
+		if (size.width <= 0 || size.height <= 0) return undefined;
+		return controllerRef.current?.pickHit({ x: 2 * point.x / size.width - 1, y: 1 - 2 * point.y / size.height }, onSelectOpening !== undefined);
+	};
+
+	const selectRoomGeometry = (point: Point | undefined) => {
+		const size = interactionCanvasSize();
+		if (!point || size.width <= 0 || size.height <= 0) return;
+		const hit = pickRenderedGeometry(point, size);
+		if (hit?.openingId && onSelectOpening) {
+			onSelectOpening(hit.openingId);
+			return;
+		}
+		if (hit?.wallSegmentId && onSelectWall) {
+			onSelectWall(hit.wallSegmentId, hit.wallSide);
+			return;
+		}
+		const floor = onSelectRoom && visibleRoomFloorAtCanvasPoint(scene, camera, size, point, hit);
+		if (floor) onSelectRoom?.(floor.roomId);
+		else onClearSelection?.();
+	};
 
 	function retainedHostItemTransform(): typeof itemPreview {
 		if (!hostEnabledRef.current) return undefined;
@@ -1390,12 +1419,16 @@ export function RoomScene3d({
 				gesture.current = { camera, kind: "orbit", point: activePointers[0] };
 				return;
 			}
-			const pickedId = plainLabels ? pickRenderedItem(point, size) : undefined;
+			const canSelectGeometry = plainLabels && !itemPlacementDraft && !supportInteraction &&
+				(onSelectOpening || onSelectWall || onSelectRoom);
+			const pickedId = plainLabels ? canSelectGeometry && point
+				? pickRenderedGeometry(point, size)?.assetInstanceId : pickRenderedItem(point, size)
+				: undefined;
 			const item = plainLabels
 				? (pickedId === undefined ? undefined : renderedScene.items.find((entry) => entry.assetInstanceId === pickedId))
 				: (floorPoint ? floorItemAtPoint(renderedScene.items, floorPoint) : undefined) ??
 					(point ? floorItemAtScreenPoint(renderedScene.items, renderedScene, camera, size, point) : undefined);
-			if (!item) onClearSelection?.();
+			if (!item && !canSelectGeometry) onClearSelection?.();
 			if (item?.assetInstanceId) onSelectItem?.(item.assetInstanceId);
 			if (
 				!readOnly &&
@@ -1418,10 +1451,13 @@ export function RoomScene3d({
 				};
 				return;
 			}
-			gesture.current = { camera, kind: "orbit", point: activePointers[0] };
+			gesture.current = { camera, kind: "orbit", point: activePointers[0],
+				...(canSelectGeometry && !item ? { selectionPointerId: event.pointerId } : {}),
+			};
 			return;
 		}
 		if (activePointers.length === 2 && activePointers[0] && activePointers[1]) {
+			if (gesture.current?.kind === "orbit" && gesture.current.selectionPointerId !== undefined) onClearSelection?.();
 			supportTapRef.current = undefined;
 			// A second finger changes intent from direct manipulation to camera
 			// inspection, so it cancels the in-progress local item preview.
@@ -1522,9 +1558,11 @@ export function RoomScene3d({
 		) {
 			const deltaX = activePointers[0].x - activeGesture.point.x;
 			const deltaY = activePointers[0].y - activeGesture.point.y;
-			if (supportTapRef.current) {
-				if (Math.hypot(deltaX, deltaY) <= SUPPORT_TAP_MOVE_LIMIT_PX) return;
+			if (supportTapRef.current || activeGesture.selectionPointerId !== undefined) {
+				if (Math.hypot(deltaX, deltaY) <= TAP_MOVE_LIMIT_PX) return;
+				if (activeGesture.selectionPointerId !== undefined) onClearSelection?.();
 				supportTapRef.current = undefined;
+				gesture.current = { kind: "orbit", camera: activeGesture.camera, point: activeGesture.point };
 			}
 			markUserCameraView();
 			setCamera(
@@ -1553,7 +1591,7 @@ export function RoomScene3d({
 		if (supportTap?.pointerId === event.pointerId) supportTapRef.current = undefined;
 		const point = supportTap ? canvasPoint(event) : undefined;
 		if (supportInteraction && !readOnly && supportTap && point && supportTap.pointerId === event.pointerId &&
-			pointers.current.size === 0 && Math.hypot(point.x - supportTap.point.x, point.y - supportTap.point.y) <= SUPPORT_TAP_MOVE_LIMIT_PX) {
+			pointers.current.size === 0 && Math.hypot(point.x - supportTap.point.x, point.y - supportTap.point.y) <= TAP_MOVE_LIMIT_PX) {
 			gesture.current = undefined;
 			const size = interactionCanvasSize();
 			if (size.width <= 0 || size.height <= 0) return;
@@ -1564,9 +1602,19 @@ export function RoomScene3d({
 				supportInteraction.onPick(candidate.surface.option, candidate.point);
 				return;
 			}
-			const floorPoint = supportInteraction.onFloorPick && visibleRoomFloorAtCanvasPoint(scene, camera, size, point, hit);
+			const hitRug = pickedId !== undefined && scene.items.some(item =>
+				item.assetInstanceId === pickedId && item.assetAnchor === "floor" && item.material?.furnitureKind === "catalog:rug",
+			);
+			const floorPoint = supportInteraction.onFloorPick && visibleRoomFloorAtCanvasPoint(scene, camera, size, point, hitRug ? undefined : hit);
 			if (floorPoint) supportInteraction.onFloorPick?.(floorPoint);
 			else supportInteraction.onPick(undefined, undefined, supportSurfaces.some(surface => surface.hostId === pickedId) ? undefined : pickedId);
+			return;
+		}
+		if (activeGesture?.kind === "orbit" && activeGesture.selectionPointerId === event.pointerId && pointers.current.size === 0) {
+			gesture.current = undefined;
+			if (Math.hypot(event.clientX - activeGesture.point.x, event.clientY - activeGesture.point.y) <= TAP_MOVE_LIMIT_PX) {
+				selectRoomGeometry(canvasPoint(event));
+			} else onClearSelection?.();
 			return;
 		}
 		if (

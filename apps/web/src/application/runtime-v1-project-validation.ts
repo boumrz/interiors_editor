@@ -55,6 +55,7 @@ function validateProject(project: Project): RuntimeV1ProjectValidationResult {
 		if (!Number.isFinite(yawRadians)) return reject("INVALID_DIMENSION");
 		floorInputs.set(item.assetInstanceId, {
 			assetDefinitionId: item.assetDefinitionId,
+			...(item.catalogPreset === undefined ? {} : { catalogPreset: item.catalogPreset }),
 			...(item.roomLayoutId === undefined ? {} : { roomLayoutId: item.roomLayoutId }),
 			...(item.yawMilliDeg === undefined ? { yawStep: rotationStepForYawRadians(yawRadians) } : { yawMilliDeg: item.yawMilliDeg }),
 			roomId: item.roomId,

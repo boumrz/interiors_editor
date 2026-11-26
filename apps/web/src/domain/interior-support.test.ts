@@ -149,6 +149,27 @@ it("copies a furnished support with new addresses and an independent pose", () =
 	expect(collision).toMatchObject({ kind: "rejected", conflictAssetInstanceId: host.assetInstanceId });
 });
 
+it("puts floor decor and a copy of furnished furniture over a rug while rejecting another solid occupant", () => {
+	const { project, host, pot } = fixture();
+	const target = { roomId: host.roomId, xMm: 1400, zMm: 2000 };
+	const rug: FloorSchematicAssetInstance = {
+		...host, ...target, assetInstanceId: "rug", label: "Ковёр", widthMm: 1200, depthMm: 1100, heightMm: 15,
+		catalogPreset: { presetId: "rug", version: 1 },
+	};
+	const source = { ...project, assetInstances: [host, rug] };
+	const decor = applyInteriorCommand(source, { kind: "copy-supported", assetInstanceId: pot.assetInstanceId, target }, { next: () => "floor-pot" }, project.updatedAt);
+	if (decor.kind !== "accepted") throw Error("Expected floor decor on the rug");
+	expect(decor.project.assetInstances.at(-1)).toMatchObject({ ...target, assetInstanceId: "floor-pot", anchorClass: "floor" });
+	const kind = "copy-furniture" as const;
+	const keys = ["nightstand-copy", "pot-copy"][Symbol.iterator]();
+	const copy = applyInteriorCommand(source, { kind, assetInstanceId: host.assetInstanceId, target }, { next: () => keys.next().value ?? "" }, project.updatedAt);
+	if (copy.kind !== "accepted") throw Error("Expected the furnished copy on the rug");
+	expect(copy.project.assetInstances.at(-1)).toMatchObject({ ...target, assetInstanceId: "nightstand-copy" });
+	expect(copy.project.supportedItems?.at(-1)).toMatchObject({ assetInstanceId: "pot-copy", supportAssetInstanceId: "nightstand-copy" });
+	expect(applyInteriorCommand(decor.project, { kind, assetInstanceId: host.assetInstanceId, target }, { next: () => "blocked-copy" }, project.updatedAt))
+		.toMatchObject({ kind: "rejected", conflictAssetInstanceId: host.assetInstanceId });
+});
+
 it("keeps exact guest identity and dimensions when binding an old item or locking a raised item", () => {
 	const { project, host, pot } = fixture();
 	const { catalogPreset: _, ...legacy } = host;

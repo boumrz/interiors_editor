@@ -17,6 +17,33 @@ export type OpeningVariantFields = {
 	readonly sections?: 1 | 2;
 };
 
+type SlidingDoorDraft<Draft> = Omit<Draft, "variant" | "slideSide" | "slideDirection"> & {
+	readonly variant: "sliding";
+	readonly slideSide: WallSide;
+	readonly slideDirection: OpeningSlideDirection;
+};
+
+export function slidingDoorDraftFor<Draft extends OpeningVariantFields & {
+	readonly swingSide?: WallSide;
+	readonly hingeEnd?: "end" | null;
+}>(
+	draft: Draft,
+	insideSide: WallSide | undefined,
+	fits: (draft: SlidingDoorDraft<Draft>) => boolean,
+): SlidingDoorDraft<Draft> {
+	const preferredSide = draft.slideSide ?? draft.swingSide ?? insideSide ?? "right";
+	const preferredDirection = draft.slideDirection ?? (draft.hingeEnd === "end" ? "toward-end" : "toward-start");
+	const otherSide: WallSide = preferredSide === "left" ? "right" : "left";
+	const otherDirection: OpeningSlideDirection = preferredDirection === "toward-start" ? "toward-end" : "toward-start";
+	const preferred: SlidingDoorDraft<Draft> = { ...draft, variant: "sliding", slideSide: preferredSide, slideDirection: preferredDirection };
+	return [
+		preferred,
+		{ ...preferred, slideDirection: otherDirection },
+		{ ...preferred, slideSide: otherSide },
+		{ ...preferred, slideSide: otherSide, slideDirection: otherDirection },
+	].find(fits) ?? preferred;
+}
+
 export interface OpeningCreationDraft extends OpeningVariantFields {
 	readonly baseRevisionId?: string;
 	readonly heightMm: string;
@@ -219,7 +246,7 @@ export function validateOpeningCreationDraft(
 		const result = validate(offsetMm);
 		return result.kind === "accepted"
 			? { host, input: { ...dimensions, offsetMm }, kind: "valid" }
-			: { kind: "invalid", message: creationRejectionMessage(result) };
+			: { kind: "invalid", message: (draft.variant === "sliding" ? slidingDoorRejectionMessage(result.reasonCode) : undefined) ?? creationRejectionMessage(result) };
 	}
 	const probe = validate(Math.ceil(widthMm / 2));
 	if (
@@ -364,6 +391,19 @@ function nonNegativeInteger(raw: string): number | undefined {
 	if (!/^(?:0|[1-9][0-9]*)$/.test(raw)) return undefined;
 	const value = Number(raw);
 	return Number.isSafeInteger(value) ? value : undefined;
+}
+
+export function slidingDoorRejectionMessage(reasonCode: string): string | undefined {
+	switch (reasonCode) {
+		case "OPENING_OUTSIDE_WALL_INTERVAL":
+			return copy("Для сдвига не хватает длины стены. Смените направление или положение двери.", "The wall is too short for this slide. Change the direction or door position.");
+		case "OPENING_OVERLAP":
+			return copy("На пути полотна другой проём.", "Another opening is in the way of the door panel.");
+		case "DOOR_CLEARANCE_COLLISION":
+		case "WALL_OPENING_COLLISION":
+			return copy("На пути полотна предмет. Смените направление или освободите место.", "An item blocks the door panel. Change the direction or clear the way.");
+	}
+	return undefined;
 }
 
 function creationRejectionMessage(

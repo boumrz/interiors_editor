@@ -10,10 +10,11 @@ import {
 	supportOptions,
 } from "./supported-item-controls";
 import { availableSupportOptions, supportAddressAt, supportPlacementCommand } from "./supported-placement-targets";
-import { finishLabel, interiorWallSide, OpeningVariantControls, projectWithFinishPreview, RoomFinishControls, WallColorControls, type FinishDraft } from "./room-interior-controls";
+import { finishLabel, interiorWallSide, projectWithFinishPreview, RoomFinishControls, WallColorPalette, type FinishDraft } from "./room-interior-controls";
 import type { ProductMetric, ProductMetricSink } from "../application/editor-product-metrics";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
 import { DoorSwingPicker } from "./door-swing-picker";
+import { doorFaceLabel, OpeningVariantControls } from "./opening-variant-controls";
 import type { ReleaseRecoveryRecord } from "../app/release-startup";
 import { LegacyStartupRecoveryNotice } from "./legacy-startup-recovery";
 import type { EditorNavigationProtection } from "./editor-host-boundary";
@@ -159,6 +160,8 @@ import {
 	openingCreationDraftFor,
 	openingCreationHostFor,
 	openingCreationHostsFor,
+	slidingDoorDraftFor,
+	slidingDoorRejectionMessage,
 	validateOpeningCreationDraft,
 } from "./opening-creation-draft";
 import { PlanProjection } from "./PlanProjection";
@@ -1916,6 +1919,7 @@ export function AppShell({
 	const roomInteriorEnabled = hostNavigation !== undefined && controller.roomInteriorEnabled?.() === true;
 	const [wallDrawProfile, setWallDrawProfile] = useState<WallProfile>("partition");
 	const [finishDraft, setFinishDraft] = useState<FinishDraft>();
+	const [isWallColorSaving, setIsWallColorSaving] = useState(false);
 	const [layoutPreferences, setLayoutPreferences] = useState<ReadonlyMap<string, string>>(() => new Map());
 	const [supportDraft, setSupportDraft] = useState<SupportedEditDraft>();
 	const [supportMessage, setSupportMessage] = useState<string>();
@@ -2824,6 +2828,16 @@ export function AppShell({
 	const selectedOpening = project?.level.openings.find(
 		(opening) => opening.openingId === selectedOpeningId,
 	);
+	const openingEditAssessment = useMemo(() => {
+		const inScene = viewMode === "three-dimensional" && hostNavigation !== undefined;
+		if (project?.schemaVersion !== 1 || !openingDraft || (!inScene && openingDraft.variant !== "sliding")) return undefined;
+		const input = openingEditInputFor(openingDraft, selectedOpening, hostNavigation !== undefined, inScene);
+		return input ? updateDoorOpeningInProject(project, input, project.updatedAt) : undefined;
+	}, [hostNavigation, openingDraft, project, selectedOpening, viewMode]);
+	const slidingEditError = openingDraft?.variant === "sliding" && openingEditAssessment?.kind === "rejected"
+		? slidingDoorRejectionMessage(openingEditAssessment.reasonCode) ?? errorCopy(openingEditAssessment.reasonCode)
+		: undefined;
+	const openingDraftError = slidingEditError ?? dimensionError;
 	const windowAlignmentAvailable = !!(
 		hostNavigation &&
 		project?.schemaVersion === 1 &&
@@ -2843,9 +2857,9 @@ export function AppShell({
 		? openingCreationDraft.wallSegmentId
 		: openingDraft?.kind === "Door" ? selectedOpening?.wallSegmentId : undefined;
 	const doorInsideSide = useMemo(() => {
-		if (!doorHingeAuthoring || project?.schemaVersion !== 1 || !doorDraftWallId) return undefined;
+		if ((!doorHingeAuthoring && !roomInteriorEnabled) || project?.schemaVersion !== 1 || !doorDraftWallId) return undefined;
 		return interiorWallSide(project, doorDraftWallId);
-	}, [doorDraftWallId, doorHingeAuthoring, project]);
+	}, [doorDraftWallId, doorHingeAuthoring, project, roomInteriorEnabled]);
 	const isWallOpeningDockContext =
 		viewMode === "plan" &&
 		activeTool === "select" &&
@@ -3157,16 +3171,12 @@ export function AppShell({
 	const previewProject = useMemo(() => {
 		const source = supportPreviewProject ?? visibleProject;
 		if (source?.schemaVersion !== 1) return source;
-		if (finishDraft) return projectWithFinishPreview(source, finishDraft);
-		if (hostNavigation && viewMode === "three-dimensional" && openingDraft) {
-			const input = openingEditInputFor(openingDraft, selectedOpening, true, true);
-			if (input) {
-				const preview = updateDoorOpeningInProject(source, input, source.updatedAt);
-				if (preview.kind === "accepted") return preview.project;
-			}
+		if (finishDraft?.kind === "floor") return projectWithFinishPreview(source, finishDraft);
+		if (viewMode === "three-dimensional" && openingEditAssessment?.kind === "accepted") {
+			return projectInteriorView(openingEditAssessment.project, layoutPreferences);
 		}
 		return source;
-	}, [finishDraft, hostNavigation, openingDraft, selectedOpening, supportPreviewProject, viewMode, visibleProject]);
+	}, [finishDraft, layoutPreferences, openingEditAssessment, supportPreviewProject, viewMode, visibleProject]);
 	const threeDimensionalScene = useMemo(
 		() => previewProject ? projectRectangularRoomForWebGl(previewProject, localGreyboxCatalog ? telegramGreyboxKindForLabel : undefined, hostNavigation !== undefined) : undefined,
 		[previewProject, localGreyboxCatalog, hostNavigation],
@@ -3267,6 +3277,7 @@ export function AppShell({
 			: undefined;
 	const hasUndurableEditorDraft =
         hasRetainedHistoryTarget ||
+		isWallColorSaving ||
 		hasTransientPlanEdit ||
 		hasTransientThreeDimensionalEdit ||
 		(activeTool === "item" && itemPlacementDraft !== undefined) ||
@@ -3294,10 +3305,7 @@ export function AppShell({
 		return fields !== undefined && (fields.offsetMm !== String(item.offsetMm) || fields.elevationMm !== String(item.elevationMm));
 	});
 	const hasRawCustomImportDraft = customGlbImport.kind === "ready" || customGlbImport.kind === "checking" || fbxConversion.kind === "converting";
-	const currentFinish = finishDraft?.kind === "floor"
-		? selectedRoomProperty?.room.floorFinish
-		: finishDraft && selectedWall && "sideFinishes" in selectedWall ? selectedWall.sideFinishes?.[finishDraft.side] : undefined;
-	const finishChanged = finishDraft !== undefined && currentFinish?.presetId !== finishDraft.finish?.presetId;
+	const finishChanged = finishDraft?.kind === "floor" && selectedRoomProperty?.room.floorFinish?.presetId !== finishDraft.finish?.presetId;
 	const hasRawEditorDraft = finishChanged || supportDraft !== undefined || furnitureRemovalId !== undefined || Object.keys(itemWallDrafts).length > 0 || hasRawRenameDraft || hasRawSelectedItemDraft || hasRawRoomPropertyDraft || hasRawProjectNameDraft || hasRawDimensionDraft || hasRawPlaceholderDraft || hasRawWallPositionDraft || hasRawCustomImportDraft || itemColorVariantDraft !== undefined;
 	const isEditorPreview = state.kind === "saved" && (
 		isItemPlacementActive ||
@@ -4098,7 +4106,7 @@ export function AppShell({
 	const closeFinishDraft = () => {
 		setFinishDraft(undefined);
 		setDimensionError(undefined);
-		requestAnimationFrame(() => (finishTriggerRef.current ?? editorHeaderMenuRef.current)?.focus());
+		requestAnimationFrame(() => (finishTriggerRef.current ?? editorHeaderMenuRef.current)?.focus({ preventScroll: true }));
 	};
 	const openWallColor = () => {
 		if (!selectedWall || !wallPaintSide) return;
@@ -4111,40 +4119,31 @@ export function AppShell({
 		});
 	};
 	const confirmFinishDraft = async () => {
-		if (!finishDraft || !finishChanged || isEditorReadOnly || isMutationBlocked) return;
-		const result = finishDraft.kind === "floor"
-			? await controller.updateRoomFloorFinish({
-				roomId: finishDraft.roomId, ...(finishDraft.finish ? { finish: finishDraft.finish } : {}),
-			})
-			: await controller.updateWallSideFinish({
-				wallSegmentId: finishDraft.wallSegmentId, side: finishDraft.side,
-				...(finishDraft.finish ? { finish: finishDraft.finish } : {}),
-			});
+		if (finishDraft?.kind !== "floor" || !finishChanged || isEditorReadOnly || isMutationBlocked) return;
+		const result = await controller.updateRoomFloorFinish({
+			roomId: finishDraft.roomId, ...(finishDraft.finish ? { finish: finishDraft.finish } : {}),
+		});
 		if (result.kind === "durable" || result.kind === "persist-failed") closeFinishDraft();
 		if (result.kind === "rejected") showEditRejection(result.reasonCode);
 	};
-	const finishWallSideName = (side: WallSide, wallSegmentId = selectedWall?.wallSegmentId): string => {
-		const label = side === "left" ? copy("Левая сторона", "Left side") : copy("Правая сторона", "Right side");
-		if (project?.schemaVersion !== 1) return label;
-		const wall = project.level.wallSegments.find(candidate => candidate.wallSegmentId === wallSegmentId);
-		if (!wall) return label;
-		const start = project.level.vertices.find(vertex => vertex.vertexId === wall.startVertexId);
-		const end = project.level.vertices.find(vertex => vertex.vertexId === wall.endVertexId);
-		if (!start || !end) return label;
-		const dx = end.xMm - start.xMm;
-		const dz = end.zMm - start.zMm;
-		const length = Math.hypot(dx, dz);
-		if (!length) return label;
-		const offset = (wall.thicknessMm / 2 + 3) * (side === "left" ? 1 : -1);
-		const roomId = findRoomForFloorItem(project, {
-			xMm: Math.round((start.xMm + end.xMm) / 2 - offset * dz / length),
-			zMm: Math.round((start.zMm + end.zMm) / 2 + offset * dx / length),
-			widthMm: 1, depthMm: 1,
-		});
-		const room = project.level.rooms.find(candidate => candidate.roomId === roomId);
-		return `${label} · ${room ? roomTypeLabels[room.type ?? "other"] : copy("Наружная", "Exterior")}`;
+	const selectWallColor = async (finish: Extract<FinishDraft, { kind: "wall" }>["finish"]) => {
+		if (finishDraft?.kind !== "wall" || isWallColorSaving || isEditorReadOnly || isMutationBlocked) return;
+		if (finishDraft.finish?.presetId === finish?.presetId) {
+			closeFinishDraft();
+			return;
+		}
+		setDimensionError(undefined);
+		setIsWallColorSaving(true);
+		try {
+			const result = await controller.updateWallSideFinish({
+				wallSegmentId: finishDraft.wallSegmentId, side: finishDraft.side, ...(finish ? { finish } : {}),
+			});
+			if (result.kind === "rejected") showEditRejection(result.reasonCode);
+			else if (result.kind === "durable" || result.kind === "unchanged" || result.kind === "persist-failed") closeFinishDraft();
+		} finally {
+			setIsWallColorSaving(false);
+		}
 	};
-
 	const openPlanInspector = () => {
 		setIsEditorActionMenuOpen(false);
 		setIsPlanInspectorOpen(true);
@@ -6670,7 +6669,7 @@ export function AppShell({
 	};
 
 	const confirmOpeningDraft = async (action: "edit" | "align" = "edit") => {
-		if (!openingDraft || isEditorReadOnly || isMutationBlocked) return;
+		if (!openingDraft || isEditorReadOnly || isMutationBlocked || slidingEditError) return;
 		const latest = controller.snapshot();
 		if (
 			latest.kind !== "saved" ||
@@ -6694,7 +6693,9 @@ export function AppShell({
 			? { kind: "align-matching-windows", openingId: input.openingId }
 			: input);
 		if (result.kind === "rejected") {
-			showEditRejection(result.reasonCode);
+			const message = openingDraft.variant === "sliding" ? slidingDoorRejectionMessage(result.reasonCode) : undefined;
+			if (message) setDimensionError(message);
+			else showEditRejection(result.reasonCode);
 			return;
 		}
 		const settled = controller.snapshot();
@@ -7109,7 +7110,7 @@ export function AppShell({
 		suspendForBack();
 		const nativePanel = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")].at(-1);
 		if (!explicitProjects && nativePanel?.hasAttribute("data-scene-color-palette")) {
-			nativePanel.close();
+			if (!isWallColorSaving) nativePanel.close();
 			resumeTransientViews();
 			return;
 		}
@@ -8271,6 +8272,8 @@ export function AppShell({
 				) : null}
 				{viewMode === "three-dimensional" && threeDimensionalScene ? (
 					<RoomScene3d
+						selectedWallId={selectedItemId === undefined ? selectedWall?.wallSegmentId : undefined}
+						selectedOpeningId={selectedOpening?.openingId}
 						onProductMetric={reportProductMetric}
 						roomTheme={roomTheme}
 						plainLabels={hostNavigation !== undefined}
@@ -8456,6 +8459,7 @@ export function AppShell({
 						selectedOpeningId={selectedOpeningId}
 						openingMovePreview={
 							openingDraft && openingDraftPreviewOffset !== undefined &&
+							(openingDraft.variant !== "sliding" || openingEditAssessment?.kind === "accepted") &&
 							(openingDraft.isMove || openingDraft.swingSide || openingDraft.hingeEnd !== undefined ||
 								openingDraft.variant !== undefined || openingDraft.sections !== undefined ||
 								(hostNavigation && openingDraftPreviewOffset !== selectedOpening?.offsetMm))
@@ -9389,9 +9393,11 @@ export function AppShell({
 								</label>
 							</div>
 							{roomInteriorEnabled ? <OpeningVariantControls draft={openingCreationDraft} disabled={isWorking || isEditorReadOnly}
-								insideSide={doorInsideSide} sideLabel={side => finishWallSideName(side, openingCreationDraft.wallSegmentId)}
+								insideSide={doorInsideSide} sideLabel={side => doorFaceLabel(project.schemaVersion === 1 ? project : undefined, doorDraftWallId, doorInsideSide, side)}
+								toSliding={draft => slidingDoorDraftFor(draft, doorInsideSide,
+									candidate => project.schemaVersion === 1 && validateOpeningCreationDraft(project, candidate, windowSillPolicy).kind === "valid")}
 								onChange={next => { setDimensionError(undefined); setOpeningCreationDraft(next); }} /> : null}
-							{hostNavigation && openingCreationDraft.kind === "Door" && openingCreationDraft.variant !== "sliding" && (
+							{!roomInteriorEnabled && hostNavigation && openingCreationDraft.kind === "Door" && openingCreationDraft.variant !== "sliding" && (
 								<DoorSwingPicker value={openingCreationDraft.swingSide} hingeEnd={openingCreationDraft.hingeEnd} showHingeOptions={doorHingeAuthoring || roomInteriorEnabled} insideSide={doorInsideSide} disabled={isWorking || isEditorReadOnly}
 									onChange={(swingSide, hingeEnd) => {
 										setDimensionError(undefined);
@@ -9555,9 +9561,13 @@ export function AppShell({
 								</label>
 							</div>
 							{roomInteriorEnabled ? <OpeningVariantControls draft={openingDraft} disabled={isWorking || isEditorReadOnly}
-								insideSide={doorInsideSide} sideLabel={side => finishWallSideName(side, selectedOpening?.wallSegmentId)}
+								insideSide={doorInsideSide} sideLabel={side => doorFaceLabel(project.schemaVersion === 1 ? project : undefined, doorDraftWallId, doorInsideSide, side)}
+								toSliding={draft => slidingDoorDraftFor(draft, doorInsideSide, candidate => {
+									const input = openingEditInputFor(candidate, selectedOpening, hostNavigation !== undefined, viewMode === "three-dimensional");
+									return project.schemaVersion === 1 && input !== undefined && updateDoorOpeningInProject(project, input, project.updatedAt).kind === "accepted";
+								})}
 								onChange={next => { setDimensionError(undefined); setOpeningDraft(next); }} /> : null}
-							{hostNavigation && openingDraft.kind === "Door" && openingDraft.variant !== "sliding" && (
+							{!roomInteriorEnabled && hostNavigation && openingDraft.kind === "Door" && openingDraft.variant !== "sliding" && (
 								<DoorSwingPicker value={openingDraft.swingSide} hingeEnd={openingDraft.hingeEnd} showHingeOptions={doorHingeAuthoring || roomInteriorEnabled} insideSide={doorInsideSide} disabled={isWorking || isEditorReadOnly}
 									onChange={(swingSide, hingeEnd) => {
 										setDimensionError(undefined);
@@ -9577,13 +9587,13 @@ export function AppShell({
 									</button>
 								</div>
 							) : null}
-							{dimensionError ? (
+							{openingDraftError ? (
 								<p id="opening-draft-error" role="alert">
-									{dimensionError}
+									{openingDraftError}
 								</p>
 							) : null}
 							<div className={styles.openingCreationActions}>
-								<button disabled={isWorking || isEditorReadOnly} type="submit">
+								<button disabled={isWorking || isEditorReadOnly || slidingEditError !== undefined} type="submit">
 									{openingDraft.isMove
 										? copy("Применить", "Apply")
 										: openingDraft.kind === "Door"
@@ -10343,7 +10353,7 @@ export function AppShell({
 						)}
 
 						{wallPaintSide && !sceneWallItem ? (
-							<button type="button" ref={finishTriggerRef}
+							<button type="button" ref={finishTriggerRef} aria-haspopup="dialog"
 								disabled={isEditorReadOnly || isMutationBlocked}
 								onClick={openWallColor}>
 								{copy("Цвет стены", "Wall color")}
@@ -11309,24 +11319,25 @@ export function AppShell({
 					onConfirm={() => void submitSupportEdit()}
 				/>
 			) : null}
-			{finishDraft ? (
+			{finishDraft?.kind === "wall" ? (
+				<WallColorPalette draft={finishDraft} busy={isWallColorSaving} disabled={isWallColorSaving || isEditorReadOnly || isMutationBlocked}
+					error={dimensionError} onClose={closeFinishDraft} onSelect={finish => void selectWallColor(finish)} />
+			) : finishDraft ? (
 				<EditorModalSheet
-					aria-label={finishDraft.kind === "floor" ? copy("Пол", "Floor") : copy("Цвет стены", "Wall color")}
+					aria-label={copy("Пол", "Floor")}
 					busy={isWorking}
 					className={styles.interiorEditorSheet}
 					onRequestClose={() => requestEditorBack(false, closeFinishDraft)}
 					restoreFocus={() => finishTriggerRef.current}
 					telegramModal={canOpenTelegramEditorSheet}
 				>
-					<SheetHeader title={finishDraft.kind === "floor" ? copy("Пол", "Floor") : copy("Цвет стены", "Wall color")}
+					<SheetHeader title={copy("Пол", "Floor")}
 						closeLabel={copy("Закрыть палитру", "Close palette")}
 						closeDisabled={isWorking}
 						onClose={() => requestEditorBack(false, closeFinishDraft)} />
-					{finishDraft.kind === "wall"
-						? <WallColorControls draft={finishDraft} disabled={isWorking || isEditorReadOnly} onChange={setFinishDraft} />
-						: <div className={styles.interiorChoices}>
-							<RoomFinishControls draft={finishDraft} disabled={isWorking || isEditorReadOnly} onChange={setFinishDraft} />
-						</div>}
+					<div className={styles.interiorChoices}>
+						<RoomFinishControls draft={finishDraft} disabled={isWorking || isEditorReadOnly} onChange={setFinishDraft} />
+					</div>
 					{dimensionError ? <p role="alert">{dimensionError}</p> : null}
 					<div className={styles.interiorChoices}>
 						<button type="button" disabled={isWorking} onClick={closeFinishDraft}>{copy("Отменить", "Cancel")}</button>

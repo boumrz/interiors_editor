@@ -9,8 +9,7 @@ import { floorFinishColors, wallFinishColors } from "../domain/interior-material
 import { resolveOrthogonalPlanFaces } from "../domain/derived-orthogonal-plan-faces";
 import { copy } from "./editor-language";
 import styles from "./AppShell.module.css";
-import sceneStyles from "./RoomScene3d.module.css";
-import doorOptions from "./DoorSwingPicker.module.css";
+import { TelegramColorPaletteDialog } from "./telegram-item-color";
 
 export type FinishDraft =
 	| { readonly kind: "floor"; readonly roomId: string; readonly finish: SurfaceFinish<FloorFinishId> | undefined }
@@ -33,7 +32,7 @@ const wallColors = [
 	{ id: undefined, ru: "По умолчанию", en: "Default", color: "var(--editor-host-line, var(--line))" },
 	{ id: "warm-white-paint", ru: "Тёплый белый", en: "Warm white", color: wallFinishColors["warm-white-paint"] },
 	{ id: "sand-paint", ru: "Песочный", en: "Sand", color: wallFinishColors["sand-paint"] },
-	{ id: "muted-green-paint", ru: "Приглушённый зелёный", en: "Muted green", color: wallFinishColors["muted-green-paint"] },
+	{ id: "muted-green-paint", ru: "Зелёный", en: "Green", color: wallFinishColors["muted-green-paint"] },
 ] as const;
 
 type WallPoint = { readonly xMm: number; readonly zMm: number };
@@ -54,25 +53,28 @@ export function interiorWallSide(project: Project, wallId: string, target?: Wall
 	return dx * (target.zMm - start.zMm) - dz * (target.xMm - start.xMm) < 0 ? "right" : "left";
 }
 
-export function WallColorControls({ draft, disabled, onChange }: {
+export function WallColorPalette({ draft, disabled, busy, error, onClose, onSelect }: {
 	readonly draft: Extract<FinishDraft, { kind: "wall" }>;
 	readonly disabled: boolean;
-	readonly onChange: (draft: FinishDraft) => void;
+	readonly busy: boolean;
+	readonly error: string | undefined;
+	readonly onClose: () => void;
+	readonly onSelect: (finish: SurfaceFinish<WallFinishId> | undefined) => void;
 }) {
+	const current = wallColors.find(color => color.id === draft.finish?.presetId);
 	return (
-		<fieldset aria-label={copy("Палитра стены", "Wall color palette")} className={styles.wallColorPalette} disabled={disabled}>
-			<div className={sceneStyles.colorOptions}>
-				{wallColors.map(({ id, ru, en, color }) => (
-					<button key={en} type="button" aria-pressed={draft.finish?.presetId === id}
-						onClick={() => onChange({ ...draft, finish: id ? { presetId: id, version: 1 } : undefined })}>
-						<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: color }}>
-							{draft.finish?.presetId === id ? "✓" : ""}
-						</span>
-						<span>{copy(ru, en)}</span>
-					</button>
-				))}
-			</div>
-		</fieldset>
+		<TelegramColorPaletteDialog title={copy("Цвет стены", "Wall color")}
+			currentLabel={current && copy(current.ru, current.en)} busy={busy} error={error} onClose={onClose}>
+			{wallColors.map(({ id, ru, en, color }) => (
+				<button key={en} type="button" aria-pressed={draft.finish?.presetId === id} disabled={disabled}
+					onClick={() => onSelect(id ? { presetId: id, version: 1 } : undefined)}>
+					<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: color }}>
+						{draft.finish?.presetId === id ? "✓" : ""}
+					</span>
+					<span>{copy(ru, en)}</span>
+				</button>
+			))}
+		</TelegramColorPaletteDialog>
 	);
 }
 
@@ -82,33 +84,16 @@ export function finishLabel(finish?: SurfaceFinish) {
 }
 
 /** Scene preview keeps its source separate from the Project used for writes. */
-export function projectWithFinishPreview(project: Project, draft: FinishDraft): Project {
-	if (draft.kind === "floor") {
-		return {
-			...project,
-			interiorSchemaVersion: 1,
-			level: {
-				...project.level,
-				rooms: project.level.rooms.map(room => {
-					if (room.roomId !== draft.roomId) return room;
-					const { floorFinish: _current, ...rest } = room;
-					return draft.finish ? { ...rest, floorFinish: draft.finish } : rest;
-				}),
-			},
-		};
-	}
+export function projectWithFinishPreview(project: Project, draft: Extract<FinishDraft, { kind: "floor" }>): Project {
 	return {
 		...project,
 		interiorSchemaVersion: 1,
 		level: {
 			...project.level,
-			wallSegments: project.level.wallSegments.map(wall => {
-				if (wall.wallSegmentId !== draft.wallSegmentId) return wall;
-				const { sideFinishes, ...rest } = wall;
-				const finishes = { ...sideFinishes };
-				if (draft.finish) finishes[draft.side] = draft.finish;
-				else delete finishes[draft.side];
-				return finishes.left || finishes.right ? { ...rest, sideFinishes: finishes } : rest;
+			rooms: project.level.rooms.map(room => {
+				if (room.roomId !== draft.roomId) return room;
+				const { floorFinish: _current, ...rest } = room;
+				return draft.finish ? { ...rest, floorFinish: draft.finish } : rest;
 			}),
 		},
 	};
@@ -136,83 +121,6 @@ export function RoomFinishControls({ draft, disabled, onChange }: RoomFinishCont
 		<>
 			{defaultButton}
 			{floorFinishes.map(option => renderOption(option, () => onChange({ ...draft, finish: { presetId: option.id, version: 1 } })))}
-		</>
-	);
-}
-
-type OpeningControlsDraft = import("./opening-creation-draft").OpeningVariantFields & {
-	readonly kind: "Door" | "Window";
-	readonly swingSide?: WallSide;
-	readonly hingeEnd?: "end" | null;
-};
-
-const slidingDirections = [
-	{ id: "toward-start", ru: "К началу стены", en: "Toward wall start" },
-	{ id: "toward-end", ru: "К концу стены", en: "Toward wall end" },
-] as const;
-
-export function OpeningVariantControls<Draft extends OpeningControlsDraft>({
-	draft, disabled, insideSide, sideLabel, onChange,
-}: {
-	readonly draft: Draft;
-	readonly disabled: boolean;
-	readonly insideSide?: WallSide | undefined;
-	readonly sideLabel: (side: WallSide) => string;
-	readonly onChange: (draft: Draft) => void;
-}) {
-	const variants = [
-		{ id: null, ru: "Глухая распашная", en: "Solid swing door" },
-		{ id: "glazed-swing", ru: "Остеклённая распашная", en: "Glazed swing door" },
-		{ id: "sliding", ru: "Раздвижная", en: "Sliding door" },
-	] as const;
-	return (
-		<>
-			<fieldset className={draft.kind === "Window" ? doorOptions.options : styles.interiorChoices}>
-				<legend className={draft.kind === "Window" ? styles.windowSectionLegend : undefined}>{copy("Вариант", "Variant")}</legend>
-				{draft.kind === "Window" ? (
-					<>
-						{draft.sections === undefined ? <span className={styles.windowSectionDefault}>{copy("Автоделение по ширине", "Sections by width")}</span> : null}
-						{([1, 2] as const).map(sections => (
-							<button type="button" disabled={disabled} key={sections} aria-pressed={draft.sections === sections}
-								onClick={() => onChange({ ...draft, sections })}>
-								{sections === 1 ? copy("Одна секция", "One section") : copy("Две секции", "Two sections")}
-							</button>
-						))}
-					</>
-				) : variants.map(({ id, ru, en }) => (
-					<button type="button" disabled={disabled} key={en} aria-pressed={(draft.variant ?? null) === id}
-						onClick={() => {
-							if (id === draft.variant || id === null && draft.variant === undefined) return;
-							if (id === "sliding") {
-								onChange({ ...draft, variant: id, slideSide: draft.swingSide ?? insideSide ?? "left" });
-								return;
-							}
-							const { slideSide } = draft;
-							onChange({
-								...draft, variant: id, slideSide: undefined, slideDirection: undefined,
-								...(draft.variant === "sliding" ? { swingSide: slideSide ?? insideSide ?? "left", hingeEnd: null } : {}),
-							});
-						}}>{copy(ru, en)}</button>
-				))}
-			</fieldset>
-			{draft.variant === "sliding" ? (
-				<>
-					<fieldset className={styles.interiorChoices}>
-						<legend>{copy("Сторона стены", "Wall side")}</legend>
-						{(["left", "right"] as const).map(side => (
-							<button type="button" disabled={disabled} key={side} aria-pressed={draft.slideSide === side}
-								onClick={() => onChange({ ...draft, slideSide: side })}>{sideLabel(side)}</button>
-						))}
-					</fieldset>
-					<fieldset className={styles.interiorChoices}>
-						<legend>{copy("Направление сдвига", "Sliding direction")}</legend>
-						{slidingDirections.map(({ id, ru, en }) => (
-							<button type="button" disabled={disabled} key={id} aria-pressed={draft.slideDirection === id}
-								onClick={() => onChange({ ...draft, slideDirection: id })}>{copy(ru, en)}</button>
-						))}
-					</fieldset>
-				</>
-			) : null}
 		</>
 	);
 }

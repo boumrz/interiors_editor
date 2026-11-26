@@ -36,3 +36,29 @@
 }
 
 .options button:disabled { cursor: default; opacity: .55; }
+
+.doorType {
+	color: var(--editor-host-muted, #596478);
+	display: grid;
+	font: 600 .875rem/1.3 var(--font-display, system-ui);
+	gap: 6px;
+	min-inline-size: 0;
+}
+
+.doorType select {
+	background: var(--editor-host-surface, #fff);
+	border: 1px solid var(--editor-host-line, #d9e1e8);
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--editor-host-ink, #192436);
+	font: inherit;
+	min-block-size: 44px;
+	min-inline-size: 0;
+	padding: 8px 12px;
+}
+
+.doorMotion .options > button {
+	block-size: max(44px, 2.9em);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

@@ -13,10 +13,13 @@ import { createParametricFloorItem } from "../domain/parametric-item";
 import { createParametricWallItem } from "../domain/parametric-wall-item";
 import type { Project } from "../domain/project";
 import { configureRectangularRoom } from "../domain/rectangular-room";
+import { setEditorLanguage } from "./editor-language";
 import {
 	openingCreationDraftFor,
 	openingCreationHostFor,
 	openingCreationHostsFor,
+	slidingDoorDraftFor,
+	slidingDoorRejectionMessage,
 	validateOpeningCreationDraft,
 } from "./opening-creation-draft";
 
@@ -52,6 +55,77 @@ function roomProject() {
 	}
 	return configured.project;
 }
+
+describe("switching to a sliding door", () => {
+	it.each([
+		{ offsetMm: "1000", direction: "toward-end" },
+		{ offsetMm: "3100", direction: "toward-start" },
+	] as const)("looks for clearance along the wall from $offsetMm mm", ({ offsetMm, direction }) => {
+		const project = roomProject();
+		const defaults = openingCreationDraftFor(project, "wall-1", "Door",
+			{ baseRevisionId: "revision", offsetMm: Number(offsetMm) });
+		if (!defaults) throw new Error("Expected an opening draft");
+		const draft = { ...defaults, offsetMm };
+		const sliding = slidingDoorDraftFor(draft, "left",
+			candidate => validateOpeningCreationDraft(project, candidate).kind === "valid");
+		expect(sliding).toEqual({ ...draft, variant: "sliding", slideSide: "left", slideDirection: direction });
+	});
+
+	it("tries the opposite face only when neither direction fits the preferred face", () => {
+		const draft = openingCreationDraftFor(roomProject(), "wall-1");
+		if (!draft) throw new Error("Expected an opening draft");
+		const sliding = slidingDoorDraftFor({ ...draft, swingSide: "right" }, "left",
+			candidate => candidate.slideSide === "left" && candidate.slideDirection === "toward-end");
+		expect(sliding).toMatchObject({ slideSide: "left", slideDirection: "toward-end", offsetMm: draft.offsetMm });
+	});
+
+	it("keeps the initial direction when trying the other face", () => {
+		const draft = openingCreationDraftFor(roomProject(), "wall-1");
+		if (!draft) throw new Error("Expected an opening draft");
+		expect(slidingDoorDraftFor(draft, "left", candidate => candidate.slideSide === "right"))
+			.toMatchObject({ slideSide: "right", slideDirection: "toward-start" });
+	});
+
+	it("tries the opposite direction if the previous direction now hits an obstacle", () => {
+		const defaults = openingCreationDraftFor(roomProject(), "wall-1");
+		if (!defaults) throw new Error("Expected an opening draft");
+		const draft = { ...defaults, slideSide: "left", slideDirection: "toward-end" } as const;
+		expect(slidingDoorDraftFor(draft, "right", candidate => candidate.slideDirection === "toward-start"))
+			.toMatchObject({ slideSide: "left", slideDirection: "toward-start" });
+	});
+
+	it("preserves a previous choice and does not move a door to find space", () => {
+		const defaults = openingCreationDraftFor(roomProject(), "wall-1");
+		if (!defaults) throw new Error("Expected an opening draft");
+		const draft = { ...defaults, slideSide: "left", slideDirection: "toward-end", swingSide: "right", hingeEnd: null } as const;
+		const expected = { ...draft, variant: "sliding" };
+		expect(slidingDoorDraftFor(draft, "right", () => true)).toEqual(expected);
+		expect(slidingDoorDraftFor(draft, "right", () => false)).toEqual(expected);
+	});
+
+	it("uses the current hinge when no sliding choice or interior face is known", () => {
+		const draft = openingCreationDraftFor(roomProject(), "wall-1");
+		if (!draft) throw new Error("Expected an opening draft");
+		expect(slidingDoorDraftFor({ ...draft, hingeEnd: "end" }, undefined, () => true)).toEqual({
+			...draft, hingeEnd: "end", variant: "sliding", slideSide: "right", slideDirection: "toward-end",
+		});
+	});
+
+	it.each([
+		["OPENING_OUTSIDE_WALL_INTERVAL", "не хватает длины стены", "wall is too short"],
+		["OPENING_OVERLAP", "другой проём", "Another opening"],
+		["DOOR_CLEARANCE_COLLISION", "полотна предмет", "item blocks the door panel"],
+		["WALL_OPENING_COLLISION", "полотна предмет", "item blocks the door panel"],
+	])("describes the actual obstruction for %s", (reason, russian, english) => {
+		expect(slidingDoorRejectionMessage(reason)).toContain(russian);
+		setEditorLanguage("en");
+		try {
+			expect(slidingDoorRejectionMessage(reason)).toContain(english);
+		} finally {
+			setEditorLanguage("ru");
+		}
+	});
+});
 
 describe("opening creation draft", () => {
 	it("starts with exact millimetre defaults and a numbered wall host", () => {

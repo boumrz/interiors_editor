@@ -4952,13 +4952,6 @@ main[data-editor-host="telegram"] button[type="button"][data-editor-action="canc
 	padding: 16px;
 }
 
-.wallColorPalette {
-	border: 0;
-	margin: 0;
-	min-inline-size: 0;
-	padding: 0;
-}
-
 .interiorEditorSheet .interiorChoices > button > span[aria-hidden="true"] {
 	border: 1px solid var(--line);
 	border-radius: 4px;

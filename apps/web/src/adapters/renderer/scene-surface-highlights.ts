@@ -6,6 +6,18 @@ export interface SceneSurfaceHighlight {
 
 export const FLOOR_DESTINATION_TINT = "#378cd8";
 
+export const STRUCTURE_SELECTION_TINT = "#267fff";
+
+export type SceneStructureSelection = `wall:${string}` | `opening:${string}`;
+
+export function sceneStructureSelection(
+	wallSegmentId?: string,
+	openingId?: string,
+): SceneStructureSelection | undefined {
+	if (openingId !== undefined) return `opening:${openingId}`;
+	if (wallSegmentId !== undefined) return `wall:${wallSegmentId}`;
+}
+
 type OutlinePoint = SceneSurfaceHighlight["outline"][number];
 
 const GLOW_PROFILE = [

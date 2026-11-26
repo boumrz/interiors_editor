@@ -1,7 +1,7 @@
 import { floorFinishColors, wallFinishColors } from "../../domain/interior-materials";
 import { catalogProfileGeometry } from "./catalog-profile-geometry";
-import { GLASS_OPACITY, OPENING_FINISH } from "./opening-template";
-import { FLOOR_DESTINATION_TINT, supportGlowGeometry, type SceneSurfaceHighlight } from "./scene-surface-highlights";
+import { GLASS_OPACITY, OPENING_FINISH, type OpeningPart } from "./opening-template";
+import { FLOOR_DESTINATION_TINT, sceneStructureSelection, STRUCTURE_SELECTION_TINT, supportGlowGeometry, type SceneSurfaceHighlight } from "./scene-surface-highlights";
 import type {
 	RectangularRoomWebGlScene,
 	SceneBox,
@@ -652,9 +652,8 @@ function createProceduralWebGl2RoomSceneRenderer(
 	let lastCamera = initialWebGl2Camera;
 	let appliedHighlights: readonly SceneSurfaceHighlight[] | undefined;
 	let supportVertexCount = 0;
-	const [redFloor, greenFloor, blueFloor] = colorFor(FLOOR_DESTINATION_TINT);
-	const tintFloor = ([red, green, blue, alpha]: readonly [number, number, number, number]) =>
-		[red * 0.9 + redFloor * 0.1, green * 0.9 + greenFloor * 0.1, blue * 0.9 + blueFloor * 0.1, alpha] as const;
+	const floorTint = colorFor(FLOOR_DESTINATION_TINT);
+	const structureTint = colorFor(STRUCTURE_SELECTION_TINT);
 
 	const drawBox = (
 		box: SceneBox,
@@ -813,7 +812,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 			);
 			activeScene.floors.forEach((floor) => {
 				const draw: DrawBox = activeScene.highlightFloor && floor.floor?.roomId
-					? (box, color, view, vertices) => drawBox(box, tintFloor(color), view, vertices)
+					? (box, color, view, vertices) => drawBox(box, tintSurface(color, floorTint, 0.1), view, vertices)
 					: drawBox;
 				if (floor.floor?.finish) {
 					draw({ ...floor, centerYM: floor.centerYM - floor.heightM / 2 }, colorFor(floorFinishColors[floor.floor.finish.presetId]), camera);
@@ -823,7 +822,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 				const color = floor.floor.finish ? colorFor(floorFinishColors[floor.floor.finish.presetId]) : surfaceColors.floorLightBoard;
 				drawWorldTriangles(
 					floorPrismVerticesFor(floor),
-					activeScene.highlightFloor ? tintFloor(color) : color,
+					activeScene.highlightFloor ? tintSurface(color, floorTint, 0.1) : color,
 					camera,
 				);
 			});
@@ -835,16 +834,20 @@ function createProceduralWebGl2RoomSceneRenderer(
 			const visibleWalls = activeScene.walls.filter(
 				(wall) => !hiddenWallSegmentIds.has(wall.wall?.wallSegmentId ?? ""),
 			);
+			const structureSelection = activeScene.structureSelection;
 			visibleWalls.forEach((wall) => {
+				const drawWall: DrawBox = structureSelection && structureSelection === sceneStructureSelection(wall.wall?.wallSegmentId)
+					? (box, color, view, vertices) => drawBox(box, tintSurface(color, structureTint, 0.42), view, vertices)
+					: drawBox;
 				drawWallFinish(
 					wall,
 					isExteriorWall(wall),
 					useDetailedWallFinish,
-					drawBox,
+					drawWall,
 					camera,
 					surfaceColors,
 				);
-				drawAssignedWallSides(wall, drawBox, camera);
+				drawAssignedWallSides(wall, drawWall, camera);
 				wallCornerOutlineDrawsFor(wall).forEach((outline) => {
 					drawBox(
 						outline,
@@ -866,21 +869,26 @@ function createProceduralWebGl2RoomSceneRenderer(
 			activeScene.items.forEach((item) => {
 				drawFurniture(item, detailedFurniture, drawBox, camera);
 			});
-			const panes: SceneBox[] = [];
+			const drawOpening = ({ box, role, openingId }: OpeningPart) => {
+				const baseColor = colorFor(OPENING_FINISH[role]);
+				const color = structureSelection === sceneStructureSelection(undefined, openingId)
+					? tintSurface(baseColor, structureTint, 0.42) : baseColor;
+				drawBox(box, role === "glass" ? [color[0], color[1], color[2], GLASS_OPACITY] : color, camera);
+			};
+			const panes: OpeningPart[] = [];
 			for (const part of activeScene.openingParts ?? []) {
 				if (hiddenWallSegmentIds.has(part.wallSegmentId)) continue;
-				if (part.role === "glass") panes.push(part.box);
-				else drawBox(part.box, colorFor(OPENING_FINISH[part.role]), camera);
+				if (part.role === "glass") panes.push(part);
+				else drawOpening(part);
 			}
 			if (panes.length || supportVertexCount > 0) {
-				const [red, green, blue] = colorFor(OPENING_FINISH.glass);
 				context.enable(context.BLEND);
 				context.blendEquation(context.FUNC_ADD);
 				context.blendFunc(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA);
 				context.depthMask(false);
 				try {
 					if (supportVertexCount > 0) drawSupportGlow(camera);
-					for (const pane of panes) drawBox(pane, [red, green, blue, GLASS_OPACITY], camera);
+					panes.forEach(drawOpening);
 				} finally {
 					context.depthMask(true);
 					context.disable(context.BLEND);
@@ -888,6 +896,15 @@ function createProceduralWebGl2RoomSceneRenderer(
 			}
 		},
 	};
+}
+
+function tintSurface(
+	[red, green, blue, alpha]: ReturnType<typeof colorFor>,
+	[tintRed, tintGreen, tintBlue]: ReturnType<typeof colorFor>,
+	strength: number,
+): ReturnType<typeof colorFor> {
+	const base = 1 - strength;
+	return [red * base + tintRed * strength, green * base + tintGreen * strength, blue * base + tintBlue * strength, alpha];
 }
 
 /** Builds only disposable orbit camera values from canonical scene bounds. */

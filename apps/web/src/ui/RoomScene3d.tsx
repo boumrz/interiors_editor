@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import type { FurnitureGreyboxKind, RectangularRoomWebGlScene, SceneBox } from "../adapters/renderer/rectangular-room-projection";
+import { sceneStructureSelection } from "../adapters/renderer/scene-surface-highlights";
 import {
 	createDomWebGl2CanvasPort,
 	createWebGl2RoomSceneRendererWithResizeOnChange,
@@ -112,6 +113,8 @@ interface RoomScene3dProps {
 	/** Exact local bytes only; this component never fetches a model resource. */
 	readonly customGlbResources?: Readonly<Record<string, CustomGlbResource>>;
 	readonly selectedItemId?: string;
+	readonly selectedWallId?: string | undefined;
+	readonly selectedOpeningId?: string | undefined;
 	readonly readOnly?: boolean;
 	readonly itemPlacementControls?: ReactNode;
 	readonly selectedItemControls?: ReactNode;
@@ -301,6 +304,8 @@ export function RoomScene3d({
 	customGlbResourceStates = {},
 	customGlbResources = {},
 	selectedItemId,
+	selectedWallId,
+	selectedOpeningId,
 	readOnly = false,
 	canTransformSelectedItem = true,
 	supportInteraction,
@@ -804,6 +809,7 @@ export function RoomScene3d({
 			})) : [];
 		return {
 			...scene,
+			structureSelection: sceneStructureSelection(selectedWallId, selectedOpeningId),
 			highlightFloor,
 			supportHighlights,
 			items: preview
@@ -827,7 +833,7 @@ export function RoomScene3d({
 					]
 				: renderedItems,
 		};
-	}, [scene, threeDimensionalItemPlacementPreview, visualItemPreview, copyingHostId, shelfHostIds, highlightFloor, supportHighlights]);
+	}, [scene, selectedWallId, selectedOpeningId, threeDimensionalItemPlacementPreview, visualItemPreview, copyingHostId, shelfHostIds, highlightFloor, supportHighlights]);
 	const renderedSceneRef = useRef(renderedScene);
 	renderedSceneRef.current = renderedScene;
 	const rendererStructureKey = rendererStructureKeyFor(scene);

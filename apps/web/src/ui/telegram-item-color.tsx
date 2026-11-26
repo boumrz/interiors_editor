@@ -1,5 +1,6 @@
 import { copy } from "./editor-language";
 import {
+	type ReactNode,
 	type RefObject,
 	useId,
 	useLayoutEffect,
@@ -131,6 +132,57 @@ export function TelegramItemColor({
 	);
 }
 
+export function TelegramColorPaletteDialog({
+	dialogId, title, currentLabel, busy = false, error, children, onClose,
+}: {
+	readonly dialogId?: string;
+	readonly title: string;
+	readonly currentLabel?: string | undefined;
+	readonly busy?: boolean;
+	readonly error?: string | undefined;
+	readonly children: ReactNode;
+	readonly onClose: () => void;
+}) {
+	const titleId = useId();
+	const dialogRef = useRef<HTMLDialogElement>(null);
+	useLayoutEffect(() => {
+		const dialog = dialogRef.current;
+		if (!dialog) return;
+		dialog.showModal();
+		dialog.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus({ preventScroll: true });
+		return () => dialog.close();
+	}, []);
+	return (
+		<TelegramSheetFrame
+			as="dialog"
+			telegram
+			busy={busy}
+			ref={dialogRef}
+			id={dialogId}
+			aria-labelledby={titleId}
+			aria-busy={busy || undefined}
+			className={sceneStyles.colorSheet}
+			data-scene-color-palette=""
+			onCancel={(event) => {
+				event.preventDefault();
+				if (!busy) event.currentTarget.close();
+			}}
+			onClose={(event) => {
+				if (!event.currentTarget.open) onClose();
+			}}
+		>
+			<SheetHeader title={title} titleId={titleId} subtitle={currentLabel}
+				closeLabel={copy("Закрыть палитру", "Close color palette")}
+				closeDisabled={busy} onClose={() => dialogRef.current?.close()} />
+			<div className={sheetStyles.body}>
+				<div className={sceneStyles.colorOptions}>{children}</div>
+				<p className={sceneStyles.colorNote}>{copy("Цвет на экране приблизительный.", "Colors are approximate on screen.")}</p>
+				{error ? <p className={styles.fieldError} role="alert">{error}</p> : null}
+			</div>
+		</TelegramSheetFrame>
+	);
+}
+
 function SceneColorPicker({
 	color,
 	context,
@@ -140,24 +192,11 @@ function SceneColorPicker({
 }: TelegramItemColorProps & {
 	readonly sceneTriggerRef: RefObject<HTMLButtonElement | null>;
 }) {
-	const dialogRef = useRef<HTMLDialogElement>(null);
-	const titleId = useId();
 	const dialogId = useId();
 	const [open, setOpen] = useState(false);
 	const current = alphaParametricItemColorVariants.find(
 		(variant) => variant.color === color,
 	);
-	useLayoutEffect(() => {
-		const dialog = dialogRef.current;
-		const trigger = sceneTriggerRef.current;
-		if (!open || !dialog || !trigger) return;
-		trigger.focus({ preventScroll: true });
-		dialog.showModal();
-		dialog
-			.querySelector<HTMLElement>('[aria-pressed="true"]')
-			?.focus({ preventScroll: true });
-		return () => dialog.close();
-	}, [open, sceneTriggerRef]);
 	return (
 		<div
 			data-testid={`tma-${context}-color`}
@@ -179,7 +218,10 @@ function SceneColorPicker({
 				}
 				type="button"
 				disabled={disabled}
-				onClick={() => setOpen(true)}
+				onClick={(event) => {
+					event.currentTarget.focus({ preventScroll: true });
+					setOpen(true);
+				}}
 			>
 				<span
 					aria-hidden="true"
@@ -189,67 +231,31 @@ function SceneColorPicker({
 				<span>{copy("Цвет", "Color")}</span>
 			</button>
 			{open && (
-				<TelegramSheetFrame
-					as="dialog"
-					telegram
-					ref={dialogRef}
-					id={dialogId}
-					aria-labelledby={titleId}
-					className={sceneStyles.colorSheet}
-					data-scene-color-palette=""
-					onCancel={(event) => {
-						event.preventDefault();
-						event.currentTarget.close();
-					}}
-					onClose={(event) => {
-						if (!event.currentTarget.open) setOpen(false);
-					}}
+				<TelegramColorPaletteDialog
+					dialogId={dialogId}
+					title={copy("Цвет предмета", "Item color")}
+					currentLabel={current ? telegramItemColorLabelForDisplay(current) : undefined}
+					onClose={() => setOpen(false)}
 				>
-					<SheetHeader
-						title={copy("Цвет предмета", "Item color")}
-						titleId={titleId}
-						subtitle={
-							current
-								? telegramItemColorLabelForDisplay(current)
-								: undefined
-						}
-						closeLabel={copy("Закрыть палитру", "Close color palette")}
-						onClose={() => dialogRef.current?.close()}
-					/>
-					<div className={sheetStyles.body}>
-						<div className={sceneStyles.colorOptions}>
-							{alphaParametricItemColorVariants.map((variant) => (
-								<button
-									key={variant.variantId}
-									aria-label={telegramItemColorLabelForDisplay(variant)}
-									aria-pressed={color === variant.color}
-									disabled={disabled}
-									type="button"
-									onClick={() => {
-										dialogRef.current?.close();
-										if (context === "placement" || color !== variant.color)
-											onSelect(variant);
-									}}
-								>
-									<span
-										aria-hidden="true"
-										className={styles.itemColorSwatch}
-										style={{ backgroundColor: variant.color }}
-									>
-										{color === variant.color ? "✓" : ""}
-									</span>
-									<span>{swatchNames[variant.variantId]}</span>
-								</button>
-							))}
-						</div>
-						<p className={sceneStyles.colorNote}>
-							{copy(
-								"Цвет на экране приблизительный.",
-								"Colors are approximate on screen.",
-							)}
-						</p>
-					</div>
-				</TelegramSheetFrame>
+					{alphaParametricItemColorVariants.map((variant) => (
+						<button
+							key={variant.variantId}
+							aria-label={telegramItemColorLabelForDisplay(variant)}
+							aria-pressed={color === variant.color}
+							disabled={disabled}
+							type="button"
+							onClick={(event) => {
+								event.currentTarget.closest("dialog")?.close();
+								if (context === "placement" || color !== variant.color) onSelect(variant);
+							}}
+						>
+							<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: variant.color }}>
+								{color === variant.color ? "✓" : ""}
+							</span>
+							<span>{swatchNames[variant.variantId]}</span>
+						</button>
+					))}
+				</TelegramColorPaletteDialog>
 			)}
 		</div>
 	);

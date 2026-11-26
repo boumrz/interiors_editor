@@ -6,6 +6,32 @@ import choices from "./DoorSwingPicker.module.css";
 type SwingSide = NonNullable<DoorWallOpening["swingSide"]>;
 type HingeChoice = NonNullable<DoorWallOpening["hingeEnd"]> | null;
 
+export function DoorMotionChoices<Value extends string | null>({
+	title, options, current, disabled, onChange,
+}: {
+	readonly title: string;
+	readonly options: readonly {
+		readonly value: Value;
+		readonly label: string;
+		readonly action?: string;
+	}[];
+	readonly current: Value | undefined;
+	readonly disabled: boolean;
+	readonly onChange: (value: Value) => void;
+}) {
+	return (
+		<fieldset className={choices.options}>
+			<legend className={styles.openingSwingLegend}>{title}</legend>
+			{options.map(({ value, label, action }) => (
+				<button aria-label={action} aria-pressed={current === value} disabled={disabled}
+					key={value ?? "default"} onClick={() => onChange(value)} title={label} type="button">
+					{label}
+				</button>
+			))}
+		</fieldset>
+	);
+}
+
 export function DoorSwingPicker({
 	value = "right",
 	hingeEnd,
@@ -25,13 +51,13 @@ export function DoorSwingPicker({
 		const firstSide = insideSide ?? "left";
 		const directions = [
 			{
-				side: firstSide,
+				value: firstSide,
 				label: insideSide
 					? copy("Внутрь", "Inward")
 					: copy("На себя", "Toward you"),
 			},
 			{
-				side: firstSide === "left" ? "right" : "left",
+				value: firstSide === "left" ? "right" : "left",
 				label: insideSide
 					? copy("Наружу", "Outward")
 					: copy("От себя", "Away from you"),
@@ -39,38 +65,13 @@ export function DoorSwingPicker({
 		] as const;
 		return (
 			<div className={choices.rows}>
-				<fieldset className={choices.options}>
-					<legend className={styles.openingSwingLegend}>
-						{copy("Петли", "Hinges")}
-					</legend>
-					{([null, "end"] as const).map((selectedHinge) => (
-						<button
-							aria-pressed={selectedHinge === (hingeEnd ?? null)}
-							disabled={disabled}
-							key={selectedHinge ?? "start"}
-							onClick={() => onChange(value, selectedHinge)}
-							type="button"
-						>
-							{selectedHinge ? copy("Справа", "Right") : copy("Слева", "Left")}
-						</button>
-					))}
-				</fieldset>
-				<fieldset className={choices.options}>
-					<legend className={styles.openingSwingLegend}>
-						{copy("Открывание", "Swing")}
-					</legend>
-					{directions.map(({ side, label }) => (
-						<button
-							aria-pressed={side === value}
-							disabled={disabled}
-							key={side}
-							onClick={() => onChange(side, hingeEnd)}
-							type="button"
-						>
-							{label}
-						</button>
-					))}
-				</fieldset>
+				<DoorMotionChoices title={copy("Петли", "Hinges")} current={hingeEnd ?? null} disabled={disabled}
+					options={[
+						{ value: null, label: copy("Слева", "Left") },
+						{ value: "end", label: copy("Справа", "Right") },
+					]} onChange={hinge => onChange(value, hinge)} />
+				<DoorMotionChoices title={copy("Открывание", "Swing")} current={value} disabled={disabled}
+					options={directions} onChange={side => onChange(side, hingeEnd)} />
 			</div>
 		);
 	}

@@ -12,6 +12,7 @@ import {
 } from "three";
 
 import type { SceneBox } from "./rectangular-room-projection";
+import { sceneStructureSelection } from "./scene-surface-highlights";
 import {
 	DARK_ROOM_SURFACE_COLORS,
 	roomMaterialColors,
@@ -20,6 +21,7 @@ import {
 	THREE_DIMENSIONAL_ROOM_SURFACE_COLORS,
 } from "./three-dimensional-room-palette";
 import {
+	applyThreeStructureSelection,
 	cloneRuntimeRootAsNeutralClay,
 	createThreeGreyboxItemGroup,
 	createThreeSupportGlow,
@@ -28,6 +30,32 @@ import {
 	THREE_DIMENSIONAL_RUNTIME_CLAY,
 	threeDimensionalShadowFlagsFor,
 } from "./three-webgl2-room-renderer";
+
+it("glows only the selected mesh materials while preserving their base finish and glass depth behavior", () => {
+	const wall = new MeshStandardMaterial({ color: "#bec4c7" });
+	const door = new MeshStandardMaterial({ color: "#ba9270" });
+	const windowPane = new MeshStandardMaterial({ color: "#8abac5", transparent: true, opacity: 0.32, depthWrite: false });
+	const windowFrame = new MeshStandardMaterial({ color: "#93958e" });
+	const otherWall = new MeshStandardMaterial({ color: "#bec4c7" });
+	const surfaces = [
+		{ material: wall, structureSelection: sceneStructureSelection("host") },
+		{ material: door, structureSelection: sceneStructureSelection("host", "door") },
+		{ material: windowPane, structureSelection: sceneStructureSelection("host", "window") },
+		{ material: windowFrame, structureSelection: sceneStructureSelection("host", "window") },
+		{ material: otherWall, structureSelection: sceneStructureSelection("other") },
+	] as const;
+	const colors = surfaces.map(({ material }) => material.color.getHex());
+	const highlighted = () => surfaces.map(({ material }) => material.emissive.getHex() > 0);
+	applyThreeStructureSelection([...surfaces, {}], "opening:window");
+	expect(highlighted()).toEqual([false, false, true, true, false]);
+	expect(windowPane).toMatchObject({ transparent: true, opacity: 0.32, depthWrite: false, depthTest: true });
+	expect(windowPane.emissiveIntensity).toBeGreaterThan(0);
+	applyThreeStructureSelection(surfaces, "wall:host");
+	expect(highlighted()).toEqual([true, false, false, false, false]);
+	applyThreeStructureSelection(surfaces, undefined);
+	expect(highlighted()).toEqual([false, false, false, false, false]);
+	expect(surfaces.map(({ material }) => material.color.getHex())).toEqual(colors);
+});
 
 it("uses linear vertex RGB and the original alpha on a single depth-tested glow mesh", () => {
 	const glow = createThreeSupportGlow();

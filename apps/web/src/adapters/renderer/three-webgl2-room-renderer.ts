@@ -33,7 +33,8 @@ import { applyFloorInteriorFinish, applyWallInteriorFinish } from "./interior-fi
 import type { CatalogProfile } from "./catalog-model-parts";
 import { catalogProfileGeometry } from "./catalog-profile-geometry";
 import { GLASS_OPACITY, OPENING_FINISH } from "./opening-template";
-import { FLOOR_DESTINATION_TINT, supportGlowGeometry, type SceneSurfaceHighlight } from "./scene-surface-highlights";
+import { FLOOR_DESTINATION_TINT, sceneStructureSelection, STRUCTURE_SELECTION_TINT, supportGlowGeometry,
+	type SceneStructureSelection, type SceneSurfaceHighlight } from "./scene-surface-highlights";
 import type {
 	RectangularRoomWebGlScene,
 	SceneBox,
@@ -160,6 +161,7 @@ export function createThreeWebGl2RoomSceneRenderer(
 	let appliedTheme: RoomRenderTheme | undefined;
 	let appliedHighlights: readonly SceneSurfaceHighlight[] | undefined;
 	let highlightedFloor: true | undefined;
+	let appliedStructureSelection: SceneStructureSelection | undefined;
 
 	const floorMeshes = [
 		...scene.floors.map((floor) => {
@@ -176,11 +178,12 @@ export function createThreeWebGl2RoomSceneRenderer(
 	for (const floor of floorMeshes) roomGroup.add(floor);
 	const usableFloorMeshes = floorMeshes.filter((_, index) => index >= scene.floors.length || scene.floors[index]?.floor?.roomId);
 	const roomPickSurfaces: ThreePickSurface[] = floorMeshes.map(root => ({ root }));
-	const addWallPart = (part: Mesh, wallSegmentId: string | undefined, owner: Omit<ThreePickSurface, "root">) => {
+	const addWallPart = (part: Mesh<BufferGeometry, MeshStandardMaterial>, wallSegmentId: string | undefined, owner: Omit<ThreePickSurface, "root">) => {
 		const wallGroup = new Group();
 		wallGroup.add(part);
 		roomGroup.add(wallGroup);
-		roomPickSurfaces.push({ root: wallGroup, ...owner });
+		roomPickSurfaces.push({ root: wallGroup, ...owner, material: part.material,
+			structureSelection: sceneStructureSelection(wallSegmentId, owner.openingId) });
 		if (wallSegmentId) {
 			wallGroups.set(wallSegmentId, [
 				...(wallGroups.get(wallSegmentId) ?? []),
@@ -228,6 +231,11 @@ export function createThreeWebGl2RoomSceneRenderer(
 			theme,
 		) => {
 			activeScene = sceneOverride;
+			const structureSelection = activeScene.structureSelection;
+			if (appliedStructureSelection !== structureSelection) {
+				appliedStructureSelection = structureSelection;
+				applyThreeStructureSelection(roomPickSurfaces, structureSelection);
+			}
 			if (appliedHighlights !== activeScene.supportHighlights) {
 				appliedHighlights = activeScene.supportHighlights;
 				supportGlow.update(supportGlowGeometry(appliedHighlights));
@@ -287,6 +295,20 @@ export function createThreeWebGl2RoomSceneRenderer(
 	};
 }
 
+interface ThreeStructureSurface {
+	readonly material?: MeshStandardMaterial;
+	readonly structureSelection?: SceneStructureSelection | undefined;
+}
+
+/** Emit from the real surface so its depth, cutaway and material finish are retained. */
+export function applyThreeStructureSelection(surfaces: readonly ThreeStructureSurface[], selection: SceneStructureSelection | undefined): void {
+	for (const { material, structureSelection } of surfaces) {
+		if (!material) continue;
+		material.emissive.set(selection !== undefined && selection === structureSelection ? STRUCTURE_SELECTION_TINT : 0);
+		material.emissiveIntensity = 0.58;
+	}
+}
+
 /** The support glow is disposable scene geometry and never participates in picking. */
 export function createThreeSupportGlow() {
 	const material = new MeshBasicMaterial({
@@ -319,7 +341,7 @@ export function createThreeSupportGlow() {
 	};
 }
 
-interface ThreePickSurface {
+interface ThreePickSurface extends ThreeStructureSurface {
 	readonly root: Object3D;
 	readonly assetInstanceId?: string | undefined;
 	readonly openingId?: string | undefined;

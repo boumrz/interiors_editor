@@ -24,7 +24,7 @@ import { wallOpeningIntervalMm } from "../../domain/wall-opening";
 import { type OpeningPart, openingTemplateFor } from "./opening-template";
 import { catalogFurnitureKindForPreset, type CatalogFurnitureKind } from "./catalog-models";
 import type { AdditionalGreyboxKind } from "./greybox-shape-templates";
-import type { SceneSurfaceHighlight } from "./scene-surface-highlights";
+import type { SceneStructureSelection, SceneSurfaceHighlight } from "./scene-surface-highlights";
 
 const MM_PER_SCENE_METRE = 1000;
 const FLOOR_THICKNESS_MM = 40;
@@ -180,6 +180,7 @@ export interface RectangularRoomWebGlScene {
 	readonly items: readonly SceneBox[];
 	readonly supportHighlights?: readonly SceneSurfaceHighlight[] | undefined;
 	readonly highlightFloor?: true | undefined;
+	readonly structureSelection?: SceneStructureSelection | undefined;
 	/** Optional resource metadata; never an engine object or a render instruction. */
 	readonly customGlbModels?: readonly CustomGlbSceneModel[];
 }

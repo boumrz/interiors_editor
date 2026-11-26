@@ -3062,9 +3062,35 @@ test("TMA-INTERIOR-SCENE-EDIT: choose and edit a window, door, wall, and room wi
 	await page.getByRole("complementary", { name: "Выбранный проём" }).getByRole("button", { name: "Параметры" }).click();
 	const doorSheet = page.getByRole("dialog", { name: "Параметры дверного проёма" });
 	await doorSheet.getByRole("textbox", { name: "Высота дверного проёма, мм" }).fill(String(door.heightMm - 20));
-	await doorSheet.getByRole("button", { name: "Сохранить проём" }).click();
+	const doorType = doorSheet.getByRole("combobox", { name: "Тип двери" });
+	const saveDoor = doorSheet.getByRole("button", { name: "Сохранить проём" });
+	const saveButtonBefore = await saveDoor.boundingBox();
+	await doorType.selectOption("solid-swing");
+	expect(await saveDoor.boundingBox()).toEqual(saveButtonBefore);
+	await doorType.selectOption("glazed-swing");
+	expect(await saveDoor.boundingBox()).toEqual(saveButtonBefore);
+	await doorType.selectOption("sliding");
+	await expect(saveDoor).toBeEnabled();
+	expect(await saveDoor.boundingBox()).toEqual(saveButtonBefore);
+	await expect(doorSheet.getByRole("button", { name: /^Сдвиг.+$/, pressed: true })).toHaveCount(1);
+	const doorWidth = doorSheet.getByRole("textbox", { name: "Ширина дверного проёма, мм" });
+	await doorWidth.fill("2200");
+	await expect(doorSheet.getByRole("alert")).toContainText("Для сдвига не хватает длины стены");
+	await expect(saveDoor).toBeDisabled();
+	await doorWidth.fill(String(door.widthMm));
+	await expect(doorSheet.getByRole("alert")).toHaveCount(0);
+	await saveDoor.click();
+	await expect(doorSheet).toHaveCount(0);
 	await saved(page);
-	expect((await currentProject(page)).level.openings.find(opening => opening.openingId === door.openingId)?.heightMm).toBe(door.heightMm - 20);
+	expect((await currentProject(page)).level.openings.find(opening => opening.openingId === door.openingId)).toMatchObject({
+		variant: "sliding", slideDirection: "toward-start", heightMm: door.heightMm - 20,
+		offsetMm: door.offsetMm, widthMm: door.widthMm, wallSegmentId: door.wallSegmentId,
+	});
+	await page.getByRole("complementary", { name: "Выбранный проём" }).getByRole("button", { name: "Параметры" }).click();
+	await expect(doorType).toHaveValue("sliding");
+	await expect(doorSheet.getByRole("button", { name: /^Сдвиг.+$/, pressed: true })).toHaveCount(1);
+	await doorSheet.getByRole("button", { name: "Отменить", exact: true }).click();
+	await expect(doorSheet).toHaveCount(0);
 
 	const colorWall = scene.walls.filter(box => box.wall?.wallSegmentId === windowOpening.wallSegmentId)
 		.find(box => box.heightM > 1 && box.centerYM >= 1 && box.widthM > 0.7);
@@ -3079,7 +3105,7 @@ test("TMA-INTERIOR-SCENE-EDIT: choose and edit a window, door, wall, and room wi
 	await page.getByRole("button", { name: "Цвет стены", exact: true }).click();
 	const palette = page.getByRole("dialog", { name: "Цвет стены" });
 	await palette.getByRole("button", { name: "Песочный", exact: true }).click();
-	await palette.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect(palette).toHaveCount(0);
 	await saved(page);
 	expect((await currentProject(page)).level.wallSegments.find(wall => wall.wallSegmentId === windowOpening.wallSegmentId)?.sideFinishes)
 		.toEqual({ left: { presetId: "sand-paint", version: 1 } });
@@ -3115,6 +3141,88 @@ test("TMA-INTERIOR-SCENE-EDIT: choose and edit a window, door, wall, and room wi
 		.toMatchObject({ elevationMm: 1600 });
 	await expect(workspace).toHaveAttribute("data-view-mode", "three-dimensional");
 });
+
+for (const [scheme, procedural] of [["light", false], ["dark", true]] as const) {
+	test(`TMA-STRUCTURE-GLOW: only the selected geometry glows in ${scheme} ${procedural ? "fallback" : "Three"}`, async ({ page }) => {
+		test.setTimeout(55_000);
+		if (procedural) await page.evaluate(() => {
+			const getAttributes = WebGL2RenderingContext.prototype.getContextAttributes;
+			WebGL2RenderingContext.prototype.getContextAttributes = function () {
+				if (this.canvas instanceof HTMLCanvasElement && this.canvas.dataset.testid === "three-dimensional-canvas") {
+					Reflect.set(window, "testStructureFallback", true);
+					throw new Error("Use the real procedural WebGL2 fallback for this test");
+				}
+				return getAttributes.call(this);
+			};
+		});
+		await page.evaluate(colorScheme => {
+			window.__telegramRuntimeUi.setAppearance("ru", colorScheme);
+			return window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring");
+		}, scheme);
+		await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+		await page.evaluate(() => window.__telegramRuntimeUi.createRoomInteriorDemo());
+		await saved(page);
+		const source = await currentProject(page);
+		const room = projectRectangularRoomForWebGl(source, undefined, true);
+		const windowOpening = source.level.openings.find(opening => opening.kind === "Window" && opening.widthMm > 1200);
+		const door = source.level.openings.find(opening => opening.kind === "Door");
+		const pane = room?.openingParts?.find(part => part.openingId === windowOpening?.openingId && part.role === "glass")?.box;
+		const leaf = room?.openingParts?.find(part => part.openingId === door?.openingId && part.role === "leaf")?.box;
+		const wall = room?.walls.find(box => box.wall?.wallSegmentId === windowOpening?.wallSegmentId && box.heightM > 1 && box.centerYM >= 1 && box.widthM > 0.7);
+		const normal = wall?.wall?.exteriorNormal;
+		if (!pane || !leaf || !wall || !normal) throw new Error("Expected the demo window, door and wall faces");
+		await page.getByRole("button", { name: "3D", exact: true }).click();
+		const canvas = page.getByTestId("three-dimensional-canvas");
+		const view = await canvas.boundingBox();
+		if (!view) throw new Error("Expected the interactive 3D canvas");
+		const center = { x: view.x + view.width * 0.5, y: view.y + view.height * 0.46 };
+		await page.mouse.move(center.x, center.y);
+		await page.mouse.down();
+		await page.mouse.move(center.x + 85, center.y - 20, { steps: 6 });
+		await page.mouse.up();
+		const { scene, camera, bounds } = await currentSceneProjection(page);
+		if (procedural) expect(await page.evaluate(() => Reflect.get(window, "testStructureFallback"))).toBe(true);
+		const contactAt = (x: number, y: number, z: number) => sceneContact(canvasPointForWorld(scene, camera, bounds, { x, y, z }), bounds);
+		const wallOffset = wall.wall?.halfThicknessM ?? 0;
+		const windowContact = contactAt(pane.centerXM, pane.centerYM, pane.centerZM);
+		const doorContact = contactAt(leaf.centerXM, leaf.centerYM, leaf.centerZM);
+		const wallContact = contactAt(wall.centerXM - normal.x * wallOffset, wall.centerYM, wall.centerZM - normal.z * wallOffset);
+		const contrastAt = async ({ x, y }: { x: number; y: number }) => {
+			const pixels = await page.screenshot({ clip: { x: Math.floor(x) - 1, y: Math.floor(y) - 1, width: 3, height: 3 }, scale: "css" });
+			return page.evaluate(async bytes => {
+				const image = await createImageBitmap(new Blob([Uint8Array.from(bytes)]));
+				const context = new OffscreenCanvas(image.width, image.height).getContext("2d");
+				if (!context) throw new Error("Expected a 2D pixel sampler");
+				context.drawImage(image, 0, 0);
+				const data = context.getImageData(0, 0, image.width, image.height).data;
+				let blueContrast = 0;
+				for (let offset = 0; offset < data.length; offset += 4) blueContrast += data[offset + 2] - data[offset];
+				image.close();
+				return blueContrast / (data.length / 4);
+			}, [...pixels]);
+		};
+		const tap = async (contact: { x: number; y: number }) => {
+			expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), contact)).toBe("three-dimensional-canvas");
+			await page.touchscreen.tap(contact.x, contact.y);
+		};
+		const windowBase = await contrastAt(windowContact);
+		const doorBase = await contrastAt(doorContact);
+		const wallBase = await contrastAt(wallContact);
+		await tap(windowContact);
+		await expect(page.getByRole("complementary", { name: "Выбранное окно" })).toBeVisible();
+		await expect.poll(() => contrastAt(windowContact)).toBeGreaterThan(windowBase + 4);
+		expect(await contrastAt(wallContact)).toBeCloseTo(wallBase, 0);
+		await tap(doorContact);
+		await expect(page.getByRole("complementary", { name: "Выбранный проём" })).toBeVisible();
+		await expect.poll(() => contrastAt(doorContact)).toBeGreaterThan(doorBase + 4);
+		expect(await contrastAt(windowContact)).toBeCloseTo(windowBase, 0);
+		await tap(wallContact);
+		await expect(page.getByRole("button", { name: "Цвет стены", exact: true })).toBeVisible();
+		await expect.poll(() => contrastAt(wallContact)).toBeGreaterThan(wallBase + 4);
+		expect(await contrastAt(doorContact)).toBeCloseTo(doorBase, 0);
+		expect(await currentProject(page)).toEqual(source);
+	});
+}
 
 test("TMA-SCENE-WALL-PICK: visible facades and partitions block item selection", async ({ page }) => {
 	await selectExactChair(page, "Выбор за стеной");
@@ -3252,6 +3360,7 @@ test("TMA-ITEM-PALETTE: a legacy wall light has concise dimension labels and ref
 	const point = canvasPointForSceneItem(scene, { azimuthRadians, elevationRadians, distance, panXM, panZM }, bounds, item);
 	if (!point) throw new Error("Missing wall item projection");
 	await page.mouse.click(bounds.x + point.x, bounds.y + point.y);
+	await inspector.getByRole("button", { name: "Закрыть свойства предмета", exact: true }).click();
 	const control = page.getByTestId("tma-selected-item-color").getByRole("button", { name: /^Цвет/ });
 	await expect(control).toBeVisible();
 	const canvasBeforePalette = await canvas.boundingBox();
@@ -3392,9 +3501,7 @@ test("TMA-INTERIOR-WALL-SHEET: plan wall properties offer color without thicknes
 	await expect(palette.getByRole("button", { name: "План", exact: true })).toHaveCount(0);
 	await expect(palette.getByRole("button", { name: "3D", exact: true })).toHaveCount(0);
 	await palette.getByRole("button", { name: "Песочный", exact: true }).click();
-	await expect(palette.getByRole("button", { name: "Песочный", exact: true })).toHaveAttribute("aria-pressed", "true");
-	expect(await currentProject(page)).toEqual(before);
-	await palette.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect(palette).toHaveCount(0);
 	await saved(page);
 	const painted = (await currentProject(page)).level.wallSegments.find(wall => wall.wallSegmentId === wallId);
 	expect(Object.values(painted?.sideFinishes ?? {})).toEqual([{ presetId: "sand-paint", version: 1 }]);
@@ -3571,34 +3678,40 @@ test("TMA-INTERIOR-SUPPORT: place a planter from the catalog on a bedside table"
 	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
 });
 
-test("TMA-INTERIOR-OPENING-UI: save a sliding door and an explicit wide single-section window", async ({ page }) => {
-	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
-	await createRoom(page, "Варианты проёмов");
-	const walls = page.getByTestId("wall-segment");
-	await walls.first().click();
-	const door = await openOpeningDetailsOnSelectedWall(page, "Дверь");
-	await door.getByRole("button", { name: "Раздвижная", exact: true }).click();
-	const confirm = door.getByRole("button", { name: "Подтвердить", exact: true });
-	await expect(confirm).toBeDisabled();
-	await door.getByRole("button", { name: "К концу стены", exact: true }).click();
-	await expect(confirm).toBeEnabled();
-	await confirm.click();
-	await saved(page);
-	const [savedDoor] = (await currentProject(page)).level.openings;
-	await expect(page.getByTestId("door-opening").getByTestId("door-slide-arrow")).toBeVisible();
-	await expect(page.getByTestId("door-opening").getByTestId("door-swing")).toHaveCount(0);
-	expect(savedDoor).toMatchObject({ kind: "Door", variant: "sliding", slideDirection: "toward-end" });
-	expect(savedDoor).not.toHaveProperty("hingeEnd");
-	await walls.nth(1).click();
-	const windowDetails = await openOpeningDetailsOnSelectedWall(page, "Окно");
-	await windowDetails.getByRole("button", { name: "Одна секция", exact: true }).click();
-	await windowDetails.getByRole("button", { name: "Подтвердить", exact: true }).click();
-	await saved(page);
-	expect((await currentProject(page)).level.openings.find(item => item.kind === "Window")).toMatchObject({
-		widthMm: 1200, sections: 1,
+for (const width of [320, 620]) {
+	test(`TMA-INTERIOR-OPENING-UI: save a sliding door and a single-section window at ${width}px`, async ({ page }) => {
+		await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+		await page.setViewportSize({ width, height: 740 });
+		await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+		await createRoom(page, "Варианты проёмов");
+		const walls = page.getByTestId("wall-segment");
+		await walls.first().click();
+		const door = await openOpeningDetailsOnSelectedWall(page, "Дверь");
+		const confirm = door.getByRole("button", { name: "Подтвердить", exact: true });
+		const position = await confirm.boundingBox();
+		await door.getByRole("combobox", { name: "Тип двери" }).selectOption("sliding");
+		await expect(confirm).toBeEnabled();
+		expect(await confirm.boundingBox()).toEqual(position);
+		await door.getByRole("button", { name: "Сдвиг вправо", exact: true }).click();
+		await expect(confirm).toBeEnabled();
+		await confirm.click();
+		await saved(page);
+		const [savedDoor] = (await currentProject(page)).level.openings;
+		await expect(page.getByTestId("door-opening").getByTestId("door-slide-arrow")).toBeVisible();
+		await expect(page.getByTestId("door-opening").getByTestId("door-swing")).toHaveCount(0);
+		expect(savedDoor).toMatchObject({ kind: "Door", variant: "sliding", slideDirection: "toward-end" });
+		expect(savedDoor).not.toHaveProperty("hingeEnd");
+		await walls.nth(1).click();
+		const windowDetails = await openOpeningDetailsOnSelectedWall(page, "Окно");
+		await windowDetails.getByRole("button", { name: "Одна секция", exact: true }).click();
+		await windowDetails.getByRole("button", { name: "Подтвердить", exact: true }).click();
+		await saved(page);
+		expect((await currentProject(page)).level.openings.find(item => item.kind === "Window")).toMatchObject({
+			widthMm: 1200, sections: 1,
+		});
+		await expect(page.getByTestId("window-frame").locator("..").locator("line[vector-effect]")).toHaveCount(2);
 	});
-	await expect(page.getByTestId("window-frame").locator("..").locator("line[vector-effect]")).toHaveCount(2);
-});
+}
 
 test("TMA-INTERIOR-SHELF-SELECTION: tap overlapping books directly on the plan without an extra support list", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
@@ -3966,4 +4079,79 @@ test("TMA-EDITOR-QUIET-HEADER: saved and draft status is accessible without usin
 	await expectOffCanvas();
 	expect((await header.boundingBox())?.height).toBe(before?.height);
 	expect(await rows(page, "a")).toEqual(baseline);
+});
+
+test("TMA-WALL-COLOR-NATIVE: the wall palette uses a padded native sheet and writes one revision per changed swatch", async ({ page }, info) => {
+	await page.setViewportSize({ width: 320, height: 700 });
+	await page.evaluate(async () => {
+		document.documentElement.style.fontSize = "150%";
+		window.__telegramRuntimeUi.setAppearance("ru", "dark");
+		await window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring");
+	});
+	await createRoom(page, "Палитра стены");
+	await page.getByTestId("wall-segment").first().click();
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	const wallSheet = page.getByTestId("selected-wall-inspector");
+	const trigger = wallSheet.getByRole("button", { name: "Цвет стены", exact: true });
+	const palette = page.getByRole("dialog", { name: "Цвет стены", exact: true });
+	const baseline = await rows(page, "a");
+	await trigger.click();
+	await expect(palette).toBeVisible();
+	expect(await palette.evaluate(element => element instanceof HTMLDialogElement && element.open)).toBe(true);
+	await expect(palette.getByRole("button")).toHaveCount(5);
+	const defaultSwatch = palette.getByRole("button", { name: "По умолчанию", exact: true });
+	const green = palette.getByRole("button", { name: "Зелёный", exact: true });
+	const sand = palette.getByRole("button", { name: "Песочный", exact: true });
+	await expect(defaultSwatch).toHaveAttribute("aria-pressed", "true");
+	await expect(defaultSwatch).toBeFocused();
+	await expect.poll(() => palette.evaluate(element => element.getAnimations().every(animation => animation.playState !== "running"))).toBe(true);
+	await expect(green).toBeInViewport({ ratio: 1 });
+	const [sheet, first, last] = await Promise.all([palette.boundingBox(), defaultSwatch.boundingBox(), green.boundingBox()]);
+	if (!sheet || !first || !last) throw new Error("Expected actual palette geometry");
+	for (const swatch of [first, last]) {
+		expect(swatch.height).toBeGreaterThanOrEqual(44);
+		expect(swatch.width).toBeGreaterThanOrEqual(44);
+		expect(swatch.x - sheet.x).toBeGreaterThanOrEqual(15);
+		expect(sheet.x + sheet.width - swatch.x - swatch.width).toBeGreaterThanOrEqual(15);
+	}
+	expect(await palette.evaluate(element => element.scrollWidth)).toBeLessThanOrEqual(Math.ceil(sheet.width));
+	await page.screenshot({ path: info.outputPath("wall-palette-dark-320.png") });
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(palette).toHaveCount(0);
+	await expect(trigger).toBeFocused();
+	expect(await rows(page, "a")).toEqual(baseline);
+	await trigger.click();
+	await defaultSwatch.click();
+	await expect(palette).toHaveCount(0);
+	expect(await rows(page, "a")).toEqual(baseline);
+
+	await trigger.click();
+	await page.evaluate(() => window.__telegramRuntimeUi.holdPublicationChecksum("sand-paint"));
+	try {
+		await sand.tap();
+		await expect.poll(() => page.evaluate(() => window.__telegramRuntimeUi.checksumIsHeld())).toBe(true);
+		await expect(palette).toHaveAttribute("aria-busy", "true");
+		await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+		await expect(palette).toBeVisible();
+		expect(await rows(page, "a")).toEqual(baseline);
+	} finally {
+		await page.evaluate(() => window.__telegramRuntimeUi.releasePublicationChecksum());
+	}
+	await expect(palette).toHaveCount(0);
+	await expect(trigger).toBeFocused();
+	await saved(page);
+	const painted = await rows(page, "a");
+	expect(painted.revisions).toHaveLength(baseline.revisions.length + 1);
+	await trigger.click();
+	await expect(sand).toHaveAttribute("aria-pressed", "true");
+	await page.evaluate(() => window.__telegramRuntimeUi.failNextScopedProjectWrite());
+	await green.tap();
+	await expect(palette).toHaveCount(0);
+	const recovery = page.getByTestId("persistence-failure-notice");
+	await expect(recovery).toBeVisible();
+	const failed = await rows(page, "a");
+	expect(failed.projects).toEqual(painted.projects);
+	await recovery.getByRole("button", { name: "Повторить сохранение", exact: true }).click();
+	await saved(page);
+	expect((await rows(page, "a")).revisions).toHaveLength(painted.revisions.length + 1);
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it, rstest } from "@rstest/core";
 
 import type { RectangularRoomWebGlScene } from "./rectangular-room-projection";
+import type { SceneStructureSelection } from "./scene-surface-highlights";
 import { THREE_DIMENSIONAL_ROOM_SURFACE_COLORS } from "./three-dimensional-room-palette";
 import {
 	cameraEyeAndTargetFor,
@@ -504,7 +505,7 @@ describe("WebGl2RoomRendererController", () => {
 		expect(background).toEqual([29 / 255, 37 / 255, 44 / 255, 1]);
 	});
 
-	it("blends a fading support glow, keeps glass independent and clears the glow when placement closes", () => {
+	it("draws independent support and structure highlights with the original opaque and glass depth behavior", () => {
 		let depthWritable = true;
 		let blendEquation = 0;
 		let blendFactors: readonly number[] = [];
@@ -514,6 +515,7 @@ describe("WebGl2RoomRendererController", () => {
 		let bufferCount = 0;
 		let buffer = 0;
 		let bufferUploads = 0;
+		let uniformColor: readonly number[] = [];
 		const uploaded = new Map<number, readonly number[]>();
 		const pointers = new Map<number, number>();
 		const attributes = new Set<number>([1]);
@@ -521,6 +523,7 @@ describe("WebGl2RoomRendererController", () => {
 		const deleted = new Set<number>();
 		const readDraw = (count: number) => ({
 			count,
+			color: uniformColor,
 			depthWritable,
 			depthTest: enabled.has(context.DEPTH_TEST),
 			blending: enabled.has(context.BLEND),
@@ -550,7 +553,8 @@ describe("WebGl2RoomRendererController", () => {
 			enableVertexAttribArray: (index: number) => attributes.add(index),
 			disableVertexAttribArray: (index: number) => attributes.delete(index),
 			uniform1i: (_location: unknown, value: number) => { vertexColor = value === 1; },
-			uniform4fv: noop, uniformMatrix4fv: (_location: unknown, next: boolean) => { transpose = next; }, useProgram: noop,
+			uniform4fv: (_location: unknown, next: readonly number[]) => { uniformColor = [...next]; },
+			uniformMatrix4fv: (_location: unknown, next: boolean) => { transpose = next; }, useProgram: noop,
 			bindFramebuffer: noop, bindVertexArray: noop, colorMask: noop, depthFunc: noop, depthRange: noop,
 			clearDepth: noop, viewport: noop, clearColor: noop, clear: noop,
 			depthMask: (next: boolean) => { depthWritable = next; },
@@ -618,6 +622,38 @@ describe("WebGl2RoomRendererController", () => {
 			expect(draws).toHaveLength(1);
 			expect(draws[0]).toMatchObject({ blending: false, depthWritable: true, alphas: undefined });
 			expect(blendPasses).toBe(blendedBefore);
+
+			const nearWallId = "window";
+			const nearWall = { centerXM: 4.1, centerYM: 1.3, centerZM: 1.55, widthM: 0.1, depthM: 3.1, heightM: 2.6,
+				wall: { wallSegmentId: nearWallId, exteriorNormal: { x: 1, z: 0 } } };
+			const door = { openingId: "door", role: "leaf" as const, wallSegmentId: nearWallId, box: {
+				centerXM: 4.1, centerYM: 1, centerZM: 1.2, widthM: 0.1, depthM: 0.8, heightM: 2,
+			} };
+			const shell = { ...afterCancel, walls: [nearWall], openingParts: [...(afterCancel.openingParts ?? []), door] };
+			const frameAt = (selection?: SceneStructureSelection, cutawayMode: WebGl2CutawayMode = "show-all") => {
+				draws.length = 0;
+				renderer?.render(undefined, cutawayMode, { ...shell, structureSelection: selection });
+				return [...draws];
+			};
+			const base = frameAt();
+			const paneSelected = frameAt("opening:pane");
+			expect(paneSelected.slice(0, -1)).toEqual(base.slice(0, -1));
+			expect(paneSelected.at(-1)?.color.slice(0, 3).map(channel => channel * 255)).toEqual([
+				expect.closeTo(96, 4), expect.closeTo(161.22, 4), expect.closeTo(221.36, 4),
+			]);
+			expect(paneSelected.at(-1)).toMatchObject({ depthTest: true, depthWritable: false, blending: true });
+			expect(paneSelected.at(-1)?.color[3]).toBe(base.at(-1)?.color[3]);
+			const doorSelected = frameAt("opening:door");
+			expect(doorSelected.at(-2)?.color.slice(0, 3).map(channel => channel * 255)).toEqual([
+				expect.closeTo(123.26, 4), expect.closeTo(138.6, 4), expect.closeTo(173.22, 4),
+			]);
+			expect(doorSelected.at(-2)).toMatchObject({ depthTest: true, depthWritable: true, blending: false });
+			expect(doorSelected.at(-1)).toEqual(base.at(-1));
+			const wallSelected = frameAt(`wall:${nearWallId}`);
+			expect(wallSelected.slice(-3)).toEqual(base.slice(-3));
+			expect(wallSelected.slice(0, -3)).not.toEqual(base.slice(0, -3));
+			expect(frameAt("opening:pane", "auto")).toEqual(frameAt(undefined, "auto"));
+			expect(frameAt(undefined, "auto")).toHaveLength(1);
 		} finally {
 			renderer?.dispose();
 			rstest.unstubAllGlobals();

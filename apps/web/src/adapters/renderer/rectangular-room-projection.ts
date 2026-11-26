@@ -1,3 +1,4 @@
+import { resolveSupportedPlacements } from "../../domain/interior-support";
 import { isFloorYawMilliDegrees, yawRadiansFor } from "../../domain/parametric-item";
 import {
 	wallBodiesForProjection,
@@ -11,6 +12,7 @@ import {
 } from "../../domain/derived-orthogonal-plan-faces";
 import { resolveProjectV2Plan } from "../../domain/derived-project-v2-plan";
 import type {
+	CatalogPresetReference, FloorFinishId, SurfaceFinish, WallFinishId, WallSide,
 	Project,
 	Vertex,
 	WallOpening,
@@ -20,7 +22,9 @@ import type {
 import type { ProjectV2 } from "../../domain/project-v2";
 import { wallOpeningIntervalMm } from "../../domain/wall-opening";
 import { type OpeningPart, openingTemplateFor } from "./opening-template";
+import { catalogFurnitureKindForPreset, type CatalogFurnitureKind } from "./catalog-models";
 import type { AdditionalGreyboxKind } from "./greybox-shape-templates";
+import type { SceneSurfaceHighlight } from "./scene-surface-highlights";
 
 const MM_PER_SCENE_METRE = 1000;
 const FLOOR_THICKNESS_MM = 40;
@@ -37,13 +41,32 @@ export type FurnitureGreyboxKind =
 	| "bed"
 	| "storage"
 	| "sofa"
+	| "two-seat-sofa"
 	| "bath"
 	| "washer"
 	| "sconce"
 	| "mirror"
-	| AdditionalGreyboxKind;
+	| AdditionalGreyboxKind
+	| CatalogFurnitureKind;
 
-export type GreyboxKindForLabel = (label: string) => FurnitureGreyboxKind | undefined;
+export type GreyboxKindForLabel = (
+	label: string,
+	anchorClass?: "floor" | "wall",
+) => FurnitureGreyboxKind | undefined;
+
+export interface SceneFloorMaterial {
+	readonly roomId: string;
+	readonly finish?: SurfaceFinish<FloorFinishId>;
+	readonly anchorXM?: number;
+	readonly anchorZM?: number;
+}
+
+export interface SceneWallFinishes extends Readonly<Partial<Record<WallSide, SurfaceFinish<WallFinishId>>>> {
+	readonly normalX: number;
+	readonly normalZ: number;
+	readonly anchorXM: number;
+	readonly anchorZM: number;
+}
 
 export interface SceneBox {
 	/** Joined physical wall prism, in scene coordinates; absent for ordinary boxes. */
@@ -59,14 +82,18 @@ export interface SceneBox {
 	readonly depthM: number;
 	/** Positive angles rotate local +Z toward world +X around the vertical axis. */
 	readonly yawRadians?: number;
-	/** Present only on projected floor assets; never becomes renderer state. */
+	/** Present on projected assets. The renderer does not generate IDs. */
 	readonly assetInstanceId?: string;
 	/** Present only for an instance of a pinned local GLB resource. */
 	readonly assetDefinitionId?: string;
 	/** Stable host class for a disposable item projection. */
-	readonly assetAnchor?: "floor" | "wall";
+	readonly assetAnchor?: "floor" | "wall" | "support";
+	readonly supportHostId?: string;
+	/** Keep the shelf plates visible while a support position is being chosen. */
+	readonly showSupportLevels?: true;
 	readonly wall?: {
 		readonly wallSegmentId: string;
+		readonly finishFaces?: SceneWallFinishes;
 		readonly vertexIds?: readonly [string, string];
 		readonly exteriorNormal?: {
 			readonly x: number;
@@ -74,9 +101,7 @@ export interface SceneBox {
 		};
 	};
 	/** Present only on a derived usable Room floor; never mesh-owned identity. */
-	readonly floor?: {
-		readonly roomId: string;
-	};
+	readonly floor?: SceneFloorMaterial;
 	readonly material?: {
 		readonly colorHex: string;
 		readonly furnitureKind: FurnitureGreyboxKind;
@@ -86,9 +111,7 @@ export interface SceneBox {
 
 /** An exact non-rectangular usable floor, derived from the canonical PlanGraph. */
 export interface SceneFloorPolygon {
-	readonly floor: {
-		readonly roomId: string;
-	};
+	readonly floor: SceneFloorMaterial;
 	readonly heightM: number;
 	readonly vertices: readonly {
 		readonly xM: number;
@@ -153,6 +176,8 @@ export interface RectangularRoomWebGlScene {
 	readonly exteriorCutawayEdges?: readonly ExteriorCutawayEdge[];
 	readonly openingParts?: readonly OpeningPart[];
 	readonly items: readonly SceneBox[];
+	readonly supportHighlights?: readonly SceneSurfaceHighlight[] | undefined;
+	readonly highlightFloor?: true | undefined;
 	/** Optional resource metadata; never an engine object or a render instruction. */
 	readonly customGlbModels?: readonly CustomGlbSceneModel[];
 }
@@ -237,9 +262,12 @@ export function projectRectangularRoomForWebGl(
 	const outerDepthM = metres(outerDepthMm);
 	const centerXM = outerWidthM / 2;
 	const centerZM = outerDepthM / 2;
+	const floorFinishById = new Map(project.schemaVersion === 1
+		? project.level.rooms.map(room => [room.roomId, room.floorFinish] as const)
+		: []);
 	const floors = plan.rooms.flatMap((room) =>
 		room.usableFloorTilesMm.map((tile) =>
-			floorForTile(tile, minimumXmm, minimumZmm, room.roomId),
+			floorForTile(tile, minimumXmm, minimumZmm, room.roomId, floorFinishById.get(room.roomId)),
 		),
 	);
 	const floorPolygons = plan.rooms.flatMap((room) =>
@@ -250,6 +278,7 @@ export function projectRectangularRoomForWebGl(
 						minimumXmm,
 						minimumZmm,
 						room.roomId,
+						floorFinishById.get(room.roomId),
 					),
 				]
 			: [],
@@ -309,7 +338,7 @@ export function projectRectangularRoomForWebGl(
 		return undefined;
 	}
 	const walls = wallBoxes.flat();
-	const items = project.assetInstances.flatMap((item) => {
+	const items: SceneBox[] = project.assetInstances.flatMap((item) => {
 		if (item.anchorClass === "wall") {
 			const wall = project.level.wallSegments.find(
 				(candidate) => candidate.wallSegmentId === item.wallSegmentId,
@@ -348,6 +377,21 @@ export function projectRectangularRoomForWebGl(
 			},
 		];
 	});
+	if (project.schemaVersion === 1) {
+		for (const guest of resolveSupportedPlacements(project)) {
+			const { item } = guest;
+			items.push({
+				assetInstanceId: item.assetInstanceId, assetAnchor: "support", supportHostId: item.supportAssetInstanceId,
+				centerXM: metres(guest.xMm - minimumXmm),
+				centerYM: metres(guest.bottomMm + item.heightMm / 2),
+				centerZM: metres(guest.zMm - minimumZmm),
+				widthM: metres(item.widthMm), depthM: metres(item.depthMm), heightM: metres(item.heightMm),
+				yawRadians: yawRadiansFor(guest),
+				material: projectedFurnitureMaterial(item, localGreyboxKind),
+			});
+		}
+	}
+
 	return {
 		cameraBounds: {
 			centerXM,
@@ -391,7 +435,7 @@ function wallItemBoxForProjection(
 		centerZM: metres(footprint.centerZMm - minimumZmm),
 		depthM: metres(item.depthMm),
 		heightM: metres(item.heightMm),
-		material: projectedFurnitureMaterial(item, localGreyboxKind),
+		material: projectedFurnitureMaterial(item, localGreyboxKind, "wall"),
 		widthM: metres(item.widthMm),
 		yawRadians: footprint.yawRadians,
 	};
@@ -481,6 +525,13 @@ function wallBoxesForProjection(input: {
 	) {
 		return [];
 	}
+	const finishFaces = wall.sideFinishes && {
+		...wall.sideFinishes,
+		normalX: (start.zMm - end.zMm) / lengthMm,
+		normalZ: (end.xMm - start.xMm) / lengthMm,
+		anchorXM: metres(minimumXmm),
+		anchorZM: metres(minimumZmm),
+	};
 	const solidBox = (
 		startMm: number,
 		endMm: number,
@@ -519,13 +570,14 @@ function wallBoxesForProjection(input: {
 						: segmentLengthMm,
 			),
 			heightM: metres(heightMm),
-			wall: projection.exteriorNormal
-				? {
-						exteriorNormal: projection.exteriorNormal,
-						vertexIds: [wall.startVertexId, wall.endVertexId],
-						wallSegmentId: wall.wallSegmentId,
-					}
-				: { wallSegmentId: wall.wallSegmentId },
+			wall: {
+				wallSegmentId: wall.wallSegmentId,
+				...(projection.exteriorNormal ? {
+					exteriorNormal: projection.exteriorNormal,
+					vertexIds: [wall.startVertexId, wall.endVertexId] as const,
+				} : {}),
+				...(finishFaces ? { finishFaces } : {}),
+			},
 			widthM: metres(
 				diagonal
 					? segmentLengthMm
@@ -600,6 +652,7 @@ function floorForTile(
 	minimumXmm: number,
 	minimumZmm: number,
 	roomId: string,
+	finish?: SurfaceFinish<FloorFinishId>,
 ): SceneBox {
 	return {
 		centerXM: metres((bounds.minXmm + bounds.maxXmm) / 2 - minimumXmm),
@@ -607,7 +660,7 @@ function floorForTile(
 		centerZM: metres((bounds.minZmm + bounds.maxZmm) / 2 - minimumZmm),
 		depthM: metres(bounds.maxZmm - bounds.minZmm),
 		heightM: metres(FLOOR_THICKNESS_MM),
-		floor: { roomId },
+		floor: { roomId, ...(finish ? { finish, anchorXM: metres(minimumXmm), anchorZM: metres(minimumZmm) } : {}) },
 		widthM: metres(bounds.maxXmm - bounds.minXmm),
 	};
 }
@@ -617,9 +670,10 @@ function floorPolygonFor(
 	minimumXmm: number,
 	minimumZmm: number,
 	roomId: string,
+	finish?: SurfaceFinish<FloorFinishId>,
 ): SceneFloorPolygon {
 	return {
-		floor: { roomId },
+		floor: { roomId, ...(finish ? { finish, anchorXM: metres(minimumXmm), anchorZM: metres(minimumZmm) } : {}) },
 		heightM: metres(FLOOR_THICKNESS_MM),
 		vertices: vertices.map((vertex) => ({
 			xM: metres(vertex.xMm - minimumXmm),
@@ -715,10 +769,14 @@ function yawRadiansForAsset(asset: object): number | undefined {
 }
 
 function projectedFurnitureMaterial(
-	item: { readonly color: string; readonly label: string; readonly assetDefinitionId?: string },
+	item: { readonly color: string; readonly label: string; readonly assetDefinitionId?: string; readonly catalogPreset?: CatalogPresetReference },
 	localGreyboxKind?: GreyboxKindForLabel,
+	anchorClass: "floor" | "wall" = "floor",
 ): NonNullable<SceneBox["material"]> {
-	const localKind = item.assetDefinitionId === undefined ? localGreyboxKind?.(item.label) : undefined;
+	const presetId = item.catalogPreset?.presetId;
+	const builtInKind = presetId === "sofa" ? "two-seat-sofa" : presetId && catalogFurnitureKindForPreset(presetId);
+	const localKind = item.assetDefinitionId === undefined
+		? builtInKind || localGreyboxKind?.(item.label, anchorClass) : undefined;
 	return {
 		colorHex: item.color,
 		furnitureKind: localKind ?? furnitureKindFor(item.label),

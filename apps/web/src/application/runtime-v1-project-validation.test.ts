@@ -10,7 +10,7 @@ import type {
 	WallSchematicAssetInstance,
 } from "../domain/project";
 import { configureRectangularRoom } from "../domain/rectangular-room";
-import { validateRuntimeV1Project } from "./runtime-v1-project-validation";
+import { validateRuntimeV1Project, validateTelegramRuntimeV1Project } from "./runtime-v1-project-validation";
 
 const instant = "2026-11-04T12:00:00.000Z";
 function empty(): Project {
@@ -142,6 +142,28 @@ function diagonal(): Project {
 }
 
 describe("read-only runtime V1 Project validation", () => {
+	it("rejects a slider whose track intersects a separate wall during backup admission", () => {
+		const base = starter();
+		const opening = {
+			kind: "Door", openingId: "slide", wallSegmentId: base.level.wallSegments[0].wallSegmentId,
+			variant: "sliding", slideSide: "left", slideDirection: "toward-end",
+			widthMm: 900, heightMm: 2100, sillMm: 0, offsetMm: 1500,
+		} as const;
+		const withSlide: Project = { ...base, interiorSchemaVersion: 1, level: { ...base.level, openings: [opening] } };
+		expect(validateTelegramRuntimeV1Project(withSlide).kind).toBe("accepted");
+		const blocked: Project = {
+			...withSlide,
+			level: {
+				...withSlide.level,
+				vertices: [...base.level.vertices, { vertexId: "c", xMm: 2200, zMm: 70 }, { vertexId: "d", xMm: 2800, zMm: 70 }],
+				wallSegments: [...base.level.wallSegments, {
+					wallSegmentId: "track-blocker", startVertexId: "c", endVertexId: "d", thicknessMm: 20,
+				}],
+			},
+		};
+		expect(validateTelegramRuntimeV1Project(blocked)).toEqual({ kind: "rejected", reasonCode: "DOOR_CLEARANCE_COLLISION" });
+	});
+
 	it.each([Number.MAX_VALUE, -Number.MAX_VALUE])(
 		"checks every floor projection before any collision regardless of item order for %s",
 		(yawRadians) => {

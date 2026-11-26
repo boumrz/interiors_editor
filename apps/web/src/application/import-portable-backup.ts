@@ -6,7 +6,7 @@ import {
 	type Project,
 	type Revision,
 } from "../domain/project";
-import { isStructurallyValidProjectV1 } from "../domain/project-json-transfer";
+import { isStructurallyValidProjectV1, isStructurallyValidTelegramProject } from "../domain/project-json-transfer";
 import { copyProject } from "../domain/copy-project";
 import type {
 	BinaryChecksumPort,
@@ -491,6 +491,15 @@ function decodeCanonicalProject(bytes: Uint8Array): Project | undefined {
 
 /** Wire wrappers carry values that a raw JSON.parse cannot preserve. */
 function decodeRegisteredProjectMember(member: { readonly format: string; readonly project: unknown }): Project | undefined {
+	if (member.format === "runtime-v1-interior-details" || member.format === "runtime-v1-room-layouts") {
+		try {
+			const project = member.project;
+			if (!isStructurallyValidTelegramProject(project)) return undefined;
+			if (member.format === "runtime-v1-interior-details" ? project.interiorSchemaVersion !== 1
+				: project.interiorSchemaVersion !== undefined || !project.roomLayouts?.length) return undefined;
+			return copyProject(project);
+		} catch { return undefined; }
+	}
 	if (member.format !== "runtime-v1-wire" && member.format !== "runtime-v1-floor-yaw" && member.format !== "runtime-v1-door-hinge" && member.format !== "runtime-v1-legacy") return undefined;
 	try {
 		const project = member.project;

@@ -15,9 +15,11 @@ import {
 import { resolveOrthogonalPlanFaces } from "./derived-orthogonal-plan-faces";
 import { reverseDoorOpeningOrientation } from "./door-opening-orientation";
 import { projectOpeningsRemainValid } from "./door-opening-project";
+import { supportedItemConflict } from "./interior-support";
 import {
 	findRoomForFloorItem,
 	floorItemFootprintIntersectsWall,
+	footprintsOverlap,
 } from "./parametric-item";
 import { isWallSchematicAssetPlacementValid } from "./parametric-wall-item";
 import {
@@ -32,7 +34,10 @@ import {
 	type WallSchematicAssetInstance,
 	type WallSegment,
 } from "./project";
-import { wallOpeningIntervalMm } from "./wall-opening";
+import { orientedWallFootprint, slidingDoorSweepFor } from "./sliding-door-geometry";
+import { reconcileTopologyRoomLayouts } from "./topology-room-layouts";
+import { wallOpeningIntervalMm, wallOpeningRequiredIntervalMm } from "./wall-opening";
+import { sameSurfaceFinish, sameWallSurfaceMetadata, wallSurfaceMetadata } from "./wall-surface-metadata";
 import {
 	otherEndpoint,
 	type UninterruptedWallRun,
@@ -210,6 +215,7 @@ export function isGeneralVertexDeletionEligible(
 		!second ||
 		incident.length !== 2 ||
 		first.thicknessMm !== second.thicknessMm ||
+		!sameWallSurfaceMetadata(first, second, (first.endVertexId === vertexId) !== (second.startVertexId === vertexId)) ||
 		source.level.openings.some(
 			(opening) =>
 				opening.wallSegmentId === first.wallSegmentId ||
@@ -369,11 +375,13 @@ export type WallDeletionConflictPreview =
 export interface RoomMetadataMergeConflict {
 	readonly retainedRoomIds: readonly string[];
 	readonly targetFaceKey: string;
+	readonly floorFinishChoices?: readonly { readonly roomId: string; readonly floorFinish?: NonNullable<Room["floorFinish"]> }[];
 }
 
 export interface DeleteGeneralWallRoomMetadataResolution {
 	readonly retainedRoomId: string;
 	readonly targetFaceKey: string;
+	readonly retainedFloorFinishRoomId?: string;
 }
 
 type GeneralWallProjectAccepted = Extract<
@@ -589,7 +597,7 @@ export function addGeneralWallToProject(
 			"A proven wall-host reconciliation changed while IDs were materialized",
 		);
 	}
-	return acceptedProject(
+	const accepted = acceptedProject(
 		{
 			...source,
 			assetInstances: wallItems.assetInstances,
@@ -600,6 +608,7 @@ export function addGeneralWallToProject(
 		updatedAt,
 		retainedFloorHostRoomIds,
 	);
+	return finalizeTopologyLayouts(source, accepted, materializedPlan.faces, ids);
 }
 
 /**
@@ -695,6 +704,7 @@ export function deleteGeneralWallFromProject(
 	input: DeleteGeneralWallInput,
 	updatedAt: string,
 	preserveDoorHinges = false,
+	ids?: IdSource,
 ): GeneralWallProjectMutationResult {
 	const preview = previewWallDeletionConflict(source, input);
 	if (
@@ -703,12 +713,12 @@ export function deleteGeneralWallFromProject(
 	) {
 		return reject("WALL_DELETION_CONFLICT");
 	}
-	return deleteGeneralWallCandidate(
+	return finalizeDeletionLayouts(source, deleteGeneralWallCandidate(
 		source,
 		input,
 		updatedAt,
 		preserveDoorHinges,
-	);
+	), ids);
 }
 
 function deleteGeneralWallCandidate(
@@ -837,6 +847,7 @@ export function deleteGeneralWallWithOpeningResolution(
 	},
 	updatedAt: string,
 	preserveDoorHinges = false,
+	ids?: IdSource,
 ): GeneralWallProjectMutationResult {
 	const preview = previewOpeningConflictForWallDeletion(source, input);
 	if (
@@ -854,12 +865,12 @@ export function deleteGeneralWallWithOpeningResolution(
 			),
 		},
 	};
-	return deleteGeneralWallCandidate(
+	return finalizeDeletionLayouts(source, deleteGeneralWallCandidate(
 		candidate,
 		input,
 		updatedAt,
 		preserveDoorHinges,
-	);
+	), ids);
 }
 
 /**
@@ -877,6 +888,7 @@ export function deleteGeneralWallWithConsequenceResolution(
 	},
 	updatedAt: string,
 	preserveDoorHinges = false,
+	ids?: IdSource,
 ): GeneralWallProjectMutationResult {
 	const preview = previewWallDeletionConflict(source, input);
 	if (
@@ -901,6 +913,9 @@ export function deleteGeneralWallWithConsequenceResolution(
 		assetInstances: source.assetInstances.filter(
 			(item) => !input.itemIds.includes(item.assetInstanceId),
 		),
+		...(source.supportedItems === undefined ? {} : {
+			supportedItems: source.supportedItems.filter((guest) => !input.itemIds.includes(guest.assetInstanceId)),
+		}),
 		level: {
 			...source.level,
 			openings: source.level.openings.filter(
@@ -914,7 +929,7 @@ export function deleteGeneralWallWithConsequenceResolution(
 		updatedAt,
 		preserveDoorHinges,
 	);
-	return deleted.kind === "rejected" || roomMetadataConflicts.length === 0
+	const resolved = deleted.kind === "rejected" || roomMetadataConflicts.length === 0
 		? deleted
 		: applyDeletedRoomMetadataResolution(
 				source,
@@ -922,6 +937,35 @@ export function deleteGeneralWallWithConsequenceResolution(
 				roomMetadataConflicts,
 				input.roomMetadataResolutions ?? [],
 			);
+	return finalizeDeletionLayouts(source, resolved, ids);
+}
+
+function finalizeDeletionLayouts(source: Project, result: GeneralWallProjectMutationResult, ids?: IdSource): GeneralWallProjectMutationResult {
+	if (result.kind === "rejected" || (!source.roomLayouts?.length && !source.supportedItems?.length)) return result;
+	const original = inspectSourceProject(source);
+	if (original.kind === "rejected") return original;
+	const faces = facesForGraph(graphOf(result.project));
+	if (faces.kind === "rejected") return faces;
+	const planned = planDeletedFaces(original.faces, faces.faces);
+	if (planned.kind === "rejected") return planned;
+	return finalizeTopologyLayouts(source, result, planned.faces, ids);
+}
+
+function finalizeTopologyLayouts(
+	source: Project,
+	result: GeneralWallProjectMutationResult,
+	faces: readonly PlannedTargetFace[],
+	ids?: IdSource,
+): GeneralWallProjectMutationResult {
+	if (result.kind === "rejected" || (!source.roomLayouts?.length && !source.supportedItems?.length)) return result;
+	const targetRooms = roomEntriesByFaceKey(result.project.level.rooms, faces.map(({ face }) => face));
+	if (!targetRooms) return reject("INVALID_RESULTING_PROJECT");
+	const lineage = faces.flatMap(({ face, contributors }) => {
+		const room = targetRooms.get(face.key);
+		return room ? [{ roomId: room.roomId, predecessorRoomIds: contributors.map(({ room }) => room.roomId) }] : [];
+	});
+	const project = reconcileTopologyRoomLayouts(source, result.project, lineage, ids);
+	return project ? { kind: "accepted", project } : reject("ITEM_HOST_UNRESOLVABLE");
 }
 
 /**
@@ -1021,9 +1065,7 @@ export function changeGeneralWallThickness(
 			});
 		}
 	}
-	return !projectOpeningsRemainValid(accepted.project)
-		? reject("OPENING_HOST_UNRESOLVABLE")
-		: accepted;
+	return checkRetainedGeometryHosts(accepted);
 }
 
 /**
@@ -1059,15 +1101,16 @@ export function reverseGeneralWall(
 	}
 	const graph: PlanGraph = {
 		vertices: source.level.vertices,
-		wallSegments: source.level.wallSegments.map((candidate) =>
-			candidate.wallSegmentId === wall.wallSegmentId
-				? {
-						...candidate,
-						endVertexId: candidate.startVertexId,
-						startVertexId: candidate.endVertexId,
-					}
-				: candidate,
-		),
+		wallSegments: source.level.wallSegments.map((candidate) => {
+			if (candidate.wallSegmentId !== wall.wallSegmentId) return candidate;
+			const { sideFinishes: _sideFinishes, ...address } = candidate;
+			return {
+				...address,
+				...wallSurfaceMetadata(candidate, true),
+				endVertexId: candidate.startVertexId,
+				startVertexId: candidate.endVertexId,
+			};
+		}),
 	};
 	const targetFaces = facesForGraph(graph);
 	if (targetFaces.kind === "rejected") {
@@ -1112,10 +1155,7 @@ export function reverseGeneralWall(
 		},
 	};
 	const accepted = acceptedProject(reoriented, graph, rooms.rooms, updatedAt);
-	return accepted.kind === "accepted" &&
-		!projectOpeningsRemainValid(accepted.project)
-		? reject("OPENING_HOST_UNRESOLVABLE")
-		: accepted;
+	return checkRetainedGeometryHosts(accepted);
 }
 
 /**
@@ -1250,10 +1290,7 @@ export function splitGeneralWall(
 		rooms.rooms,
 		updatedAt,
 	);
-	return accepted.kind === "accepted" &&
-		!projectOpeningsRemainValid(accepted.project)
-		? reject("OPENING_HOST_UNRESOLVABLE")
-		: accepted;
+	return checkRetainedGeometryHosts(accepted);
 }
 
 /**
@@ -1282,7 +1319,7 @@ export function previewOpeningConflictForWallSplit(
 	const openingIds = source.level.openings
 		.filter((opening) => {
 			if (opening.wallSegmentId !== wall.wallSegmentId) return false;
-			const interval = wallOpeningIntervalMm(opening);
+			const interval = wallOpeningRequiredIntervalMm(opening);
 			return (
 				interval.endMm > lengths.headLengthMm &&
 				interval.startMm < lengths.tailStartMm
@@ -1622,9 +1659,7 @@ function materializeMovedWallProject(
 			});
 		}
 	}
-	return !projectOpeningsRemainValid(accepted.project)
-		? reject("OPENING_HOST_UNRESOLVABLE")
-		: accepted;
+	return checkRetainedGeometryHosts(accepted);
 }
 
 /**
@@ -1707,9 +1742,7 @@ export function moveGeneralVertex(
 	if (wallItemCollision) {
 		return wallItemCollision;
 	}
-	return !projectOpeningsRemainValid(accepted.project)
-		? reject("OPENING_HOST_UNRESOLVABLE")
-		: accepted;
+	return checkRetainedGeometryHosts(accepted);
 }
 
 /**
@@ -1830,9 +1863,14 @@ export function deleteGeneralVertex(
 	if (!movedProjectItemHostsRemainValid(accepted.project)) {
 		return reject("ITEM_HOST_UNRESOLVABLE");
 	}
-	return !projectOpeningsRemainValid(accepted.project)
-		? reject("OPENING_HOST_UNRESOLVABLE")
-		: accepted;
+	return checkRetainedGeometryHosts(accepted);
+}
+
+function checkRetainedGeometryHosts(result: GeneralWallProjectMutationResult): GeneralWallProjectMutationResult {
+	if (result.kind === "rejected") return result;
+	if (!projectOpeningsRemainValid(result.project)) return reject("OPENING_HOST_UNRESOLVABLE");
+	const conflict = supportedItemConflict(result.project);
+	return conflict === undefined ? result : reject("ITEM_HOST_UNRESOLVABLE", { kind: "floor-item", assetInstanceId: conflict });
 }
 
 function graphOf(project: Project): PlanGraph {
@@ -2225,10 +2263,11 @@ function rehostOpeningsAfterAddedGraph(
 			targetGraph,
 			opening.wallSegmentId,
 		);
+		const required = wallOpeningRequiredIntervalMm(opening);
 		const successor = successorForHostedInterval(
 			successors,
-			opening.offsetMm,
-			opening.widthMm,
+			(required.startMm + required.endMm) / 2,
+			required.endMm - required.startMm,
 		);
 		if (!successor) return { kind: "rejected", opening };
 		rehosted.push({
@@ -2348,7 +2387,7 @@ function rehostOpeningsForSplit(
 			rehosted.push({ opening, target: "unaffected" });
 			continue;
 		}
-		const interval = wallOpeningIntervalMm(opening);
+		const interval = wallOpeningRequiredIntervalMm(opening);
 		if (interval.endMm <= lengths.headLengthMm) {
 			rehosted.push({ opening, target: "head" });
 			continue;
@@ -3148,6 +3187,7 @@ function orphanedItemIdsAfterWallDeletion(
 		.map((item) => item.assetInstanceId);
 	return [
 		...orphanedFloorItemIds,
+		...(source.supportedItems ?? []).filter((guest) => orphanedFloorItemIds.includes(guest.supportAssetInstanceId)).map(({ assetInstanceId }) => assetInstanceId),
 		...source.assetInstances
 			.filter(
 				(item) =>
@@ -3217,12 +3257,19 @@ function roomMetadataConflictsAfterWallDeletion(
 	}
 	return planned.faces
 		.filter((target) => target.contributors.length > 1)
-		.map((target) => ({
-			retainedRoomIds: target.contributors
-				.map((contributor) => contributor.room.roomId)
-				.sort(compareText),
-			targetFaceKey: target.face.key,
-		}))
+		.map((target) => {
+			const firstFinish = target.contributors[0]?.room.floorFinish;
+			const differingFloors = target.contributors.some(({ room }) => !sameSurfaceFinish(firstFinish, room.floorFinish));
+			const choices = target.contributors.map(({ room }) => ({
+				roomId: room.roomId,
+				...(room.floorFinish === undefined ? {} : { floorFinish: room.floorFinish }),
+			})).sort((first, second) => compareText(first.roomId, second.roomId));
+			return {
+				retainedRoomIds: choices.map(({ roomId }) => roomId),
+				targetFaceKey: target.face.key,
+				...(differingFloors ? { floorFinishChoices: choices } : {}),
+			};
+		})
 		.sort((first, second) =>
 			compareText(first.targetFaceKey, second.targetFaceKey),
 		);
@@ -3268,6 +3315,7 @@ function materializeAddedRooms(
 								}
 							: {
 									faceFingerprint: gridFingerprint(planned.face),
+									...(source?.room.floorFinish === undefined ? {} : { floorFinish: source.room.floorFinish }),
 									heightMm:
 										source?.room.heightMm ?? defaultRoomHeight(plannedFaces),
 									roomId,
@@ -3298,7 +3346,10 @@ function matchesRoomMetadataMergeResolutions(
 			(candidate) => candidate.targetFaceKey === resolution.targetFaceKey,
 		);
 		return Boolean(
-			conflict?.retainedRoomIds.includes(resolution.retainedRoomId),
+			conflict?.retainedRoomIds.includes(resolution.retainedRoomId) &&
+			(conflict.floorFinishChoices === undefined
+				? resolution.retainedFloorFinishRoomId === undefined
+				: conflict.floorFinishChoices.some(({ roomId }) => roomId === resolution.retainedFloorFinishRoomId)),
 		);
 	});
 }
@@ -3346,9 +3397,14 @@ function applyDeletedRoomMetadataResolution(
 		) {
 			return reject("INVALID_RESULTING_PROJECT");
 		}
+		const { floorFinish, ...retainedRoom } = selectedRoom;
+		const retainedFloor = resolution.retainedFloorFinishRoomId === undefined
+			? floorFinish
+			: sourceRoomsById.get(resolution.retainedFloorFinishRoomId)?.floorFinish;
 		replacementByRoomId.set(materializedRoom.roomId, {
-			...selectedRoom,
+			...retainedRoom,
 			faceFingerprint: gridFingerprint(face),
+			...(retainedFloor === undefined ? {} : { floorFinish: retainedFloor }),
 		});
 		if (materializedRoom.roomId !== selectedRoom.roomId) {
 			remappedRoomIds.set(materializedRoom.roomId, selectedRoom.roomId);
@@ -3825,9 +3881,6 @@ function firstOpeningIntersectedByWall(
 	openingHostFilter?: ReadonlySet<string>,
 ): WallOpening | undefined {
 	const candidate = doubledWallBounds(input);
-	if (!candidate) {
-		return undefined;
-	}
 	const verticesById = new Map(
 		project.level.vertices.map((vertex) => [vertex.vertexId, vertex]),
 	);
@@ -3843,6 +3896,11 @@ function firstOpeningIntersectedByWall(
 		const wall = wallsById.get(opening.wallSegmentId);
 		const start = wall ? verticesById.get(wall.startVertexId) : undefined;
 		const end = wall ? verticesById.get(wall.endVertexId) : undefined;
+		if (opening.variant === "sliding" && start && end && wall) {
+			const slider = slidingDoorSweepFor(opening, wall, start, end);
+			if (slider && footprintsOverlap(slider.footprint, orientedWallFootprint(input.start, input.end, input.thicknessMm))) return true;
+		}
+		if (!candidate) return false;
 		const openingBounds =
 			wall && start && end
 				? doubledDoorOpeningBounds(opening, wall, start, end)

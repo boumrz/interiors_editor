@@ -3,8 +3,11 @@ import { describe, expect, it } from "@rstest/core";
 import { configureRectangularRoom } from "../domain/rectangular-room";
 import { createInitialProject } from "../domain/initial-project";
 import { addDoorOpeningToProject } from "../domain/door-opening-project";
+import { addGeneralWallToProject } from "../domain/general-wall-project";
+import { createParametricFloorItem } from "../domain/parametric-item";
+import type { Project } from "../domain/project";
 import { canonicalProjectSerializer } from "./create-project";
-import { UpdateRoomPropertiesUseCase } from "./update-room-properties";
+import { UpdateRoomPropertiesUseCase, type UpdateRoomPropertiesStatus } from "./update-room-properties";
 import type {
 	ChecksumPort,
 	ClockPort,
@@ -81,10 +84,84 @@ function candidateWithTallDoor(): PublicationCandidate {
 	};
 }
 
+function withHiddenLayoutPlanter(base: PublicationCandidate, roomId = "room-1"): PublicationCandidate {
+	const source: Project = { ...base.project, roomLayouts: [
+		{ roomId, layoutId: "layout-a", slot: "A", name: "А" },
+		{ roomId, layoutId: "layout-b", slot: "B", name: "Б" },
+	] };
+	const placed = createParametricFloorItem(source, {
+		roomId, roomLayoutId: "layout-b", xMm: 3000, zMm: 1500, color: "#536d62", label: "Тумбочка",
+		widthMm: 500, depthMm: 400, heightMm: 1800, catalogPreset: { presetId: "bedside-table", version: 1 },
+	}, { next: () => "cabinet-b" }, source.updatedAt);
+	if (placed.kind !== "accepted") throw new Error(`Expected valid support: ${placed.reasonCode}`);
+	const project: Project = { ...placed.project, supportedItems: [{
+		assetInstanceId: "planter-b", anchorClass: "support", label: "Кашпо", color: "#536d62",
+		widthMm: 350, depthMm: 350, heightMm: 450, catalogPreset: { presetId: "planter", version: 1 },
+		supportAssetInstanceId: "cabinet-b", supportSurfaceKey: "top", offsetXMm: 0, offsetZMm: 0, relativeYawMilliDeg: 0,
+	}] };
+	return { project, revision: { ...base.revision, serializedProject: canonicalProjectSerializer.serialize(project) } };
+}
+
 const clock: ClockPort = { now: () => "2026-08-15T18:02:00.000Z" };
 const checksum: ChecksumPort = { sha256: async () => "sum:next" };
 
 describe("UpdateRoomPropertiesUseCase", () => {
+	it("checks a hidden layout's raised planter before saving the room ceiling and permits exact contact", async () => {
+		const candidate = withHiddenLayoutPlanter(baseCandidate());
+		const published: PublicationCandidate[] = [];
+		const statuses: UpdateRoomPropertiesStatus["kind"][] = [];
+		const useCase = new UpdateRoomPropertiesUseCase({
+			checksum, clock, ids: { next: () => "revision-2" }, serializer: canonicalProjectSerializer,
+			repository: { publishNextRevision: async (next) => { published.push(next as PublicationCandidate); return { kind: "durable" }; } },
+		});
+		const input = { heightMm: 2249, roomId: "room-1", type: "living-room" };
+		await expect(useCase.execute(candidate, input, ({ kind }) => statuses.push(kind))).resolves.toEqual({
+			kind: "rejected", reasonCode: "ROOM_HEIGHT_SUPPORTED_ITEM_CONFLICT", assetInstanceId: "planter-b",
+		});
+		expect(published).toEqual([]);
+		expect(statuses).toEqual([]);
+		expect(candidate.project.level.rooms[0]?.heightMm).toBe(2600);
+		await expect(useCase.execute(candidate, { ...input, heightMm: 2250 }, () => undefined))
+			.resolves.toMatchObject({ kind: "durable", revisionId: "revision-2" });
+		expect(published[0]?.project.level.rooms[0]?.heightMm).toBe(2250);
+		expect(published[0]?.project.supportedItems).toEqual(candidate.project.supportedItems);
+	});
+
+	it("keeps a ceiling conflict out of storage even through the door conflict confirmation", async () => {
+		const candidate = withHiddenLayoutPlanter(candidateWithTallDoor());
+		const useCase = new UpdateRoomPropertiesUseCase({
+			checksum, clock, ids: { next: () => { throw new Error("No revision should be allocated"); } },
+			serializer: canonicalProjectSerializer,
+			repository: { publishNextRevision: async () => { throw new Error("No revision should be published"); } },
+		});
+		const result = await useCase.resolveOpeningConflict(candidate, {
+			heightMm: 2000, roomId: "room-1", type: "living-room",
+			openingResolutions: [{ kind: "delete", openingId: "door-1" }],
+		}, () => { throw new Error("No publication status should be emitted"); });
+		expect(result).toEqual({ kind: "rejected", reasonCode: "ROOM_HEIGHT_SUPPORTED_ITEM_CONFLICT", assetInstanceId: "planter-b" });
+		expect(candidate.project.level.openings[0]?.openingId).toBe("door-1");
+	});
+
+	it("allows a lower ceiling in the room adjacent to the tall planter", async () => {
+		const base = baseCandidate();
+		const identities = ["bottom-contact", "top-contact", "bottom-tail", "top-tail", "divider", "room-east"][Symbol.iterator]();
+		const split = addGeneralWallToProject(base.project, {
+			start: { xMm: 2050, zMm: 0 }, end: { xMm: 2050, zMm: 3100 }, thicknessMm: 100,
+		}, { next: () => identities.next().value ?? "" }, base.project.updatedAt);
+		if (split.kind !== "accepted") throw new Error(`Expected valid partition: ${split.reasonCode}`);
+		const candidate = withHiddenLayoutPlanter({ ...base, project: split.project }, "room-east");
+		const published: PublicationCandidate[] = [];
+		const useCase = new UpdateRoomPropertiesUseCase({
+			checksum, clock, ids: { next: () => "revision-2" }, serializer: canonicalProjectSerializer,
+			repository: { publishNextRevision: async (next) => { published.push(next as PublicationCandidate); return { kind: "durable" }; } },
+		});
+		await expect(useCase.execute(candidate, { heightMm: 2000, roomId: "room-1", type: "living-room" }, () => undefined))
+			.resolves.toMatchObject({ kind: "durable" });
+		expect(published[0]?.project.level.rooms.map(({ roomId, heightMm }) => [roomId, heightMm])).toEqual([
+			["room-1", 2000], ["room-east", 2600],
+		]);
+	});
+
 	it("keeps a stale Room-height conflict resolution out of durable history", async () => {
 		const expectedBaseRevisionIds: string[] = [];
 		let unconditionalPublishes = 0;

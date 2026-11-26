@@ -10,7 +10,7 @@ import {
 	type BackupFeasibilityPolicyPort,
 } from "../../application/backup-feasibility-policy";
 import type { PortableBackupIngressReason } from "../../application/portable-backup-reasons";
-import { validateRuntimeV1Project } from "../../application/runtime-v1-project-validation";
+import { validateRuntimeV1Project, validateTelegramRuntimeV1Project } from "../../application/runtime-v1-project-validation";
 import { preflightStaticGlbImport } from "../../domain/static-glb-import";
 import { withNativeCancellation } from "./native-cancellation";
 import { PortableBackupReadRenderSmokeCheck } from "./portable-backup-read-render-smoke";
@@ -33,9 +33,12 @@ export interface RegisteredRuntimePortablePorts {
 /** Explicit registered V1 route; PPJ candidates never fall back to legacy readers. */
 export function createRegisteredRuntimePortablePorts(dependencies: {
 	readonly binaryChecksum: BinaryChecksumPort;
+	readonly allowTelegramExtendedSchemas?: boolean;
 }): RegisteredRuntimePortablePorts {
 	const checksum = dependencies.binaryChecksum;
-	const decoder = new RuntimePortableBackupCodec(checksum, validateProject);
+	const extended = dependencies.allowTelegramExtendedSchemas === true;
+	const validate = (project: unknown) => validateProject(project, extended);
+	const decoder = new RuntimePortableBackupCodec(checksum, validate, extended);
 	return {
 		decoder: {
 			async decode(archive, signal) {
@@ -74,12 +77,13 @@ export function createRegisteredRuntimePortablePorts(dependencies: {
 					const encoder = new RuntimePortableBackupCodec(
 						checksum,
 						(project) => {
-							const validation = validateProject(project);
+							const validation = validate(project);
 							if (validation.kind === "rejected") return validation;
 							// Codec snapshots Project and resource bytes before this synchronous
 							// callback and before its first await. No caller callback intervenes.
 							return preflightResources(input.resources);
 						},
+						extended,
 					);
 					return encoder.encode(input, native);
 				});
@@ -110,7 +114,7 @@ export function createRegisteredRuntimePortablePorts(dependencies: {
 				const encoded = encodeRegisteredRuntimeProject(candidate.project);
 				if (
 					encoded.kind === "rejected" ||
-					validateProject(candidate.project).kind === "rejected"
+					validate(candidate.project).kind === "rejected"
 				)
 					return {
 						kind: "rejected",
@@ -126,8 +130,8 @@ export function createRegisteredRuntimePortablePorts(dependencies: {
 	};
 }
 
-function validateProject(project: unknown): Validation {
-	const validation = validateRuntimeV1Project(project);
+function validateProject(project: unknown, allowTelegramExtendedSchemas: boolean): Validation {
+	const validation = (allowTelegramExtendedSchemas ? validateTelegramRuntimeV1Project : validateRuntimeV1Project)(project);
 	if (validation.kind === "rejected") return validation;
 	// New/untrusted Portable Backup creates references; the technical envelope's
 	// 50 MiB cap is not custom admission. Reject before resource inflate or parse.

@@ -142,9 +142,9 @@ host сохраняются, пока позиция меняется в доп�
 
 ## 5. Нейтральный пол и каталог
 
-Пол и стены показываются только нейтральной display-проекцией derived Room.
-Она не имеет `Floor(RoomId)`/`WallSide`, ресурса, picker-а или Durable command:
-никакой пользовательский выбор покрытия не входит в Alpha.
+По умолчанию пол и стены используют нейтральную проекцию derived Room.
+Выбор покрытия TMA открывается в свойствах комнаты или физической стороны.
+Предпросмотр и публикацию задаёт [FR-64](telegram-room-interior-contract.md).
 
 Внутренний greybox catalog не выдаёт изометрический рисунок за 3D preview.
 Каждая карточка показывает предмет на neutral floor через тот же WebGL2
@@ -217,9 +217,8 @@ ActionDock имеет постоянный выбор и до трёх конт�
    segments, no-intent tap, item-body reject and face/host conflict re-entry;
    Door/Window then passes topology/Opening corpus, 2D/3D projection and valid
    Opening validity before a UI claim; retired Walk adjacency is not restored.
-5. Shared neutral floor/wall display projection remains continuous over derived
-   connected tiles and exposes neither a Room finish picker nor a durable
-   surface-assignment command.
+5. Нейтральная проекция остаётся непрерывной по граням. В TMA назначение
+   по FR-64 меняет только выбранный полезный полигон или физическую сторону.
 6. Catalog preview uses a renderer-family scene and cannot place/mutate a
    Project until user confirms a compatible placeholder/asset route.
 7. Reopen regression seeds a saved closed contour with empty Room metadata and

@@ -258,11 +258,12 @@ export function orbitThreeDimensionalViewport(
 
 export function zoomThreeDimensionalViewport(
   viewport: ThreeDimensionalViewport,
-  scale: number
+  scale: number,
+  minimumDistance = MIN_DISTANCE
 ): ThreeDimensionalViewport {
   return {
     ...viewport,
-    distance: Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, viewport.distance / scale))
+    distance: Math.max(minimumDistance, Math.min(MAX_DISTANCE, viewport.distance / scale))
   };
 }
 

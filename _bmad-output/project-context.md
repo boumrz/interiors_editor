@@ -103,10 +103,10 @@ sources:
 - 2D/3D runtime objects disposable projections. WebGL 2 — alpha baseline;
   WebGPU только progressive enhancement. Render-on-demand и adaptive quality
   никогда не меняют canonical geometry, accuracy или history.
-- Derived Room surfaces в Plan и 3D display-only: они не имеют selection state,
-  picker или property panel; tap по Room не создаёт mutation/history. Alpha не
-  содержит metadata/surface-finish flow и не возвращает canvas-based Room
-  selection.
+- Нейтральные derived Room surfaces остаются display-проекцией. В TMA
+  отделка FR-64 открывается из параметров комнаты или стены, подтверждается
+  одной командой и адресует полезный полигон либо физическую сторону.
+  Свободное canvas-выделение Room не входит в это изменение.
 - По принятым REL-05/FR-16 редактор меняет тип и высоту Room; persisted
   `Room.name` сохраняется для совместимости, name-edit UI не возвращается.
   FR-9/REL-08 сохраняют автоматическое точное T/X splitting при topology

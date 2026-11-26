@@ -775,6 +775,54 @@ describe("Telegram runtime composition admission", () => {
 		await runtime.dispose();
 	});
 
+	it("requires a compatible runtime to negotiate under the scope lock before admitting edits", async () => {
+		const value = fixture();
+		const runtime = createTelegramRuntime({
+			...value.dependencies,
+			context: { ...value.dependencies.context, roomInteriorCompatible: true },
+		});
+		const modes: string[] = [];
+		const input = await runtime.readReleaseStartupInput();
+		expect(await runtime.releaseStartup.handshake(input, "host-preflight")).toEqual({ kind: "writable" });
+		expect(value.effects.locks).toBe(0);
+		await expect(runtime.controller.create("Host is not ready")).rejects.toThrow();
+		expect(await runtime.releaseStartup.handshake({
+			...input, onModeChange: (mode) => modes.push(mode),
+		})).toEqual({ kind: "read-only/exportable", recovery: {} });
+		expect(modes).toEqual(["read-only/exportable"]);
+		expect(value.effects.locks).toBe(1);
+		expect(value.effects.opens).toBe(0);
+		await expect(runtime.controller.create("Scope lock denied")).rejects.toThrow();
+		await runtime.dispose();
+	});
+
+	it("keeps existing exact-yaw and hinge flags outside the compatible reader", async () => {
+		const cases: readonly [
+			Partial<TelegramRuntimeDependencies["context"]>, boolean, boolean,
+		][] = [
+			[{}, false, false],
+			[{ databaseMode: "exact" }, true, false],
+			[{ databaseMode: "compatible", doorHingeMode: "compatible" }, false, false],
+			[{ doorHingeMode: "authoring" }, false, true],
+			[{ roomInteriorEnabled: true, roomInteriorCompatible: true }, true, true],
+		];
+		for (const [options, exactFloorYaw, doorHingeAuthoring] of cases) {
+			const value = fixture();
+			const runtime = createTelegramRuntime({
+				...value.dependencies,
+				context: { ...value.dependencies.context, ...options },
+			});
+			try {
+				expect(await runtime.releaseStartup.handshake(await runtime.readReleaseStartupInput())).toEqual({ kind: "writable" });
+				expect({ exactFloorYaw: runtime.exactFloorYaw, doorHingeAuthoring: runtime.doorHingeAuthoring })
+					.toEqual({ exactFloorYaw, doorHingeAuthoring });
+				expect(value.effects.locks + value.effects.opens).toBe(0);
+			} finally {
+				await runtime.dispose();
+			}
+		}
+	});
+
 	it("delivers active shared-core events, stops individual subscriptions and refuses synchronous mutations after close", async () => {
 		const value = fixture();
 		const runtime = createTelegramRuntime(value.dependencies);

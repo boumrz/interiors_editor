@@ -67,9 +67,15 @@ export function guardRegisteredProjectController(
 							signal: options?.signal,
 						}),
 					);
-			} else if (property === "startNewProject") {
+			} else if (property === "roomInteriorEnabled") {
+				wrapped = () => !signal.aborted && active() && target.roomInteriorEnabled();
+			} else if (
+				property === "startNewProject" ||
+				property === "previewInteriorCommand" ||
+				property === "selectRoomLayout"
+			) {
 				wrapped = (...args: unknown[]) => {
-					if (!active()) throw new Error(unavailableMessage);
+					if (signal.aborted || !active()) throw new Error(unavailableMessage);
 					return Reflect.apply(method, target, args);
 				};
 			} else {

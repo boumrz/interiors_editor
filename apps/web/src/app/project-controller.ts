@@ -1,3 +1,7 @@
+import { applyInteriorCommand as draftInteriorCommand, type InteriorCommand, type InteriorMutation, selectedInteriorLayoutId, supportedGuestsFor } from "../domain/interior-project";
+import { findRoomForFloorItem } from "../domain/parametric-item";
+import { publishProjectMutation } from "../application/project-mutation-publication";
+import type { ClockPort, ChecksumPort, IdPort, ProjectSerializerPort } from "../application/ports";
 import {copyProject} from "../domain/copy-project";
 import {freezeBrowserBackupValue} from "../application/browser-backup-representability";
 import type { ProductMetric, ProductMetricSink } from "../application/editor-product-metrics";
@@ -576,6 +580,12 @@ export interface RegisteredProjectTransferExporter {
  * accidentally enable them, while production has one explicit canonical path.
  */
 export interface CanonicalPlanGraphMutationUseCases {
+	readonly roomInterior?: {
+		readonly clock: ClockPort;
+		readonly checksum: ChecksumPort;
+		readonly ids: IdPort;
+		readonly serializer: ProjectSerializerPort;
+	};
 	/** Explicit composition choices, never inferred from an import file. */
 	readonly registeredPortableBackupImporter?: ImportPortableBackupUseCase;
 	readonly registeredPortableBackupExporter?: RegisteredProjectTransferExporter;
@@ -706,6 +716,68 @@ export class ProjectController {
 		private readonly recoveryPortableBackupEncoder?: import("../application/ports").PortableBackupEncoderPort,
 		private readonly probePinnedResourceByteLength?: (hash: string) => Promise<number | undefined>,
 	) {}
+
+	private readonly activeRoomLayouts = new Map<string, string>();
+
+	public roomInteriorEnabled(): boolean {
+		return this.canonicalPlanGraphMutations.roomInterior !== undefined;
+	}
+
+	public selectRoomLayout(roomId: string, layoutId: string): void {
+		if (this.current?.project.schemaVersion === 1 && this.current.project.roomLayouts?.some(
+			layout => layout.roomId === roomId && layout.layoutId === layoutId,
+		)) this.activeRoomLayouts.set(roomId, layoutId);
+	}
+
+	public previewInteriorCommand(command: InteriorCommand): InteriorMutation {
+		const current = this.current;
+		if (!isV1Candidate(current) || !this.roomInteriorEnabled()) {
+			return { kind: "rejected", reasonCode: "INTERIOR_TARGET_INVALID" };
+		}
+		let next = 0;
+		return draftInteriorCommand(current.project, command, { next: () => `preview-interior-${++next}` },
+			current.project.updatedAt, this.activeRoomLayouts);
+	}
+
+	public updateRoomFloorFinish(input: Omit<Extract<InteriorCommand, { kind: "set-floor-finish" }>, "kind">) {
+		return this.applyInteriorCommand({ kind: "set-floor-finish", ...input });
+	}
+
+	public updateWallSideFinish(input: Omit<Extract<InteriorCommand, { kind: "set-wall-finish" }>, "kind">) {
+		return this.applyInteriorCommand({ kind: "set-wall-finish", ...input });
+	}
+
+	public async applyInteriorCommand(command: InteriorCommand) {
+		const current = this.current;
+		const ports = this.canonicalPlanGraphMutations.roomInterior;
+		if (!isV1Candidate(current) || !ports) return { kind: "not-ready" } as const;
+		if (this.publicationInFlight) return { kind: "in-progress" } as const;
+		const draft = draftInteriorCommand(current.project, command, ports.ids, ports.clock.now(), this.activeRoomLayouts);
+		if (draft.kind !== "accepted") return draft;
+		this.publicationInFlight = true;
+		try {
+			const result = await publishProjectMutation(
+				draft.project, { ...ports, repository: this.repository },
+				(status) => this.acceptMutationStatus(status, current,
+					command.kind === "place-decor-on-floor" && !command.sourceAssetInstanceId ? "item_placed" : undefined),
+				current.revision.revisionId,
+			);
+			if (result.kind === "durable" && command.kind === "room-layout" && draft.nextActiveLayoutId) {
+				this.selectRoomLayout(command.command.roomId, draft.nextActiveLayoutId);
+				return { ...result, nextActiveLayoutId: draft.nextActiveLayoutId };
+			}
+			return result;
+		} catch {
+			this.setState({ kind: "recovery-needed", reasonCode: "PERSISTENCE_CORRUPT" });
+			return { kind: "persist-failed", reasonCode: "PERSISTENCE_WRITE_FAILED" } as const;
+		} finally {
+			this.publicationInFlight = false;
+		}
+	}
+
+	private layoutForPlacement(project: Project, roomId: string): string | undefined {
+		return selectedInteriorLayoutId(project, roomId, this.activeRoomLayouts);
+	}
 
 	public snapshot(): ProjectScreenState {
 		return this.state;
@@ -2486,6 +2558,10 @@ export class ProjectController {
 		if (this.publicationInFlight) {
 			return { kind: "in-progress" };
 		}
+		if (isV1Candidate(current) && this.roomInteriorEnabled()) {
+			const layoutId = this.layoutForPlacement(current.project, input.roomId);
+			if (layoutId !== undefined) input = { ...input, roomLayoutId: layoutId };
+		}
 		this.publicationInFlight = true;
 		try {
 			return isV1Candidate(current)
@@ -2714,6 +2790,10 @@ export class ProjectController {
 		if (this.publicationInFlight) {
 			return { kind: "in-progress" };
 		}
+		if (this.roomInteriorEnabled() && !("anchorClass" in input)) {
+			const layoutId = this.layoutForPlacement(current.project, input.roomId);
+			if (layoutId !== undefined) input = { ...input, roomLayoutId: layoutId };
+		}
 		this.publicationInFlight = true;
 		try {
 			return await useCase.execute(
@@ -2756,6 +2836,13 @@ export class ProjectController {
 		}
 		if (this.publicationInFlight) {
 			return { kind: "in-progress" };
+		}
+		if (isV1Candidate(current) && this.roomInteriorEnabled()) {
+			const floor = current.project.assetInstances.find(item => item.assetInstanceId === input.assetInstanceId);
+			if (floor?.anchorClass === "floor" && current.project.roomLayouts?.length) {
+				const roomId = findRoomForFloorItem(current.project, { ...floor, ...input });
+				if (roomId) input = { ...input, roomLayoutId: this.layoutForPlacement(current.project, roomId) };
+			}
 		}
 		this.publicationInFlight = true;
 		try {
@@ -2877,6 +2964,9 @@ export class ProjectController {
 		}
 		if (this.publicationInFlight) {
 			return { kind: "in-progress" };
+		}
+		if (isV1Candidate(current) && supportedGuestsFor(current.project, input.assetInstanceId).length > 0) {
+			return { kind: "rejected", reasonCode: "ITEM_LOCKED" };
 		}
 		this.publicationInFlight = true;
 		try {

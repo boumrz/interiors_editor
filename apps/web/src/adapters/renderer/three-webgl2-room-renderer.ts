@@ -3,13 +3,17 @@ import {
 	AmbientLight,
 	Box3,
 	BoxGeometry,
+	BufferAttribute,
+	BufferGeometry,
 	Color,
 	DoubleSide,
 	DirectionalLight,
 	HemisphereLight,
 	ExtrudeGeometry,
+	Float32BufferAttribute,
 	Group,
 	Mesh,
+	MeshBasicMaterial,
 	MeshStandardMaterial,
 	PCFSoftShadowMap,
 	PerspectiveCamera,
@@ -23,8 +27,13 @@ import {
 	type Material,
 	type Object3D,
 } from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 
+import { applyFloorInteriorFinish, applyWallInteriorFinish } from "./interior-finishes";
+import type { CatalogProfile } from "./catalog-model-parts";
+import { catalogProfileGeometry } from "./catalog-profile-geometry";
 import { GLASS_OPACITY, OPENING_FINISH } from "./opening-template";
+import { FLOOR_DESTINATION_TINT, supportGlowGeometry, type SceneSurfaceHighlight } from "./scene-surface-highlights";
 import type {
 	RectangularRoomWebGlScene,
 	SceneBox,
@@ -39,6 +48,8 @@ import {
 import {
 	cameraEyeAndTargetFor,
 	furnitureGreyboxPartsFor,
+	SOFA_FOOT_COLOR,
+	type FurnitureGreyboxPart,
 	wallCutawayForCamera,
 	type NormalizedCanvasPoint,
 	type WebGl2Camera,
@@ -47,6 +58,7 @@ import {
 	type WebGl2RuntimeModel,
 	type WebGl2RuntimeModels,
 	type WebGl2SceneRenderer,
+	type WebGl2SceneHit,
 	type WebGl2WallCutaway,
 } from "./webgl2-room-renderer-shared";
 
@@ -137,19 +149,31 @@ export function createThreeWebGl2RoomSceneRenderer(
 	const camera = new PerspectiveCamera(60, 1, 0.1, 100);
 	const roomGroup = new Group();
 	const itemGroup = new Group();
-	threeScene.add(roomGroup, itemGroup);
+	const supportGlow = createThreeSupportGlow();
+	threeScene.add(roomGroup, itemGroup, supportGlow.mesh);
 	const wallGroups = new Map<string, Group[]>();
 	const itemNodes = new Map<string, ItemNode>();
 	let activeScene = scene;
 	let activeRuntimeModels = runtimeModels;
 	let cutaway: WebGl2WallCutaway | undefined;
 	let appliedTheme: RoomRenderTheme | undefined;
+	let appliedHighlights: readonly SceneSurfaceHighlight[] | undefined;
+	let highlightedFloor: true | undefined;
 
 	const floorMeshes = [
-		...scene.floors.map((floor) => boxMesh(floor, THREE_DIMENSIONAL_ROOM_PALETTE.floor, "floor")),
-		...(scene.floorPolygons ?? []).map(polygonFloorMesh),
+		...scene.floors.map((floor) => {
+			const mesh = boxMesh({ ...floor, centerYM: floor.centerYM - floor.heightM / 2 }, THREE_DIMENSIONAL_ROOM_PALETTE.floor, "floor");
+			applyFloorInteriorFinish(mesh.material, floor.floor, qualityTier === "standard");
+			return mesh;
+		}),
+		...(scene.floorPolygons ?? []).map((floor) => {
+			const mesh = polygonFloorMesh(floor);
+			applyFloorInteriorFinish(mesh.material, floor.floor, qualityTier === "standard");
+			return mesh;
+		}),
 	];
 	for (const floor of floorMeshes) roomGroup.add(floor);
+	const usableFloorMeshes = floorMeshes.filter((_, index) => index >= scene.floors.length || scene.floors[index]?.floor?.roomId);
 	const addWallPart = (part: Mesh, wallSegmentId?: string) => {
 		const wallGroup = new Group();
 		wallGroup.add(part);
@@ -163,6 +187,7 @@ export function createThreeWebGl2RoomSceneRenderer(
 	};
 	const wallMeshes = scene.walls.map((wall) => {
 		const mesh = createThreeWallMesh(wall);
+		applyWallInteriorFinish(mesh.material, wall.wall?.finishFaces, qualityTier === "standard");
 		addWallPart(mesh, wall.wall?.wallSegmentId);
 		return mesh;
 	});
@@ -179,7 +204,7 @@ export function createThreeWebGl2RoomSceneRenderer(
 	syncItems(scene.items, itemGroup, itemNodes, activeRuntimeModels);
 
 	return {
-		pickItem: (point) => pickThreeSceneItem(camera, point, [
+		pickHit: (point) => pickThreeSceneHit(camera, point, [
 			{ root: roomGroup },
 			...Array.from(itemNodes.values(), (node) => ({
 				root: node.group,
@@ -189,6 +214,7 @@ export function createThreeWebGl2RoomSceneRenderer(
 		dispose: () => {
 			for (const node of itemNodes.values()) disposeItemNode(node);
 			itemNodes.clear();
+			supportGlow.dispose();
 			disposeRoomGroup(roomGroup);
 			renderer.dispose();
 		},
@@ -199,6 +225,17 @@ export function createThreeWebGl2RoomSceneRenderer(
 			theme,
 		) => {
 			activeScene = sceneOverride;
+			if (appliedHighlights !== activeScene.supportHighlights) {
+				appliedHighlights = activeScene.supportHighlights;
+				supportGlow.update(supportGlowGeometry(appliedHighlights));
+			}
+			if (highlightedFloor !== activeScene.highlightFloor) {
+				highlightedFloor = activeScene.highlightFloor;
+				for (const floor of usableFloorMeshes) {
+					floor.material.emissive.set(highlightedFloor ? FLOOR_DESTINATION_TINT : 0);
+					floor.material.emissiveIntensity = 0.16;
+				}
+			}
 			if (theme !== appliedTheme) {
 				appliedTheme = theme;
 				background.set(theme?.background ?? THREE_DIMENSIONAL_ROOM_PALETTE.background);
@@ -247,12 +284,52 @@ export function createThreeWebGl2RoomSceneRenderer(
 	};
 }
 
+/** The support glow is disposable scene geometry and never participates in picking. */
+export function createThreeSupportGlow() {
+	const material = new MeshBasicMaterial({
+		vertexColors: true, transparent: true, depthTest: true, depthWrite: false, toneMapped: false,
+	});
+	const mesh = new Mesh(new BufferGeometry(), material);
+	mesh.visible = false;
+	return {
+		mesh,
+		update(glow: { readonly positions: Float32Array; readonly colors: Float32Array } | undefined) {
+			const geometry = new BufferGeometry();
+			if (glow) {
+				const colors = glow.colors.slice();
+				const rgb = new Color();
+				for (let index = 0; index < colors.length; index += 4) {
+					rgb.fromArray(colors, index).convertSRGBToLinear().toArray(colors, index);
+				}
+				geometry.setAttribute("position", new BufferAttribute(glow.positions, 3));
+				geometry.setAttribute("color", new BufferAttribute(colors, 4));
+			}
+			mesh.geometry.dispose();
+			mesh.geometry = geometry;
+			mesh.visible = glow !== undefined;
+		},
+		dispose() {
+			mesh.removeFromParent();
+			mesh.geometry.dispose();
+			material.dispose();
+		},
+	};
+}
+
 /** Pick rendered meshes, including nested GLB transforms and opaque room geometry. */
 export function pickThreeSceneItem(
 	camera: PerspectiveCamera,
 	point: NormalizedCanvasPoint,
 	surfaces: readonly { readonly root: Object3D; readonly assetInstanceId?: string | undefined }[],
 ): string | undefined {
+	return pickThreeSceneHit(camera, point, surfaces)?.assetInstanceId;
+}
+
+function pickThreeSceneHit(
+	camera: PerspectiveCamera,
+	point: NormalizedCanvasPoint,
+	surfaces: readonly { readonly root: Object3D; readonly assetInstanceId?: string | undefined }[],
+): WebGl2SceneHit | undefined {
 	const ownerByMesh = new Map<Object3D, string | undefined>();
 	for (const { root, assetInstanceId } of surfaces) {
 		root.traverseVisible((node) => {
@@ -267,7 +344,7 @@ export function pickThreeSceneItem(
 	raycaster.near = camera.near / forwardComponent;
 	raycaster.far = camera.far / forwardComponent;
 	const closest = raycaster.intersectObjects([...ownerByMesh.keys()], false)[0];
-	return closest ? ownerByMesh.get(closest.object) : undefined;
+	return closest ? { assetInstanceId: ownerByMesh.get(closest.object), distanceM: closest.distance } : undefined;
 }
 
 const initialWebGl2Camera: WebGl2Camera = {
@@ -370,10 +447,17 @@ export function createThreeGreyboxItemGroup(item: SceneBox): Group {
 		yawRadians: 0,
 	};
 	for (const part of furnitureGreyboxPartsFor(localItem, true)) {
-		const mesh = boxMesh(
-			part.box,
-			furnitureToneColor(item.material?.colorHex, part.tone),
+		const color = part.fixedColor ?? furnitureToneColor(item.material?.colorHex, part.tone);
+		const mesh = part.profile ? profileMesh(part.box, part.profile, color) : boxMesh(
+			part.box, color, "item", part.edgeRadiusM,
+			item.material?.furnitureKind.startsWith("catalog:") ? 1 : 2,
 		);
+		if (part.opacity !== undefined) {
+			mesh.material.transparent = true;
+			mesh.material.opacity = part.opacity;
+			mesh.material.depthWrite = false;
+			mesh.castShadow = false;
+		}
 		mesh.name = `greybox:${part.role}`;
 		group.add(mesh);
 	}
@@ -381,16 +465,33 @@ export function createThreeGreyboxItemGroup(item: SceneBox): Group {
 	return group;
 }
 
+function profileMesh(box: SceneBox, profile: CatalogProfile, color: string) {
+	const { positions, indices } = catalogProfileGeometry(profile);
+	const geometry = new BufferGeometry();
+	geometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
+	geometry.setIndex(indices);
+	geometry.computeVertexNormals();
+	const mesh = new Mesh(geometry, new MeshStandardMaterial({ color, roughness: 0.76 }));
+	mesh.position.set(box.centerXM, box.centerYM, box.centerZM);
+	mesh.scale.set(box.widthM, box.heightM, box.depthM);
+	Object.assign(mesh, threeDimensionalShadowFlagsFor("item"));
+	return mesh;
+}
+
 function furnitureToneColor(
 	colorHex: string | undefined,
-	tone: "base" | "highlight" | "shadow",
+	tone: FurnitureGreyboxPart["tone"],
 ): string {
+	if (tone === "foot") return SOFA_FOOT_COLOR;
 	const color = new Color(colorHex ?? "#b8b4aa");
 	if (tone === "highlight") {
 		color.lerp(new Color("#ffffff"), 0.14);
 	}
 	if (tone === "shadow") {
 		color.lerp(new Color("#1f2933"), 0.12);
+	}
+	if (tone === "trim") {
+		color.lerp(new Color("#24202a"), 0.43);
 	}
 	return `#${color.getHexString()}`;
 }
@@ -433,7 +534,6 @@ function polygonFloorMesh(floor: SceneFloorPolygon) {
 			side: DoubleSide,
 		}),
 	);
-	mesh.position.y = floor.heightM / 2;
 	const shadowFlags = threeDimensionalShadowFlagsFor("floor");
 	mesh.castShadow = shadowFlags.castShadow;
 	mesh.receiveShadow = shadowFlags.receiveShadow;
@@ -448,6 +548,8 @@ function boxMesh(
 	box: SceneBox,
 	color: string,
 	shadowRole: ThreeDimensionalShadowRole = "item",
+	edgeRadiusM = 0,
+	roundingSegments = 2,
 ) {
 	const geometry = box.wallFootprintM
 		? new ExtrudeGeometry(
@@ -456,7 +558,9 @@ function boxMesh(
 				),
 				{ bevelEnabled: false, depth: box.heightM },
 			)
-		: new BoxGeometry(box.widthM, box.heightM, box.depthM);
+		: edgeRadiusM > 0
+			? new RoundedBoxGeometry(box.widthM, box.heightM, box.depthM, roundingSegments, edgeRadiusM)
+			: new BoxGeometry(box.widthM, box.heightM, box.depthM);
 	if (box.wallFootprintM) geometry.rotateX(Math.PI / 2);
 	const mesh = new Mesh(
 		geometry,

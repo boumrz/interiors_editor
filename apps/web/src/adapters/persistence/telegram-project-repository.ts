@@ -1,3 +1,4 @@
+import { projectUsesInteriorDetails } from "../../domain/interior-project-format";
 import { ScopedProjectRepository } from "./scoped-project-repository";
 import type {
 	ScopedProjectProtocol,
@@ -9,12 +10,19 @@ import { decideTelegramWriterLease } from "./telegram-writer-lease";
 const telegramProtocol: ScopedProjectProtocol = {
 	async assertNewRevisionIdentity(transaction, candidate) {
 		const version = transaction.db.version;
-		if (version !== 3 && version !== 4 && candidate.project.assetInstances.some(
+		const { project } = candidate;
+		if (![2, 3, 4, 5, 6].includes(version)) throw new Error("Unknown Telegram storage version");
+		if (project.schemaVersion !== 1) throw new Error("Unsupported Telegram Project schema");
+		if (projectUsesInteriorDetails(project) && version !== 6)
+			throw new Error("Room interior requires Telegram storage version 6");
+		if (project.roomLayouts !== undefined && version < 5)
+			throw new Error("Room layouts require current Telegram storage");
+		if (version < 3 && project.assetInstances.some(
 			(item) => item.anchorClass === "floor" && "yawMilliDeg" in item && item.yawMilliDeg !== undefined,
 		)) {
 			throw new Error("Exact floor yaw requires current Telegram storage");
 		}
-		if (version !== 4 && candidate.project.level.openings.some((opening) => opening.hingeEnd === "end")) {
+		if (version < 4 && project.level.openings.some((opening) => opening.hingeEnd === "end")) {
 			throw new Error("Door hinges require current Telegram storage");
 		}
 	},
@@ -37,7 +45,9 @@ export class TelegramProjectRepository extends ScopedProjectRepository {
 	public constructor(
 		storage: TelegramScopeStore,
 		dependencies: ScopedProjectRepositoryDependencies,
+		allowTelegramExtendedSchemas = false,
 	) {
-		super(storage, dependencies, telegramProtocol);
+		super(storage, dependencies, allowTelegramExtendedSchemas
+			? { ...telegramProtocol, allowTelegramExtendedSchemas } : telegramProtocol);
 	}
 }

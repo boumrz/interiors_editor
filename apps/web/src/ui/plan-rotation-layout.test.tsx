@@ -1,10 +1,28 @@
 import { describe, expect, it } from "@rstest/core";
-import { observePlanChrome, placePlanRotationEditor } from "./plan-rotation-layout";
+import { observePlanChrome, placePlanRotationEditor, planRotationChromeReady } from "./plan-rotation-layout";
 
 const panel = { width: 250, height: 62 };
 const space = { width: 390, top: 105, bottom: 555, ready: true };
 
 describe("selected item rotation toolbar clearance", () => {
+	it("distinguishes a pending inspector from a view that does not need one", () => {
+		const input = { inspectorMeasured: false, editingAngle: false, compactInspector: false };
+		expect(planRotationChromeReady({ ...input, inspectorState: undefined })).toBe(true);
+		expect(planRotationChromeReady({ ...input, inspectorState: "pending" })).toBe(false);
+		expect(planRotationChromeReady({
+			inspectorState: "pending", inspectorMeasured: true, editingAngle: true, compactInspector: true,
+		})).toBe(false);
+	});
+
+	it("requires measurement for ordinary or expanded cards and allows the compact card to yield during a draft", () => {
+		const input = { inspectorState: "present" as const, inspectorMeasured: false, editingAngle: false, compactInspector: false };
+		expect(planRotationChromeReady({ ...input, inspectorMeasured: true })).toBe(true);
+		expect(planRotationChromeReady(input)).toBe(false);
+		expect(planRotationChromeReady({ ...input, compactInspector: true })).toBe(false);
+		expect(planRotationChromeReady({ ...input, editingAngle: true })).toBe(false);
+		expect(planRotationChromeReady({ ...input, editingAngle: true, compactInspector: true })).toBe(true);
+	});
+
 	it("moves above the ring when the compact inspector occupies its lower edge", () => {
 		const placed = placePlanRotationEditor({
 			center: { x: 136, y: 483 }, ringRadius: 45, panel, space,

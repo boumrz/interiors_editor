@@ -1,7 +1,9 @@
 import { serializeProjectCanonically } from "./canonical-serialization";
+import { floorCatalogPresetIds, floorFinishIds, projectUsesInteriorDetails, supportedPresetIds, wallFinishIds } from "./interior-project-format";
 import { alphaParametricItemColorVariantFor } from "./item-color-variant";
 import { parsePpjA1JsonBytes } from "./ppj-a1-lossless-json";
 import type { Project, RoomType, RotationStep } from "./project";
+import { validateRoomLayouts } from "./room-layouts";
 import { hasOnlyUnicodeScalarValues } from "./unicode-scalar-values";
 
 const LOCAL_PROJECT_JSON_FORMAT = "interiors-editor-project-json" as const;
@@ -133,6 +135,15 @@ function isLocalProjectJsonEnvelope(
 
 /** Validates the persisted v1 document before it becomes a durable projection. */
 export function isStructurallyValidProjectV1(value: unknown): value is Project {
+	return isProjectShape(value, false);
+}
+
+/** Telegram-owned expanded shape. The browser JSON ingress uses the legacy guard. */
+export function isStructurallyValidTelegramProject(value: unknown): value is Project {
+	return isProjectShape(value, true);
+}
+
+function isProjectShape(value: unknown, telegram: boolean): value is Project {
 	if (
 		!hasExactKeys(value, [
 			"schemaVersion",
@@ -144,22 +155,30 @@ export function isStructurallyValidProjectV1(value: unknown): value is Project {
 			"level",
 			"assetInstances",
 			"assetDefinitionRefs",
-		])
+		], telegram ? ["interiorSchemaVersion", "roomLayouts", "supportedItems"] : [])
 	) {
 		return false;
 	}
 	const project = value as Record<string, unknown>;
+	const interiorMarker = Object.hasOwn(project, "interiorSchemaVersion");
+	const layouts = Object.hasOwn(project, "roomLayouts");
+	const supports = Object.hasOwn(project, "supportedItems");
 	if (
 		project.schemaVersion !== 1 ||
+		(interiorMarker && project.interiorSchemaVersion !== 1) ||
+		(layouts && (!Array.isArray(project.roomLayouts) || project.roomLayouts.length < 1 || project.roomLayouts.length > MAXIMUM_ROOMS * 2 ||
+			!project.roomLayouts.every(isRoomLayout))) ||
+		(supports && (!Array.isArray(project.supportedItems) || project.supportedItems.length < 1 ||
+			project.supportedItems.length > MAXIMUM_ASSETS || !project.supportedItems.every(isSupportedItem))) ||
 		project.lifecycle !== "active" ||
 		!isNonEmptyString(project.projectId) ||
 		!isProjectName(project.name) ||
 		!isIsoInstant(project.createdAt) ||
 		!isIsoInstant(project.updatedAt) ||
 		!isAssetDefinitionRefs(project.assetDefinitionRefs) ||
-		!isLevel(project.level) ||
+		!isLevel(project.level, telegram) ||
 		!Array.isArray(project.assetInstances) ||
-		project.assetInstances.length > MAXIMUM_ASSETS
+		project.assetInstances.length + (Array.isArray(project.supportedItems) ? project.supportedItems.length : 0) > MAXIMUM_ASSETS
 	) {
 		return false;
 	}
@@ -171,8 +190,8 @@ export function isStructurallyValidProjectV1(value: unknown): value is Project {
 	const assetDefinitionIds = new Set(
 		project.assetDefinitionRefs.map((asset) => asset.assetDefinitionId),
 	);
-	return project.assetInstances.every((asset) => {
-		if (!isSchematicAssetItem(asset) || assetIds.has(asset.assetInstanceId)) {
+	if (!project.assetInstances.every((asset) => {
+		if (!isSchematicAssetItem(asset, layouts, telegram) || assetIds.has(asset.assetInstanceId)) {
 			return false;
 		}
 		assetIds.add(asset.assetInstanceId);
@@ -185,10 +204,20 @@ export function isStructurallyValidProjectV1(value: unknown): value is Project {
 			(asset.colorVariantId === undefined ||
 				asset.assetDefinitionId === undefined)
 		);
-	});
+	})) return false;
+	if (Array.isArray(project.supportedItems)) {
+		for (const item of project.supportedItems) {
+			if (assetIds.has(item.assetInstanceId)) return false;
+			assetIds.add(item.assetInstanceId);
+		}
+	}
+	// The structural checks above cover every key. Membership is shared with the domain.
+	const typed = value as unknown as Project;
+	if (layouts && validateRoomLayouts(typed).kind !== "accepted") return false;
+	return !interiorMarker || projectUsesInteriorDetails(typed);
 }
 
-function isLevel(value: unknown): value is Project["level"] {
+function isLevel(value: unknown, interior: boolean): value is Project["level"] {
 	if (
 		!hasExactKeys(value, [
 			"levelId",
@@ -232,7 +261,7 @@ function isLevel(value: unknown): value is Project["level"] {
 	const wallIds = new Set<string>();
 	for (const wall of level.wallSegments) {
 		if (
-			!isWallSegment(wall) ||
+			!isWallSegment(wall, interior) ||
 			wallIds.has(wall.wallSegmentId) ||
 			!vertexIds.has(wall.startVertexId) ||
 			!vertexIds.has(wall.endVertexId) ||
@@ -245,7 +274,7 @@ function isLevel(value: unknown): value is Project["level"] {
 
 	const roomIds = new Set<string>();
 	for (const room of level.rooms) {
-		if (!isRoom(room) || roomIds.has(room.roomId)) {
+		if (!isRoom(room, interior) || roomIds.has(room.roomId)) {
 			return false;
 		}
 		roomIds.add(room.roomId);
@@ -253,7 +282,7 @@ function isLevel(value: unknown): value is Project["level"] {
 
 	const openingIds = new Set<string>();
 	return level.openings.every((opening) => {
-		if (!isOpening(opening) || openingIds.has(opening.openingId)) {
+		if (!isOpening(opening, interior) || openingIds.has(opening.openingId)) {
 			return false;
 		}
 		openingIds.add(opening.openingId);
@@ -277,6 +306,7 @@ function isVertex(
 
 function isWallSegment(
 	value: unknown,
+	interior: boolean,
 ): value is Project["level"]["wallSegments"][number] {
 	if (
 		!hasExactKeys(value, [
@@ -284,7 +314,7 @@ function isWallSegment(
 			"startVertexId",
 			"endVertexId",
 			"thicknessMm",
-		])
+		], interior ? ["profile", "sideFinishes"] : [])
 	) {
 		return false;
 	}
@@ -293,16 +323,18 @@ function isWallSegment(
 		isNonEmptyString(wall.wallSegmentId) &&
 		isNonEmptyString(wall.startVertexId) &&
 		isNonEmptyString(wall.endVertexId) &&
-		isSafeIntegerInRange(wall.thicknessMm, 20, 1_000)
+		isSafeIntegerInRange(wall.thicknessMm, 20, 1_000) &&
+		(!Object.hasOwn(wall, "profile") || wall.profile === "partition" || wall.profile === "bearing") &&
+		(!Object.hasOwn(wall, "sideFinishes") || isSideFinishes(wall.sideFinishes))
 	);
 }
 
-function isRoom(value: unknown): value is Project["level"]["rooms"][number] {
+function isRoom(value: unknown, interior: boolean): value is Project["level"]["rooms"][number] {
 	if (
 		!hasExactKeys(
 			value,
 			["roomId", "faceFingerprint", "heightMm"],
-			["name", "type"],
+			interior ? ["name", "type", "floorFinish"] : ["name", "type"],
 		)
 	) {
 		return false;
@@ -313,12 +345,14 @@ function isRoom(value: unknown): value is Project["level"]["rooms"][number] {
 		isNonEmptyString(room.faceFingerprint) &&
 		isSafeIntegerInRange(room.heightMm, 500, 10_000) &&
 		(room.name === undefined || isNonEmptyString(room.name)) &&
-		(room.type === undefined || ROOM_TYPES.includes(room.type as RoomType))
+		(room.type === undefined || ROOM_TYPES.includes(room.type as RoomType)) &&
+		(!Object.hasOwn(room, "floorFinish") || isVersionedPreset(room.floorFinish, floorFinishIds))
 	);
 }
 
 function isOpening(
 	value: unknown,
+	interior: boolean,
 ): value is Project["level"]["openings"][number] {
 	if (
 		!hasExactKeys(
@@ -332,12 +366,13 @@ function isOpening(
 				"sillMm",
 				"kind",
 			],
-			["swingSide", "hingeEnd"],
+			interior ? ["swingSide", "hingeEnd", "variant", "slideSide", "slideDirection", "sections"] : ["swingSide", "hingeEnd"],
 		)
 	) {
 		return false;
 	}
 	const opening = value as Record<string, unknown>;
+	const interiorFields = isOpeningVariant(opening);
 	return (
 		isNonEmptyString(opening.openingId) &&
 		isNonEmptyString(opening.wallSegmentId) &&
@@ -347,22 +382,40 @@ function isOpening(
 		isSafeIntegerInRange(opening.sillMm, 0, 10_000) &&
 		opening.kind !== undefined &&
 		(opening.kind === "Door" || opening.kind === "Window") &&
-		(opening.kind === "Window"
+		interiorFields && (opening.variant === "sliding" || (opening.kind === "Window"
 			? opening.swingSide === undefined && !Object.hasOwn(opening, "hingeEnd")
 			: (opening.swingSide === undefined ||
 				opening.swingSide === "left" ||
 				opening.swingSide === "right") &&
-				(!Object.hasOwn(opening, "hingeEnd") || opening.hingeEnd === "end"))
+				(!Object.hasOwn(opening, "hingeEnd") || opening.hingeEnd === "end")))
 	);
+}
+
+function isOpeningVariant(opening: Record<string, unknown>): boolean {
+	const hasVariant = Object.hasOwn(opening, "variant");
+	const hasSlide = Object.hasOwn(opening, "slideSide") || Object.hasOwn(opening, "slideDirection");
+	if (opening.kind === "Window") {
+		return !hasVariant && !hasSlide &&
+			(!Object.hasOwn(opening, "sections") || opening.sections === 1 || opening.sections === 2);
+	}
+	if (Object.hasOwn(opening, "sections")) return false;
+	if (opening.variant === "sliding") {
+		return !Object.hasOwn(opening, "swingSide") && !Object.hasOwn(opening, "hingeEnd") &&
+			(opening.slideSide === "left" || opening.slideSide === "right") &&
+			(opening.slideDirection === "toward-start" || opening.slideDirection === "toward-end");
+	}
+	return !hasSlide && (!hasVariant || opening.variant === "glazed-swing");
 }
 
 function isSchematicAssetItem(
 	value: unknown,
+	layouts: boolean,
+	interior: boolean,
 ): value is Project["assetInstances"][number] {
 	if (!isRecordWithAnchorClass(value)) return false;
 	switch (value.anchorClass) {
 		case "floor":
-			return isSchematicFloorItem(value);
+			return isSchematicFloorItem(value, layouts, interior);
 		case "wall":
 			return isSchematicWallItem(value);
 		default:
@@ -376,7 +429,7 @@ function isRecordWithAnchorClass(
 	return typeof value === "object" && value !== null && "anchorClass" in value;
 }
 
-function isSchematicFloorItem(value: unknown): boolean {
+function isSchematicFloorItem(value: unknown, layouts: boolean, interior: boolean): boolean {
 	if (
 		!hasExactKeys(
 			value,
@@ -400,6 +453,8 @@ function isSchematicFloorItem(value: unknown): boolean {
 				"yawRadians",
 				"yawStep",
 				"yawMilliDeg",
+				...(layouts ? ["roomLayoutId"] : []),
+				...(interior ? ["catalogPreset"] : []),
 			],
 		)
 	) {
@@ -413,6 +468,9 @@ function isSchematicFloorItem(value: unknown): boolean {
 		(item.locked === undefined || item.locked === true) &&
 		item.anchorClass === "floor" &&
 		(item.elevationMm === undefined || item.elevationMm === 0) &&
+		(!Object.hasOwn(item, "roomLayoutId") || isNonEmptyString(item.roomLayoutId)) &&
+		(!Object.hasOwn(item, "catalogPreset") || (!Object.hasOwn(item, "assetDefinitionId") &&
+			isVersionedPreset(item.catalogPreset, floorCatalogPresetIds))) &&
 		isNonEmptyString(item.roomId) &&
 		isNonEmptyString(item.label) &&
 		isSafeIntegerInRange(item.xMm, -100_000, 100_000) &&
@@ -434,6 +492,46 @@ function isSchematicFloorItem(value: unknown): boolean {
 			item.yawRadians === undefined && item.yawStep === undefined
 		))
 	);
+}
+
+function isVersionedPreset(value: unknown, ids: readonly string[]): boolean {
+	if (!hasExactKeys(value, ["presetId", "version"])) return false;
+	const preset = value as Record<string, unknown>;
+	return typeof preset.presetId === "string" && ids.includes(preset.presetId) && preset.version === 1;
+}
+
+function isSideFinishes(value: unknown): boolean {
+	if (!hasExactKeys(value, [], ["left", "right"])) return false;
+	const sides = Object.values(value as Record<string, unknown>);
+	return sides.length > 0 && sides.every(finish => isVersionedPreset(finish, wallFinishIds));
+}
+
+function isRoomLayout(value: unknown): boolean {
+	if (!hasExactKeys(value, ["layoutId", "roomId", "slot", "name"])) return false;
+	const layout = value as Record<string, unknown>;
+	return isNonEmptyString(layout.layoutId) && isNonEmptyString(layout.roomId) &&
+		isNonEmptyString(layout.name) && (layout.slot === "A" || layout.slot === "B");
+}
+
+function isSupportedItem(value: unknown): boolean {
+	if (!hasExactKeys(value, ["anchorClass", "assetInstanceId", "label", "widthMm", "depthMm", "heightMm",
+		"color", "catalogPreset", "supportAssetInstanceId", "supportSurfaceKey", "offsetXMm", "offsetZMm", "relativeYawMilliDeg"],
+	["colorVariantId", "locked"])) return false;
+	const item = value as Record<string, unknown>;
+	return item.anchorClass === "support" &&
+		isNonEmptyString(item.assetInstanceId) && isNonEmptyString(item.label) &&
+		isNonEmptyString(item.supportAssetInstanceId) && isNonEmptyString(item.supportSurfaceKey) &&
+		isVersionedPreset(item.catalogPreset, supportedPresetIds) &&
+		isSafeIntegerInRange(item.widthMm, 1, 100_000) &&
+		isSafeIntegerInRange(item.depthMm, 1, 100_000) &&
+		isSafeIntegerInRange(item.heightMm, 1, 100_000) &&
+		!Object.is(item.offsetXMm, -0) && isSafeIntegerInRange(item.offsetXMm, -100_000, 100_000) &&
+		!Object.is(item.offsetZMm, -0) && isSafeIntegerInRange(item.offsetZMm, -100_000, 100_000) &&
+		!Object.is(item.relativeYawMilliDeg, -0) && isSafeIntegerInRange(item.relativeYawMilliDeg, 0, 359_999) &&
+		typeof item.color === "string" && /^#[0-9a-f]{6}$/i.test(item.color) &&
+		(!Object.hasOwn(item, "locked") || item.locked === true) &&
+		(!Object.hasOwn(item, "colorVariantId") || (typeof item.colorVariantId === "string" &&
+			alphaParametricItemColorVariantFor(item.colorVariantId)?.color === item.color));
 }
 
 function isSchematicWallItem(value: unknown): boolean {

@@ -1,5 +1,5 @@
 import type { RectangularRoomWebGlScene, SceneBox } from "../adapters/renderer/rectangular-room-projection";
-import { cameraEyeAndTargetFor } from "../adapters/renderer/webgl2-room-renderer-shared";
+import { cameraEyeAndTargetFor, type WebGl2SceneHit } from "../adapters/renderer/webgl2-room-renderer-shared";
 import type { ThreeDimensionalViewport } from "./three-dimensional-viewport";
 
 export interface CanvasSize {
@@ -34,16 +34,61 @@ export function floorPointForCanvas(
 	size: CanvasSize,
 	point: { readonly x: number; readonly y: number },
 ): ThreeDimensionalFloorPoint | undefined {
+	return pointOnHorizontalSurfaceForCanvas(scene, camera, size, point, 0);
+}
+
+export function pointOnHorizontalSurfaceForCanvas(
+	scene: RectangularRoomWebGlScene,
+	camera: ThreeDimensionalViewport,
+	size: CanvasSize,
+	point: { readonly x: number; readonly y: number },
+	heightM: number,
+): ThreeDimensionalFloorPoint | undefined {
 	if (size.width <= 0 || size.height <= 0) return undefined;
 	const basis = cameraBasis(scene, camera);
 	const direction = rayForCanvasPoint(basis, size, point);
 	if (Math.abs(direction.y) < 1e-9) return undefined;
-	const floorDistance = -basis.eye.y / direction.y;
+	const floorDistance = (heightM - basis.eye.y) / direction.y;
 	if (!Number.isFinite(floorDistance) || floorDistance < 0) return undefined;
 	return {
 		xM: basis.eye.x + direction.x * floorDistance,
 		zM: basis.eye.z + direction.z * floorDistance,
 	};
+}
+
+export interface SceneSupportSurface {
+	readonly hostId: string;
+	readonly heightM: number;
+	readonly outline: readonly ThreeDimensionalFloorPoint[];
+}
+
+/** Resolve a named contact plane only when that surface is visible on the rendered ray. */
+export function supportSurfaceAtCanvasPoint<Surface extends SceneSupportSurface>(
+	scene: RectangularRoomWebGlScene,
+	camera: ThreeDimensionalViewport,
+	size: CanvasSize,
+	point: CanvasPoint,
+	surfaces: readonly Surface[],
+	hit: WebGl2SceneHit | undefined,
+): { readonly surface: Surface; readonly point: ThreeDimensionalFloorPoint } | undefined {
+	if (!hit?.assetInstanceId || size.width <= 0 || size.height <= 0) return undefined;
+	const basis = cameraBasis(scene, camera);
+	const ray = rayForCanvasPoint(basis, size, point);
+	if (ray.y >= -1e-9) return undefined;
+	for (const surface of surfaces) {
+		if (surface.hostId !== hit.assetInstanceId) continue;
+		const distanceM = (surface.heightM - basis.eye.y) / ray.y;
+		// The canonical surface is rounded to mm. Keep the tolerance close to
+		// the plate so a hit on its front edge or a higher shelf cannot select it.
+		if (Math.abs(distanceM - hit.distanceM) > Math.min(0.02, 0.0012 / Math.abs(ray.y))) continue;
+		const xM = basis.eye.x + distanceM * ray.x;
+		const zM = basis.eye.z + distanceM * ray.z;
+		if (surface.outline.every((from, index, outline) => {
+			const to = outline[(index + 1) % outline.length];
+			return to !== undefined && (to.xM - from.xM) * (zM - from.zM) - (to.zM - from.zM) * (xM - from.xM) >= -1e-7;
+		})) return { surface, point: { xM, zM } };
+	}
+	return undefined;
 }
 
 /** Projects a ground point for a CSS overlay anchored to a selected 3D item. */
@@ -67,7 +112,7 @@ export function canvasPointForSceneItem(
 	});
 }
 
-function canvasPointForWorld(
+export function canvasPointForWorld(
 	scene: RectangularRoomWebGlScene,
 	camera: ThreeDimensionalViewport,
 	size: CanvasSize,
@@ -139,6 +184,37 @@ export function roomIdAtFloorPoint(
 			Math.abs(point.xM - floor.centerXM) <= floor.widthM / 2 &&
 			Math.abs(point.zM - floor.centerZM) <= floor.depthM / 2,
 	)?.floor?.roomId;
+}
+
+/** Picks a usable floor face only where an opaque surface does not hide it. */
+export function visibleRoomFloorAtCanvasPoint(
+	scene: RectangularRoomWebGlScene,
+	camera: ThreeDimensionalViewport,
+	size: CanvasSize,
+	point: CanvasPoint,
+	hit: WebGl2SceneHit | undefined,
+): ThreeDimensionalFloorPoint | undefined {
+	if (hit?.assetInstanceId !== undefined) return undefined;
+	const floorPoint = floorPointForCanvas(scene, camera, size, point);
+	if (!floorPoint) return undefined;
+	const { eye } = cameraEyeAndTargetFor(scene, camera);
+	const distanceM = Math.hypot(eye[0] - floorPoint.xM, eye[1], eye[2] - floorPoint.zM);
+	if (hit && hit.distanceM + 0.002 < distanceM) return undefined;
+	return roomIdAtFloorPoint(scene.floors, floorPoint) !== undefined ||
+		scene.floorPolygons?.some(floor => floor.floor.roomId && pointInFloorPolygon(floorPoint, floor.vertices))
+		? floorPoint : undefined;
+}
+
+function pointInFloorPolygon(point: ThreeDimensionalFloorPoint, vertices: readonly ThreeDimensionalFloorPoint[]): boolean {
+	let inside = false;
+	let previous = vertices.at(-1);
+	if (!previous) return false;
+	for (const vertex of vertices) {
+		if ((vertex.zM > point.zM) !== (previous.zM > point.zM) &&
+			point.xM < vertex.xM + (point.zM - vertex.zM) * (previous.xM - vertex.xM) / (previous.zM - vertex.zM)) inside = !inside;
+		previous = vertex;
+	}
+	return inside;
 }
 
 /**

@@ -1,5 +1,17 @@
 export type PlanRotationInspectorState = "pending" | "present";
 
+export function planRotationChromeReady({
+	inspectorState, inspectorMeasured, editingAngle, compactInspector,
+}: {
+	readonly inspectorState: PlanRotationInspectorState | undefined;
+	readonly inspectorMeasured: boolean;
+	readonly editingAngle: boolean;
+	readonly compactInspector: boolean;
+}): boolean {
+	return inspectorState !== "pending" &&
+		(inspectorState !== "present" || inspectorMeasured || (editingAngle && compactInspector));
+}
+
 interface PlanRotationSpace {
 	readonly top: number;
 	readonly bottom: number;

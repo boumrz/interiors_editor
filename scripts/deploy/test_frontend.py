@@ -96,6 +96,40 @@ class DeploymentTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             frontend.extract_release(output, self.base / "invalid-full-release")
 
+    def test_telegram_authoring_requires_the_exact_compatible_predecessor(self):
+        compatible = self.base / "compatible.tar.gz"
+        authoring = self.base / "authoring.tar.gz"
+        commit = "e" * 40
+        frontend.package_telegram_release(self.telegram, compatible, commit)
+        controls = {path: (self.telegram / path[1:]).read_bytes()
+                    for path in ("/release-set.json", "/index.html")}
+        (self.telegram / "release-manifest.json").write_text(json.dumps({"appBuildId": "d" * 16}))
+        (self.telegram / "index.html").write_bytes(b"authoring")
+        self.seal_telegram()
+        frontend.package_telegram_release(self.telegram, authoring, commit)
+
+        with patch.object(frontend, "request", side_effect=lambda _, path, **kwargs: (200, {}, controls[path])) as public:
+            result = frontend.verify_telegram_predecessor(compatible, authoring, commit)
+            self.assertEqual(result, {"compatibleBuildId": "b" * 16, "authoringBuildId": "d" * 16})
+            self.assertEqual([call.args[1] for call in public.call_args_list], list(controls))
+            self.assertTrue(all(call.kwargs.get("follow_redirects") is False for call in public.call_args_list))
+            for path in controls.copy():
+                original = controls[path]
+                controls[path] = b"different public bytes"
+                with self.subTest(path=path), self.assertRaisesRegex(ValueError, "compatible"):
+                    frontend.verify_telegram_predecessor(compatible, authoring, commit)
+                controls[path] = original
+
+        with patch.object(frontend, "request") as public:
+            with self.assertRaisesRegex(ValueError, "commit"):
+                frontend.verify_telegram_predecessor(compatible, authoring, "f" * 40)
+            with self.assertRaisesRegex(ValueError, "distinct"):
+                frontend.verify_telegram_predecessor(compatible, compatible, commit)
+            public.assert_not_called()
+        with patch.object(frontend, "request", return_value=(404, {}, controls["/release-set.json"])):
+            with self.assertRaisesRegex(ValueError, "compatible"):
+                frontend.verify_telegram_predecessor(compatible, authoring, commit)
+
     def test_telegram_archive_rejects_full_target_and_bad_member_digest(self):
         self.package()
         with self.assertRaises(ValueError):

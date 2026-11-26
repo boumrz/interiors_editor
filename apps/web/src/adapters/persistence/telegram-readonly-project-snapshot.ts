@@ -1,8 +1,9 @@
 import type { ChecksumPort, PublicationCandidate, UnverifiedProjectSource } from "../../application/ports";
 import { canonicalProjectSerializer } from "../../application/create-project";
 import { alphaBackupFeasibilityLimits } from "../../application/backup-feasibility-policy";
-import { validateRuntimeV1Project } from "../../application/runtime-v1-project-validation";
-import { isStructurallyValidProjectV1 } from "../../domain/project-json-transfer";
+import { validateRuntimeV1Project, validateTelegramRuntimeV1Project } from "../../application/runtime-v1-project-validation";
+import { projectUsesInteriorDetails } from "../../domain/interior-project-format";
+import { isStructurallyValidProjectV1, isStructurallyValidTelegramProject } from "../../domain/project-json-transfer";
 import { encodeRegisteredRuntimeProject } from "../portable-backup/runtime-v1-wire";
 
 export interface TelegramReadonlyProjectSnapshot {
@@ -46,15 +47,19 @@ export function readUnverifiedTelegramSnapshot(
 export async function verifyTelegramReadonlyCurrentSnapshot(
  input: TelegramReadonlyProjectSnapshot,
  checksum: ChecksumPort,
+ databaseVersion = 4,
 ): Promise<VerifiedTelegramReadonlyProject | undefined> {
  try {
+  const extended = databaseVersion === 5 || databaseVersion === 6;
+  const validate = extended ? validateTelegramRuntimeV1Project : validateRuntimeV1Project;
   const { scope, projectId, pointer, revision, creation } = input;
   if (!record(pointer) || Object.keys(pointer).length !== 4 || pointer.scope !== scope || pointer.projectId !== projectId || typeof pointer.currentRevisionId !== "string") return undefined;
-  if (!record(revision) || Object.keys(revision).length !== 6 || !isV1Candidate(revision.candidate)) return undefined;
+  if (!record(revision) || Object.keys(revision).length !== 6 || !isV1Candidate(revision.candidate, extended)) return undefined;
   const candidate = revision.candidate;
+  if (projectUsesInteriorDetails(candidate.project) && databaseVersion !== 6) return undefined;
   if (revision.scope !== scope || revision.projectId !== projectId || revision.revisionId !== pointer.currentRevisionId || typeof revision.creationAttemptId !== "string" || candidate.project.projectId !== projectId || candidate.revision.projectId !== projectId || candidate.revision.revisionId !== pointer.currentRevisionId || pointer.name !== candidate.project.name) return undefined;
   // Bound the derived manifest through the existing closed grammar and policy before walking metadata arrays.
-  if (encodeRegisteredRuntimeProject(candidate.project).kind !== "encoded" || validateRuntimeV1Project(candidate.project).kind !== "accepted") return undefined;
+  if (encodeRegisteredRuntimeProject(candidate.project).kind !== "encoded" || validate(candidate.project).kind !== "accepted") return undefined;
   const resourceManifest = manifestFor(candidate);
   if (!exactManifest(revision.resourceManifest, resourceManifest) || !record(creation) || !exactManifest(creation.resourceManifest, resourceManifest)) return undefined;
   if (!publishedCreation(creation, scope) || creation.attemptId !== revision.creationAttemptId || creation.projectId !== projectId || creation.revisionId !== pointer.currentRevisionId || creation.intent !== "mutation" || creation.checksum !== candidate.revision.checksum || creation.serializedProject !== candidate.revision.serializedProject || !sameTelegramReadonlySnapshot(creation.resourceManifest, resourceManifest)) return undefined;
@@ -106,8 +111,9 @@ function hash(value: unknown): value is string {
  return typeof value === "string" && /^[a-fA-F0-9]{64}$/.test(value);
 }
 function operationPrefix(scope: string, kind: "attempt" | "lease") { return `tma-v1:${scope}:${kind}:`; }
-function isV1Candidate(value: unknown): value is PublicationCandidate {
- return record(value) && isStructurallyValidProjectV1(value.project) && record(value.revision) && value.revision.schemaVersion === 1 && typeof value.revision.projectId === "string" && typeof value.revision.revisionId === "string" && value.revision.revisionId.length > 0 && typeof value.revision.createdAt === "string" && typeof value.revision.serializedProject === "string" && typeof value.revision.checksum === "string";
+function isV1Candidate(value: unknown, extended: boolean): value is PublicationCandidate {
+ const validate = extended ? isStructurallyValidTelegramProject : isStructurallyValidProjectV1;
+ return record(value) && validate(value.project) && record(value.revision) && value.revision.schemaVersion === 1 && typeof value.revision.projectId === "string" && typeof value.revision.revisionId === "string" && value.revision.revisionId.length > 0 && typeof value.revision.createdAt === "string" && typeof value.revision.serializedProject === "string" && typeof value.revision.checksum === "string";
 }
 function manifestFor(candidate: PublicationCandidate): readonly TelegramReadonlyResourceDescriptor[] {
  const resources = new Map<string, number>();

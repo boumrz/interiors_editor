@@ -78,6 +78,8 @@ import {
 
 declare const __INTERIORS_EXACT_FLOOR_YAW__: boolean;
 declare const __INTERIORS_DOOR_HINGE_AUTHORING__: boolean;
+declare const __INTERIORS_ROOM_INTERIOR_ENABLED__: boolean;
+declare const __INTERIORS_ROOM_INTERIOR_COMPATIBLE__: boolean;
 declare const __INTERIORS_RETURN_STUDY__: {
 	readonly digest: string;
 	readonly digestEnglish: string;
@@ -596,6 +598,7 @@ export function createTelegramEntrySession(dependencies: {
 					runtime = created;
 					startup = await created.releaseStartup.handshake(
 						await created.readReleaseStartupInput(),
+						"host-preflight",
 					);
 				} catch (error) {
 					if (await tryReadonlyFallback()) return;
@@ -952,8 +955,6 @@ function AdmittedEditor({
 		<EditorApp
 			localGreyboxCatalog
 			roomTheme={roomTheme}
-			exactFloorYaw={runtime.exactFloorYaw}
-			doorHingeAuthoring={runtime.doorHingeAuthoring}
 			onOpenSettings={openSettings}
 			hostNavigation={navigation}
 			hostLifecycle={hostEnvironment?.lifecycle}
@@ -1098,6 +1099,9 @@ export function mountTelegramBrowserEditor(
 		document.getElementById("telegram-deployment")?.textContent ?? undefined,
 	);
 	const source = createTelegramSdkScriptSource({ document, readWebApp });
+	const roomInteriorEnabled = typeof __INTERIORS_ROOM_INTERIOR_ENABLED__ !== "undefined" && __INTERIORS_ROOM_INTERIOR_ENABLED__;
+	const roomInteriorCompatible = roomInteriorEnabled ||
+		(typeof __INTERIORS_ROOM_INTERIOR_COMPATIBLE__ !== "undefined" && __INTERIORS_ROOM_INTERIOR_COMPATIBLE__);
 	const session = createTelegramEntrySession({
 		legal: {
 			readable: currentLicenseReadable,
@@ -1138,6 +1142,7 @@ export function mountTelegramBrowserEditor(
 		createReadonlyRuntime(approval, scope) {
 			const portable = createRegisteredRuntimePortablePorts({
 				binaryChecksum: browserBinaryChecksum,
+				allowTelegramExtendedSchemas: roomInteriorCompatible,
 			});
 			const source = createTelegramReadonlyProjectSource({
 				coordination:
@@ -1152,6 +1157,7 @@ export function mountTelegramBrowserEditor(
 					secureContext: isSecureContext,
 					acceptExactFloorYawStorage: true,
 					acceptDoorHingeStorage: true,
+					acceptRoomInteriorStorage: roomInteriorCompatible,
 				},
 				checksum: browserChecksum,
 				binaryChecksum: browserBinaryChecksum,
@@ -1171,11 +1177,14 @@ export function mountTelegramBrowserEditor(
 		createRuntime(approval, scope) {
 			const portable = createRegisteredRuntimePortablePorts({
 				binaryChecksum: browserBinaryChecksum,
+				allowTelegramExtendedSchemas: roomInteriorCompatible,
 			});
 			return createTelegramRuntime({
 				approval,
 				scope,
 				context: {
+					roomInteriorEnabled,
+					roomInteriorCompatible,
 					databaseMode: typeof __INTERIORS_EXACT_FLOOR_YAW__ !== "undefined" && __INTERIORS_EXACT_FLOOR_YAW__
 						? "exact"
 						: "compatible",

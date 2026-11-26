@@ -1,4 +1,7 @@
+import { floorFinishColors, wallFinishColors } from "../../domain/interior-materials";
+import { catalogProfileGeometry } from "./catalog-profile-geometry";
 import { GLASS_OPACITY, OPENING_FINISH } from "./opening-template";
+import { FLOOR_DESTINATION_TINT, supportGlowGeometry, type SceneSurfaceHighlight } from "./scene-surface-highlights";
 import type {
 	RectangularRoomWebGlScene,
 	SceneBox,
@@ -11,11 +14,12 @@ import {
 	type RoomRenderTheme,
 	type RoomSurfaceColors,
 } from "./three-dimensional-room-palette";
-import { pickProceduralSceneItem } from "./webgl2-item-picking";
+import { pickProceduralSceneHit } from "./webgl2-item-picking";
 
 import {
 	cameraEyeAndTargetFor,
 	furnitureGreyboxPartsFor,
+	SOFA_FOOT_COLOR,
 	sceneBoxYawRadians,
 	wallCutawayForCamera,
 	type FurnitureGreyboxPart,
@@ -24,6 +28,7 @@ import {
 	type WebGl2CutawayMode,
 	type WebGl2RendererQualityTier,
 	type WebGl2RuntimeModels,
+	type WebGl2SceneHit,
 	type WebGl2SceneRenderer,
 	type WebGl2WallCutaway,
 } from "./webgl2-room-renderer-shared";
@@ -220,7 +225,11 @@ export class WebGl2RoomRendererController {
 	}
 
 	public pickItem(point: NormalizedCanvasPoint): string | undefined {
-		return this.renderer?.pickItem?.(point);
+		return this.renderer?.pickHit ? this.pickHit(point)?.assetInstanceId : this.renderer?.pickItem?.(point);
+	}
+
+	public pickHit(point: NormalizedCanvasPoint): WebGl2SceneHit | undefined {
+		return this.renderer?.pickHit?.(point);
 	}
 
 	public dispose(): void {
@@ -344,17 +353,22 @@ export function createDomWebGl2CanvasPort(
 
 const vertexShaderSource = `#version 300 es
 in vec3 a_position;
+in vec4 a_color;
 uniform mat4 u_matrix;
+uniform vec4 u_color;
+uniform bool u_use_vertex_color;
+out vec4 v_color;
 void main() {
   gl_Position = u_matrix * vec4(a_position, 1.0);
+  v_color = u_use_vertex_color ? a_color : u_color;
 }`;
 
 const fragmentShaderSource = `#version 300 es
 precision highp float;
-uniform vec4 u_color;
+in vec4 v_color;
 out vec4 outColor;
 void main() {
-  outColor = u_color;
+  outColor = v_color;
 }`;
 
 const unitCubeVertices = new Float32Array([
@@ -375,17 +389,14 @@ const unitCubeVertices = new Float32Array([
  */
 export function wallPrismVerticesFor(wall: SceneBox): Float32Array {
 	if (!wall.wallFootprintM) return new Float32Array();
-	const vertices = floorPrismVerticesFor({
+	return floorPrismVerticesFor({
 		floor: { roomId: "" },
 		vertices: wall.wallFootprintM,
 		heightM: wall.heightM,
-	});
-	for (let i = 1; i < vertices.length; i += 3)
-		vertices[i] = (vertices[i] ?? 0) + wall.centerYM;
-	return vertices;
+	}, wall.centerYM + wall.heightM / 2);
 }
 
-export function floorPrismVerticesFor(floor: SceneFloorPolygon): Float32Array {
+export function floorPrismVerticesFor(floor: SceneFloorPolygon, topY = 0): Float32Array {
 	if (
 		floor.vertices.length < 3 ||
 		!Number.isFinite(floor.heightM) ||
@@ -396,8 +407,7 @@ export function floorPrismVerticesFor(floor: SceneFloorPolygon): Float32Array {
 	) {
 		return new Float32Array();
 	}
-	const topY = floor.heightM / 2;
-	const bottomY = -topY;
+	const bottomY = topY - floor.heightM;
 	const vertices: number[] = [];
 	const append = (
 		point: { readonly xM: number; readonly zM: number },
@@ -607,16 +617,27 @@ function createProceduralWebGl2RoomSceneRenderer(
 	);
 	const vertexBuffer = context.createBuffer();
 	const floorPolygonBuffer = context.createBuffer();
+	const supportPositionBuffer = context.createBuffer();
+	const supportColorBuffer = context.createBuffer();
 	const positionLocation = context.getAttribLocation(program, "a_position");
+	const vertexColorLocation = context.getAttribLocation(program, "a_color");
 	const matrixLocation = context.getUniformLocation(program, "u_matrix");
 	const colorLocation = context.getUniformLocation(program, "u_color");
+	const useVertexColorLocation = context.getUniformLocation(program, "u_use_vertex_color");
 	if (
 		!vertexBuffer ||
 		!floorPolygonBuffer ||
+		!supportPositionBuffer ||
+		!supportColorBuffer ||
 		positionLocation < 0 ||
+		vertexColorLocation < 0 ||
 		!matrixLocation ||
-		!colorLocation
+		!colorLocation ||
+		!useVertexColorLocation
 	) {
+		for (const buffer of [vertexBuffer, floorPolygonBuffer, supportPositionBuffer, supportColorBuffer]) {
+			if (buffer) context.deleteBuffer(buffer);
+		}
 		context.deleteProgram(program);
 		throw new Error("WebGL scene locations are unavailable");
 	}
@@ -629,23 +650,30 @@ function createProceduralWebGl2RoomSceneRenderer(
 	let cutaway: WebGl2WallCutaway | undefined;
 	let activeScene = scene;
 	let lastCamera = initialWebGl2Camera;
+	let appliedHighlights: readonly SceneSurfaceHighlight[] | undefined;
+	let supportVertexCount = 0;
+	const [redFloor, greenFloor, blueFloor] = colorFor(FLOOR_DESTINATION_TINT);
+	const tintFloor = ([red, green, blue, alpha]: readonly [number, number, number, number]) =>
+		[red * 0.9 + redFloor * 0.1, green * 0.9 + greenFloor * 0.1, blue * 0.9 + blueFloor * 0.1, alpha] as const;
 
 	const drawBox = (
 		box: SceneBox,
 		color: readonly [number, number, number, number],
 		camera: WebGl2Camera,
+		profileVertices?: Float32Array,
 	): void => {
 		const physicalVertices = box.wallFootprintM
 			? wallPrismVerticesFor(box)
 			: undefined;
+		const customVertices = physicalVertices ?? profileVertices;
 		context.bindBuffer(
 			context.ARRAY_BUFFER,
-			physicalVertices ? floorPolygonBuffer : vertexBuffer,
+			customVertices ? floorPolygonBuffer : vertexBuffer,
 		);
-		if (physicalVertices)
+		if (customVertices)
 			context.bufferData(
 				context.ARRAY_BUFFER,
-				physicalVertices,
+				customVertices,
 				context.DYNAMIC_DRAW,
 			);
 		context.vertexAttribPointer(
@@ -670,22 +698,25 @@ function createProceduralWebGl2RoomSceneRenderer(
 		context.drawArrays(
 			context.TRIANGLES,
 			0,
-			(physicalVertices ?? unitCubeVertices).length / 3,
+			(customVertices ?? unitCubeVertices).length / 3,
 		);
 	};
 
-	const drawFloorPolygon = (
-		floor: SceneFloorPolygon,
-		color: readonly [number, number, number, number],
-		camera: WebGl2Camera,
-	): void => {
-		const vertices = floorPrismVerticesFor(floor);
-		if (vertices.length === 0) return;
+	const worldViewProjection = (camera: WebGl2Camera) => {
 		const aspect =
 			Math.max(1, context.canvas.width) / Math.max(1, context.canvas.height);
 		const projection = perspective(Math.PI / 3, aspect, 0.1, 100);
 		const { eye, target } = cameraEyeAndTargetFor(activeScene, camera);
 		const view = lookAt(eye, target, [0, 1, 0]);
+		return multiply(projection, view);
+	};
+
+	const drawWorldTriangles = (
+		vertices: Float32Array,
+		color: readonly [number, number, number, number],
+		camera: WebGl2Camera,
+	): void => {
+		if (vertices.length === 0) return;
 		context.bindBuffer(context.ARRAY_BUFFER, floorPolygonBuffer);
 		context.bufferData(context.ARRAY_BUFFER, vertices, context.DYNAMIC_DRAW);
 		context.vertexAttribPointer(
@@ -696,13 +727,31 @@ function createProceduralWebGl2RoomSceneRenderer(
 			0,
 			0,
 		);
-		context.uniformMatrix4fv(matrixLocation, false, multiply(projection, view));
+		context.uniformMatrix4fv(matrixLocation, false, worldViewProjection(camera));
 		context.uniform4fv(colorLocation, color);
 		context.drawArrays(context.TRIANGLES, 0, vertices.length / 3);
 	};
 
+	const drawSupportGlow = (camera: WebGl2Camera) => {
+		context.bindBuffer(context.ARRAY_BUFFER, supportPositionBuffer);
+		context.vertexAttribPointer(positionLocation, 3, context.FLOAT, false, 0, 0);
+		context.bindBuffer(context.ARRAY_BUFFER, supportColorBuffer);
+		context.vertexAttribPointer(vertexColorLocation, 4, context.FLOAT, false, 0, 0);
+		context.enableVertexAttribArray(vertexColorLocation);
+		context.uniform1i(useVertexColorLocation, 1);
+		try {
+			context.uniformMatrix4fv(matrixLocation, false, worldViewProjection(camera));
+			context.drawArrays(context.TRIANGLES, 0, supportVertexCount);
+		} finally {
+			context.uniform1i(useVertexColorLocation, 0);
+			context.disableVertexAttribArray(vertexColorLocation);
+			context.bindBuffer(context.ARRAY_BUFFER, vertexBuffer);
+			context.vertexAttribPointer(positionLocation, 3, context.FLOAT, false, 0, 0);
+		}
+	};
+
 	return {
-		pickItem: (point) => pickProceduralSceneItem(
+		pickHit: (point) => pickProceduralSceneHit(
 			activeScene,
 			lastCamera,
 			context.canvas.width / context.canvas.height,
@@ -713,6 +762,8 @@ function createProceduralWebGl2RoomSceneRenderer(
 		dispose: () => {
 			context.deleteBuffer(vertexBuffer);
 			context.deleteBuffer(floorPolygonBuffer);
+			context.deleteBuffer(supportPositionBuffer);
+			context.deleteBuffer(supportColorBuffer);
 			context.deleteProgram(program);
 		},
 		render: (
@@ -722,6 +773,17 @@ function createProceduralWebGl2RoomSceneRenderer(
 			theme,
 		) => {
 			activeScene = sceneOverride;
+			if (appliedHighlights !== activeScene.supportHighlights) {
+				appliedHighlights = activeScene.supportHighlights;
+				const glow = supportGlowGeometry(appliedHighlights);
+				supportVertexCount = glow ? glow.positions.length / 3 : 0;
+				if (glow) {
+					context.bindBuffer(context.ARRAY_BUFFER, supportPositionBuffer);
+					context.bufferData(context.ARRAY_BUFFER, glow.positions, context.STATIC_DRAW);
+					context.bindBuffer(context.ARRAY_BUFFER, supportColorBuffer);
+					context.bufferData(context.ARRAY_BUFFER, glow.colors, context.STATIC_DRAW);
+				}
+			}
 			lastCamera = camera;
 			const canvas = context.canvas as HTMLCanvasElement;
 			const pixelRatio = Math.min(
@@ -738,6 +800,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 			resetProceduralWebGl2Frame(context, width, height, theme);
 			context.useProgram(program);
 			context.bindBuffer(context.ARRAY_BUFFER, vertexBuffer);
+			context.disableVertexAttribArray(vertexColorLocation);
 			context.enableVertexAttribArray(positionLocation);
 			context.vertexAttribPointer(
 				positionLocation,
@@ -748,12 +811,18 @@ function createProceduralWebGl2RoomSceneRenderer(
 				0,
 			);
 			activeScene.floors.forEach((floor) => {
-				drawWoodFloor(floor, drawBox, camera, surfaceColors);
+				const draw: DrawBox = activeScene.highlightFloor && floor.floor?.roomId
+					? (box, color, view, vertices) => drawBox(box, tintFloor(color), view, vertices)
+					: drawBox;
+				if (floor.floor?.finish) {
+					draw({ ...floor, centerYM: floor.centerYM - floor.heightM / 2 }, colorFor(floorFinishColors[floor.floor.finish.presetId]), camera);
+				} else drawWoodFloor(floor, draw, camera, surfaceColors);
 			});
 			activeScene.floorPolygons?.forEach((floor) => {
-				drawFloorPolygon(
-					floor,
-					surfaceColors.floorLightBoard,
+				const color = floor.floor.finish ? colorFor(floorFinishColors[floor.floor.finish.presetId]) : surfaceColors.floorLightBoard;
+				drawWorldTriangles(
+					floorPrismVerticesFor(floor),
+					activeScene.highlightFloor ? tintFloor(color) : color,
 					camera,
 				);
 			});
@@ -774,6 +843,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 					camera,
 					surfaceColors,
 				);
+				drawAssignedWallSides(wall, drawBox, camera);
 				wallCornerOutlineDrawsFor(wall).forEach((outline) => {
 					drawBox(
 						outline,
@@ -801,14 +871,19 @@ function createProceduralWebGl2RoomSceneRenderer(
 				if (part.role === "glass") panes.push(part.box);
 				else drawBox(part.box, colorFor(OPENING_FINISH[part.role]), camera);
 			}
-			if (panes.length) {
+			if (panes.length || supportVertexCount > 0) {
 				const [red, green, blue] = colorFor(OPENING_FINISH.glass);
 				context.enable(context.BLEND);
+				context.blendEquation(context.FUNC_ADD);
 				context.blendFunc(context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA);
 				context.depthMask(false);
-				for (const pane of panes) drawBox(pane, [red, green, blue, GLASS_OPACITY], camera);
-				context.depthMask(true);
-				context.disable(context.BLEND);
+				try {
+					if (supportVertexCount > 0) drawSupportGlow(camera);
+					for (const pane of panes) drawBox(pane, [red, green, blue, GLASS_OPACITY], camera);
+				} finally {
+					context.depthMask(true);
+					context.disable(context.BLEND);
+				}
 			}
 		},
 	};
@@ -819,6 +894,7 @@ export type DrawBox = (
 	box: SceneBox,
 	color: readonly [number, number, number, number],
 	camera: WebGl2Camera,
+	profileVertices?: Float32Array,
 ) => void;
 
 const MAX_DETAILED_FURNITURE_ITEMS = 12;
@@ -1103,7 +1179,7 @@ export function woodFloorDrawsFor(
 		draws.push({
 			box: {
 				...floor,
-				centerYM: floor.centerYM + floor.heightM / 2,
+				centerYM: floor.centerYM - floor.heightM / 2,
 				centerZM: (clippedMinimumZM + clippedMaximumZM) / 2,
 				depthM: clippedMaximumZM - clippedMinimumZM,
 				heightM: floor.heightM,
@@ -1117,16 +1193,63 @@ export function woodFloorDrawsFor(
 	return draws;
 }
 
-function drawFurniture(
+function drawAssignedWallSides(wall: SceneBox, draw: DrawBox, camera: WebGl2Camera): void {
+	const faces = wall.wall?.finishFaces;
+	const footprint = wall.wallFootprintM;
+	if (!faces || !footprint?.length) return;
+	const centre = footprint.reduce((sum, next) => ({
+		xM: sum.xM + next.xM / footprint.length, zM: sum.zM + next.zM / footprint.length,
+	}), { xM: 0, zM: 0 });
+	for (const [index, start] of footprint.entries()) {
+		const end = footprint[(index + 1) % footprint.length];
+		if (!end) continue;
+		const dx = end.xM - start.xM;
+		const dz = end.zM - start.zM;
+		const length = Math.hypot(dx, dz);
+		if (length < 0.000001) continue;
+		let nx = -dz / length;
+		let nz = dx / length;
+		if ((centre.xM - start.xM) * nx + (centre.zM - start.zM) * nz > 0) {
+			nx = -nx;
+			nz = -nz;
+		}
+		const side = nx * faces.normalX + nz * faces.normalZ;
+		const finish = side > 0.98 ? faces.left : side < -0.98 ? faces.right : undefined;
+		if (!finish) continue;
+		const top = wall.centerYM + wall.heightM / 2;
+		const bottom = wall.centerYM - wall.heightM / 2;
+		const a = (height: number) => [start.xM + nx * 0.00008, height, start.zM + nz * 0.00008];
+		const b = (height: number) => [end.xM + nx * 0.00008, height, end.zM + nz * 0.00008];
+		draw({ centerXM: 0, centerYM: 0, centerZM: 0, widthM: 1, heightM: 1, depthM: 1 }, colorFor(wallFinishColors[finish.presetId]),
+			camera, new Float32Array([...a(bottom), ...b(bottom), ...b(top), ...a(bottom), ...b(top), ...a(top)]));
+	}
+}
+
+export function drawFurniture(
 	item: SceneBox,
 	detailed: boolean,
 	drawBox: DrawBox,
 	camera: WebGl2Camera,
 ): void {
 	const color = colorFor(item.material?.colorHex);
-	furnitureGreyboxPartsFor(item, detailed).forEach((part) => {
-		drawBox(part.box, colorForFurnitureTone(color, part.tone), camera);
-	});
+	for (const part of furnitureGreyboxPartsFor(item, detailed)) {
+		// The simplified view keeps shower frames and skips the glass panes.
+		if (part.opacity !== undefined) continue;
+		const finish = part.fixedColor ? colorFor(part.fixedColor) : colorForFurnitureTone(color, part.tone);
+		if (!part.profile) {
+			drawBox(part.box, finish, camera);
+			continue;
+		}
+		const { positions, indices } = catalogProfileGeometry(part.profile);
+		const vertices = new Float32Array(indices.length * 3);
+		for (const [index, vertex] of indices.entries()) {
+			const source = vertex * 3;
+			vertices[index * 3] = positions[source] ?? 0;
+			vertices[index * 3 + 1] = positions[source + 1] ?? 0;
+			vertices[index * 3 + 2] = positions[source + 2] ?? 0;
+		}
+		drawBox(part.box, finish, camera, vertices);
+	}
 }
 
 /**
@@ -1138,11 +1261,12 @@ function colorForFurnitureTone(
 	color: readonly [number, number, number, number],
 	tone: FurnitureGreyboxPart["tone"],
 ): readonly [number, number, number, number] {
+	if (tone === "foot") return colorFor(SOFA_FOOT_COLOR);
 	if (tone === "highlight") {
 		return lighten(color, 0.14);
 	}
-	if (tone === "shadow") {
-		return darken(color, 0.12);
+	if (tone === "shadow" || tone === "trim") {
+		return darken(color, tone === "trim" ? 0.28 : 0.12);
 	}
 	return color;
 }

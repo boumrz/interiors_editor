@@ -27,7 +27,7 @@ function oldProject(swingSide: "left" | "right" | undefined): Project {
 	const door = addDoorOpeningToProject(room.project, { wallSegmentId: wall.wallSegmentId, offsetMm: 1000, widthMm: 900, heightMm: 2100, sillMm: 0 }, ids, now);
 	if (door.kind !== "accepted") throw new Error("Expected the original opening");
 	return { ...door.project, level: { ...door.project.level, openings: door.project.level.openings.map(opening => {
-		if (opening.kind !== "Door") throw new Error("Expected the historical Door fixture");
+		if (opening.kind !== "Door" || opening.variant === "sliding") throw new Error("Expected the historical Door fixture");
 		const { swingSide: _old, ...fields } = opening;
 		return swingSide === undefined ? fields : {...fields, swingSide};
 	}) } };

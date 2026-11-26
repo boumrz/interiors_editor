@@ -480,7 +480,7 @@ describe("projectRectangularRoomForWebGl", () => {
 
 		for (const swingSide of [undefined, "right", "left"] as const) {
 			const door = doorway.project.level.openings[0];
-			if (door?.kind !== "Door") throw new Error("Expected Door");
+			if (door?.kind !== "Door" || door.variant === "sliding") throw new Error("Expected hinged Door");
 			const { swingSide: _previousSide, ...legacyDoor } = door;
 			const project = {
 				...doorway.project,
@@ -1526,5 +1526,35 @@ describe("projectRectangularRoomForWebGl", () => {
 				wall: { exteriorNormal: { x: 0, z: -1 }, vertexIds: ["v-1", "v-2"], wallSegmentId: "wall-1" },
 			}),
 		);
+	});
+});
+
+it("projects an assigned floor and its physical wall side and raises furniture-supported decor", () => {
+	const initial = createInitialProject({ createdAt: "2026-11-26T12:00:00Z", levelId: "level", name: "Гостиная", projectId: "interior" });
+	const result = configureRectangularRoom(initial, { widthMm: "4000", depthMm: "3000", heightMm: "2600" },
+		ids("a", "b", "c", "d", "n", "e", "s", "w", "room"), initial.updatedAt);
+	if (result.kind !== "accepted") throw Error("Fixture");
+	const base = result.project;
+	const project = {
+		...base,
+		level: {
+			...base.level,
+			rooms: base.level.rooms.map(room => ({ ...room, floorFinish: { presetId: "light-oak", version: 1 } as const })),
+			wallSegments: base.level.wallSegments.map(wall => wall.wallSegmentId === "n" ? {
+				...wall, sideFinishes: { left: { presetId: "muted-green-paint", version: 1 } } as const,
+			} : wall),
+		},
+		assetInstances: [{ assetInstanceId: "host", anchorClass: "floor", xMm: 1000, zMm: 1000, widthMm: 500, heightMm: 600, depthMm: 400,
+			roomId: "room", label: "Тумбочка", color: "#835a45", catalogPreset: { presetId: "bedside-table", version: 1 } }] as const,
+		supportedItems: [{ assetInstanceId: "planter", anchorClass: "support", widthMm: 350, heightMm: 450, depthMm: 350,
+			label: "Кашпо", color: "#536d62", catalogPreset: { presetId: "planter", version: 1 }, supportAssetInstanceId: "host", supportSurfaceKey: "top",
+			offsetXMm: 40, offsetZMm: 0, relativeYawMilliDeg: 0 }] as const,
+	};
+	const scene = projectRectangularRoomForWebGl(project);
+	expect(scene?.floors[0]?.floor).toMatchObject({ roomId: "room", finish: { presetId: "light-oak", version: 1 } });
+	expect(scene?.walls[0]?.wall).toMatchObject({ finishFaces: { left: { presetId: "muted-green-paint", version: 1 }, normalX: 0, normalZ: 1 } });
+	expect(scene?.items.find(item => item.assetInstanceId === "planter")).toMatchObject({
+		assetAnchor: "support", centerXM: 1.04, centerYM: 0.825, heightM: 0.45,
+		material: { furnitureKind: "catalog:planter", colorHex: "#536d62" },
 	});
 });

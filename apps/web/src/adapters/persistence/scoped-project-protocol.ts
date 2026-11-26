@@ -53,6 +53,7 @@ export interface ScopedWriterRequest {
 
 /** These callbacks are supplied only by trusted host composition, never by a file. */
 export interface ScopedProjectProtocol {
+	readonly allowTelegramExtendedSchemas?: boolean;
 	readPinnedBlob?(blob: Blob): Promise<ArrayBuffer>;
 	/** Optional host-owned identity proof inside the same native new-Revision transaction. */
 	assertNewRevisionIdentity?(

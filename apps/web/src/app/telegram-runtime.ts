@@ -43,6 +43,8 @@ export interface TelegramRuntimeDependencies {
 		readonly indexedDb: Pick<IDBFactory, "open">;
 		readonly databaseMode?: "compatible" | "exact";
 		readonly doorHingeMode?: TelegramDoorHingeMode;
+		readonly roomInteriorEnabled?: boolean;
+		readonly roomInteriorCompatible?: boolean;
 		readonly locks: Pick<LockManager, "request">;
 		readonly secureContext: boolean;
 		readonly crypto: Pick<Crypto, "getRandomValues"> &
@@ -75,7 +77,7 @@ export interface TelegramRuntime {
 	readonly doorHingeAuthoring?: boolean;
 	readonly sourceRecovery: ProjectSourceRecoveryPort;
 	readonly releaseStartup: {
-		handshake(input: ReleaseStartupInput): Promise<ReleaseStartupOutcome>;
+		handshake(input: ReleaseStartupInput, phase?: "host-preflight"): Promise<ReleaseStartupOutcome>;
 	};
 	readReleaseStartupInput(): Promise<ReleaseStartupInput>;
 	/** Revocation is synchronous; the returned stable promise drains work and closes DB. */
@@ -99,6 +101,12 @@ class AdmittedScopeStore extends TelegramScopeStore {
 			? super.run(operation)
 			: Promise.reject(new Error("Telegram startup has not admitted storage"));
 	}
+
+	public readVersionForAdmission(): Promise<TelegramScopeAccess["databaseVersion"]> {
+		return super.run((access) =>
+			access.transact([], "readonly", async () => access.databaseVersion),
+		);
+	}
 }
 
 /**
@@ -115,6 +123,8 @@ export function createTelegramRuntime(
 	if (typeof scope !== "string" || !/^tma-v1-[a-f0-9]{64}$/.test(scope))
 		throw new Error("Verified Telegram scope is required");
 	const context = { ...dependencies.context };
+	const interiorCompatible = context.roomInteriorEnabled === true || context.roomInteriorCompatible === true;
+	const compatibleReader = context.roomInteriorCompatible === true && context.roomInteriorEnabled !== true;
 	const ports = { ...dependencies.ports };
 	const decoder = ports.portable?.decoder;
 	if (
@@ -159,6 +169,7 @@ export function createTelegramRuntime(
 	const session = new TelegramRuntimeSession(scope);
 	const state = createTelegramContextState(scope, context);
 	let admitted = false;
+	let compatibleDatabaseVersion: TelegramScopeAccess["databaseVersion"] | undefined;
 	let disposal: Promise<void> | undefined;
 	const active = () => admitted && !session.signal.aborted;
 	const pendingOperations = new Set<Promise<unknown>>();
@@ -200,23 +211,28 @@ export function createTelegramRuntime(
 				undo: [],
 				redo: [],
 			},
-	});
+	}, interiorCompatible);
 	const shared = createSharedProjectController({
 		...ports,
 		floorItemCollisionPolicy: "reject",
-		...(context.doorHingeMode ? {
-			preserveDoorHinges: () => storage.run(async (access) => access.databaseVersion === 4),
+		roomInteriorEnabled: context.roomInteriorEnabled === true,
+		...(context.doorHingeMode || interiorCompatible ? {
+			preserveDoorHinges: () => storage.run(async (access) => access.databaseVersion >= 4),
 		} : {}),
 		portable: {
 			...ports.portable,
+			...(interiorCompatible ? { recoveryDecoder: ports.portable.recoveryDecoder ?? decoder } : {}),
 			decoder: {
 				async decode(archive, signal) {
 					const result = await decoder.decode(archive, signal);
 					if (result.kind !== "accepted") return result;
 					const format = result.projectMember?.format;
-					if (format !== "runtime-v1-floor-yaw" && format !== "runtime-v1-door-hinge") return result;
+					const requiredVersion = format === "runtime-v1-interior-details" ? 6
+						: format === "runtime-v1-room-layouts" ? 5
+						: format === "runtime-v1-door-hinge" ? 4
+						: format === "runtime-v1-floor-yaw" ? 3 : undefined;
+					if (requiredVersion === undefined) return result;
 					try {
-						const requiredVersion = format === "runtime-v1-door-hinge" ? 4 : 3;
 						const permitted = await storage.run(async (access) => access.databaseVersion >= requiredVersion);
 						if (signal?.aborted) return { kind: "rejected", reasonCode: "BACKUP_CANCELLED" };
 						return permitted ? result : { kind: "rejected", reasonCode: "PORTABLE_BACKUP_FUTURE_SCHEMA" };
@@ -233,6 +249,7 @@ export function createTelegramRuntime(
 				resources: repository.resources,
 				smoke: ports.portable.smoke,
 				writer: ports.portable.writer,
+				allowTelegramExtendedSchemas: interiorCompatible,
 			}),
 		},
 		repository,
@@ -305,8 +322,16 @@ export function createTelegramRuntime(
 		scope,
 		session,
 		controller,
-		exactFloorYaw: context.databaseMode === "exact",
-		doorHingeAuthoring: context.doorHingeMode === "authoring",
+		get exactFloorYaw() {
+			return compatibleReader
+				? active() && (compatibleDatabaseVersion ?? 0) >= 3
+				: context.roomInteriorEnabled === true || context.databaseMode === "exact";
+		},
+		get doorHingeAuthoring() {
+			return compatibleReader
+				? active() && (compatibleDatabaseVersion ?? 0) >= 4
+				: context.roomInteriorEnabled === true || context.doorHingeMode === "authoring";
+		},
 		drawingDimensions: {
 			read() {
 				if (!active()) throw new Error("Telegram runtime is not admitted");
@@ -324,7 +349,7 @@ export function createTelegramRuntime(
 		},
 		readReleaseStartupInput,
 		releaseStartup: {
-			async handshake(input) {
+			async handshake(input, phase) {
 				admitted = false;
 				try {
 					if (
@@ -340,6 +365,12 @@ export function createTelegramRuntime(
 						!compatible(input)
 					)
 						return readonly(input);
+					if (compatibleReader) {
+						// Storage must stay closed until Telegram has accepted ready().
+						if (phase === "host-preflight") return { kind: "writable" };
+						compatibleDatabaseVersion = await storage.readVersionForAdmission();
+						if (session.signal.aborted) return readonly(input);
+					}
 					admitted = true;
 					input.onModeChange?.("writable");
 					return session.signal.aborted

@@ -1,11 +1,15 @@
 import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
 	AmbientLight,
+	Box3,
 	DirectionalLight,
+	Mesh,
 	OrthographicCamera,
 	Scene,
+	Vector3,
 	WebGLRenderer,
 } from "three";
+import { catalogFurnitureKindForPreset, furnitureFrontFacesNegativeZ } from "../adapters/renderer/catalog-models";
 import type { FurnitureGreyboxKind } from "../adapters/renderer/rectangular-room-projection";
 import { createThreeGreyboxItemGroup } from "../adapters/renderer/three-webgl2-room-renderer";
 import {
@@ -71,6 +75,9 @@ const englishPresetNames = new Map([
 	["dryer", "Dryer"],
 	["range-hood", "Range hood"],
 	["floor-lamp", "Floor lamp"],
+	["table-lamp", "Table lamp"],
+	["book", "Book"],
+	["vase", "Vase"],
 	["mirror-light", "Mirror light"],
 	["wall-spotlight", "Wall spotlight"],
 	["rug", "Rug"],
@@ -100,7 +107,7 @@ const furnitureKinds: Readonly<
 	"bedside-table": "storage",
 	chair: "chair",
 	dresser: "storage",
-	sofa: "sofa",
+	sofa: "two-seat-sofa",
 	table: "table",
 	wardrobe: "storage",
 };
@@ -342,15 +349,32 @@ const presets: readonly TelegramGreyboxPreset[] = [
 	),
 ];
 
+const interiorDecorPresets: readonly TelegramGreyboxPreset[] = [
+	{ id: "table-lamp", label: "Настольная лампа", category: "lighting", anchorClass: "floor", shape: "floor-lamp", widthMm: 220, depthMm: 220, heightMm: 360, color: "#a76a3b" },
+	{ id: "book", label: "Книга", category: "accessories", anchorClass: "floor", shape: "generic", widthMm: 210, depthMm: 145, heightMm: 28, color: "#416b91" },
+	{ id: "vase", label: "Ваза", category: "accessories", anchorClass: "floor", shape: "planter", widthMm: 150, depthMm: 150, heightMm: 240, color: "#835a45" },
+];
+
+export function telegramGreyboxPresetForLabel(label: string) {
+	return presets.find(candidate => candidate.label === label)
+		?? interiorDecorPresets.find(candidate => candidate.label === label);
+}
+
 /** Shape is presentation-only. Reopen uses the same already persisted V1 label. */
 export function telegramGreyboxKindForLabel(
 	label: string,
+	anchorClass: "floor" | "wall" = "floor",
 ): FurnitureGreyboxKind | undefined {
-	return presets.find((preset) => preset.label === label)?.shape;
+	const preset = telegramGreyboxPresetForLabel(label);
+	return preset && (anchorClass === "floor" ? furnitureKindForPreset(preset) : preset.shape);
+}
+
+function furnitureKindForPreset(preset: Pick<TelegramGreyboxPreset, "id" | "shape">): FurnitureGreyboxKind {
+	return catalogFurnitureKindForPreset(preset.id) ?? preset.shape;
 }
 
 export function telegramGreyboxLabelForDisplay(label: string): string {
-	const preset = presets.find((candidate) => candidate.label === label);
+	const preset = telegramGreyboxPresetForLabel(label);
 	return preset ? greyboxDisplayName(preset) : label;
 }
 
@@ -361,6 +385,64 @@ function greyboxDisplayName(preset: TelegramGreyboxPreset): string {
 const thumbnailCache: Record<string, string> = {};
 const THUMBNAIL_WIDTH = 144;
 const THUMBNAIL_HEIGHT = 104;
+
+export function createCatalogThumbnailView(
+	preset: Pick<TelegramGreyboxPreset, "id" | "shape" | "widthMm" | "depthMm" | "heightMm" | "color">,
+) {
+	const widthM = preset.widthMm / 1000;
+	const depthM = preset.depthMm / 1000;
+	const heightM = preset.heightMm / 1000;
+	const kind = furnitureKindForPreset(preset);
+	const isTwoSeatSofa = kind === "two-seat-sofa";
+	const isUpdatedPreset = kind.startsWith("catalog:");
+	const extent = Math.max(widthM, depthM, heightM) * (isTwoSeatSofa ? 0.46 : 0.85);
+	const horizontal = (extent * THUMBNAIL_WIDTH) / THUMBNAIL_HEIGHT;
+	const camera = new OrthographicCamera(
+		-horizontal,
+		horizontal,
+		extent,
+		-extent,
+		0.01,
+		20,
+	);
+	const elevation = kind === "catalog:rug" ? 3.4 : isUpdatedPreset ? 2.35 : 1.4;
+	camera.position.set(1.9, heightM / 2 + elevation, 3.2);
+	camera.lookAt(0, heightM / 2, 0);
+	const model = createThreeGreyboxItemGroup({
+		centerXM: 0,
+		centerYM: heightM / 2,
+		centerZM: 0,
+		widthM,
+		depthM,
+		heightM,
+		material: { colorHex: preset.color, furnitureKind: kind },
+	});
+	if (isTwoSeatSofa || (isUpdatedPreset && furnitureFrontFacesNegativeZ(kind))) model.rotation.y = Math.PI;
+	if (isUpdatedPreset) {
+		camera.updateMatrixWorld();
+		model.updateMatrixWorld(true);
+		const bounds = new Box3();
+		const point = new Vector3();
+		model.traverse((mesh) => {
+			if (!(mesh instanceof Mesh)) return;
+			const positions = mesh.geometry.getAttribute("position");
+			for (let index = 0; index < positions.count; index += 1) {
+				point.fromBufferAttribute(positions, index).applyMatrix4(mesh.matrixWorld).applyMatrix4(camera.matrixWorldInverse);
+				bounds.expandByPoint(point);
+			}
+		});
+		const size = bounds.getSize(new Vector3());
+		const centre = bounds.getCenter(new Vector3());
+		const aspect = THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT;
+		const halfHeight = Math.max(size.y, size.x / aspect) * 0.57;
+		camera.left = centre.x - halfHeight * aspect;
+		camera.right = centre.x + halfHeight * aspect;
+		camera.top = centre.y + halfHeight;
+		camera.bottom = centre.y - halfHeight;
+		camera.updateProjectionMatrix();
+	}
+	return { camera, model };
+}
 
 function createThumbnailCapture() {
 	const canvas = document.createElement("canvas");
@@ -386,30 +468,7 @@ function createThumbnailCapture() {
 	scene.add(light);
 	return {
 		capture(preset: TelegramGreyboxPreset) {
-			const widthM = preset.widthMm / 1000;
-			const depthM = preset.depthMm / 1000;
-			const heightM = preset.heightMm / 1000;
-			const extent = Math.max(widthM, depthM, heightM) * 0.85;
-			const horizontal = (extent * THUMBNAIL_WIDTH) / THUMBNAIL_HEIGHT;
-			const camera = new OrthographicCamera(
-				-horizontal,
-				horizontal,
-				extent,
-				-extent,
-				0.01,
-				20,
-			);
-			camera.position.set(1.9, heightM / 2 + 1.4, 3.2);
-			camera.lookAt(0, heightM / 2, 0);
-			const model = createThreeGreyboxItemGroup({
-				centerXM: 0,
-				centerYM: heightM / 2,
-				centerZM: 0,
-				widthM,
-				depthM,
-				heightM,
-				material: { colorHex: preset.color, furnitureKind: preset.shape },
-			});
+			const { camera, model } = createCatalogThumbnailView(preset);
 			scene.add(model);
 			try {
 				renderer.render(scene, camera);
@@ -510,6 +569,7 @@ function useThumbnails(
 }
 
 type TelegramGreyboxCatalogProps = {
+	readonly interiorDecor?: boolean;
 	readonly onSelect: (preset: TelegramGreyboxPreset) => boolean;
 	readonly onImportModel: () => void;
 	readonly ownModels: boolean;
@@ -531,6 +591,7 @@ export function TelegramGreyboxCatalog({
 	importBusy,
 	onToggleComposer,
 	composerOpen,
+	interiorDecor = false,
 }: TelegramGreyboxCatalogProps) {
 	const [category, setCategory] = useState<Category | "all">("all");
 	const [placementUnavailable, setPlacementUnavailable] = useState(false);
@@ -538,7 +599,7 @@ export function TelegramGreyboxCatalog({
 	const matchingPresets = useMemo(() => {
 		if (ownModels) return [];
 		const search = catalogSearchText(query.trim());
-		return presets.filter(
+		return (interiorDecor ? [...presets, ...interiorDecorPresets] : presets).filter(
 			(preset) =>
 				preset.anchorClass === "floor" &&
 				(category === "all" || category === preset.category) &&
@@ -551,7 +612,7 @@ export function TelegramGreyboxCatalog({
 					].join(" "),
 				).includes(search),
 		);
-	}, [category, query, ownModels]);
+	}, [category, query, ownModels, interiorDecor]);
 	const thumbnails = useThumbnails(gridRef, matchingPresets);
 	return (
 		<>

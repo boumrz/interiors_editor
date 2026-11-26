@@ -168,6 +168,7 @@ export class DeleteGeneralWallFromProjectUseCase {
 							},
 							this.dependencies.clock.now(),
 							preserveDoorHinges,
+							this.dependencies.ids,
 						)
 					: input.openingIds === undefined
 						? deleteGeneralWallFromProject(
@@ -175,6 +176,7 @@ export class DeleteGeneralWallFromProjectUseCase {
 								input,
 								this.dependencies.clock.now(),
 								preserveDoorHinges,
+								this.dependencies.ids,
 							)
 						: deleteGeneralWallWithOpeningResolution(
 								base.project,
@@ -185,6 +187,7 @@ export class DeleteGeneralWallFromProjectUseCase {
 								},
 								this.dependencies.clock.now(),
 								preserveDoorHinges,
+								this.dependencies.ids,
 							);
 		return publishWallMutation(
 			updated,

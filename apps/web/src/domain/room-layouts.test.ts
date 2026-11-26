@@ -257,3 +257,37 @@ describe("room layout state", () => {
 		}
 	});
 });
+
+it("rekeys furniture-supported decor with the new host when copying A to B", () => {
+	const source = {
+		...legacyProject(),
+		supportedItems: [{
+			anchorClass: "support" as const,
+			assetInstanceId: "planter-a",
+			label: "Кашпо",
+			color: "#536d62",
+			widthMm: 350,
+			depthMm: 350,
+			heightMm: 450,
+			catalogPreset: { presetId: "planter", version: 1 as const },
+			supportAssetInstanceId: "chair-a",
+			supportSurfaceKey: "top",
+			offsetXMm: 40,
+			offsetZMm: 0,
+			relativeYawMilliDeg: 0,
+		}],
+	};
+	const result = applyRoomLayoutCommand(
+		source,
+		{ kind: "create-second", roomId: "bedroom" },
+		ids("bed-a", "bed-b", "chair-b", "planter-b"),
+		editedAt,
+	);
+	expect(result).toMatchObject({
+		kind: "accepted",
+		project: { supportedItems: [
+			{ assetInstanceId: "planter-a", supportAssetInstanceId: "chair-a" },
+			{ assetInstanceId: "planter-b", supportAssetInstanceId: "chair-b", offsetXMm: 40 },
+		]},
+	});
+});

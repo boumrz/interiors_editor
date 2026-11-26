@@ -1,4 +1,4 @@
-import type { WallOpening } from "./project";
+import type { OpeningSlideDirection, WallOpening, WallSchematicAssetInstance, WallSide } from "./project";
 
 /**
  * СП 59.13330.2020, clause 7.1.6 sets an 0.80 m clear opening minimum for
@@ -7,6 +7,7 @@ import type { WallOpening } from "./project";
  */
 export const MINIMUM_RESIDENTIAL_DOORWAY_WIDTH_MM = 800;
 export const PREFERRED_WINDOW_SILL_MM = 900;
+export const SLIDING_WALL_CLEARANCE_MM = 5;
 
 /**
  * A wall host exposes the already-derived usable interval and permitted
@@ -34,6 +35,9 @@ export interface AddDoorOpeningInput {
 	readonly sillMm: number;
 	readonly swingSide?: "left" | "right";
 	readonly hingeEnd?: "end";
+	readonly variant?: DoorOpening["variant"];
+	readonly slideSide?: WallSide;
+	readonly slideDirection?: OpeningSlideDirection;
 }
 
 /** Windows share the canonical host/interval contract, but have no hinge state. */
@@ -43,6 +47,7 @@ export interface AddWindowOpeningInput {
 	readonly widthMm: number;
 	readonly heightMm: number;
 	readonly sillMm: number;
+	readonly sections?: 1 | 2;
 }
 
 /** A single atomic edit preserves the durable Opening identity and host. */
@@ -53,6 +58,10 @@ export interface UpdateWallOpeningInput {
 	readonly sillMm?: number;
 	readonly swingSide?: "left" | "right";
 	readonly hingeEnd?: "end" | null;
+	readonly variant?: DoorOpening["variant"] | null;
+	readonly slideSide?: WallSide;
+	readonly slideDirection?: OpeningSlideDirection;
+	readonly sections?: 1 | 2 | null;
 	readonly widthMm?: number;
 }
 
@@ -112,8 +121,8 @@ export function assessDoorOpeningPlacement(
 	state: WallOpeningState,
 	input: AddDoorOpeningInput,
 ): WallOpeningPlacementAssessment {
-	if (!hasValidDimensions(input) || !hasValidSwingSide(input.swingSide) ||
-		(input.hingeEnd !== undefined && input.hingeEnd !== "end")) {
+	if (!hasValidDimensions(input) || Object.hasOwn(input, "sections") ||
+		(input.hingeEnd !== undefined && input.hingeEnd !== "end") || !doorFieldsFor(input)) {
 		return rejectAdd("INVALID_DIMENSION");
 	}
 
@@ -143,7 +152,7 @@ export function assessDoorOpeningPlacement(
 		state.openings.some(
 			(opening) =>
 				opening.wallSegmentId === input.wallSegmentId &&
-				intervalsPositivelyOverlap(opening, input),
+				openingShapesConflict(opening, input),
 		)
 	) {
 		return rejectAdd("OPENING_OVERLAP");
@@ -157,7 +166,8 @@ export function assessWindowOpeningPlacement(
 	state: WallOpeningState,
 	input: AddWindowOpeningInput,
 ): WallOpeningPlacementAssessment {
-	if (!hasValidDimensions(input) || Object.hasOwn(input, "hingeEnd")) {
+	if (!hasValidDimensions(input) || !validWindowSections(input.sections) || Object.hasOwn(input, "hingeEnd") ||
+		["swingSide", "variant", "slideSide", "slideDirection"].some((field) => Reflect.get(input, field) !== undefined)) {
 		return rejectAdd("INVALID_DIMENSION");
 	}
 
@@ -184,7 +194,7 @@ export function assessWindowOpeningPlacement(
 		state.openings.some(
 			(opening) =>
 				opening.wallSegmentId === input.wallSegmentId &&
-				intervalsPositivelyOverlap(opening, input),
+				openingShapesConflict(opening, input),
 		)
 	) {
 		return rejectAdd("OPENING_OVERLAP");
@@ -206,14 +216,16 @@ export function addDoorOpening(
 	const assessment = assessDoorOpeningPlacement(state, input);
 	if (assessment.kind === "rejected") return assessment;
 
-	const { hingeEnd, ...dimensions } = input;
-	const opening: DoorOpening = {
-		...dimensions,
-		kind: "Door",
+	const fields = doorFieldsFor(input);
+	if (!fields) return rejectAdd("INVALID_DIMENSION");
+	const address = {
+		...openingDimensions(input),
+		kind: "Door" as const,
 		openingId: ids.next(),
-		swingSide: input.swingSide ?? "right",
-		...(hingeEnd === "end" ? { hingeEnd } : {}),
 	};
+	const opening: DoorOpening = fields.variant === "sliding"
+		? { ...address, ...fields }
+		: { ...address, ...fields, swingSide: fields.swingSide ?? "right" };
 	return { kind: "accepted", openings: [...state.openings, opening] };
 }
 
@@ -231,7 +243,8 @@ export function addWindowOpening(
 	if (assessment.kind === "rejected") return assessment;
 
 	const opening: WindowOpening = {
-		...input,
+		...openingDimensions(input),
+		...(input.sections === undefined ? {} : { sections: input.sections }),
 		kind: "Window",
 		openingId: ids.next(),
 	};
@@ -279,30 +292,40 @@ export function updateWallOpening(
 	if (!opening) {
 		return { kind: "rejected", reasonCode: "OPENING_NOT_FOUND" };
 	}
-	if (
-		(opening.kind === "Window" && (input.swingSide !== undefined || input.hingeEnd !== undefined)) ||
-		(input.hingeEnd !== undefined && input.hingeEnd !== null && input.hingeEnd !== "end")
-	) {
-		return rejectAdd("INVALID_DIMENSION");
-	}
 	const dimensions = {
 		...(input.offsetMm === undefined ? {} : { offsetMm: input.offsetMm }),
 		...(input.widthMm === undefined ? {} : { widthMm: input.widthMm }),
 		...(input.heightMm === undefined ? {} : { heightMm: input.heightMm }),
 		...(input.sillMm === undefined ? {} : { sillMm: input.sillMm }),
 	};
-	let moved: WallOpening = { ...opening, ...dimensions };
+	const address = { ...openingDimensions(opening), ...dimensions, openingId: opening.openingId };
+	let moved: WallOpening;
 	if (opening.kind === "Door") {
-		const { hingeEnd, ...door } = opening;
-		const nextHinge = input.hingeEnd === undefined ? hingeEnd : input.hingeEnd;
-		moved = {
-			...door,
-			...dimensions,
-			...(input.swingSide === undefined ? {} : { swingSide: input.swingSide }),
-			...(nextHinge === "end" ? { hingeEnd: nextHinge } : {}),
-		};
+		if (input.sections !== undefined) return rejectAdd("INVALID_DIMENSION");
+		const variant = input.variant === undefined ? opening.variant : input.variant ?? undefined;
+		const fields = variant === "sliding" ? doorFieldsFor({
+			variant,
+			slideSide: input.slideSide ?? opening.slideSide,
+			slideDirection: input.slideDirection ?? opening.slideDirection,
+			swingSide: input.swingSide,
+			hingeEnd: input.hingeEnd,
+		}) : doorFieldsFor({
+			variant,
+			slideSide: input.slideSide,
+			slideDirection: input.slideDirection,
+			swingSide: input.swingSide ?? opening.swingSide,
+			hingeEnd: input.hingeEnd === undefined ? opening.hingeEnd : input.hingeEnd,
+		});
+		if (!fields) return rejectAdd("INVALID_DIMENSION");
+		moved = { ...address, kind: "Door", ...fields };
+	} else {
+		if (input.variant !== undefined || input.slideSide !== undefined || input.slideDirection !== undefined ||
+			input.swingSide !== undefined || input.hingeEnd !== undefined) return rejectAdd("INVALID_DIMENSION");
+		const sections = input.sections === undefined ? opening.sections : input.sections ?? undefined;
+		if (!validWindowSections(sections)) return rejectAdd("INVALID_DIMENSION");
+		moved = { ...address, kind: "Window", ...(sections === undefined ? {} : { sections }) };
 	}
-	if (!hasValidDimensions(moved) || !hasValidSwingSide(moved.swingSide)) {
+	if (!hasValidDimensions(moved)) {
 		return rejectAdd("INVALID_DIMENSION");
 	}
 	const hosts = state.wallHosts.filter(
@@ -339,7 +362,7 @@ export function updateWallOpening(
 			(candidate) =>
 				candidate.openingId !== moved.openingId &&
 				candidate.wallSegmentId === moved.wallSegmentId &&
-				intervalsPositivelyOverlap(candidate, moved),
+				openingShapesConflict(candidate, moved),
 		)
 	) {
 		return rejectAdd("OPENING_OVERLAP");
@@ -360,6 +383,64 @@ export function wallOpeningIntervalMm(
 		endMm: opening.offsetMm + opening.widthMm / 2,
 		startMm: opening.offsetMm - opening.widthMm / 2,
 	};
+}
+
+export function wallOpeningRequiredIntervalMm(
+	opening: Pick<WallOpening, "offsetMm" | "widthMm" | "variant" | "slideDirection">,
+): WallOpeningIntervalMm {
+	const interval = wallOpeningIntervalMm(opening);
+	if (opening.variant !== "sliding") return interval;
+	return opening.slideDirection === "toward-start"
+		? { startMm: interval.startMm - opening.widthMm, endMm: interval.endMm }
+		: { startMm: interval.startMm, endMm: interval.endMm + opening.widthMm };
+}
+
+export function wallItemObstructsOpening(
+	item: Pick<WallSchematicAssetInstance, "wallSegmentId" | "side" | "offsetMm" | "widthMm" | "elevationMm" | "heightMm" | "depthMm">,
+	opening: WallOpening,
+): boolean {
+	if (item.wallSegmentId !== opening.wallSegmentId ||
+		item.elevationMm - item.heightMm / 2 >= opening.sillMm + opening.heightMm ||
+		item.elevationMm + item.heightMm / 2 <= opening.sillMm) return false;
+	const interval = opening.variant === "sliding" && opening.slideSide === item.side && item.depthMm > SLIDING_WALL_CLEARANCE_MM
+		? wallOpeningRequiredIntervalMm(opening) : wallOpeningIntervalMm(opening);
+	return item.offsetMm - item.widthMm / 2 < interval.endMm && item.offsetMm + item.widthMm / 2 > interval.startMm;
+}
+
+type OpeningDimensions = Pick<WallOpening, "wallSegmentId" | "offsetMm" | "widthMm" | "heightMm" | "sillMm">;
+
+type DoorFields = Omit<Extract<DoorOpening, { variant: "sliding" }>, keyof OpeningDimensions | "kind" | "openingId"> |
+	Omit<Exclude<DoorOpening, { variant: "sliding" }>, keyof OpeningDimensions | "kind" | "openingId">;
+
+function openingDimensions({ wallSegmentId, offsetMm, widthMm, heightMm, sillMm }: OpeningDimensions): OpeningDimensions {
+	return { wallSegmentId, offsetMm, widthMm, heightMm, sillMm };
+}
+
+function doorFieldsFor(input: {
+	readonly variant?: DoorOpening["variant"] | undefined;
+	readonly slideSide?: WallSide | undefined;
+	readonly slideDirection?: OpeningSlideDirection | undefined;
+	readonly swingSide?: WallSide | undefined;
+	readonly hingeEnd?: "end" | null | undefined;
+}): DoorFields | undefined {
+	const { variant, slideSide, slideDirection, swingSide, hingeEnd } = input;
+	if (variant === "sliding") {
+		if ((slideSide !== "left" && slideSide !== "right") ||
+			(slideDirection !== "toward-start" && slideDirection !== "toward-end") ||
+			swingSide !== undefined || hingeEnd !== undefined) return undefined;
+		return { variant, slideDirection, slideSide };
+	}
+	if ((variant !== undefined && variant !== "glazed-swing") || slideSide !== undefined || slideDirection !== undefined ||
+		!hasValidSwingSide(swingSide) || (hingeEnd !== undefined && hingeEnd !== null && hingeEnd !== "end")) return undefined;
+	return {
+		...(variant === undefined ? {} : { variant }),
+		...(swingSide === undefined ? {} : { swingSide }),
+		...(hingeEnd === "end" ? { hingeEnd } : {}),
+	};
+}
+
+function validWindowSections(sections: unknown): boolean {
+	return sections === undefined || sections === 1 || sections === 2;
 }
 
 function hasValidDimensions(
@@ -393,10 +474,10 @@ function hasValidHost(host: WallOpeningHost): boolean {
 }
 
 function fitsWithinInterval(
-	input: Pick<WallOpening, "offsetMm" | "widthMm">,
+	input: Pick<WallOpening, "offsetMm" | "widthMm" | "variant" | "slideDirection">,
 	usableLengthMm: number,
 ): boolean {
-	const interval = doubledInterval(input);
+	const interval = doubledSweepInterval(input);
 	return interval.start >= 0n && interval.end <= BigInt(usableLengthMm) * 2n;
 }
 
@@ -407,16 +488,31 @@ function fitsWithinHeight(
 	return BigInt(input.sillMm) + BigInt(input.heightMm) <= BigInt(wallHeightMm);
 }
 
-function intervalsPositivelyOverlap(
-	first: Pick<WallOpening, "offsetMm" | "widthMm">,
-	second: Pick<WallOpening, "offsetMm" | "widthMm">,
+function openingShapesConflict(
+	first: Pick<WallOpening, "offsetMm" | "widthMm" | "sillMm" | "heightMm" | "variant" | "slideDirection" | "slideSide">,
+	second: Pick<WallOpening, "offsetMm" | "widthMm" | "sillMm" | "heightMm" | "variant" | "slideDirection" | "slideSide">,
 ): boolean {
 	const firstInterval = doubledInterval(first);
 	const secondInterval = doubledInterval(second);
-	return (
-		firstInterval.start < secondInterval.end &&
-		firstInterval.end > secondInterval.start
-	);
+	if (intervalsOverlap(firstInterval, secondInterval)) return true;
+	if (first.sillMm >= second.sillMm + second.heightMm || second.sillMm >= first.sillMm + first.heightMm) return false;
+	const firstSweep = doubledSweepInterval(first);
+	const secondSweep = doubledSweepInterval(second);
+	return intervalsOverlap(firstSweep, secondInterval) || intervalsOverlap(firstInterval, secondSweep) ||
+		(first.slideSide === second.slideSide && intervalsOverlap(firstSweep, secondSweep));
+}
+
+function intervalsOverlap(first: ReturnType<typeof doubledInterval>, second: ReturnType<typeof doubledInterval>): boolean {
+	return first.start < second.end && first.end > second.start;
+}
+
+function doubledSweepInterval(opening: Pick<WallOpening, "offsetMm" | "widthMm" | "variant" | "slideDirection">) {
+	const interval = doubledInterval(opening);
+	if (opening.variant !== "sliding") return interval;
+	const travel = BigInt(opening.widthMm) * 2n;
+	return opening.slideDirection === "toward-start"
+		? { start: interval.start - travel, end: interval.end }
+		: { start: interval.start, end: interval.end + travel };
 }
 
 function doubledInterval(opening: Pick<WallOpening, "offsetMm" | "widthMm">): {

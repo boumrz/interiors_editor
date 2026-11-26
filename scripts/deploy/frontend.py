@@ -740,6 +740,21 @@ def request(origin, path, method="GET", headers=None, timeout=15, *, follow_redi
         return response.status, {key.lower(): value for key, value in response.headers.items()}, bytes(body)
 
 
+def verify_telegram_predecessor(compatible_archive, authoring_archive, commit):
+    with tempfile.TemporaryDirectory(prefix="interiors-telegram-predecessor-") as temporary:
+        root = Path(temporary)
+        compatible = extract_telegram_release(compatible_archive, root / "compatible")
+        authoring = extract_telegram_release(authoring_archive, root / "authoring")
+    require(compatible["commit"] == authoring["commit"] == commit, "Telegram release source commit mismatch")
+    require(compatible["release"] != authoring["release"], "Telegram release builds must be distinct")
+    controls = {row["path"]: row["sha256"] for row in compatible["targets"]["telegram"]}
+    for path in ("/release-set.json", "/index.html"):
+        status, _, body = request(ORIGINS["telegram"], path, headers={"Cache-Control": "no-cache"}, follow_redirects=False)
+        require(status == 200 and sha(body) == controls[path],
+                "Publish and verify the compatible Telegram build before activating authoring: " + path)
+    return {"compatibleBuildId": compatible["release"], "authoringBuildId": authoring["release"]}
+
+
 def valid_mime(path, headers):
     allowed = {".html": {"text/html"}, ".js": {"application/javascript", "text/javascript"}, ".css": {"text/css"}, ".json": {"application/json"}, ".svg": {"image/svg+xml"}, ".png": {"image/png"}, ".glb": {"model/gltf-binary", "application/octet-stream"}, ".webmanifest": {"application/manifest+json", "application/octet-stream"}, ".txt": {"text/plain"}}
     content_type = headers.get("content-type", "").split(";", 1)[0].strip().lower()
@@ -911,6 +926,9 @@ def main():
         smoke = commands.add_parser(name)
         smoke.add_argument("--archive", required=True)
         smoke.add_argument("--receipt", type=Path, required=name == "smoke-telegram")
+    predecessor = commands.add_parser("verify-telegram-predecessor")
+    for option in ("compatible", "authoring", "commit"):
+        predecessor.add_argument("--" + option, required=True)
     arguments = parser.parse_args()
     if arguments.command in ("activate", "activate-telegram") or (
             arguments.command in ("retire-web", "restore-web") and not arguments.dry_run):
@@ -927,6 +945,8 @@ def main():
     elif arguments.command == "package-telegram":
         result = package_telegram_release(arguments.telegram, arguments.output, arguments.commit)
         print(json.dumps({"packaged": True, "target": "telegram", "commit": result["commit"], "release": result["release"]}))
+    elif arguments.command == "verify-telegram-predecessor":
+        print(json.dumps(verify_telegram_predecessor(arguments.compatible, arguments.authoring, arguments.commit)))
     elif arguments.command in ("activate", "activate-telegram"):
         require(re.fullmatch(r"[a-f0-9]{40}", arguments.commit), "Expected full source commit SHA")
         if arguments.command == "activate-telegram":

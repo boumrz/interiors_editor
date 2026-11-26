@@ -1,3 +1,4 @@
+import { supportedItemConflict } from "../domain/interior-support";
 import {
 	createCustomGlbFloorItem,
 	createCustomGlbWallItem,
@@ -159,6 +160,10 @@ export class CreateCustomGlbFloorItemUseCase {
 					this.dependencies.floorItemCollisionPolicy,
 				);
 		if (updated.kind === "rejected") return updated;
+		const conflictAssetInstanceId = supportedItemConflict(updated.project);
+		if (conflictAssetInstanceId !== undefined)
+			return { kind: "rejected", reasonCode: isWallInput(input) ? "WALL_ITEM_COLLISION" : "ITEM_COLLISION", conflictAssetInstanceId };
+
 
 		const project = this.dependencies.backupFeasibility
 			? copyProject(updated.project)

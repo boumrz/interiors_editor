@@ -1,5 +1,6 @@
 import { deriveBoundedOrthogonalFaces, type PlanGraph } from './derive-plan-faces';
 import type { Vertex, WallSegment } from './project';
+import { sameWallSurfaceMetadata, wallSurfaceMetadata } from './wall-surface-metadata';
 
 export type DeleteWallSegmentResult =
   | { readonly graph: PlanGraph; readonly kind: 'accepted' }
@@ -93,7 +94,8 @@ function mergeOneDegreeTwoVertex(
       wall.startVertexId === vertex.vertexId || wall.endVertexId === vertex.vertexId
     );
     const [first, second] = connected;
-    if (!first || !second || connected.length !== 2 || first.thicknessMm !== second.thicknessMm) {
+    if (!first || !second || connected.length !== 2 || first.thicknessMm !== second.thicknessMm ||
+      !sameWallSurfaceMetadata(first, second, (first.endVertexId === vertex.vertexId) !== (second.startVertexId === vertex.vertexId))) {
       continue;
     }
     const firstOtherId = first.startVertexId === vertex.vertexId ? first.endVertexId : first.startVertexId;
@@ -107,6 +109,7 @@ function mergeOneDegreeTwoVertex(
       endVertexId: secondOtherId,
       startVertexId: firstOtherId,
       thicknessMm: first.thicknessMm,
+      ...wallSurfaceMetadata(first, first.startVertexId === vertex.vertexId),
       wallSegmentId: first.wallSegmentId
     };
     return {

@@ -81,6 +81,7 @@ export function createCustomGlbFloorItem(
 			heightMm: input.asset.heightMm,
 			label: input.asset.displayName,
 			roomId: input.roomId,
+			...(input.roomLayoutId === undefined ? {} : { roomLayoutId: input.roomLayoutId }),
 			widthMm: input.asset.widthMm,
 			xMm: input.xMm,
 			yawStep: input.yawStep,

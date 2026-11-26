@@ -1,3 +1,4 @@
+import { supportedItemConflict } from "../domain/interior-support";
 import {
 	moveParametricWallItem,
 	type MoveParametricWallItemInput,
@@ -61,6 +62,10 @@ export class MoveParametricWallItemUseCase {
 			this.dependencies.clock.now(),
 		);
 		if (updated.kind === "rejected") return updated;
+		const conflictAssetInstanceId = supportedItemConflict(updated.project);
+		if (conflictAssetInstanceId !== undefined)
+			return { kind: "rejected", reasonCode: "WALL_ITEM_COLLISION", conflictAssetInstanceId };
+
 		const serializedProject = this.dependencies.serializer.serialize(
 			updated.project,
 		);

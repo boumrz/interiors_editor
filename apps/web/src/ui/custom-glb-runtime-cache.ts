@@ -95,6 +95,7 @@ export function rendererStructureKeyFor(
 ): string {
 	return JSON.stringify({
 		floors: scene.floors,
+		floorPolygons: scene.floorPolygons,
 		items: scene.items.map((item) => ({
 			assetDefinitionId: item.assetDefinitionId,
 			assetInstanceId: item.assetInstanceId,

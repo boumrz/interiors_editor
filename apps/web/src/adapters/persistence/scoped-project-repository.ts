@@ -21,10 +21,10 @@ import type {
 } from "../../application/ports";
 import { WRITER_LEASE_DURATION_MS } from "../../application/ports";
 import { canonicalProjectSerializer } from "../../application/create-project";
-import { isStructurallyValidProjectV1 } from "../../domain/project-json-transfer";
+import { isStructurallyValidProjectV1, isStructurallyValidTelegramProject } from "../../domain/project-json-transfer";
 import type { CustomGlbAssetDefinition } from "../../domain/project";
 import { encodeRegisteredRuntimeProject } from "../portable-backup/runtime-v1-wire";
-import { validateRuntimeV1Project } from "../../application/runtime-v1-project-validation";
+import { validateRuntimeV1Project, validateTelegramRuntimeV1Project } from "../../application/runtime-v1-project-validation";
 import { validateCustomGlbAssetDefinition } from "../../domain/custom-glb-asset";
 import type {
 	ScopedProjectAccess,
@@ -748,7 +748,7 @@ export class ScopedProjectRepository
 				);
 				if (
 					!record(stage) ||
-					!isV1Candidate(stage.candidate) ||
+					!isV1Candidate(stage.candidate, this.protocol.allowTelegramExtendedSchemas) ||
 					stage.candidate.project.projectId !== projectId ||
 					stage.candidate.revision.revisionId !== raw.revisionId ||
 					stage.candidate.revision.checksum !== raw.checksum ||
@@ -883,7 +883,7 @@ export class ScopedProjectRepository
 			const revision = snapshot.revision;
 			if (
 				!record(revision) ||
-				!isV1Candidate(revision.candidate) ||
+				!isV1Candidate(revision.candidate, this.protocol.allowTelegramExtendedSchemas) ||
 				!this.exactRevision(revision, revision.candidate, access.scope) ||
 				revision.projectId !== projectId ||
 				revision.revisionId !== attempt.revisionId ||
@@ -1198,7 +1198,7 @@ export class ScopedProjectRepository
 						);
 						if (
 							!record(staged) ||
-							!isV1Candidate(staged.candidate) ||
+							!isV1Candidate(staged.candidate, this.protocol.allowTelegramExtendedSchemas) ||
 							!equal(staged, stageRecord(attempt, staged.candidate)) ||
 							staged.candidate.project.projectId !== attempt.projectId ||
 							staged.candidate.revision.revisionId !== attempt.revisionId ||
@@ -1777,7 +1777,7 @@ export class ScopedProjectRepository
 		);
 		if (
 			!record(revision) ||
-			!isV1Candidate(revision.candidate) ||
+			!isV1Candidate(revision.candidate, this.protocol.allowTelegramExtendedSchemas) ||
 			revision.candidate.project.projectId !== projectId ||
 			revision.candidate.revision.revisionId !== pointer.currentRevisionId ||
 			pointer.name !== revision.candidate.project.name ||
@@ -2089,13 +2089,13 @@ export class ScopedProjectRepository
 
 	private async readable(candidate: unknown): Promise<boolean> {
 		try {
+			const validate = this.protocol.allowTelegramExtendedSchemas ? validateTelegramRuntimeV1Project : validateRuntimeV1Project;
 			return (
-				isV1Candidate(candidate) &&
+				isV1Candidate(candidate, this.protocol.allowTelegramExtendedSchemas) &&
 				candidate.project.schemaVersion === 1 &&
 				candidate.revision.schemaVersion === 1 &&
-				isStructurallyValidProjectV1(candidate.project) &&
 				encodeRegisteredRuntimeProject(candidate.project).kind === "encoded" &&
-				validateRuntimeV1Project(candidate.project).kind === "accepted" &&
+				validate(candidate.project).kind === "accepted" &&
 				candidate.revision.projectId === candidate.project.projectId &&
 				typeof candidate.revision.revisionId === "string" &&
 				candidate.revision.revisionId.length > 0 &&
@@ -2140,10 +2140,11 @@ function projectRecords(
 	});
 }
 
-function isV1Candidate(value: unknown): value is PublicationCandidate {
+function isV1Candidate(value: unknown, allowTelegramExtendedSchemas = false): value is PublicationCandidate {
+	const validateShape = allowTelegramExtendedSchemas ? isStructurallyValidTelegramProject : isStructurallyValidProjectV1;
 	return (
 		record(value) &&
-		isStructurallyValidProjectV1(value.project) &&
+		validateShape(value.project) &&
 		record(value.revision) &&
 		value.revision.schemaVersion === 1 &&
 		typeof value.revision.projectId === "string" &&

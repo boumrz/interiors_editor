@@ -246,6 +246,16 @@ export function visualGridStepMm(): number {
 }
 
 export interface PlanProjectionProps {
+	readonly finishPreview?: import("./room-interior-controls").FinishDraft;
+	readonly supportPreview?: import("./supported-item-controls").SupportOption | undefined;
+	readonly supportPlanTargets?: {
+		readonly options: readonly import("./supported-item-controls").SupportOption[];
+		readonly selectedHostId?: string | undefined;
+		readonly onPick: (assetInstanceId: string, point?: ItemPlacementPoint) => void;
+	} | undefined;
+	readonly supportFloorPick?: ((point: ItemPlacementPoint) => void) | undefined;
+	readonly supportFloorRoomIds?: ReadonlySet<string> | undefined;
+	readonly supportFloorPreviewItemId?: string | undefined;
 	readonly plainLabels?: boolean;
 	/** Built-in models whose visible front faces local -Z in the 3D scene. */
 	readonly reversedItemFrontIds?: ReadonlySet<string>;
@@ -272,21 +282,21 @@ export interface PlanProjectionProps {
 	readonly isWallSplitMode: boolean;
 	readonly isWallVertexMoveMode: boolean;
 	readonly movableWallVertexIds: readonly string[];
-	readonly openingMovePreview?: {
+	readonly openingMovePreview?: import("./opening-creation-draft").OpeningVariantFields & {
 		readonly swingSide?: "left" | "right";
 		readonly hingeEnd?: "end" | null;
 		readonly openingId: string;
 		readonly offsetMm: number;
 	};
 	readonly openingCreationPreview:
-		| {
+		| (import("./opening-creation-draft").OpeningVariantFields & {
 				readonly kind?: "Door" | "Window";
 				readonly swingSide?: "left" | "right";
 				readonly hingeEnd?: "end" | null;
 				readonly offsetMm: number;
 				readonly wallSegmentId: string;
 				readonly widthMm: number;
-		  }
+		  })
 		| undefined;
 	readonly onMoveOpeningCreationDraft?: (offsetMm: number) => void;
 	readonly openingHostIds?: ReadonlySet<string>;

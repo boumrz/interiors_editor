@@ -32,6 +32,8 @@ export default (environment, arguments_) => {
 				__INTERIORS_TEST_SEAM__: "false",
 				__INTERIORS_EXACT_FLOOR_YAW__: JSON.stringify(process.env.INTERIORS_EXACT_FLOOR_YAW === "1"),
 				__INTERIORS_DOOR_HINGE_AUTHORING__: JSON.stringify(process.env.INTERIORS_DOOR_HINGE_AUTHORING === "1"),
+				__INTERIORS_ROOM_INTERIOR_ENABLED__: JSON.stringify(process.env.INTERIORS_ROOM_INTERIOR_ENABLED === "1"),
+				__INTERIORS_ROOM_INTERIOR_COMPATIBLE__: JSON.stringify(process.env.INTERIORS_ROOM_INTERIOR_COMPATIBLE === "1"),
 				__INTERIORS_RETURN_STUDY__: JSON.stringify(returnStudyConfiguration(process.env)),
 			}),
 			new rspack.HtmlRspackPlugin({

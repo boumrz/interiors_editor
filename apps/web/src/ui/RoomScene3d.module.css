@@ -538,6 +538,12 @@ main[data-editor-host="telegram"] .itemPlacementStatus {
 	/* Pinch zoom is native on the canvas; it keeps the three primary actions
 	   equal-width, as in the mobile editor reference. */
 	.scaleControls { display: none; }
+	.viewControls[data-support-pick] {
+		bottom: auto;
+		left: auto;
+		top: calc(var(--editor-header-bottom, 106px) + 8px);
+	}
+	.viewControls[data-support-pick] .scaleControls { display: flex; }
 
 
 	.itemPlacementMenu {

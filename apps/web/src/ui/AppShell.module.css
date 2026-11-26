@@ -4403,6 +4403,10 @@ main[data-editor-host="telegram"] .tmaItemColor .quickPalette button small {
 	gap: 8px;
 }
 
+.editorShell[data-editor-host="telegram"]:has(.planRotationEditor [data-angle-draft]) .selectionInspectorPanel[data-inspector-expanded="false"][data-testid="selected-item-inspector"][data-inspector-compact="true"] {
+	display: none;
+}
+
 .editorShell[data-editor-host="telegram"] .selectionInspectorPanel[data-inspector-expanded="false"] > .tmaItemColor { display: block; }
 
 main[data-editor-host="telegram"] .tmaItemColor .quickPalette > div {
@@ -4960,4 +4964,118 @@ main[data-editor-host="telegram"] button[type="button"][data-editor-action="canc
 	right: max(12px, var(--editor-safe-area-right, 0px));
 	top: calc(var(--editor-header-bottom, 116px) + 8px);
 	z-index: 8;
+}
+
+.interiorChoices {
+	background: var(--editor-host-surface, var(--surface));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	margin: 0;
+	min-width: 0;
+	padding: 4px;
+}
+
+.interiorChoices button {
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--ink);
+	flex: 1 1 auto;
+	font: inherit;
+	min-height: 44px;
+	padding: 4px 8px;
+}
+
+.interiorChoices button[aria-pressed="true"] {
+	background: var(--editor-host-primary-soft, #e7f3fb);
+	border-color: var(--editor-host-primary, #1976b9);
+}
+
+.interiorEditorSheet {
+	display: grid;
+	gap: 8px;
+	padding: 16px;
+}
+
+.interiorEditorSheet button span[aria-hidden="true"] {
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	display: inline-block;
+	height: 1em;
+	margin-inline-end: 6px;
+	vertical-align: middle;
+	width: 1em;
+}
+
+.interiorSupportedPanel {
+	background: var(--editor-host-surface, var(--surface));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	bottom: max(12px, var(--editor-safe-area-bottom, 0px));
+	display: grid;
+	gap: 5px;
+	left: 12px;
+	margin-inline: auto;
+	max-height: 45vh;
+	max-width: 440px;
+	overflow: auto;
+	padding: 8px;
+	position: absolute;
+	right: 12px;
+	z-index: 9;
+}
+
+.interiorSupportList, .interiorNumeric {
+	display: grid;
+	gap: 4px;
+	grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr));
+}
+
+.interiorSupportList {
+	max-height: 106px;
+	overflow: auto;
+}
+
+.interiorSupportList button {
+	background: var(--editor-host-surface, var(--surface));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--ink);
+	font: inherit;
+	min-height: 44px;
+}
+
+.interiorSupportList button[aria-pressed="true"] {
+	background: var(--editor-host-primary-soft, #e7f3fb);
+	border-color: var(--editor-host-primary, #1976b9);
+}
+
+.interiorNumeric label {
+	display: grid;
+	gap: 4px;
+}
+
+.interiorNumeric input {
+	background: var(--editor-host-surface, var(--surface));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--ink);
+	font: inherit;
+	min-height: 44px;
+	min-width: 0;
+	width: 100%;
+}
+
+.supportPlacementHeader {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+	justify-content: space-between;
+}
+
+.interiorSupportedPanel p[role="status"] {
+	margin: 2px 0;
 }

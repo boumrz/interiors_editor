@@ -27,7 +27,7 @@ function wallHosts(
 	];
 }
 
-function opening(overrides: Partial<DoorOpening> = {}): DoorOpening {
+function opening(overrides: Partial<Exclude<DoorOpening, { variant: "sliding" }>> = {}): DoorOpening {
 	return {
 		heightMm: 2100,
 		kind: "Door",

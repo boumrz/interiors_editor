@@ -116,7 +116,7 @@ if entry not in previous.splitlines():
         for name, data in (("DEPLOY_SSH_PRIVATE_KEY", key.read_bytes()), ("DEPLOY_SSH_KNOWN_HOSTS", hosts.encode())):
             run(["gh", "secret", "set", name, "--repo", repository, "--env", "production"], input=data)
     print("Production deployment receiver and GitHub environment secrets configured.")
-    print("Telegram deployment starts on the next successful main push.")
+    print("Main pushes prepare archives. Start Telegram publication with a manual release mode after approval.")
 
 
 if __name__ == "__main__":

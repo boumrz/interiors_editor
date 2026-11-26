@@ -5,12 +5,19 @@ import {
 	type DoorOpeningProjectMutationResult,
 	wallOpeningHostsForProject,
 } from "../domain/door-opening-project";
-import { isWallSchematicAssetInstance, type Project } from "../domain/project";
+import { isWallSchematicAssetInstance, type OpeningSlideDirection, type Project, type WallSide } from "../domain/project";
 import { PREFERRED_WINDOW_SILL_MM } from "../domain/wall-opening";
 
 export type OpeningCreationKind = "Door" | "Window";
 
-export interface OpeningCreationDraft {
+export type OpeningVariantFields = {
+	readonly variant?: "glazed-swing" | "sliding" | null;
+	readonly slideSide?: WallSide | undefined;
+	readonly slideDirection?: OpeningSlideDirection | undefined;
+	readonly sections?: 1 | 2;
+};
+
+export interface OpeningCreationDraft extends OpeningVariantFields {
 	readonly baseRevisionId?: string;
 	readonly heightMm: string;
 	readonly kind: OpeningCreationKind;
@@ -33,7 +40,8 @@ export interface OpeningCreationHost {
 export type OpeningCreationDraftValidation =
 	| {
 			readonly host: OpeningCreationHost;
-			readonly input: {
+			readonly input: Omit<OpeningVariantFields, "variant"> & {
+				readonly variant?: "glazed-swing" | "sliding";
 				readonly heightMm: number;
 				readonly kind: OpeningCreationKind;
 				readonly swingSide?: "left" | "right";
@@ -166,11 +174,20 @@ export function validateOpeningCreationDraft(
 			),
 		};
 	}
+	if (draft.kind === "Door" && draft.variant === "sliding" && (!draft.slideSide || !draft.slideDirection)) {
+		return { kind: "invalid", message: copy("Укажите сторону и направление сдвига.", "Choose a wall side and sliding direction.") };
+	}
 	const dimensions = {
 		heightMm,
 		kind: draft.kind,
-		...(draft.kind === "Door" && draft.swingSide ? { swingSide: draft.swingSide } : {}),
-		...(draft.kind === "Door" && draft.hingeEnd ? { hingeEnd: draft.hingeEnd } : {}),
+		...(draft.kind === "Door" && draft.variant ? { variant: draft.variant } : {}),
+		...(draft.kind === "Door" && draft.variant === "sliding"
+			? { ...(draft.slideSide ? { slideSide: draft.slideSide } : {}), ...(draft.slideDirection ? { slideDirection: draft.slideDirection } : {}) }
+			: {
+				...(draft.kind === "Door" && draft.swingSide ? { swingSide: draft.swingSide } : {}),
+				...(draft.kind === "Door" && draft.hingeEnd ? { hingeEnd: draft.hingeEnd } : {}),
+			}),
+		...(draft.kind === "Window" && draft.sections ? { sections: draft.sections } : {}),
 		sillMm,
 		wallSegmentId: draft.wallSegmentId,
 		widthMm,
@@ -209,7 +226,8 @@ export function validateOpeningCreationDraft(
 		probe.kind === "rejected" &&
 		probe.reasonCode !== "OPENING_OVERLAP" &&
 		probe.reasonCode !== "DOOR_CLEARANCE_COLLISION" &&
-		probe.reasonCode !== "WALL_OPENING_COLLISION"
+		probe.reasonCode !== "WALL_OPENING_COLLISION" &&
+		(draft.variant !== "sliding" || (probe.reasonCode !== "OPENING_OUTSIDE_WALL_INTERVAL" && probe.reasonCode !== "OPENING_OUT_OF_BOUNDS"))
 	) {
 		return { kind: "invalid", message: creationRejectionMessage(probe) };
 	}

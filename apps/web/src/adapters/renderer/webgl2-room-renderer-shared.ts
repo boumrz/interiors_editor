@@ -1,5 +1,7 @@
 import type { Object3D } from "three";
 
+import type { CatalogProfile } from "./catalog-model-parts";
+import { catalogPartsFor } from "./catalog-models";
 import { greyboxShapeTemplates, type AdditionalGreyboxKind } from "./greybox-shape-templates";
 
 import type {
@@ -19,6 +21,8 @@ export interface WebGl2SceneRenderer {
 	): void;
 	/** Selects an item from the most recently drawn frame. */
 	pickItem?(point: NormalizedCanvasPoint): string | undefined;
+	/** Returns the nearest opaque surface on the same ray, including room geometry. */
+	pickHit?(point: NormalizedCanvasPoint): WebGl2SceneHit | undefined;
 	/** Replaces only decoded local model roots; shell/camera state stays live. */
 	updateRuntimeModels?(runtimeModels: WebGl2RuntimeModels): void;
 	dispose(): void;
@@ -28,6 +32,11 @@ export interface WebGl2SceneRenderer {
 export interface NormalizedCanvasPoint {
 	readonly x: number;
 	readonly y: number;
+}
+
+export interface WebGl2SceneHit {
+	readonly distanceM: number;
+	readonly assetInstanceId?: string | undefined;
 }
 
 export interface WebGl2OrbitCamera {
@@ -399,14 +408,20 @@ export type FurnitureGreyboxRole =
 	| "mattress"
 	| "headboard"
 	| "drawer"
-	| "arm";
+	| "arm"
+	| "detail";
 
 export interface FurnitureGreyboxPart {
 	readonly box: SceneBox;
 	readonly role: FurnitureGreyboxRole;
-	readonly tone: "base" | "highlight" | "shadow";
+	readonly tone: "base" | "highlight" | "shadow" | "trim" | "foot";
+	readonly edgeRadiusM?: number;
+	readonly fixedColor?: string;
+	readonly profile?: CatalogProfile;
+	readonly opacity?: number;
 }
 
+export const SOFA_FOOT_COLOR = "#343735";
 const DETAIL_CLEARANCE_M = 0.003;
 
 export function furnitureGreyboxPartsFor(
@@ -414,9 +429,11 @@ export function furnitureGreyboxPartsFor(
 	detailed: boolean,
 ): readonly FurnitureGreyboxPart[] {
 	const furnitureKind = item.material?.furnitureKind;
-	if (!detailed || !furnitureKind || furnitureKind === "generic") {
+	if ((!detailed && !item.showSupportLevels) || !furnitureKind || furnitureKind === "generic") {
 		return [part("body", item)];
 	}
+	const catalogParts = catalogPartsFor(item, furnitureKind);
+	if (catalogParts) return catalogParts;
 	if (isAdditionalGreyboxKind(furnitureKind)) {
 		return greyboxShapeTemplates[furnitureKind].map(([x, y, z, width, height, depth, tone]) => part("body", {
 			...sceneBoxAtLocalOffset(item, (x + width / 2 - 0.5) * item.widthM, (z + depth / 2 - 0.5) * item.depthM),
@@ -475,7 +492,7 @@ export function furnitureGreyboxPartsFor(
 			}, furnitureKind === "washer" ? "shadow" : "highlight"),
 		];
 	}
-	return sofaPartsFor(item);
+	return furnitureKind === "two-seat-sofa" ? twoSeatSofaPartsFor(item) : sofaPartsFor(item);
 }
 
 function isAdditionalGreyboxKind(kind: string): kind is AdditionalGreyboxKind {
@@ -665,6 +682,47 @@ function storagePartsFor(item: SceneBox): readonly FurnitureGreyboxPart[] {
 				"highlight",
 			),
 		),
+	];
+}
+
+/** Two seat pads, one continuous back facing -Z and four inset block feet. */
+function twoSeatSofaPartsFor(item: SceneBox): readonly FurnitureGreyboxPart[] {
+	const { widthM, depthM, heightM } = item;
+	const arm = Math.min(0.16, widthM * 0.12);
+	const seam = Math.min(0.014, widthM * 0.015);
+	const seatWidth = (widthM - 2 * arm - 3 * seam) / 2;
+	const footWidth = Math.min(0.105, arm);
+	const footDepthFraction = Math.min(0.105 / depthM, 0.16);
+	const sideSigns = [-1, 1];
+	// In metres across the seat; as fractions of the envelope from floor to top and front to back.
+	function section(
+		role: FurnitureGreyboxRole, x: number, width: number,
+		[bottom, top]: readonly [number, number],
+		[front, rear]: readonly [number, number],
+		edgeRadiusM: number, tone: FurnitureGreyboxPart["tone"] = "base",
+	): FurnitureGreyboxPart {
+		const box = sceneBoxAtLocalOffset(item, x, ((front + rear) / 2 - 0.5) * depthM);
+		return {
+			role, tone, edgeRadiusM,
+			box: {
+				...box,
+				widthM: width,
+				heightM: (top - bottom) * heightM,
+				depthM: (rear - front) * depthM,
+				centerYM: bottomOf(item) + ((bottom + top) / 2) * heightM,
+			},
+		};
+	}
+	return [
+		section("body", 0, widthM - 2 * arm, [0.12, 0.33], [0.012, 0.82], 0.022, "shadow"),
+		section("back", 0, widthM, [0.12, 1], [0.82, 1], 0.048),
+		...sideSigns.map(side =>
+			section("arm", side * (widthM - arm) / 2, arm, [0.12, 0.73], [0, 0.82], 0.032)),
+		...sideSigns.map(side =>
+			section("seat", side * (seatWidth + seam) / 2, seatWidth, [0.33, 0.54], [0, 0.82], 0.034)),
+		...sideSigns.flatMap(side => [0.075, 0.925 - footDepthFraction].map(front =>
+			section("leg", side * (widthM / 2 - arm * 0.75), footWidth,
+				[0, 0.12], [front, front + footDepthFraction], 0, "foot"))),
 	];
 }
 

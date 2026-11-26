@@ -12,6 +12,11 @@ const productionWorkflow = readFileSync(
 
 test('main validates and packages the exact Telegram target', () => {
   assert.match(productionWorkflow, /^on:\n  push:\n    branches: \[main\]$/m);
+  assert.match(productionWorkflow, /^        default: prepare\n        options: \[prepare, compatible, authoring\]$/m);
+  assert.match(productionWorkflow, /interior_mode: compatible\n +interior_authoring: '0'/);
+  assert.match(productionWorkflow, /interior_mode: authoring\n +interior_authoring: '1'/);
+  assert.match(productionWorkflow, /^ +INTERIORS_ROOM_INTERIOR_COMPATIBLE: '1'$/m);
+  assert.match(productionWorkflow, /^ +INTERIORS_ROOM_INTERIOR_ENABLED: \$\{\{ matrix\.interior_authoring \}\}$/m);
   const telegramBuild = productionWorkflow
     .split(/\n(?= {6}- )/)
     .find(step => step.includes('--config rspack.telegram.config.mjs'));
@@ -24,15 +29,16 @@ test('main validates and packages the exact Telegram target', () => {
   assert.ok(signedProof, 'Expected the signed Telegram release proof');
   assert.match(signedProof, /^ +INTERIORS_EXACT_FLOOR_YAW: ['"]1['"]$/m);
   assert.match(signedProof, /^ +INTERIORS_DOOR_HINGE_AUTHORING: ['"]1['"]$/m);
-  for (const name of ['ENTRY-[0-9]{2}', 'ITEM-FLUSH-01', 'CAMERA-FRAMING', 'OPENINGS', 'DOOR-HINGE']) {
+  for (const name of ['ENTRY-[0-9]{2}', 'CATALOG-LOCAL-01', 'ITEM-FLUSH-01', 'CAMERA-FRAMING', 'OPENINGS', 'DOOR-HINGE']) {
     assert.ok(signedProof.includes(name), `Signed release proof omits ${name}`);
   }
   const runtimeProof = productionWorkflow.split("\n").find(line => line.includes('run-telegram-runtime-ui.mjs'));
   assert.ok(runtimeProof);
-  for (const name of ['EXACT-YAW', 'EXACT-TRANSFER', 'ROTATION-EXPLICIT', 'WALL-CONTINUITY', 'WALL-CONSEQUENCES', 'DOOR-HINGE-TRANSFER']) {
+  for (const name of ['EXACT-YAW', 'EXACT-TRANSFER', 'ROTATION-EXPLICIT', 'SELECTED-ROTATION', 'UI-PLAN-PAN', 'WALL-CONTINUITY', 'WALL-CONSEQUENCES', 'DOOR-HINGE-TRANSFER']) {
     assert.ok(runtimeProof.includes(name), `Runtime release proof omits ${name}`);
   }
   assert.ok(productionWorkflow.includes("run-telegram-storage-mutation.mjs --grep 'TMA-DOOR-HINGE-STORAGE:'"));
+  assert.match(productionWorkflow, /run-telegram-runtime-ui\.mjs --grep 'TMA-INTERIOR-'/);
   const legalProof = productionWorkflow
     .split(/\n(?= {6}- )/)
     .filter(step => step.includes('scripts/legal-document-delivery.test.mjs'));
@@ -45,15 +51,20 @@ test('main validates and packages the exact Telegram target', () => {
 test('production delivers only the commit-bound Telegram archive after the freshness check', () => {
   assert.match(productionWorkflow, /^concurrency:\n  group: interiors-production\n  cancel-in-progress: false$/m);
   assert.match(productionWorkflow, /^    environment:\n      name: production$/m);
-  const artifacts = [...productionWorkflow.matchAll(/^ +name: ((?:telegram|frontend|catalog)-\$\{\{ github\.sha \}\})$/gm)];
+  const artifacts = [...productionWorkflow.matchAll(/^ +name: (telegram-.*\$\{\{ github\.sha \}\})$/gm)];
   assert.deepEqual(artifacts.map(match => match[1]), [
-    'telegram-${{ github.sha }}',
-    'telegram-${{ github.sha }}',
+    'telegram-${{ matrix.interior_mode }}-${{ github.sha }}',
+    'telegram-${{ inputs.release_mode }}-${{ github.sha }}',
+    'telegram-compatible-${{ github.sha }}',
   ]);
+  const publish = productionWorkflow.split('\n  deploy:')[1];
+  assert.match(publish, /github\.event_name == 'workflow_dispatch' &&\n +github\.ref == 'refs\/heads\/main' &&\n +\(inputs\.release_mode == 'compatible' \|\| inputs\.release_mode == 'authoring'\)/);
   const freshnessCheck = productionWorkflow.indexOf('git/ref/heads/main');
+  const predecessorCheck = productionWorkflow.indexOf('frontend.py verify-telegram-predecessor');
   const send = productionWorkflow.indexOf('"deploy-telegram $GITHUB_SHA $digest $size"');
   const smoke = productionWorkflow.indexOf('frontend.py smoke-telegram');
-  assert.ok(freshnessCheck >= 0 && freshnessCheck < send && send < smoke);
+  assert.ok(predecessorCheck >= 0 && predecessorCheck < freshnessCheck && freshnessCheck < send && send < smoke);
+  assert.match(productionWorkflow, /if: inputs\.release_mode == 'authoring'\n +run: >-\n +python3 scripts\/deploy\/frontend\.py verify-telegram-predecessor/);
   assert.match(productionWorkflow, /test "\$current" = "\$GITHUB_SHA"/);
   assert.match(productionWorkflow, /StrictHostKeyChecking=yes/);
   assert.match(productionWorkflow, /--receipt "\$RUNNER_TEMP\/interiors-release\/deployment-receipt\.json"/);

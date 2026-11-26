@@ -2,7 +2,7 @@ import type { ExportPortableBackupResult } from "./export-portable-backup";
 import { copyProject } from "../domain/copy-project";
 import { portableBackupFileName } from "./export-portable-backup";
 import { canonicalProjectSerializer } from "./create-project";
-import { validateRuntimeV1Project } from "./runtime-v1-project-validation";
+import { validateRuntimeV1Project, validateTelegramRuntimeV1Project } from "./runtime-v1-project-validation";
 import type {
 	CancellationSignalPort,
 	ChecksumPort,
@@ -21,6 +21,7 @@ export class ExportRuntimePortableBackupUseCase {
 			readonly resources: Pick<CustomAssetResourceStorePort, "read">;
 			readonly smoke: PortableBackupSmokeCheckPort;
 			readonly writer: PortableBackupArchiveWriterPort;
+			readonly allowTelegramExtendedSchemas?: boolean;
 		},
 	) {}
 
@@ -35,7 +36,9 @@ export class ExportRuntimePortableBackupUseCase {
 			input.revision.projectId !== input.project.projectId
 		)
 			return { kind: "rejected", reasonCode: "PORTABLE_BACKUP_UNSUPPORTED" };
-		const validation = validateRuntimeV1Project(input.project);
+		const validation = this.dependencies.allowTelegramExtendedSchemas
+			? validateTelegramRuntimeV1Project(input.project)
+			: validateRuntimeV1Project(input.project);
 		if (validation.kind === "rejected") return validation;
 		const candidate = {
 			project: copyProject(input.project),

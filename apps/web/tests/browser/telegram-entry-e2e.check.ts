@@ -337,6 +337,7 @@ test("TMA-ENTRY-01: an empty deployment keeps a Web link and retry/exit without 
 });
 test("TMA-CATALOG-LOCAL-01: signed Telegram offers floor presets and opens its own GLB library offline", async ({ page }) => {
 	await signed(page);
+	const environment = await page.request.get("/__entry-proof/environment").then(response => response.json());
 	await page.goto("/");
 	await createRoom(page, "Локальный каталог");
 	await page.context().setOffline(true);
@@ -348,7 +349,10 @@ test("TMA-CATALOG-LOCAL-01: signed Telegram offers floor presets and opens its o
 	for (const name of ["Угловой диван", "Унитаз", "Холодильник", "Торшер", "Ковёр"]) {
 		await expect(catalog.getByRole("button", { name: new RegExp(`^${name} `) })).toBeVisible();
 	}
-	await expect(catalog.locator("[data-greybox-preset]")).toHaveCount(30);
+	await expect(catalog.locator("[data-greybox-preset]")).toHaveCount(environment.roomInteriorAuthoring ? 33 : 30);
+	for (const name of ["Настольная лампа", "Книга", "Ваза"]) {
+		await expect(catalog.getByRole("button", { name: new RegExp(`^${name} `) })).toHaveCount(environment.roomInteriorAuthoring ? 1 : 0);
+	}
 	for (const name of ["Настенный светильник", "Зеркало", "Раковина", "Кухонная вытяжка", "Настенная полка"]) {
 		await expect(catalog.getByRole("button", { name: new RegExp(`^${name} `) })).toHaveCount(0);
 	}
@@ -444,7 +448,9 @@ test("TMA-ITEM-FLUSH-01: a cabinet can be placed at an exact inner wall face bet
 		.get("/__entry-proof/environment")
 		.then((response) => response.json());
 	expect(typeof environment.exactFloorYaw).toBe("boolean");
-	const rotationStep = environment.exactFloorYaw ? 1 : 45;
+	const compatibleOnly = environment.roomInteriorCompatible && !environment.roomInteriorAuthoring;
+	const rotationStep = environment.roomInteriorAuthoring || (!compatibleOnly && environment.exactFloorYaw) ? 1 : 45;
+	if (compatibleOnly) expect(await scopedDatabaseVersions(page)).toEqual([2]);
 	await page.getByRole("button", { name: `Повернуть размещаемый предмет вправо на ${rotationStep}°`, exact: true }).click();
 	await expect(leftDistance).not.toHaveValue("0");
 	await page.getByRole("button", { name: `Повернуть размещаемый предмет влево на ${rotationStep}°`, exact: true }).click();
@@ -2098,13 +2104,76 @@ test("TMA-OPENINGS: create, flip and reopen a door beside a framed window in Pla
 	await page.screenshot({ path: info.outputPath("opening-templates-3d.png") });
 });
 
-test("TMA-DOOR-HINGE: the signed author chooses both door settings and restores the exact jamb", async ({ page }) => {
+async function scopedDatabaseVersions(page: Page) {
+	return page.evaluate(async () => (await indexedDB.databases())
+		.filter(({ name }) => name?.startsWith("interiors-editor-projects:tma-v1-"))
+		.map(({ version }) => version));
+}
+
+async function openCompatibleSignedProject(page: Page, version: 3 | 4, project: string) {
+	expect((await page.request.post(`/__entry-proof/activate-v${version}`)).ok()).toBe(true);
+	await page.goto("/");
+	await createRoom(page, project);
+	expect(await scopedDatabaseVersions(page)).toEqual([version]);
+	const original = await semanticRows(page);
+	expect((await page.request.post("/__entry-proof/activate-base")).ok()).toBe(true);
+	await page.reload();
+	await page.getByRole("button", { name: `Открыть ${project}`, exact: true }).click();
+	await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Сохранено");
+	expect(await scopedDatabaseVersions(page)).toEqual([version]);
+	expect(await semanticRows(page)).toEqual(original);
+	await page.getByRole("button", { name: "Взять редактирование на себя", exact: true }).click();
+	await page.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect(page.getByTestId("writer-lease-notice")).toHaveCount(0);
+}
+
+for (const version of [2, 3] as const) {
+	test(`TMA-ENTRY-16: signed compatibility keeps on-disk v${version} editing capabilities`, async ({ page }) => {
+		const environment = await page.request.get("/__entry-proof/environment").then(response => response.json());
+		test.skip(!environment.roomInteriorCompatible || environment.roomInteriorAuthoring, "Exercises the compatible-only release");
+		await signed(page);
+		const project = `Откат формата v${version}`;
+		if (version === 3) await openCompatibleSignedProject(page, version, project);
+		else {
+			await page.goto("/");
+			await createRoom(page, project);
+		}
+		const before = await semanticRows(page);
+		await openEditorCatalog(page);
+		await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
+		await clickRectangularRoomCentre(page);
+		const exactAngle = page.getByTestId("item-placement-action-dock").locator('input[inputmode="decimal"]');
+		if (version === 3) {
+			await exactAngle.fill("37,5");
+			await exactAngle.press("Enter");
+		} else await expect(exactAngle).toHaveCount(0);
+		await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+		await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Сохранено");
+		const saved = await semanticRows(page);
+		expect(saved.revisions).toHaveLength(before.revisions.length + 1);
+		expect(saved.revisions).toContainEqual(expect.objectContaining({
+			candidate: expect.objectContaining({ project: expect.objectContaining({
+				assetInstances: [expect.objectContaining({ label: "Стул", ...(version === 3 ? { yawMilliDeg: 37500 } : { yawStep: 0 }) })],
+			}) }),
+		}));
+		await page.getByTestId("wall-segment").first().click();
+		const opening = await openOpeningDetailsOnSelectedWall(page);
+		await expect(opening.getByRole("group", { name: "Петли" })).toHaveCount(0);
+		expect(await scopedDatabaseVersions(page)).toEqual([version]);
+	});
+}
+
+test("TMA-DOOR-HINGE: the signed editor chooses both door settings and restores the exact jamb", async ({ page }) => {
 	await signed(page);
 	const environment = await page.request.get("/__entry-proof/environment").then(response => response.json());
-	test.skip(environment.doorHingeAuthoring !== true, "The bridge keeps its existing door editor");
-	await page.goto("/");
+	const compatibleOnly = environment.roomInteriorCompatible && !environment.roomInteriorAuthoring;
+	test.skip(!compatibleOnly && !environment.roomInteriorAuthoring && environment.doorHingeAuthoring !== true, "This release keeps its original door editor");
 	const project = "Проверка петель";
-	await createRoom(page, project);
+	if (compatibleOnly) await openCompatibleSignedProject(page, 4, project);
+	else {
+		await page.goto("/");
+		await createRoom(page, project);
+	}
 	await page.getByTestId("wall-segment").first().click();
 	const sheet = await openOpeningDetailsOnSelectedWall(page);
 	const hinge = sheet.getByRole("group", { name: "Петли", exact: true });
@@ -2135,9 +2204,7 @@ test("TMA-DOOR-HINGE: the signed author chooses both door settings and restores 
 			level: expect.objectContaining({ openings: [expect.objectContaining({ hingeEnd: "end" })] }),
 		}) }),
 	}));
-	expect(await page.evaluate(async () => (await indexedDB.databases())
-		.filter(({ name }) => name?.startsWith("interiors-editor-projects:tma-v1-"))
-		.map(({ version }) => version))).toEqual([4]);
+	expect(await scopedDatabaseVersions(page)).toEqual([environment.roomInteriorAuthoring ? 6 : 4]);
 
 	const reopen = page.getByRole("button", { name: `Открыть ${project}`, exact: true });
 	await page.getByRole("button", { name: "Назад", exact: true }).click();

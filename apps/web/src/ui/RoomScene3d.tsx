@@ -1,3 +1,4 @@
+import { supportSurfacePlanVertices, type SupportOption } from "./supported-item-controls";
 import { createEditorInteractionGate, type EditorContactEpoch, type RegisterEditorTransientBoundary } from "./editor-host-boundary";
 import {
 	type PointerEvent as ReactPointerEvent,
@@ -10,7 +11,7 @@ import {
 	useState,
 } from "react";
 
-import type { FurnitureGreyboxKind, RectangularRoomWebGlScene } from "../adapters/renderer/rectangular-room-projection";
+import type { FurnitureGreyboxKind, RectangularRoomWebGlScene, SceneBox } from "../adapters/renderer/rectangular-room-projection";
 import {
 	createDomWebGl2CanvasPort,
 	createWebGl2RoomSceneRendererWithResizeOnChange,
@@ -50,6 +51,8 @@ import {
 	floorItemAtScreenPoint,
 	floorPointForCanvas,
 	projectedItemFootprintFor,
+	supportSurfaceAtCanvasPoint,
+	visibleRoomFloorAtCanvasPoint,
 	type ThreeDimensionalFloorPoint,
 } from "./three-dimensional-floor-interaction";
 import {
@@ -72,7 +75,29 @@ import { disposeThreeObject3D } from "./three-resource-disposal";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
 import type { ProductMetricSink } from "../application/editor-product-metrics";
 
+function sceneItemAlongSupport(item: SceneBox, source: SceneBox, target: SceneBox): SceneBox {
+	const angle = (target.yawRadians ?? 0) - (source.yawRadians ?? 0);
+	const dx = item.centerXM - source.centerXM;
+	const dz = item.centerZM - source.centerZM;
+	return {
+		...item,
+		centerXM: target.centerXM + Math.cos(angle) * dx + Math.sin(angle) * dz,
+		centerZM: target.centerZM - Math.sin(angle) * dx + Math.cos(angle) * dz,
+		yawRadians: (item.yawRadians ?? 0) + angle,
+	};
+}
+
+type SupportInteraction = {
+	readonly options: readonly SupportOption[];
+	readonly selected?: SupportOption | undefined;
+	readonly origin: { readonly xMm: number; readonly zMm: number };
+	readonly onFloorPick?: ((point: ThreeDimensionalFloorPoint) => void) | undefined;
+	readonly onPick: (option?: SupportOption, point?: ThreeDimensionalFloorPoint, unsupportedItemId?: string) => void;
+};
+
 interface RoomScene3dProps {
+	readonly supportInteraction?: SupportInteraction | undefined;
+	readonly copyingHostId?: string | undefined;
 	readonly onProductMetric?: ProductMetricSink | undefined;
 	readonly plainLabels?: boolean;
 	readonly roomTheme?: RoomRenderTheme | undefined;
@@ -166,6 +191,7 @@ const ROTATION_GIZMO_RADIUS = 73;
 const ROTATION_GIZMO_SIZE = 200;
 const ROTATION_DOME_HEIGHT = 128;
 const ROTATION_TAP_MOVE_LIMIT_PX = 6;
+const SUPPORT_TAP_MOVE_LIMIT_PX = 6;
 
 export type CustomGlbPresentation = "loading" | "rendered" | "unavailable";
 
@@ -273,6 +299,8 @@ export function RoomScene3d({
 	selectedItemId,
 	readOnly = false,
 	canTransformSelectedItem = true,
+	supportInteraction,
+	copyingHostId,
 	itemPlacementDraft,
 	itemPlacementControls,
 	selectedItemControls,
@@ -297,6 +325,7 @@ export function RoomScene3d({
 	onSelectItem,
 }: RoomScene3dProps) {
 	const scenePanelRef = useRef<HTMLElement>(null);
+	const supportTapRef = useRef<{ readonly pointerId: number; readonly point: Point } | undefined>(undefined);
 	const canvasRef = useRef<HTMLCanvasElement>(null);
 	const viewControlsRef = useRef<HTMLElement>(null);
 	const placementMenuRef = useRef<HTMLElement>(null);
@@ -426,6 +455,28 @@ export function RoomScene3d({
 	const [camera, setCamera] = useState<ThreeDimensionalViewport>(
 		initialViewportForCurrentScene,
 	);
+	const supportZoomMinimum = supportInteraction
+		? 0.65 / Math.max(1, scene.cameraBounds.widthM, scene.cameraBounds.depthM)
+		: undefined;
+	const supportOptions = supportInteraction?.options;
+	const supportOrigin = supportInteraction?.origin;
+	const selectedSupport = supportInteraction?.selected;
+	const highlightFloor = supportInteraction?.onFloorPick ? true : undefined;
+	const supportSurfaces = useMemo(() => supportOptions && supportOrigin ? supportOptions.map(option => ({
+		option,
+		hostId: option.host.assetInstanceId,
+		heightM: option.surface.heightMm / 1000,
+		outline: supportSurfacePlanVertices(option).map(position => ({
+			xM: (position.xMm - supportOrigin.xMm) / 1000,
+			zM: (position.zMm - supportOrigin.zMm) / 1000,
+		})),
+	})) : [], [supportOptions, supportOrigin]);
+	const shelfHostIds = useMemo(() => new Set(supportSurfaces.filter(surface => surface.option.surface.key !== "top")
+		.map(surface => surface.hostId)), [supportSurfaces]);
+	const supportHighlights = useMemo(() => supportSurfaces.map(surface => ({
+		...surface, selected: selectedSupport?.host.assetInstanceId === surface.hostId &&
+			selectedSupport.surface.key === surface.option.surface.key ? true as const : undefined,
+	})), [supportSurfaces, selectedSupport]);
 	const cameraRef = useRef(camera);
 	cameraRef.current = camera;
 	const [cutawayMode, setCutawayMode] = useState<"auto" | "show-all">("auto");
@@ -722,30 +773,35 @@ export function RoomScene3d({
 		? itemPlacementPreviewFeedback(threeDimensionalItemPlacementPreview)
 		: copy("Выберите другое место", "Choose another spot");
 
-	const renderedScene = useMemo(() => {
-		const renderedItems = scene.items.map((item) =>
-			visualItemPreview &&
-			item.assetInstanceId === visualItemPreview.assetInstanceId
-				? {
-						...item,
-						...(visualItemPreview.xM === undefined
-							? {}
-							: { centerXM: visualItemPreview.xM }),
-						...(visualItemPreview.zM === undefined
-							? {}
-							: { centerZM: visualItemPreview.zM }),
-						...(visualItemPreview.yawRadians === undefined
-							? {}
-							: { yawRadians: visualItemPreview.yawRadians }),
-					}
-				: item,
-		);
+	const renderedScene = useMemo<RectangularRoomWebGlScene>(() => {
+		const source = visualItemPreview ? scene.items.find(item => item.assetInstanceId === visualItemPreview.assetInstanceId) : undefined;
+		const destination = source && visualItemPreview ? {
+			...source,
+			centerXM: visualItemPreview.xM ?? source.centerXM,
+			centerZM: visualItemPreview.zM ?? source.centerZM,
+			yawRadians: visualItemPreview.yawRadians ?? source.yawRadians ?? 0,
+		} : undefined;
+		const movedItems = source?.assetInstanceId && destination ? scene.items.map(item => {
+			if (item.assetInstanceId === source.assetInstanceId) return destination;
+			return item.supportHostId === source.assetInstanceId ? sceneItemAlongSupport(item, source, destination) : item;
+		}) : scene.items;
+		const renderedItems = shelfHostIds.size ? movedItems.map(item => item.assetInstanceId && shelfHostIds.has(item.assetInstanceId)
+			? { ...item, showSupportLevels: true as const } : item) : movedItems;
 		const preview = threeDimensionalItemPlacementPreview;
+		const copySource = copyingHostId ? scene.items.find(item => item.assetInstanceId === copyingHostId) : undefined;
+		const guestsPreview = preview && copySource && copyingHostId ? scene.items
+			.filter(item => item.supportHostId === copyingHostId).map((item, index) => ({
+				...sceneItemAlongSupport(item, copySource, { ...copySource, centerXM: preview.xM, centerZM: preview.zM, yawRadians: preview.yawRadians ?? 0 }),
+				assetInstanceId: `furniture-copy-preview-${index}`,
+			})) : [];
 		return {
 			...scene,
+			highlightFloor,
+			supportHighlights,
 			items: preview
 				? [
 						...renderedItems,
+						...guestsPreview,
 						{
 							centerXM: preview.xM,
 							centerYM: preview.heightMm / 2000,
@@ -763,7 +819,7 @@ export function RoomScene3d({
 					]
 				: renderedItems,
 		};
-	}, [scene, threeDimensionalItemPlacementPreview, visualItemPreview]);
+	}, [scene, threeDimensionalItemPlacementPreview, visualItemPreview, copyingHostId, shelfHostIds, highlightFloor, supportHighlights]);
 	const renderedSceneRef = useRef(renderedScene);
 	renderedSceneRef.current = renderedScene;
 	const rendererStructureKey = rendererStructureKeyFor(scene);
@@ -1329,6 +1385,11 @@ export function RoomScene3d({
 				gesture.current = { kind: "place-item", pointerId: event.pointerId };
 				return;
 			}
+			if (supportInteraction && !readOnly && point) {
+				supportTapRef.current = { pointerId: event.pointerId, point };
+				gesture.current = { camera, kind: "orbit", point: activePointers[0] };
+				return;
+			}
 			const pickedId = plainLabels ? pickRenderedItem(point, size) : undefined;
 			const item = plainLabels
 				? (pickedId === undefined ? undefined : renderedScene.items.find((entry) => entry.assetInstanceId === pickedId))
@@ -1361,6 +1422,7 @@ export function RoomScene3d({
 			return;
 		}
 		if (activePointers.length === 2 && activePointers[0] && activePointers[1]) {
+			supportTapRef.current = undefined;
 			// A second finger changes intent from direct manipulation to camera
 			// inspection, so it cancels the in-progress local item preview.
 			hostRetainedItemPreview.current = undefined;
@@ -1397,6 +1459,7 @@ export function RoomScene3d({
 			const zoomed = zoomThreeDimensionalViewport(
 				activeGesture.camera,
 				distance(activePointers[0], activePointers[1]) / activeGesture.distance,
+				supportZoomMinimum,
 			);
 			setCamera(
 				panThreeDimensionalViewport(
@@ -1457,12 +1520,18 @@ export function RoomScene3d({
 			activePointers[0] &&
 			activeGesture?.kind === "orbit"
 		) {
+			const deltaX = activePointers[0].x - activeGesture.point.x;
+			const deltaY = activePointers[0].y - activeGesture.point.y;
+			if (supportTapRef.current) {
+				if (Math.hypot(deltaX, deltaY) <= SUPPORT_TAP_MOVE_LIMIT_PX) return;
+				supportTapRef.current = undefined;
+			}
 			markUserCameraView();
 			setCamera(
 				orbitThreeDimensionalViewport(
 					activeGesture.camera,
-					activePointers[0].x - activeGesture.point.x,
-					activePointers[0].y - activeGesture.point.y,
+					deltaX,
+					deltaY,
 				),
 			);
 		}
@@ -1480,6 +1549,26 @@ export function RoomScene3d({
 		}
 		const activeGesture = gesture.current;
 		pointers.current.delete(event.pointerId);
+		const supportTap = supportTapRef.current;
+		if (supportTap?.pointerId === event.pointerId) supportTapRef.current = undefined;
+		const point = supportTap ? canvasPoint(event) : undefined;
+		if (supportInteraction && !readOnly && supportTap && point && supportTap.pointerId === event.pointerId &&
+			pointers.current.size === 0 && Math.hypot(point.x - supportTap.point.x, point.y - supportTap.point.y) <= SUPPORT_TAP_MOVE_LIMIT_PX) {
+			gesture.current = undefined;
+			const size = interactionCanvasSize();
+			if (size.width <= 0 || size.height <= 0) return;
+			const hit = controllerRef.current?.pickHit({ x: 2 * point.x / size.width - 1, y: 1 - 2 * point.y / size.height });
+			const pickedId = hit?.assetInstanceId;
+			const candidate = supportSurfaceAtCanvasPoint(scene, camera, size, point, supportSurfaces, hit);
+			if (candidate) {
+				supportInteraction.onPick(candidate.surface.option, candidate.point);
+				return;
+			}
+			const floorPoint = supportInteraction.onFloorPick && visibleRoomFloorAtCanvasPoint(scene, camera, size, point, hit);
+			if (floorPoint) supportInteraction.onFloorPick?.(floorPoint);
+			else supportInteraction.onPick(undefined, undefined, supportSurfaces.some(surface => surface.hostId === pickedId) ? undefined : pickedId);
+			return;
+		}
 		if (
 			activeGesture?.kind === "move-item" &&
 			activeGesture.pointerId === event.pointerId
@@ -1519,6 +1608,7 @@ export function RoomScene3d({
 
 	const onPointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
 		if (!isHostContactCurrent(event.pointerId)) return;
+		if (supportTapRef.current?.pointerId === event.pointerId) supportTapRef.current = undefined;
 		hostContacts.current.delete(event.pointerId);
 		pointers.current.delete(event.pointerId);
 		const activeGesture = gesture.current;
@@ -1702,6 +1792,7 @@ export function RoomScene3d({
 		if (hostEnabledRef.current && !hostGateDisposed.current) renderHostEpoch(hostGateRef.current.capture());
 		hostContacts.current.clear();
 		pointers.current.clear();
+		supportTapRef.current = undefined;
 		gesture.current = undefined;
 		clearRotationPointerListeners();
 		if (rotationFrameRef.current !== undefined) cancelAnimationFrame(rotationFrameRef.current);
@@ -1843,7 +1934,6 @@ export function RoomScene3d({
 	// opening 3D. Use the same live measurement as pointer hit-testing so a
 	// selected item's rotation control is available immediately.
 	const liveCanvasSize = interactionCanvasSize();
-
 	const currentRotationYaw = rotation?.yawRadians ?? (hostEnabledRef.current && !itemPlacementDraft && visualItemPreview?.kind === "rotation" ? visualItemPreview.yawRadians : undefined) ?? (itemPlacementDraft ? itemPlacementDraft.yawRadians ?? 0 : selectedItem?.yawRadians ?? 0);
 	const displayedYawRadians = gizmoYawForSceneYaw(currentRotationYaw);
 	const retainedHostTransform = retainedHostItemTransform();
@@ -1990,6 +2080,7 @@ export function RoomScene3d({
 		>
 			<div
 				className={sceneStyles.sceneViewport}
+				data-testid={selectedSupport ? "interior-support-3d-preview" : undefined}
 				style={plainLabels ? undefined : {
 					bottom: sceneViewportInsets.bottom,
 					top: sceneViewportInsets.top,
@@ -2270,14 +2361,15 @@ export function RoomScene3d({
 					aria-label={copy("Управление видом 3D", "3D view controls")}
 					className={sceneStyles.viewControls}
 					data-testid="three-dimensional-view-controls"
-					data-scene-color-dock={selectedItem && !readOnly && selectedItemControls ? "selected" : undefined}
+					data-support-pick={supportInteraction ? true : undefined}
+					data-scene-color-dock={selectedItem && !readOnly && !supportInteraction && selectedItemControls ? "selected" : undefined}
 					ref={viewControlsRef}
 				>
 					<div
 						className={sceneStyles.cameraDeck}
 						data-testid="three-dimensional-camera-deck"
 					>
-						{onOpenItemCatalog ? (
+						{onOpenItemCatalog && !supportInteraction ? (
 							<button
 								aria-label={copy("Предметы интерьера", "Interior items")}
 								className={sceneStyles.threeDimensionalCatalogButton}
@@ -2365,7 +2457,7 @@ export function RoomScene3d({
 								<span>{copy("Все стены", "All walls")}</span>
 							</button>
 						</fieldset>
-						{selectedItem && !readOnly ? selectedItemControls : null}
+						{selectedItem && !readOnly && !supportInteraction ? selectedItemControls : null}
 						<fieldset
 							aria-label={copy("Масштаб 3D", "3D zoom")}
 							className={sceneStyles.scaleControls}
@@ -2376,7 +2468,7 @@ export function RoomScene3d({
 								onClick={() => {
 									markUserCameraView();
 									setCamera((previous) =>
-										zoomThreeDimensionalViewport(previous, 1.2),
+										zoomThreeDimensionalViewport(previous, 1.2, supportZoomMinimum),
 									);
 								}}
 								type="button"
@@ -2389,7 +2481,7 @@ export function RoomScene3d({
 								onClick={() => {
 									markUserCameraView();
 									setCamera((previous) =>
-										zoomThreeDimensionalViewport(previous, 1 / 1.2),
+										zoomThreeDimensionalViewport(previous, 1 / 1.2, supportZoomMinimum),
 									);
 								}}
 								type="button"

@@ -33,7 +33,7 @@ export interface RoomLayoutProject extends Project {
 	readonly roomLayouts?: readonly RoomLayout[];
 }
 
-type RoomLayoutCommand =
+export type RoomLayoutCommand =
 	| { readonly kind: "create-second"; readonly roomId: string }
 	| { readonly kind: "rename"; readonly layoutId?: string; readonly name: string; readonly roomId: string }
 	| { readonly kind: "delete"; readonly layoutId: string; readonly roomId: string };
@@ -62,7 +62,7 @@ type RoomLayoutCommandResult =
 				| "ROOM_LAYOUT_ROOM_NOT_FOUND";
 	  };
 
-type RoomLayoutView = {
+export type RoomLayoutView = {
 	readonly kind: "accepted";
 	readonly activeLayouts: ReadonlyMap<string, RoomLayoutViewEntry>;
 	readonly assetInstances: readonly RoomLayoutAsset[];
@@ -205,6 +205,11 @@ export function applyRoomLayoutCommand(
 				assetInstances: project.assetInstances.filter(item =>
 					!isFloorItem(item) || item.roomLayoutId !== command.layoutId,
 				),
+				...(project.supportedItems === undefined ? {} : {
+					supportedItems: project.supportedItems.filter(guest => !project.assetInstances.some(item =>
+						isFloorItem(item) && item.roomLayoutId === command.layoutId && item.assetInstanceId === guest.supportAssetInstanceId,
+					)),
+				}),
 				roomLayouts: persistedLayouts.filter(layout => layout.layoutId !== command.layoutId),
 				updatedAt,
 			},
@@ -214,6 +219,7 @@ export function applyRoomLayoutCommand(
 	const usedIds = new Set([
 		...persistedLayouts.map(layout => layout.layoutId),
 		...project.assetInstances.map(item => item.assetInstanceId),
+		...(project.supportedItems ?? []).map(item => item.assetInstanceId),
 	]);
 	const allocateId = () => {
 		const id = ids.next();
@@ -265,11 +271,21 @@ export function applyRoomLayoutCommand(
 	if (!sourceId || !cloneId) return { kind: "rejected", reasonCode: "ROOM_LAYOUT_ID_CONFLICT" };
 	const originals = current ? project.assetInstances : materialize(sourceId);
 	const copies: RoomLayoutFloorItem[] = [];
+	const copiedHostIds = new Map<string, string>();
 	for (const item of originals) {
 		if (!isFloorItem(item) || item.roomLayoutId !== sourceId) continue;
 		const assetInstanceId = allocateId();
 		if (!assetInstanceId) return { kind: "rejected", reasonCode: "ROOM_LAYOUT_ID_CONFLICT" };
 		copies.push({ ...item, assetInstanceId, roomLayoutId: cloneId });
+		copiedHostIds.set(item.assetInstanceId, assetInstanceId);
+	}
+	const supportedCopies = [];
+	for (const guest of project.supportedItems ?? []) {
+		const hostId = copiedHostIds.get(guest.supportAssetInstanceId);
+		if (!hostId) continue;
+		const assetInstanceId = allocateId();
+		if (!assetInstanceId) return { kind: "rejected", reasonCode: "ROOM_LAYOUT_ID_CONFLICT" };
+		supportedCopies.push({ ...guest, assetInstanceId, supportAssetInstanceId: hostId });
 	}
 	const source: RoomLayout = current ?? {
 		layoutId: sourceId,
@@ -290,6 +306,9 @@ export function applyRoomLayoutCommand(
 		project: {
 			...project,
 			assetInstances: [...originals, ...copies],
+			...(project.supportedItems === undefined ? {} : {
+				supportedItems: [...project.supportedItems, ...supportedCopies],
+			}),
 			roomLayouts: current ? [...persistedLayouts, clone] : [...persistedLayouts, source, clone],
 			updatedAt,
 		},

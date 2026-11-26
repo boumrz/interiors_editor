@@ -14,8 +14,14 @@ const scopedStores = {
 	library: "resourceHash",
 } as const;
 
-type TelegramScopeDatabaseVersion = 2 | 3 | 4;
+type TelegramScopeDatabaseVersion = 2 | 3 | 4 | 5 | 6;
 export type TelegramDoorHingeMode = "compatible" | "authoring";
+
+function admittedDatabaseVersion(version: number): TelegramScopeDatabaseVersion {
+	if (version === 2 || version === 3 || version === 4 || version === 5 || version === 6)
+		return version;
+	throw new Error("Unknown Telegram database version");
+}
 
 export interface TelegramScopeAccess {
 	readonly scope: string;
@@ -48,6 +54,7 @@ export class TelegramScopeStore {
 	private readonly databaseName: string;
 	private readonly databaseMode: "legacy" | "compatible" | "exact";
 	private readonly doorHingeMode: TelegramDoorHingeMode | undefined;
+	private readonly roomInteriorMode: "compatible" | "authoring" | undefined;
 	private database: Promise<IDBDatabase> | undefined;
 	private disposed = false;
 
@@ -59,6 +66,8 @@ export class TelegramScopeStore {
 			readonly secureContext: boolean;
 			readonly databaseMode?: "compatible" | "exact";
 			readonly doorHingeMode?: TelegramDoorHingeMode;
+			readonly roomInteriorEnabled?: boolean;
+			readonly roomInteriorCompatible?: boolean;
 		},
 	) {
 		this.indexedDb = dependencies.indexedDb;
@@ -67,6 +76,8 @@ export class TelegramScopeStore {
 		this.databaseName = `interiors-editor-projects:${session.scope}`;
 		this.databaseMode = dependencies.databaseMode ?? "legacy";
 		this.doorHingeMode = dependencies.doorHingeMode;
+		this.roomInteriorMode = dependencies.roomInteriorEnabled ? "authoring"
+			: dependencies.roomInteriorCompatible ? "compatible" : undefined;
 	}
 
 	public reserveId(kind: "attempt" | "lease"): Promise<string> {
@@ -98,7 +109,7 @@ export class TelegramScopeStore {
 				assertActive();
 				const result = await operation({
 					scope: this.session.scope,
-					databaseVersion: database.version === 4 ? 4 : database.version === 3 ? 3 : 2,
+					databaseVersion: admittedDatabaseVersion(database.version),
 					signal: this.session.signal,
 					reserveId: (kind) => {
 						assertActive();
@@ -228,10 +239,14 @@ export class TelegramScopeStore {
 
 	private async openAdmittedVersion(): Promise<IDBDatabase> {
 		const preferredVersion =
-			this.doorHingeMode === "authoring" ? 4 : this.databaseMode === "exact" ? 3 : 2;
+			this.roomInteriorMode === "authoring" ? 6 : this.roomInteriorMode === "compatible" ? 2
+			: this.doorHingeMode === "authoring" ? 4 : this.databaseMode === "exact" ? 3 : 2;
 		const backups: TelegramScopeDatabaseVersion[] = [];
-		if (preferredVersion === 2 && this.databaseMode === "compatible") backups.push(3);
-		if (this.doorHingeMode === "compatible") backups.push(4);
+		if (this.roomInteriorMode === "compatible") backups.push(3, 4, 5, 6);
+		else {
+			if (preferredVersion === 2 && this.databaseMode === "compatible") backups.push(3);
+			if (this.doorHingeMode === "compatible") backups.push(4);
+		}
 		try {
 			return await this.openVersion(preferredVersion, true);
 		} catch (error) {
@@ -277,12 +292,12 @@ export class TelegramScopeStore {
 				once: true,
 			});
 			request.onupgradeneeded = (event) => {
-				if (failed || this.disposed || !allowUpgrade || event.oldVersion > 3) {
+				if (failed || this.disposed || !allowUpgrade || event.oldVersion > 5) {
 					request.transaction?.abort();
 					return;
 				}
 				upgradeStarted = true;
-				if (event.oldVersion === 2 || event.oldVersion === 3) {
+				if (event.oldVersion >= 2) {
 					const transaction = request.transaction;
 					if (!transaction || !hasScopeSchema(request.result, transaction)) {
 						transaction?.abort();

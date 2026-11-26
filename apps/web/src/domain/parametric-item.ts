@@ -14,6 +14,7 @@ import {
 	type SchematicAssetInstance,
 } from "./project";
 import { rectangularRoomLoopBoundsForRoom } from "./rectangular-room-loop";
+import { slidingDoorSweepFor } from "./sliding-door-geometry";
 import { wallOpeningIntervalMm } from "./wall-opening";
 
 export interface ParametricFloorItemInput {
@@ -22,6 +23,8 @@ export interface ParametricFloorItemInput {
 	readonly yawStep?: RotationStep;
 	readonly yawMilliDeg?: number;
 	readonly roomId: string;
+	readonly roomLayoutId?: string;
+	readonly catalogPreset?: FloorSchematicAssetInstance["catalogPreset"];
 	readonly label: string;
 	readonly xMm: number;
 	readonly zMm: number;
@@ -58,6 +61,8 @@ export interface FloorItemFootprint {
 	readonly zMm: number;
 	readonly widthMm: number;
 	readonly depthMm: number;
+	readonly heightMm?: number;
+	readonly roomLayoutId?: string;
 	/** Undefined is the backwards-compatible durable spelling of yaw step 0. */
 	readonly yawStep?: RotationStep;
 	readonly yawMilliDeg?: number;
@@ -66,6 +71,7 @@ export interface FloorItemFootprint {
 
 export interface MoveParametricFloorItemInput {
 	readonly assetInstanceId: string;
+	readonly roomLayoutId?: string;
 	readonly xMm: number;
 	readonly zMm: number;
 }
@@ -138,6 +144,7 @@ export type CreateParametricFloorItemResult =
 	  }
 	| {
 			readonly kind: "rejected";
+			readonly conflictAssetInstanceId?: string;
 			readonly reasonCode:
 				| "INVALID_DIMENSION"
 				| "OUTSIDE_ROOM_HOST"
@@ -264,6 +271,7 @@ export function createParametricFloorItem(
 	const item: SchematicAssetInstance = {
 		anchorClass: "floor",
 		assetInstanceId: ids.next(),
+		...(input.catalogPreset === undefined ? {} : { catalogPreset: input.catalogPreset }),
 		...(input.assetDefinitionId === undefined
 			? {}
 			: { assetDefinitionId: input.assetDefinitionId }),
@@ -274,6 +282,7 @@ export function createParametricFloorItem(
 		heightMm: input.heightMm,
 		label: input.label,
 		roomId: input.roomId,
+		...(input.roomLayoutId === undefined ? {} : { roomLayoutId: input.roomLayoutId }),
 		widthMm: input.widthMm,
 		xMm: input.xMm,
 		...canonicalFloorYawFields(input),
@@ -302,6 +311,14 @@ export function findRoomForFloorItem(
 		const host = usableBoundsForRoom(project, room.roomId);
 		return host ? isWithinUsableRoomHost(footprint, host) : false;
 	})?.roomId;
+}
+
+/** Derived supported positions may be fractional after rotating their local address. */
+export function physicalFootprintWithinRoom(project: Project, roomId: string, footprint: FloorItemFootprint): boolean {
+	if (![footprint.xMm, footprint.zMm, footprint.widthMm, footprint.depthMm].every(Number.isFinite) ||
+		footprint.widthMm <= 0 || footprint.depthMm <= 0 || !hasValidFloorYaw(footprint)) return false;
+	const host = usableBoundsForRoom(project, roomId);
+	return host !== undefined && isWithinUsableRoomHost(footprint, host);
 }
 
 export function moveParametricFloorItem(
@@ -339,8 +356,15 @@ export function moveParametricFloorItem(
 	if (!roomId) {
 		return { kind: "rejected", reasonCode: "OUTSIDE_ROOM_HOST" };
 	}
+	const { roomLayoutId: formerLayoutId, ...base } = withoutLegacyYawRadians(item);
+	const chosenLayoutId = input.roomLayoutId ?? (roomId === item.roomId ? formerLayoutId : undefined);
+	if (!isLayoutForRoom(project, roomId, chosenLayoutId)) {
+		return { kind: "rejected", reasonCode: "OUTSIDE_ROOM_HOST" };
+	}
 	const moved = {
-		...withoutLegacyYawRadians(item),
+		...base,
+		...(chosenLayoutId === undefined ? {} : { roomLayoutId: chosenLayoutId }),
+		roomId,
 		xMm: input.xMm,
 		...canonicalFloorYawFields(item),
 		zMm: input.zMm,
@@ -682,6 +706,8 @@ function hasValidInput(
 		input.heightMm <= 0 ||
 		!hasValidFloorYaw(input) ||
 		!project.level.rooms.some((room) => room.roomId === input.roomId) ||
+		!isLayoutForRoom(project, input.roomId, input.roomLayoutId) ||
+		(input.assetDefinitionId !== undefined && input.catalogPreset !== undefined) ||
 		(input.assetDefinitionId !== undefined &&
 			!project.assetDefinitionRefs.some(
 				(asset) => asset.assetDefinitionId === input.assetDefinitionId,
@@ -694,6 +720,11 @@ function hasValidInput(
 		return false;
 	}
 	return true;
+}
+
+function isLayoutForRoom(project: Project, roomId: string, layoutId: string | undefined): boolean {
+	const layouts = (project.roomLayouts ?? []).filter((layout) => layout.roomId === roomId);
+	return layoutId === undefined ? layouts.length === 0 : layouts.some((layout) => layout.layoutId === layoutId);
 }
 
 function isWithinHostBounds(
@@ -752,6 +783,10 @@ function assessFloorItemCollisions(
 	if (targets.some(target => target.kind === "wall")) {
 		return { kind: "invalid", reasonCode: "WALL_ITEM_COLLISION" };
 	}
+	if (targets.some(target => target.kind === "door-clearance" && project.level.openings.some((opening) =>
+		opening.openingId === target.openingId && opening.variant === "sliding"))) {
+		return { kind: "invalid", reasonCode: "DOOR_CLEARANCE_COLLISION" };
+	}
 	const warnings = targets.filter(target => target.kind !== "wall");
 	if (collisionPolicy === "reject" && warnings.some(target => target.kind === "item")) {
 		return { kind: "invalid", reasonCode: "ITEM_COLLISION" };
@@ -768,6 +803,7 @@ function floorItemCollisionItems(
 		(item): item is FloorSchematicAssetInstance =>
 			isFloorSchematicAssetInstance(item) &&
 			item.assetInstanceId !== excludedAssetInstanceId &&
+			item.roomLayoutId === footprint.roomLayoutId &&
 			footprintsOverlap(footprint, item),
 	);
 }
@@ -793,11 +829,7 @@ function floorItemCollisionWalls(
 	});
 }
 
-/**
- * A hinged door reserves the quarter-disc swept by its leaf. It is computed
- * from durable wall coordinates and the opening side, never from a renderer
- * marker, so placement, movement and free rotation agree with the 2D arc.
- */
+/** Door clearance comes from the same durable wall coordinates used to draw the opening. */
 export function hasFloorItemDoorSwingCollision(
 	project: Project,
 	footprint: FloorItemFootprint,
@@ -813,15 +845,16 @@ function floorItemDoorSwingCollisions(
 		project.level.vertices.map((vertex) => [vertex.vertexId, vertex]),
 	);
 	return project.level.openings.filter((opening) => {
-		if (opening.kind !== "Door" || opening.sillMm !== 0) return false;
+		if (opening.kind !== "Door" || (opening.variant !== "sliding" && opening.sillMm !== 0)) return false;
 		const wall = project.level.wallSegments.find(
 			(candidate) => candidate.wallSegmentId === opening.wallSegmentId,
 		);
 		const start = wall ? verticesById.get(wall.startVertexId) : undefined;
 		const end = wall ? verticesById.get(wall.endVertexId) : undefined;
-		return start && end
-			? floorItemFootprintIntersectsDoorSwing(footprint, opening, start, end)
-			: true;
+		if (!wall || !start || !end) return true;
+		const slide = slidingDoorSweepFor(opening, wall, start, end);
+		return slide ? slide.bottomMm < (footprint.heightMm ?? Infinity) &&
+			footprintsOverlap(footprint, slide.footprint) : floorItemFootprintIntersectsDoorSwing(footprint, opening, start, end);
 	});
 }
 

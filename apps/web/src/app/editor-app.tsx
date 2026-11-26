@@ -34,8 +34,6 @@ export type EditorAppProps = {
 	readonly projectsSupplement?: ReactNode;
 	readonly localGreyboxCatalog?: boolean;
 	readonly roomTheme?: RoomRenderTheme | undefined;
-	readonly exactFloorYaw?: boolean;
-	readonly doorHingeAuthoring?: boolean;
 	readonly readonlyContent?: ReactNode;
 	readonly readonlyDetails?: ReactNode;
 	readonly readonlyRecoveryDetails?: ReactNode;
@@ -53,7 +51,10 @@ export type EditorAppProps = {
 	readonly registeredTransferExport?: boolean;
 	readonly fileTransfer?: LocalFileTransferPort;
 	readonly sourceRecovery?: ProjectSourceRecoveryPort;
-	readonly runtime: ProductionAppRuntime;
+	readonly runtime: ProductionAppRuntime & {
+		readonly exactFloorYaw?: boolean;
+		readonly doorHingeAuthoring?: boolean;
+	};
 	readonly catalogGateway: CatalogGatewayPort;
 	readonly drawingDimensionPreferences?: DrawingDimensionPreferencesPort;
 	readonly readReleaseStartupInput: () => Promise<ReleaseStartupInput>;
@@ -106,8 +107,6 @@ export function EditorApp({
 	projectsSupplement,
 	onOpenSettings,
 	localGreyboxCatalog,
-	exactFloorYaw,
-	doorHingeAuthoring,
 	readonlyContent,
 	readonlyDetails,
 	readonlyRecoveryDetails,
@@ -181,8 +180,8 @@ export function EditorApp({
 			projectsSupplement={projectsSupplement}
 			onOpenSettings={onOpenSettings}
 			localGreyboxCatalog={localGreyboxCatalog}
-			exactFloorYaw={exactFloorYaw}
-			doorHingeAuthoring={doorHingeAuthoring}
+			exactFloorYaw={runtime.exactFloorYaw}
+			doorHingeAuthoring={runtime.doorHingeAuthoring}
 			readonlyDetails={readonlyDetails}
 			readonlyRecoveryDetails={readonlyRecoveryDetails}
 			readonlyStorageSources={readonlyStorageSources}

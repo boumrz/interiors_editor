@@ -1,18 +1,23 @@
 import type { Project, SchematicAssetInstance } from '../../domain/project';
 import type { ItemColorVariantId } from '../../domain/item-color-variant';
+import { floorCatalogPresetIds, floorFinishIds, projectUsesInteriorDetails, supportedPresetIds, wallFinishIds } from '../../domain/interior-project-format';
+import { supportsCatalogSurface } from '../../domain/interior-support';
+import { validateProjectName } from '../../domain/project-name-policy';
 import { containsLoneSurrogate, decodeRuntimeV1Utf16, encodeRuntimeV1Utf16, RUNTIME_V1_LIMITS,
   RuntimeV1Fault, scanRuntimeV1Json, unreadable, type RuntimeV1Metrics, type RuntimeV1Node, type RuntimeV1Rejection } from './runtime-v1-raw-scanner';
 
 export const RUNTIME_V1_SCHEMA_ID = 'interiors.project/runtime-v1-wire' as const;
 export const RUNTIME_V1_FLOOR_YAW_SCHEMA_ID = 'interiors.project/runtime-v1-floor-yaw' as const;
 export const RUNTIME_V1_DOOR_HINGE_SCHEMA_ID = 'interiors.project/runtime-v1-door-hinge' as const;
-export type RegisteredRuntimeV1SchemaId = typeof RUNTIME_V1_SCHEMA_ID | typeof RUNTIME_V1_FLOOR_YAW_SCHEMA_ID | typeof RUNTIME_V1_DOOR_HINGE_SCHEMA_ID;
+export const RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID = 'interiors.project/runtime-v1-room-layouts' as const;
+export const RUNTIME_V1_INTERIOR_SCHEMA_ID = 'interiors.project/runtime-v1-interior-details' as const;
+export type RegisteredRuntimeV1SchemaId = typeof RUNTIME_V1_SCHEMA_ID | typeof RUNTIME_V1_FLOOR_YAW_SCHEMA_ID | typeof RUNTIME_V1_DOOR_HINGE_SCHEMA_ID | typeof RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID | typeof RUNTIME_V1_INTERIOR_SCHEMA_ID;
 export type RegisteredRuntimeV1EncodeResult =
   | (Extract<RuntimeV1EncodeResult, { readonly kind: 'encoded' }> & { readonly projectSchemaId: RegisteredRuntimeV1SchemaId })
   | RuntimeV1Rejection;
 
 export function isRegisteredRuntimeV1SchemaId(id: string): id is RegisteredRuntimeV1SchemaId {
-  return id === RUNTIME_V1_SCHEMA_ID || id === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID || id === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID;
+  return id === RUNTIME_V1_SCHEMA_ID || id === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID || id === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID || id === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID || id === RUNTIME_V1_INTERIOR_SCHEMA_ID;
 }
 export type RuntimeV1VariantValue = ItemColorVariantId | readonly [RuntimeV1VariantValue];
 type ExactItem<T> = T extends SchematicAssetInstance ? Omit<T, 'colorVariantId'> & { readonly colorVariantId?: RuntimeV1VariantValue } : never;
@@ -31,6 +36,12 @@ const sourceKeys = new Set([...rootKeys, ...levelKeys, 'vertexId', 'xMm', 'zMm',
   'roomId', 'faceFingerprint', 'heightMm', 'type', 'openingId', 'offsetMm', 'widthMm', 'sillMm', 'kind', 'swingSide',
   'assetInstanceId', 'anchorClass', 'label', 'depthMm', 'color', 'assetDefinitionId', 'colorVariantId', 'elevationMm', 'locked', 'yawRadians', 'yawStep', 'side',
   'displayName', 'byteLength', 'format', 'resourceHash', 'source', 'catalogAssetId', 'catalogVersion', 'catalogEnvelopeHash']);
+const layoutKeys = new Set(['roomLayouts', 'roomLayoutId', 'layoutId', 'slot']);
+const interiorKeys = new Set(['floorFinish', 'profile', 'sideFinishes', 'left', 'right', 'presetId', 'version',
+  'variant', 'slideSide', 'slideDirection', 'sections', 'catalogPreset', 'supportAssetInstanceId',
+  'supportSurfaceKey', 'offsetXMm', 'offsetZMm', 'relativeYawMilliDeg', 'context']);
+const allowsLayouts = (schemaId: RegisteredRuntimeV1SchemaId) =>
+  schemaId === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID || schemaId === RUNTIME_V1_INTERIOR_SCHEMA_ID;
 const reject = (error: unknown): RuntimeV1Rejection => {
   if (error instanceof RuntimeV1Fault) return { kind: 'rejected', reasonCode: error.reasonCode };
   throw error;
@@ -41,6 +52,8 @@ const number = (min: number, max: number): Read => node => {
   if (!Number.isSafeInteger(value) || value < min || value > max) return unreadable();
   return value;
 };
+const interiorNumber = (min: number, max: number): Read => node =>
+  node.kind === 'number' && node.raw !== '-0' ? number(min, max)(node) : unreadable();
 const finite: Read = node => {
   if (node.kind !== 'number') return unreadable();
   const value = Number(node.raw);
@@ -113,6 +126,7 @@ class Decoder {
       const markerNode = value.kind === 'object' ? value.members.get('undefined') : undefined;
       const marker = this.mode === 'wire' && !requiredRead && value.kind === 'object' && value.members.size === 1
         && markerNode?.kind === 'literal' && markerNode.value === true;
+      if (marker && (interiorKeys.has(key) || layoutKeys.has(key))) return unreadable();
       result[key] = marker ? undefined : read(value);
     }
     return result;
@@ -126,20 +140,40 @@ class Decoder {
   }
   decode(node: RuntimeV1Node): RuntimeV1Project {
     const string = this.string;
-    const allowsDoorHinge = this.schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID;
+    const layouts = allowsLayouts(this.schemaId);
+    const interior = this.schemaId === RUNTIME_V1_INTERIOR_SCHEMA_ID;
+    const allowsDoorHinge = this.schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID || layouts;
     const allowsPreciseYaw = this.schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID || allowsDoorHinge;
+    const versioned = (...ids: readonly string[]): Read => n => this.record(n, { presetId: oneOf(...ids), version: interiorNumber(1, 1) });
+    const wallFinish = versioned(...wallFinishIds);
+    const sideFinishes: Read = n => {
+      const result = this.record(n, {}, { left: wallFinish, right: wallFinish });
+      return Object.keys(result).length > 0 ? result : unreadable();
+    };
     const floorOrientation: Record<string, Read> = { elevationMm: number(0, 0), yawRadians: finite, yawStep: number(0, 7) };
     if (allowsPreciseYaw) floorOrientation.yawMilliDeg = number(0, 359999);
     const vertex: Read = n => this.record(n, { vertexId: string, xMm: number(-100000, 100000), zMm: number(-100000, 100000) });
-    const wall: Read = n => this.record(n, { wallSegmentId: string, startVertexId: string, endVertexId: string, thicknessMm: number(20, 1000) });
+    const wall: Read = n => this.record(n, { wallSegmentId: string, startVertexId: string, endVertexId: string, thicknessMm: number(20, 1000) },
+      interior ? { profile: oneOf('partition', 'bearing'), sideFinishes } : {});
     const room: Read = n => this.record(n, { roomId: string, faceFingerprint: string, heightMm: number(500, 10000) },
-      { name: string, type: oneOf('bathroom', 'bedroom', 'hallway', 'kitchen', 'living-room', 'office', 'other', 'storage') });
+      { name: string, type: oneOf('bathroom', 'bedroom', 'hallway', 'kitchen', 'living-room', 'office', 'other', 'storage'),
+        ...(interior ? { floorFinish: versioned(...floorFinishIds) } : {}) });
     const opening: Read = n => {
       const result = this.record(n, { openingId: string, wallSegmentId: string, offsetMm: number(0, 100000),
         widthMm: number(1, 100000), heightMm: number(1, 10000), sillMm: number(0, 10000), kind: oneOf('Door', 'Window') },
-      { swingSide: oneOf('left', 'right'), ...(allowsDoorHinge ? { hingeEnd: oneOf('end') } : {}) });
+      { swingSide: oneOf('left', 'right'), ...(allowsDoorHinge ? { hingeEnd: oneOf('end') } : {}),
+        ...(interior ? { variant: oneOf('glazed-swing', 'sliding'), slideSide: oneOf('left', 'right'),
+          slideDirection: oneOf('toward-start', 'toward-end'), sections: interiorNumber(1, 2) } : {}) });
       if (result.kind === 'Window' && result.swingSide !== undefined) return unreadable();
       if (Object.hasOwn(result, 'hingeEnd') && (result.kind !== 'Door' || result.hingeEnd !== 'end')) return unreadable();
+      if (interior) {
+        if (result.kind === 'Window' && (Object.hasOwn(result, 'swingSide') || result.variant !== undefined)) return unreadable();
+        if (result.kind === 'Door' && result.sections !== undefined) return unreadable();
+        const sliding = result.variant === 'sliding';
+        if (sliding && (result.slideSide === undefined || result.slideDirection === undefined ||
+          Object.hasOwn(result, 'swingSide') || Object.hasOwn(result, 'hingeEnd'))) return unreadable();
+        if (!sliding && (result.slideSide !== undefined || result.slideDirection !== undefined)) return unreadable();
+      }
       return result;
     };
     const item: Read = n => {
@@ -147,11 +181,23 @@ class Decoder {
       const anchor = n.members.get('anchorClass');
       const common = { assetInstanceId: string, label: string, widthMm: number(1, 100000), depthMm: number(1, 100000), color };
       const optional = { assetDefinitionId: string, colorVariantId: this.variant, locked: trueOnly };
-      const result = anchor?.kind === 'string' && anchor.value === 'floor'
+      const anchorClass = anchor?.kind === 'string' ? anchor.value : undefined;
+      const supportContext: Read = value => this.record(value, { roomId: string }, { layoutId: string });
+      const result = interior && anchorClass === 'support'
+        ? this.record(n, { ...common, anchorClass: oneOf('support'), heightMm: number(1, 100000),
+          catalogPreset: versioned(...supportedPresetIds), supportAssetInstanceId: string, supportSurfaceKey: string,
+          offsetXMm: interiorNumber(-100000, 100000), offsetZMm: interiorNumber(-100000, 100000),
+          relativeYawMilliDeg: interiorNumber(0, 359999), context: supportContext },
+          { colorVariantId: oneOf(...Object.keys(colors)), locked: trueOnly })
+        : anchorClass === 'floor'
         ? this.record(n, { ...common, anchorClass: oneOf('floor'), roomId: string, xMm: number(-100000, 100000), zMm: number(-100000, 100000), heightMm: number(1, 100000) },
-          { ...optional, ...floorOrientation })
+          { ...optional, ...floorOrientation, ...(layouts ? { roomLayoutId: string } : {}),
+            ...(interior ? { catalogPreset: versioned(...floorCatalogPresetIds) } : {}) })
         : this.record(n, { ...common, anchorClass: oneOf('wall'), wallSegmentId: string, side: oneOf('left', 'right'),
           offsetMm: number(0, 100000), elevationMm: number(0, 10000), heightMm: number(1, 10000) }, optional);
+      if (result.catalogPreset !== undefined && Object.hasOwn(result, 'assetDefinitionId')) return unreadable();
+      if (anchorClass === 'support' && (Object.hasOwn(result, 'locked') && result.locked !== true ||
+        Object.hasOwn(result, 'colorVariantId') && result.colorVariantId === undefined)) return unreadable();
       if (
         Object.hasOwn(result, 'yawMilliDeg') &&
         (result.yawMilliDeg === undefined || Object.hasOwn(result, 'yawStep') || Object.hasOwn(result, 'yawRadians'))
@@ -176,13 +222,24 @@ class Decoder {
     const rules: Record<string, Read> = { schemaVersion: n => n.kind === 'number' && n.raw === '1' ? 1 : unreadable(), projectId: string,
       name: this.name, createdAt: clock, updatedAt: clock, lifecycle: oneOf('active'), level, assetInstances: this.array(item, 250), assetDefinitionRefs: this.array(definition, 250) };
     if (this.mode === 'wire') rules.projectSchemaId = oneOf(this.schemaId);
-    const value = this.record(node, rules);
+    const layout: Read = n => {
+      const result = this.record(n, { layoutId: string, roomId: string, slot: oneOf('A', 'B'), name: this.name });
+      if (typeof result.name !== 'string' || validateProjectName(result.name).kind !== 'valid') return unreadable();
+      return result;
+    };
+    const value = this.record(node, rules, layouts ? { roomLayouts: this.array(layout, 100) } : {});
     delete value.projectSchemaId;
+    const guests = interior ? splitSupportRecords(value) : [];
+    if (interior) value.interiorSchemaVersion = 1;
+    if (guests.length > 0) value.supportedItems = guests;
     // Closed validated wire shape, deliberately not a claim of domain Project validity.
     const project = value as RuntimeV1Project;
     if (this.schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID && !project.assetInstances.some(item => Object.hasOwn(item, 'yawMilliDeg'))) return unreadable();
-    if (allowsDoorHinge && !project.level.openings.some(opening => opening.hingeEnd === 'end')) return unreadable();
+    if (this.schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID && !project.level.openings.some(opening => opening.hingeEnd === 'end')) return unreadable();
+    if (this.schemaId === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID && !project.roomLayouts?.length) return unreadable();
+    if (interior && !projectUsesInteriorDetails(project)) return unreadable();
     references(project);
+    if (layouts) layoutReferences(project);
     return project;
   }
 }
@@ -198,7 +255,7 @@ function references(project: RuntimeV1Project): void {
   const walls = unique(level.wallSegments.map(w => w.wallSegmentId));
   const rooms = unique(level.rooms.map(r => r.roomId));
   unique(level.openings.map(o => o.openingId));
-  unique(project.assetInstances.map(i => i.assetInstanceId));
+  unique([...project.assetInstances, ...(project.supportedItems ?? [])].map(i => i.assetInstanceId));
   const definitions = unique(project.assetDefinitionRefs.map(d => d.assetDefinitionId));
   unique(project.assetDefinitionRefs.map(d => d.resourceHash));
   for (const wall of level.wallSegments) if (!vertices.has(wall.startVertexId) || !vertices.has(wall.endVertexId) || wall.startVertexId === wall.endVertexId) unreadable();
@@ -208,6 +265,44 @@ function references(project: RuntimeV1Project): void {
     if (item.assetDefinitionId !== undefined && !definitions.has(item.assetDefinitionId)) unreadable();
   }
 }
+
+function layoutReferences(project: RuntimeV1Project): void {
+  const rooms = new Set(project.level.rooms.map(room => room.roomId));
+  const slots = new Map<string, Set<string>>();
+  const layouts = new Map<string, string>();
+  if (project.roomLayouts?.length === 0) unreadable();
+  for (const layout of project.roomLayouts ?? []) {
+    const roomSlots = slots.get(layout.roomId) ?? new Set<string>();
+    if (!rooms.has(layout.roomId) || layouts.has(layout.layoutId) || roomSlots.has(layout.slot)) unreadable();
+    roomSlots.add(layout.slot);
+    slots.set(layout.roomId, roomSlots);
+    layouts.set(layout.layoutId, layout.roomId);
+  }
+  for (const item of project.assetInstances) {
+    if (item.anchorClass !== 'floor') continue;
+    if (item.roomLayoutId === undefined ? slots.has(item.roomId) : layouts.get(item.roomLayoutId) !== item.roomId) unreadable();
+  }
+}
+
+function splitSupportRecords(project: RecordValue): RecordValue[] {
+  const items = project.assetInstances as RecordValue[]; // Records already passed the closed grammar above.
+  const hosts = new Map(items.filter(item => item.anchorClass === 'floor').map(item => [item.assetInstanceId, item]));
+  const guests: RecordValue[] = [];
+  for (const item of items) {
+    if (item.anchorClass !== 'support') continue;
+    const host = hosts.get(item.supportAssetInstanceId);
+    const context = item.context as RecordValue;
+    const preset = host?.catalogPreset as RecordValue | undefined;
+    const matchingSurface = typeof item.supportSurfaceKey === 'string' && typeof preset?.presetId === 'string' &&
+      supportsCatalogSurface(preset.presetId, item.supportSurfaceKey);
+    if (!host || !matchingSurface || context.roomId !== host.roomId || context.layoutId !== host.roomLayoutId) unreadable();
+    const { context: _context, ...guest } = item;
+    guests.push(guest);
+  }
+  if (guests.length > 0) project.assetInstances = items.filter(item => item.anchorClass !== 'support');
+  return guests;
+}
+
 function decode(bytes: Uint8Array, mode: 'wire' | 'legacy', schemaId: RegisteredRuntimeV1SchemaId = RUNTIME_V1_SCHEMA_ID): RuntimeV1DecodeResult {
   const scanned = scanRuntimeV1Json(bytes, mode);
   if (scanned.kind === 'rejected') return scanned;
@@ -244,14 +339,80 @@ export function encodeRuntimeV1Project(project: unknown): RuntimeV1EncodeResult 
 /** Choose the most specific registered member represented by the snapshot. */
 export function encodeRegisteredRuntimeProject(project: unknown): RegisteredRuntimeV1EncodeResult {
   try {
-    const projectSchemaId = hasDoorHingeField(project)
-      ? RUNTIME_V1_DOOR_HINGE_SCHEMA_ID
-      : hasExactYawField(project) ? RUNTIME_V1_FLOOR_YAW_SCHEMA_ID : RUNTIME_V1_SCHEMA_ID;
-    const encoded = encodeMember(project, projectSchemaId);
+    const projectRecord = typeof project === 'object' && project !== null ? project : undefined;
+    let projectSchemaId: RegisteredRuntimeV1SchemaId;
+    let snapshot = project;
+    if (projectRecord && hasInteriorSourceFields(projectRecord)) {
+      projectSchemaId = RUNTIME_V1_INTERIOR_SCHEMA_ID;
+      snapshot = interiorSnapshot(projectRecord);
+    } else if (projectRecord && Object.hasOwn(projectRecord, 'roomLayouts')) {
+      projectSchemaId = RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID;
+    } else {
+      projectSchemaId = hasDoorHingeField(project) ? RUNTIME_V1_DOOR_HINGE_SCHEMA_ID
+        : hasExactYawField(project) ? RUNTIME_V1_FLOOR_YAW_SCHEMA_ID : RUNTIME_V1_SCHEMA_ID;
+    }
+    const encoded = encodeMember(snapshot, projectSchemaId);
     return encoded.kind === 'encoded' ? { ...encoded, projectSchemaId } : encoded;
   } catch {
     return { kind: 'rejected', reasonCode: 'BACKUP_SCHEMA_UNREADABLE' };
   }
+}
+
+function dataRecord(value: unknown): RecordValue {
+  if (!value || typeof value !== 'object') return unreadable();
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return unreadable();
+  const keys = Reflect.ownKeys(value);
+  if (keys.length > RUNTIME_V1_LIMITS.membersPerObject) throw new RuntimeV1Fault('BACKUP_PROJECT_LIMIT');
+  return Object.fromEntries(keys.map(key => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (typeof key !== 'string' || !descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return unreadable();
+    return [key, descriptor.value];
+  }));
+}
+
+function memberEntries(value: unknown): unknown[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype) return unreadable();
+  if (value.length > RUNTIME_V1_LIMITS.elementsPerArray) throw new RuntimeV1Fault('BACKUP_PROJECT_LIMIT');
+  if (Reflect.ownKeys(value).length !== value.length + 1) return unreadable();
+  return Array.from({ length: value.length }, (_, index) => {
+    const descriptor = Object.getOwnPropertyDescriptor(value, index);
+    if (!descriptor?.enumerable || !Object.hasOwn(descriptor, 'value')) return unreadable();
+    return descriptor.value;
+  });
+}
+
+function interiorSnapshot(value: object): RecordValue {
+  const { interiorSchemaVersion, supportedItems, ...project } = dataRecord(value);
+  if (Object.hasOwn(value, 'interiorSchemaVersion') && interiorSchemaVersion !== 1) return unreadable();
+  const floorAndWall = memberEntries(project.assetInstances);
+  const records = floorAndWall.map(dataRecord);
+  if (records.some(item => item.anchorClass !== 'floor' && item.anchorClass !== 'wall')) return unreadable();
+  if (!Object.hasOwn(value, 'supportedItems')) return project;
+  const guests = memberEntries(supportedItems);
+  if (guests.length === 0) return unreadable();
+  const hosts = new Map(records
+    .filter(item => item.anchorClass === 'floor').map(item => [item.assetInstanceId, item]));
+  const portableGuests = guests.map(value => {
+    const guest = dataRecord(value);
+    const host = hosts.get(guest.supportAssetInstanceId);
+    if (!host || Object.hasOwn(guest, 'context')) return unreadable();
+    return { ...guest, context: { roomId: host.roomId,
+      ...(host.roomLayoutId === undefined ? {} : { layoutId: host.roomLayoutId }) } };
+  });
+  return { ...project, assetInstances: [...floorAndWall, ...portableGuests] };
+}
+
+function hasInteriorSourceFields(project: object): boolean {
+  if (Object.hasOwn(project, 'interiorSchemaVersion') || Object.hasOwn(project, 'supportedItems')) return true;
+  if (arrayMemberHasField(Object.getOwnPropertyDescriptor(project, 'assetInstances')?.value, 'catalogPreset')) return true;
+  const level: unknown = Object.getOwnPropertyDescriptor(project, 'level')?.value;
+  if (typeof level !== 'object' || level === null) return false;
+  const wallSegments: unknown = Object.getOwnPropertyDescriptor(level, 'wallSegments')?.value;
+  const openings: unknown = Object.getOwnPropertyDescriptor(level, 'openings')?.value;
+  return arrayMemberHasField(Object.getOwnPropertyDescriptor(level, 'rooms')?.value, 'floorFinish') ||
+    arrayMemberHasField(wallSegments, 'profile') || arrayMemberHasField(wallSegments, 'sideFinishes') ||
+    arrayMemberHasField(openings, 'variant') || arrayMemberHasField(openings, 'sections');
 }
 
 function hasExactYawField(project: unknown): boolean {
@@ -305,8 +466,10 @@ function encodeMember(project: unknown, schemaId: RegisteredRuntimeV1SchemaId): 
       for (const key of keys) {
         if (typeof key !== 'string') return unreadable();
         const preciseYawKey = key === 'yawMilliDeg' && schemaId !== RUNTIME_V1_SCHEMA_ID;
-        const doorHingeKey = key === 'hingeEnd' && schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID;
-        if (!Array.isArray(value) && (key.length > 32 || !sourceKeys.has(key) && !preciseYawKey && !doorHingeKey)) return unreadable();
+        const doorHingeKey = key === 'hingeEnd' && (schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID || allowsLayouts(schemaId));
+        const layoutKey = allowsLayouts(schemaId) && layoutKeys.has(key);
+        const interiorKey = schemaId === RUNTIME_V1_INTERIOR_SCHEMA_ID && interiorKeys.has(key);
+        if (!Array.isArray(value) && (key.length > 32 || !sourceKeys.has(key) && !preciseYawKey && !doorHingeKey && !layoutKey && !interiorKey)) return unreadable();
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (!descriptor || !Object.hasOwn(descriptor, 'value') || (!descriptor.enumerable && !(Array.isArray(value) && key === 'length'))) return unreadable();
       }
@@ -318,7 +481,8 @@ function encodeMember(project: unknown, schemaId: RegisteredRuntimeV1SchemaId): 
         add(','.repeat(Math.max(0, value.length - 1)));
       } else {
         const record = value as Record<string, unknown>; // checked data-only descriptors
-        const order = context === 'root' ? rootKeys : context === 'level' ? levelKeys : Object.keys(value);
+        const order = context === 'root' ? allowsLayouts(schemaId) && Object.hasOwn(record, 'roomLayouts') ? [...rootKeys, 'roomLayouts'] : rootKeys
+          : context === 'level' ? levelKeys : Object.keys(value);
         if (order.length !== keys.length || order.some(key => !Object.hasOwn(record, key))) return unreadable();
         const entries: string[] = [];
         if (context === 'root') entries.push(add(`${JSON.stringify('projectSchemaId')}:${JSON.stringify(schemaId)}`));

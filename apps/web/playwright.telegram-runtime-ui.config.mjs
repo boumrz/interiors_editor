@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 const baseURL = process.env.TMA_UI_BASE_URL;
 const outputDir = process.env.TMA_UI_OUTPUT_DIR;
 if (!baseURL || new URL(baseURL).hostname !== '127.0.0.1' || !outputDir) throw new Error('Use an isolated UI verification URL/output');
-export default defineConfig({ testDir: './tests/browser', testMatch: 'telegram-runtime-ui-e2e.check.ts', workers: 1, metadata: { activeMutant: process.env.__STRYKER_ACTIVE_MUTANT__ ?? null }, timeout: 35_000, outputDir,
+export default defineConfig({ testDir: './tests/browser', testMatch: ['telegram-runtime-ui-e2e.check.ts', 'telegram-room-interior-demo.check.mjs', 'telegram-room-interior-performance.check.mjs', 'telegram-room-floor-merge.check.mjs', 'telegram-room-floor-picking.check.mjs'], workers: 1, metadata: { activeMutant: process.env.__STRYKER_ACTIVE_MUTANT__ ?? null }, timeout: 35_000, outputDir,
   reporter: [['list'], ['json', { outputFile: process.env.TMA_UI_REPORT }]],
   use: { ...devices['iPhone 13'], browserName: 'chromium', channel: 'chrome', baseURL, trace: 'retain-on-failure', screenshot: 'only-on-failure',
     launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] } }

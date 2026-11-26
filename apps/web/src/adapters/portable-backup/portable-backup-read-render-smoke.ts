@@ -12,6 +12,7 @@ import {
 	type StaticGlbResourcePreflightPolicy,
 } from "../../domain/static-glb-import";
 import { alphaBackupFeasibilityLimits } from "../../application/backup-feasibility-policy";
+import { runtimeLayoutViews } from "../../application/runtime-v1-project-validation";
 
 export interface PortableBackupResourcePolicy
 	extends StaticGlbResourcePreflightPolicy {
@@ -68,7 +69,7 @@ export class PortableBackupReadRenderSmokeCheck
 		// Once Room metadata exists, both derivation and the disposable 3D projection
 		// must be reproducible before publication.
 		if (project.level.rooms.length === 0) return true;
-		return projectRectangularRoomForWebGl(project) !== undefined;
+		return runtimeLayoutViews(project).every(view => projectRectangularRoomForWebGl(view) !== undefined);
 	}
 
 	private async resourcesAreReadable(

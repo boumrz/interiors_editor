@@ -1,10 +1,10 @@
 import type { Project } from "./project";
-import { isStructurallyValidProjectV1 } from "./project-json-transfer";
+import { isStructurallyValidTelegramProject } from "./project-json-transfer";
 
 /** Snapshot admitted plain Project data without a platform clone or JSON coercion. */
 export function copyProject(project: Project): Project {
 	const copied = copyValue(project, new WeakMap());
-	if (!isStructurallyValidProjectV1(copied))
+	if (!isStructurallyValidTelegramProject(copied))
 		throw new TypeError("Cannot snapshot an invalid Project");
 	return copied;
 }

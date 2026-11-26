@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_mode:
+        description: Prepare archives or select a build to publish
+        type: choice
+        default: prepare
+        options: [prepare, compatible, authoring]
 
 permissions:
   contents: read
@@ -18,9 +24,20 @@ concurrency:
 
 jobs:
   telegram:
-    name: Verify and package Telegram Mini App
+    name: Verify and package Telegram Mini App (${{ matrix.interior_mode }})
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - interior_mode: compatible
+            interior_authoring: '0'
+          - interior_mode: authoring
+            interior_authoring: '1'
+    env:
+      INTERIORS_ROOM_INTERIOR_COMPATIBLE: '1'
+      INTERIORS_ROOM_INTERIOR_ENABLED: ${{ matrix.interior_authoring }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -67,10 +84,14 @@ jobs:
         env:
           INTERIORS_EXACT_FLOOR_YAW: '1'
           INTERIORS_DOOR_HINGE_AUTHORING: '1'
-        run: pnpm exec node scripts/run-telegram-entry.mjs --grep 'TMA-(ENTRY-[0-9]{2}|ITEM-FLUSH-01|CAMERA-FRAMING|OPENINGS|DOOR-HINGE|THEME-[0-9]{2}|LANGUAGE-01|PRODUCT-METRICS):'
+        run: pnpm exec node scripts/run-telegram-entry.mjs --grep 'TMA-(ENTRY-[0-9]{2}|CATALOG-LOCAL-01|ITEM-FLUSH-01|CAMERA-FRAMING|OPENINGS|DOOR-HINGE|THEME-[0-9]{2}|LANGUAGE-01|PRODUCT-METRICS):'
       - name: Verify the scoped Telegram editor and exact project transfer
         working-directory: apps/web
-        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-(EXACT-YAW|EXACT-TRANSFER|UI-PLAN-RING|ROTATION-EXPLICIT|WALL-CONTINUITY|WALL-CONSEQUENCES|WALL-EXPAND|WALL-DETACHED|DOOR-HINGE-TRANSFER|ADD-OPENING|MOVE-OPENING|SCENE-WALL-PICK|SCENE-ITEM-PICK|UI-RESOURCE-03|ENCRYPTED-DOWNLOAD):'
+        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-(EXACT-YAW|EXACT-TRANSFER|UI-PLAN-RING|UI-PLAN-PAN|ROTATION-EXPLICIT|SELECTED-ROTATION(-DOCK)?|WALL-CONTINUITY|WALL-CONSEQUENCES|WALL-EXPAND|WALL-DETACHED|DOOR-HINGE-TRANSFER|ADD-OPENING|MOVE-OPENING|SCENE-WALL-PICK|SCENE-ITEM-PICK|UI-RESOURCE-03|ENCRYPTED-DOWNLOAD):'
+      - name: Verify room interior placement, storage upgrade, and compatible reopening
+        if: matrix.interior_mode == 'authoring'
+        working-directory: apps/web
+        run: pnpm exec node scripts/run-telegram-runtime-ui.mjs --grep 'TMA-INTERIOR-'
       - name: Verify door storage upgrade and rollback compatibility
         working-directory: apps/web
         run: pnpm exec node scripts/run-telegram-storage-mutation.mjs --grep 'TMA-DOOR-HINGE-STORAGE:'
@@ -92,7 +113,7 @@ jobs:
       - name: Preserve the exact Telegram deployment candidate
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: telegram-${{ github.sha }}
+          name: telegram-${{ matrix.interior_mode }}-${{ github.sha }}
           path: ${{ runner.temp }}/interiors-release/telegram.tar.gz
           if-no-files-found: error
           compression-level: 0
@@ -101,7 +122,10 @@ jobs:
   deploy:
     name: Publish Telegram Mini App
     needs: telegram
-    if: github.ref == 'refs/heads/main'
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      (inputs.release_mode == 'compatible' || inputs.release_mode == 'authoring')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment:
@@ -113,8 +137,20 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
-          name: telegram-${{ github.sha }}
+          name: telegram-${{ inputs.release_mode }}-${{ github.sha }}
           path: ${{ runner.temp }}/interiors-release
+      - name: Download the compatible build to verify the authoring predecessor
+        if: inputs.release_mode == 'authoring'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: telegram-compatible-${{ github.sha }}
+          path: ${{ runner.temp }}/interiors-compatible
+      - name: Verify that the compatible rollback build is active
+        if: inputs.release_mode == 'authoring'
+        run: >-
+          python3 scripts/deploy/frontend.py verify-telegram-predecessor
+          --compatible "$RUNNER_TEMP/interiors-compatible/telegram.tar.gz"
+          --authoring "$RUNNER_TEMP/interiors-release/telegram.tar.gz" --commit "$GITHUB_SHA"
       - name: Refuse publication of a superseded main commit
         env:
           GH_TOKEN: ${{ github.token }}
@@ -150,9 +186,17 @@ jobs:
           python3 scripts/deploy/frontend.py smoke-telegram
           --archive "$RUNNER_TEMP/interiors-release/telegram.tar.gz"
           --receipt "$RUNNER_TEMP/interiors-release/deployment-receipt.json"
+      - name: Preserve the verified deployment receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0c250532a479d7789f # v6
+        with:
+          name: telegram-deployment-receipt-${{ inputs.release_mode }}
+          path: ${{ runner.temp }}/interiors-release/deployment-receipt.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Record the published commit
         env:
           COMMIT_SHA: ${{ github.sha }}
+          RELEASE_MODE: ${{ inputs.release_mode }}
         shell: bash
         run: |
-          printf 'Published [Telegram Mini App](https://domiknote.ru/) at `%s`.\n' "$COMMIT_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Published the `%s` [Telegram Mini App](https://domiknote.ru/) build at `%s`.\n' "$RELEASE_MODE" "$COMMIT_SHA" >> "$GITHUB_STEP_SUMMARY"

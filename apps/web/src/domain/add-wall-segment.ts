@@ -3,6 +3,7 @@ import {
 	type PlanGraph,
 } from "./derive-plan-faces";
 import type { Vertex, WallSegment } from "./project";
+import { sameWallSurfaceMetadata, wallSurfaceMetadata } from "./wall-surface-metadata";
 
 const PROJECT_COORDINATE_LIMIT_MM = 100_000;
 
@@ -17,6 +18,7 @@ interface PlanSegment {
 }
 
 export interface AddWallSegmentInput {
+	readonly profile?: WallSegment["profile"];
 	readonly end: PlanPoint;
 	/** Existing walls with hosted geometry must retain their stable segment ID. */
 	readonly nonMergeableWallSegmentIds?: readonly string[];
@@ -46,6 +48,7 @@ interface PlannedTopology {
 }
 
 interface ValidatedCandidate {
+	readonly profile?: WallSegment["profile"];
 	readonly end: PlanPoint;
 	readonly kind: "accepted";
 	readonly start: PlanPoint;
@@ -132,7 +135,7 @@ export function addWallSegment(
 	};
 	const preview = temporaryGraph(
 		graph,
-		candidate.thicknessMm,
+		candidate,
 		planned,
 	);
 	if (!preview || deriveBoundedOrthogonalFaces(preview).kind === "rejected") {
@@ -140,7 +143,7 @@ export function addWallSegment(
 	}
 	const materialized = materializeGraph(
 		graph,
-		candidate.thicknessMm,
+		candidate,
 		planned,
 		ids,
 	);
@@ -161,7 +164,8 @@ function validateCandidate(
 ): 
 	| ValidatedCandidate
 	| Extract<AddWallSegmentResult, { readonly kind: "rejected" }> {
-	if (!Number.isSafeInteger(input.thicknessMm) || input.thicknessMm <= 0) {
+	if (!Number.isSafeInteger(input.thicknessMm) || input.thicknessMm <= 0 ||
+		(input.profile !== undefined && input.profile !== "partition" && input.profile !== "bearing")) {
 		return reject("INVALID_DIMENSION");
 	}
 	if (!isInProjectBounds(input.start) || !isInProjectBounds(input.end)) {
@@ -181,6 +185,7 @@ function validateCandidate(
 		kind: "accepted",
 		start: input.start,
 		thicknessMm: input.thicknessMm,
+		...(input.profile === undefined ? {} : { profile: input.profile }),
 	};
 }
 
@@ -252,7 +257,7 @@ function collectCandidateContacts(
 
 function temporaryGraph(
 	graph: PlanGraph,
-	candidateThicknessMm: number,
+	candidate: Pick<WallSegment, "thicknessMm" | "profile">,
 	planned: PlannedTopology,
 ): PlanGraph | undefined {
 	const usedVertexIds = new Set(
@@ -285,7 +290,7 @@ function temporaryGraph(
 	for (const { points, resolved } of planned.existingWalls) {
 		if (!appendPieces(
 			points,
-			resolved.wall.thicknessMm,
+			resolved.wall,
 			(index) =>
 				index === 0
 					? resolved.wall.wallSegmentId
@@ -298,7 +303,7 @@ function temporaryGraph(
 	}
 	if (!appendPieces(
 		planned.candidatePoints,
-		candidateThicknessMm,
+		candidate,
 		() => nextTemporaryWallId(usedWallIds),
 		vertexIdsByCoordinate,
 		wallSegments,
@@ -310,7 +315,7 @@ function temporaryGraph(
 
 function materializeGraph(
 	graph: PlanGraph,
-	candidateThicknessMm: number,
+	candidate: Pick<WallSegment, "thicknessMm" | "profile">,
 	planned: PlannedTopology,
 	ids: IdSource,
 ): PlanGraph | undefined {
@@ -341,7 +346,7 @@ function materializeGraph(
 	for (const { points, resolved } of planned.existingWalls) {
 		if (!appendPieces(
 			points,
-			resolved.wall.thicknessMm,
+			resolved.wall,
 			(index) =>
 				index === 0
 					? resolved.wall.wallSegmentId
@@ -354,7 +359,7 @@ function materializeGraph(
 	}
 	if (!appendPieces(
 		planned.candidatePoints,
-		candidateThicknessMm,
+		candidate,
 		() => nextMaterializedId(ids, usedWallIds),
 		vertexIdsByCoordinate,
 		wallSegments,
@@ -418,7 +423,8 @@ function mergeContiguousCollinearWalls(
 					firstOtherId === secondOtherId ||
 					!firstOther ||
 					!secondOther ||
-					!areCollinearAtJoint(firstOther, joint, secondOther)
+					!areCollinearAtJoint(firstOther, joint, secondOther) ||
+					!sameWallSurfaceMetadata(first, second, (first.endVertexId === joint.vertexId) !== (second.startVertexId === joint.vertexId))
 				) {
 					return undefined;
 				}
@@ -433,6 +439,7 @@ function mergeContiguousCollinearWalls(
 			endVertexId: merge.secondOtherId,
 			startVertexId: merge.firstOtherId,
 			thicknessMm: merge.first.thicknessMm,
+			...wallSurfaceMetadata(merge.first, merge.first.startVertexId === merge.joint.vertexId),
 			// Preserve the earlier segment identity. The new segment can never
 			// be a host because an Opening did not exist before this command.
 			wallSegmentId: merge.first.wallSegmentId,
@@ -473,7 +480,7 @@ function areCollinearAtJoint(
 
 function appendPieces(
 	points: readonly PlanPoint[],
-	thicknessMm: number,
+	wall: Pick<WallSegment, "thicknessMm" | "profile" | "sideFinishes">,
 	wallIdForIndex: (index: number) => string | undefined,
 	vertexIdsByCoordinate: ReadonlyMap<string, string>,
 	target: WallSegment[],
@@ -493,7 +500,8 @@ function appendPieces(
 		target.push({
 			endVertexId,
 			startVertexId,
-			thicknessMm,
+			thicknessMm: wall.thicknessMm,
+			...wallSurfaceMetadata(wall),
 			wallSegmentId,
 		});
 	}

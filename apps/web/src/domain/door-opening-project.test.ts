@@ -12,11 +12,13 @@ import {
 } from "./door-opening-project";
 import { addGeneralWallToProject } from "./general-wall-project";
 import { createInitialProject } from "./initial-project";
+import { validateSupportedItems } from "./interior-support";
 import { createParametricFloorItem } from "./parametric-item";
 import { createParametricWallItem } from "./parametric-wall-item";
 import type { Project } from "./project";
 import { configureRectangularRoom } from "./rectangular-room";
-import type { WindowOpening } from "./wall-opening";
+import { orientedWallFootprint, slidingDoorSweepFor } from "./sliding-door-geometry";
+import { wallItemObstructsOpening, type WindowOpening } from "./wall-opening";
 
 function ids(...values: string[]) {
 	let index = 0;
@@ -82,6 +84,133 @@ function sharedWallHeightOpeningMinimumProject() {
 
 const alignmentTime = "2026-08-24T12:00:00.000Z";
 const windowAlignment = { kind: "align-matching-windows", openingId: "window-1" } as const;
+
+const interiorSlider = {
+	heightMm: 2100, offsetMm: 1500, sillMm: 0, widthMm: 900,
+	wallSegmentId: "wall-1", variant: "sliding", slideSide: "left", slideDirection: "toward-end",
+} as const;
+
+it("preserves the slide envelope and door height in either wall direction and side", () => {
+	const opening = { kind: "Door", openingId: "slider", ...interiorSlider } as const;
+	const start = { xMm: 100, zMm: 300 };
+	const end = { xMm: 4100, zMm: 300 };
+	expect(slidingDoorSweepFor(opening, { thicknessMm: 100 }, start, end)).toEqual({
+		alongStartMm: 1050, alongEndMm: 2850, normalStartMm: 55, normalEndMm: 117,
+		leafNormalMm: 74, bottomMm: 0, topMm: 2100,
+		footprint: { continuousYaw: true, widthMm: 1800, depthMm: 62, xMm: 2050, zMm: 386, yawRadians: -0 },
+	});
+	const diagonalEnd = { xMm: 2100, zMm: 2300 };
+	const diagonal = { ...opening, slideDirection: "toward-start", slideSide: "right", offsetMm: 1800, widthMm: 700, sillMm: 250, heightMm: 1800 } as const;
+	const sweep = slidingDoorSweepFor(diagonal, { thicknessMm: 200 }, start, diagonalEnd);
+	expect(sweep).toMatchObject({
+		alongStartMm: 750, alongEndMm: 2150, normalStartMm: -167, normalEndMm: -105,
+		leafNormalMm: -124, bottomMm: 250, topMm: 2050,
+		footprint: { continuousYaw: true, widthMm: 1400, depthMm: 62, yawRadians: -Math.PI / 4 },
+	});
+	expect(sweep?.footprint.xMm).toBeCloseTo(100 + 1586 / Math.SQRT2);
+	expect(sweep?.footprint.zMm).toBeCloseTo(300 + 1314 / Math.SQRT2);
+	expect(slidingDoorSweepFor(opening, { thicknessMm: 100 }, start, start)).toBeUndefined();
+	expect(slidingDoorSweepFor({ ...opening, variant: "glazed-swing", slideDirection: undefined, slideSide: undefined }, { thicknessMm: 100 }, start, end)).toBeUndefined();
+	expect(orientedWallFootprint(diagonalEnd, start, 200)).toEqual({
+		continuousYaw: true, xMm: 1100, zMm: 1300, widthMm: Math.hypot(2000, 2000), depthMm: 200, yawRadians: 3 * Math.PI / 4,
+	});
+});
+
+it("checks slider-track obstruction only on the mounted side and within the physical envelope", () => {
+	const opening = { kind: "Door", openingId: "slider", ...interiorSlider, sillMm: 250 } as const;
+	const mounted = { wallSegmentId: opening.wallSegmentId, side: "left", offsetMm: 2500, widthMm: 100, elevationMm: 1200, heightMm: 100, depthMm: 80 } as const;
+	expect(wallItemObstructsOpening(mounted, opening)).toBe(true);
+	for (const change of [
+		{ wallSegmentId: "other" }, { side: "right" }, { depthMm: 5 },
+		{ offsetMm: 2900 }, { offsetMm: 1000 }, { elevationMm: 2400 }, { elevationMm: 200 },
+	] as const) {
+		expect(wallItemObstructsOpening({ ...mounted, ...change }, opening)).toBe(false);
+	}
+	expect(wallItemObstructsOpening({ ...mounted, offsetMm: 1500, side: "right" }, opening)).toBe(true);
+});
+
+it("validates the same sliding clearance when the obstruction or the door is placed first", () => {
+	const furniture = {
+		color: "#536d62", roomId: "room-1", label: "Пуф", widthMm: 200,
+		depthMm: 80, heightMm: 350, xMm: 2200, zMm: 100,
+	};
+	const placed = createParametricFloorItem(roomProject(), furniture, ids("stool"), alignmentTime);
+	if (placed.kind !== "accepted") throw new Error("Expected valid furniture fixture");
+	expect(addDoorOpeningToProject(placed.project, interiorSlider, ids("slider"), alignmentTime)).toMatchObject({ kind: "rejected", reasonCode: "DOOR_CLEARANCE_COLLISION" });
+	const door = addDoorOpeningToProject(roomProject(), interiorSlider, ids("slider"), alignmentTime);
+	if (door.kind !== "accepted") throw new Error("Expected free slider fixture");
+	expect(door.project.level.openings[0]).toMatchObject(interiorSlider);
+	const placedAfter = createParametricFloorItem(door.project, furniture, ids("stool"), alignmentTime);
+	expect(placedAfter.kind).toBe("rejected");
+	expect(createParametricFloorItem(door.project, { ...furniture, zMm: 300 }, ids("free"), alignmentTime).kind).toBe("accepted");
+});
+
+it("checks a hidden layout's elevated planter before adding, moving or reversing a sliding track", () => {
+	const project: Project = { ...roomProject(), roomLayouts: [
+		{ roomId: "room-1", layoutId: "layout-a", slot: "A", name: "А" },
+		{ roomId: "room-1", layoutId: "layout-b", slot: "B", name: "Б" },
+	] };
+	const placed = createParametricFloorItem(project, {
+		color: "#536d62", roomId: "room-1", label: "Тумбочка", widthMm: 500, depthMm: 400, heightMm: 600,
+		xMm: 2200, zMm: 340, roomLayoutId: "layout-b", catalogPreset: { presetId: "bedside-table", version: 1 },
+	}, ids("cabinet"), alignmentTime);
+	if (placed.kind !== "accepted") throw new Error("Expected valid cabinet fixture");
+	const elevated = { ...interiorSlider, sillMm: 700, heightMm: 1500 };
+	expect(addDoorOpeningToProject(placed.project, elevated, ids("slider"), alignmentTime).kind).toBe("accepted");
+	const withGuest: Project = { ...placed.project, supportedItems: [{
+		assetInstanceId: "plant", anchorClass: "support", label: "Кашпо", color: "#536d62",
+		catalogPreset: { presetId: "planter", version: 1 }, widthMm: 350, depthMm: 350, heightMm: 450,
+		supportAssetInstanceId: "cabinet", supportSurfaceKey: "top", offsetXMm: 0, offsetZMm: -75, relativeYawMilliDeg: 0,
+	}] };
+	expect(validateSupportedItems(withGuest)).toBe(true);
+	const conflict = { kind: "rejected", reasonCode: "DOOR_CLEARANCE_COLLISION" };
+	expect(addDoorOpeningToProject(withGuest, elevated, { next: () => { throw new Error("No opening should be allocated"); } }, alignmentTime)).toEqual(conflict);
+	const fromStart = addDoorOpeningToProject(withGuest, { ...elevated, offsetMm: 500 }, ids("slider"), alignmentTime);
+	if (fromStart.kind !== "accepted") throw new Error(`Expected free initial slider: ${fromStart.reasonCode}`);
+	expect(moveDoorOpeningInProject(fromStart.project, { openingId: "slider", offsetMm: 1500 }, alignmentTime)).toEqual(conflict);
+	expect(fromStart.project.level.openings[0]?.offsetMm).toBe(500);
+	const facingStart = addDoorOpeningToProject(withGuest, { ...elevated, slideDirection: "toward-start" }, ids("slider"), alignmentTime);
+	if (facingStart.kind !== "accepted") throw new Error(`Expected clear track: ${facingStart.reasonCode}`);
+	expect(updateDoorOpeningInProject(facingStart.project, { openingId: "slider", slideDirection: "toward-end" }, alignmentTime)).toEqual(conflict);
+	expect(facingStart.project.level.openings[0]).toMatchObject({ slideDirection: "toward-start" });
+	for (const height of [{ sillMm: 0, heightMm: 600 }, { sillMm: 1050, heightMm: 1500 }]) {
+		expect(addDoorOpeningToProject(withGuest, { ...elevated, ...height }, ids("slider"), alignmentTime).kind).toBe("accepted");
+	}
+});
+
+it("reserves a full opening width beside a slider and refuses a neighboring opening", () => {
+	expect(addDoorOpeningToProject(roomProject(), { ...interiorSlider, offsetMm: 2900 }, ids("slider"), alignmentTime)).toMatchObject({ kind: "rejected", reasonCode: "OPENING_OUTSIDE_WALL_INTERVAL" });
+	const door = addDoorOpeningToProject(roomProject(), interiorSlider, ids("slider"), alignmentTime);
+	if (door.kind !== "accepted") throw new Error("Expected valid slider fixture");
+	expect(addWindowOpeningToProject(door.project, {
+		wallSegmentId: "wall-1", offsetMm: 2500, widthMm: 600, sillMm: 800, heightMm: 600,
+	}, ids("overlap"), alignmentTime)).toMatchObject({ kind: "rejected", reasonCode: "OPENING_OVERLAP" });
+});
+
+it("changes an opening variant without rewriting its address and strips inapplicable fields", () => {
+	const door = addDoorOpeningToProject(roomProject(), {
+		heightMm: 2100, offsetMm: 1500, sillMm: 0, widthMm: 900,
+		wallSegmentId: "wall-1", swingSide: "left", hingeEnd: "end",
+	}, ids("door"), alignmentTime);
+	if (door.kind !== "accepted") throw new Error("Expected valid door fixture");
+	const glazed = updateDoorOpeningInProject(door.project, { openingId: "door", variant: "glazed-swing" }, alignmentTime);
+	if (glazed.kind !== "accepted") throw new Error("Expected valid glazed door");
+	expect(glazed.project.level.openings[0]).toMatchObject({ openingId: "door", variant: "glazed-swing", swingSide: "left", hingeEnd: "end" });
+	const changed = updateDoorOpeningInProject(glazed.project, {
+		openingId: "door", variant: "sliding", slideSide: "left", slideDirection: "toward-end",
+	}, alignmentTime);
+	if (changed.kind !== "accepted") throw new Error("Expected valid variant conversion");
+	expect(changed.project.level.openings[0]).toEqual({ kind: "Door", openingId: "door", ...interiorSlider });
+});
+
+it("keeps the explicit section count when widening a window past the historical threshold", () => {
+	const added = addWindowOpeningToProject(roomProject(), {
+		wallSegmentId: "wall-1", offsetMm: 1200, widthMm: 800, heightMm: 600, sillMm: 900, sections: 1,
+	}, ids("window"), alignmentTime);
+	if (added.kind !== "accepted") throw new Error("Expected valid window fixture");
+	const updated = updateDoorOpeningInProject(added.project, { openingId: "window", widthMm: 1600 }, alignmentTime);
+	expect(updated).toMatchObject({ kind: "accepted", project: { level: { openings: [{ openingId: "window", sections: 1, widthMm: 1600 }] } } });
+});
 
 function withWindows(source: Project, ...windows: readonly Omit<WindowOpening, "kind">[]) {
 	return windows.reduce((project, { openingId, ...window }) => {

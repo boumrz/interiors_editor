@@ -1,5 +1,7 @@
+import type { CatalogProfile } from "./catalog-model-parts";
+import { catalogProfileGeometry } from "./catalog-profile-geometry";
 import type { RectangularRoomWebGlScene, SceneBox } from "./rectangular-room-projection";
-import { cameraEyeAndTargetFor, furnitureGreyboxPartsFor, type NormalizedCanvasPoint, type WebGl2Camera } from "./webgl2-room-renderer-shared";
+import { cameraEyeAndTargetFor, furnitureGreyboxPartsFor, type NormalizedCanvasPoint, type WebGl2Camera, type WebGl2SceneHit } from "./webgl2-room-renderer-shared";
 
 interface Vector3 {
 	readonly x: number;
@@ -7,7 +9,6 @@ interface Vector3 {
 	readonly z: number;
 }
 
-/** Intersects the same oriented furniture parts and opaque wall bodies as the procedural renderer. */
 export function pickProceduralSceneItem(
 	scene: RectangularRoomWebGlScene,
 	camera: WebGl2Camera,
@@ -16,7 +17,19 @@ export function pickProceduralSceneItem(
 	hiddenWallSegmentIds: ReadonlySet<string> | undefined,
 	detailedFurniture: boolean,
 ): string | undefined {
-	if (!(aspect > 0) || scene.items.length === 0) return undefined;
+	return pickProceduralSceneHit(scene, camera, aspect, point, hiddenWallSegmentIds, detailedFurniture)?.assetInstanceId;
+}
+
+/** Intersects the same oriented furniture parts and opaque wall bodies as the procedural renderer. */
+export function pickProceduralSceneHit(
+	scene: RectangularRoomWebGlScene,
+	camera: WebGl2Camera,
+	aspect: number,
+	point: NormalizedCanvasPoint,
+	hiddenWallSegmentIds: ReadonlySet<string> | undefined,
+	detailedFurniture: boolean,
+): WebGl2SceneHit | undefined {
+	if (!(aspect > 0)) return undefined;
 	const { eye: [x, y, z], target } = cameraEyeAndTargetFor(scene, camera);
 	const eye = { x, y, z };
 	const forward = normalize({ x: target[0] - x, y: target[1] - y, z: target[2] - z });
@@ -26,7 +39,8 @@ export function pickProceduralSceneItem(
 	const ray = normalize(add(forward, add(scale(right, point.x * aspect * tangent), scale(up, point.y * tangent))));
 	const forwardComponent = dot(ray, forward);
 	const near = 0.1 / forwardComponent;
-	let closestDistance = 100 / forwardComponent;
+	const far = 100 / forwardComponent;
+	let closestDistance = far;
 	for (const wall of scene.walls) {
 		if (!wall.wall || !hiddenWallSegmentIds?.has(wall.wall.wallSegmentId)) {
 			closestDistance = Math.min(closestDistance, rayDistanceToBox(eye, ray, wall, near));
@@ -39,15 +53,18 @@ export function pickProceduralSceneItem(
 	}
 	let closestItem: string | undefined;
 	for (const item of scene.items) {
-		for (const { box } of furnitureGreyboxPartsFor(item, detailedFurniture)) {
-			const distance = rayDistanceToBox(eye, ray, box, near);
+		for (const { box, opacity, profile } of furnitureGreyboxPartsFor(item, detailedFurniture)) {
+			if (opacity !== undefined) continue;
+			const boundsDistance = rayDistanceToBox(eye, ray, box, near);
+			if (!Number.isFinite(boundsDistance)) continue;
+			const distance = profile ? rayDistanceToProfile(eye, ray, box, profile, near) : boundsDistance;
 			if (distance < closestDistance) {
 				closestDistance = distance;
 				closestItem = item.assetInstanceId;
 			}
 		}
 	}
-	return closestItem;
+	return closestDistance < far ? { assetInstanceId: closestItem, distanceM: closestDistance } : undefined;
 }
 
 function rayDistanceToBox(origin: Vector3, direction: Vector3, box: SceneBox, near: number): number {
@@ -90,6 +107,43 @@ function rayDistanceToBox(origin: Vector3, direction: Vector3, box: SceneBox, ne
 	}
 	if (enters >= near) return enters;
 	return exits >= near ? exits : Infinity;
+}
+
+function rayDistanceToProfile(eye: Vector3, direction: Vector3, box: SceneBox, profile: CatalogProfile, near: number): number {
+	const yaw = box.yawRadians ?? 0;
+	const cosine = Math.cos(yaw);
+	const sine = Math.sin(yaw);
+	const toLocal = ({ x, y, z }: Vector3): Vector3 => ({
+		x: (cosine * x - sine * z) / box.widthM,
+		y: y / box.heightM,
+		z: (sine * x + cosine * z) / box.depthM,
+	});
+	const origin = toLocal({ x: eye.x - box.centerXM, y: eye.y - box.centerYM, z: eye.z - box.centerZM });
+	const ray = toLocal(direction);
+	const { positions, indices } = catalogProfileGeometry(profile);
+	const vertex = (index: number): Vector3 => ({
+		x: positions[index * 3] ?? 0,
+		y: positions[index * 3 + 1] ?? 0,
+		z: positions[index * 3 + 2] ?? 0,
+	});
+	let closest = Infinity;
+	for (let index = 0; index < indices.length; index += 3) {
+		const a = vertex(indices[index] ?? 0);
+		const edge1 = add(vertex(indices[index + 1] ?? 0), scale(a, -1));
+		const edge2 = add(vertex(indices[index + 2] ?? 0), scale(a, -1));
+		const p = cross(ray, edge2);
+		const determinant = dot(edge1, p);
+		if (Math.abs(determinant) < 1e-9) continue;
+		const offset = add(origin, scale(a, -1));
+		const u = dot(offset, p) / determinant;
+		if (u < 0 || u > 1) continue;
+		const q = cross(offset, edge1);
+		const v = dot(ray, q) / determinant;
+		if (v < 0 || u + v > 1) continue;
+		const distance = dot(edge2, q) / determinant;
+		if (distance >= near) closest = Math.min(closest, distance);
+	}
+	return closest;
 }
 
 function add(first: Vector3, second: Vector3): Vector3 {

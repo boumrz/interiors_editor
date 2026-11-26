@@ -1,4 +1,5 @@
 import { wallOpeningHostsForProject } from "./door-opening-project";
+import { resolveSupportedPlacements } from "./interior-support";
 import type { Project, RoomType } from "./project";
 import { updateWallOpening } from "./wall-opening";
 
@@ -27,6 +28,11 @@ export interface UpdateRoomPropertiesInput {
 
 export type UpdateRoomPropertiesResult =
 	| { readonly kind: "accepted"; readonly project: Project }
+	| {
+			readonly kind: "rejected";
+			readonly reasonCode: "ROOM_HEIGHT_SUPPORTED_ITEM_CONFLICT";
+			readonly assetInstanceId: string;
+	  }
 	| {
 			readonly kind: "rejected";
 			readonly reasonCode:
@@ -78,6 +84,12 @@ export function previewRoomHeightOpeningConflict(
 	);
 	if (candidate.kind === "rejected") {
 		return candidate;
+	}
+	const obstructingItem = candidate.project.supportedItems?.length
+		? resolveSupportedPlacements(candidate.project).find((placed) => placed.roomId === input.roomId && placed.topMm > input.heightMm)
+		: undefined;
+	if (obstructingItem) {
+		return { kind: "rejected", reasonCode: "ROOM_HEIGHT_SUPPORTED_ITEM_CONFLICT", assetInstanceId: obstructingItem.item.assetInstanceId };
 	}
 	const hosts = wallOpeningHostsForProject(candidate.project);
 	const openingIds =

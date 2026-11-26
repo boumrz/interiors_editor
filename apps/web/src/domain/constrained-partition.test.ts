@@ -1,9 +1,11 @@
 import { describe, expect, it } from '@rstest/core';
 
 import { addConstrainedPartition, deleteConstrainedWall, expandOrthogonalGrid } from './constrained-partition';
+import { addDoorOpeningToProject } from './door-opening-project';
 import { createParametricFloorItem } from './parametric-item';
 import { createInitialProject } from './initial-project';
 import { configureRectangularRoom } from './rectangular-room';
+import { changeGeneralWallThickness } from './general-wall-project';
 
 function ids(...values: string[]) {
   let index = 0;
@@ -37,6 +39,45 @@ function rectangularProject() {
 }
 
 describe('addConstrainedPartition', () => {
+  it('splits a mixed rectangle without homogenizing wall thicknesses or discarding finishes', () => {
+    const date = '2026-11-26T10:00:00.000Z';
+    const changed = changeGeneralWallThickness(rectangularProject(), { wallSegmentId: 'wall-1', thicknessMm: 200 }, date);
+    if (changed.kind !== 'accepted') throw new Error(`Expected the 200-mm north wall: ${changed.reasonCode}`);
+    const oak = { presetId: 'light-oak', version: 1 } as const;
+    const source = { ...changed.project, level: { ...changed.project.level, rooms: changed.project.level.rooms.map(room => ({ ...room, floorFinish: oak })) } };
+    const added = addConstrainedPartition(source, { offsetMm: 2000, orientation: 'vertical', profile: 'bearing' },
+      ids('vertex-top', 'vertex-bottom', 'wall-top-right', 'wall-bottom-left', 'wall-divider', 'room-right'), date);
+    if (added.kind !== 'accepted') throw new Error(`Expected the mixed divider: ${added.reasonCode}`);
+    expect(added.project.level.wallSegments.filter(({ thicknessMm }) => thicknessMm === 200)).toHaveLength(3);
+    expect(added.project.level.wallSegments.find(({ profile }) => profile === 'bearing')?.thicknessMm).toBe(200);
+    expect(added.project.level.rooms.map(({ floorFinish }) => floorFinish)).toEqual([oak, oak]);
+  });
+  it('extends a 100-mm horizontal partition across a mixed rectangle', () => {
+    const date = '2026-11-26T10:00:00.000Z';
+    const thickened = changeGeneralWallThickness(rectangularProject(), { wallSegmentId: 'wall-1', thicknessMm: 200 }, date);
+    if (thickened.kind !== 'accepted') throw new Error(`Expected mixed walls: ${thickened.reasonCode}`);
+    const added = addConstrainedPartition(thickened.project, { offsetMm: 1500, orientation: 'horizontal', profile: 'partition' },
+      ids('left-contact', 'right-contact', 'wall-right-tail', 'wall-left-tail', 'divider', 'room-bottom'), date);
+    if (added.kind !== 'accepted') throw new Error(`Expected mixed partition: ${added.reasonCode}`);
+    const newWall = added.project.level.wallSegments.find(({ profile }) => profile === 'partition');
+    expect(newWall?.thicknessMm).toBe(100);
+    expect(added.project.level.vertices.filter(({ vertexId }) => vertexId === newWall?.startVertexId || vertexId === newWall?.endVertexId)).toEqual([
+      { vertexId: 'left-contact', xMm: 0, zMm: 1500 }, { vertexId: 'right-contact', xMm: 4100, zMm: 1500 },
+    ]);
+    expect(added.project.level.wallSegments.find(({ wallSegmentId }) => wallSegmentId === 'wall-1')?.thicknessMm).toBe(200);
+  });
+  it('refuses a new partition through a sliding track and an unsnapped mixed-wall location', () => {
+    const source = rectangularProject();
+    const chosen = addDoorOpeningToProject(source, {
+      wallSegmentId: 'wall-1', offsetMm: 1500, sillMm: 0, widthMm: 900, heightMm: 2100,
+      variant: 'sliding', slideSide: 'left', slideDirection: 'toward-end',
+    }, ids('door'), source.updatedAt);
+    if (chosen.kind !== 'accepted') throw new Error(`Expected sliding door: ${chosen.reasonCode}`);
+    expect(addConstrainedPartition(chosen.project, { offsetMm: 2300, orientation: 'vertical', profile: 'partition' }, idsThatMustNotAllocate(), source.updatedAt))
+      .toEqual({ kind: 'rejected', reasonCode: 'WALL_DOOR_OPENING_COLLISION' });
+    expect(addConstrainedPartition(chosen.project, { offsetMm: 2350, orientation: 'vertical', profile: 'partition' }, idsThatMustNotAllocate(), source.updatedAt))
+      .toEqual({ kind: 'rejected', reasonCode: 'INVALID_DIMENSION' });
+  });
   it('splits a rectangular PlanGraph on a vertical grid line and retains the source room identity', () => {
     const result = addConstrainedPartition(
       rectangularProject(),

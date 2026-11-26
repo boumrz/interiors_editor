@@ -2,6 +2,8 @@ import { createBrowserDirectoryUiContract } from "./browser-directory-ui-contrac
 import { StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { zipSync } from "fflate";
+import type { RoomRenderTheme } from "../../src/adapters/renderer/three-dimensional-room-palette";
+import { captureTelegramHostSdk, createTelegramBrowserSignals } from "../../src/adapters/telegram/host-environment";
 import { EditorApp } from "../../src/app/editor-app";
 import {
 	createTelegramRuntime,
@@ -24,6 +26,7 @@ import { createHostFileBridge } from "../../src/adapters/telegram/host-file-brid
 import type { VerifiedTelegramScope } from "../../src/adapters/telegram/signed-launch";
 import type { CatalogGatewayPort } from "../../src/application/ports";
 import { DRAWING_DIMENSION_PREFERENCES_KEY } from "../../src/ui/drawing-dimension-visibility";
+import { setEditorLanguage, type EditorLanguage } from "../../src/ui/editor-language";
 import {
 	BROWSER_DATABASE,
 	rows,
@@ -31,6 +34,7 @@ import {
 	triangleGlb,
 } from "./telegram-runtime-ui-support";
 import "../../src/ui/global.css";
+import { buildRoomInteriorDemo, checkRoomInteriorDemoEdits } from "./room-interior-demo-fixture";
 
 type Scope = "a" | "b";
 const scope = (value: Scope) =>
@@ -148,6 +152,8 @@ const hostLifecycle = {
 let runtime: TelegramRuntime | undefined,
 	root: Root | undefined,
 	activeScope: Scope | undefined;
+let fixtureRoomTheme: RoomRenderTheme | undefined;
+let disposeFixtureTheme: (() => void) | undefined;
 
 const originalPut = IDBObjectStore.prototype.put;
 let failNextProjectWrite = false;
@@ -171,11 +177,13 @@ function fresh(
 	advanceClock = true,
 	databaseMode?: "compatible" | "exact",
 	doorHingeMode?: "compatible" | "authoring",
+	interiorMode?: "compatible" | "authoring",
 ) {
 	if (advanceClock) epoch += 4_000;
 	originalSet.call(localStorage, clockKey, String(epoch));
 	const portable = createRegisteredRuntimePortablePorts({
 		binaryChecksum: browserBinaryChecksum,
+		...(interiorMode === undefined ? {} : { allowTelegramExtendedSchemas: true }),
 	});
 	return createTelegramRuntime({
 		approval,
@@ -183,6 +191,10 @@ function fresh(
 		context: {
 			databaseMode,
 			doorHingeMode,
+			...(interiorMode === undefined ? {} : {
+				roomInteriorCompatible: true,
+				roomInteriorEnabled: interiorMode === "authoring",
+			}),
 			indexedDb: indexedDB,
 			locks: navigator.locks,
 			secureContext: isSecureContext,
@@ -222,9 +234,8 @@ function render() {
 	const props = {
 		runtime: current,
 		catalogGateway,
+		roomTheme: fixtureRoomTheme,
 		localGreyboxCatalog,
-		exactFloorYaw: current.exactFloorYaw,
-		doorHingeAuthoring: current.doorHingeAuthoring,
 		readReleaseStartupInput: current.readReleaseStartupInput,
 		drawingDimensionPreferences: current.drawingDimensions,
 		sourceRecovery: current.sourceRecovery,
@@ -236,6 +247,21 @@ function render() {
 
 let directoryContract: ReturnType<typeof createBrowserDirectoryUiContract> | undefined;
 const fixture = {
+	setAppearance(language: EditorLanguage, colorScheme: RoomRenderTheme["colorScheme"]) {
+		disposeFixtureTheme?.();
+		setEditorLanguage(language);
+		document.documentElement.lang = language;
+		const sdk = { colorScheme, initData: "", ready() {}, close() {} };
+		const captured = captureTelegramHostSdk(sdk);
+		if (!captured) throw new Error("Fixture appearance SDK could not be captured");
+		const host = captured.connect({
+			...createTelegramBrowserSignals({ window, document }),
+			readCurrentSdk: () => sdk,
+			onContextChanged: () => undefined,
+		});
+		fixtureRoomTheme = host.theme?.snapshot();
+		disposeFixtureTheme = () => host.dispose();
+	},
 	async mountDirectoryContract(qualified = true, changeBeforeSubscribe = false, protectedNavigation: boolean | "runtime" = false, canCreateLegacyProject = true, allReadonly: boolean | "partial" | "writable" | "corrupt" | "partial-corrupt" = false) {
 		await dispose(); directoryContract = createBrowserDirectoryUiContract(changeBeforeSubscribe, protectedNavigation, canCreateLegacyProject, allReadonly); directoryContract.directory(qualified); const element = document.getElementById("root"); if (!element) throw new Error("No fixture root"); root = createRoot(element); root.render(<StrictMode>{directoryContract.element}</StrictMode>);
 	},
@@ -330,8 +356,32 @@ const fixture = {
 	async mountConcurrentNavigable(value: Scope) {
 		await dispose(); navigable = true; runtime = fresh(value, false); activeScope = value; render();
 	},
-	async mountNavigable(value: Scope, useLocalGreyboxCatalog = false, databaseMode?: "compatible" | "exact", doorHingeMode?: "compatible" | "authoring") {
-		await dispose(); localGreyboxCatalog = useLocalGreyboxCatalog; navigable = true; runtime = fresh(value, true, databaseMode, doorHingeMode); activeScope = value; render();
+	async mountNavigable(value: Scope, useLocalGreyboxCatalog = false, databaseMode?: "compatible" | "exact", doorHingeMode?: "compatible" | "authoring", interiorMode?: "compatible" | "authoring") {
+		await dispose(); localGreyboxCatalog = useLocalGreyboxCatalog; navigable = true; runtime = fresh(value, true, databaseMode, doorHingeMode, interiorMode); activeScope = value; render();
+	},
+	async databaseVersion(value: Scope) {
+		return (await indexedDB.databases()).find(entry => entry.name === databaseName(value))?.version;
+	},
+	async prepareVersionFive(value: Scope) {
+		await dispose();
+		await new Promise<void>((resolve, reject) => {
+			const request = indexedDB.open(databaseName(value), 5);
+			request.onupgradeneeded = (event) => {
+				if (event.oldVersion !== 4) request.transaction?.abort();
+			};
+			request.onsuccess = () => {
+				request.result.close();
+				resolve();
+			};
+			request.onerror = () => reject(request.error);
+		});
+	},
+	async authorInterior(command: import("../../src/domain/interior-project").InteriorCommand) {
+		if (!runtime) throw new Error("No active runtime");
+		const result = await runtime.controller.applyInteriorCommand(command);
+		if (result.kind !== "durable" && result.kind !== "unchanged") {
+			throw new Error(`Interior command rejected: ${JSON.stringify(result)}`);
+		}
 	},
 	hostBack() { for (const listener of [...hostBackListeners]) listener(); },
 	hostBackSubscribed: () => hostBackListeners.size > 0,
@@ -464,6 +514,14 @@ const fixture = {
 	state() {
 		if (!runtime) throw new Error("No active runtime");
 		return runtime.controller.snapshot();
+	},
+	async createRoomInteriorDemo() {
+		if (!runtime) throw new Error("No active runtime");
+		return buildRoomInteriorDemo(runtime.controller);
+	},
+	async runRoomInteriorDemoEdits() {
+		if (!runtime) throw new Error("No active runtime");
+		return checkRoomInteriorDemoEdits(runtime.controller);
 	},
 	async addExistingWallLight(wallSegmentId: string) {
 		if (!runtime) throw new Error("No active runtime");

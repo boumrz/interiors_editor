@@ -1,8 +1,13 @@
 import type { Project } from './project';
+import { projectUsesInteriorDetails, supportContextFor } from './interior-project-format';
 
 export function serializeProjectCanonically(project: Project): string {
+  const supportedItems = (project.supportedItems ?? []).map(item => ({
+    ...item, context: supportContextFor(item, project),
+  }));
   return JSON.stringify({
     schemaVersion: project.schemaVersion,
+    ...(projectUsesInteriorDetails(project) ? { interiorSchemaVersion: 1 } : {}),
     projectId: project.projectId,
     name: project.name,
     createdAt: project.createdAt,
@@ -15,7 +20,8 @@ export function serializeProjectCanonically(project: Project): string {
       rooms: project.level.rooms,
       openings: project.level.openings
     },
-    assetInstances: project.assetInstances,
+    ...(project.roomLayouts?.length ? { roomLayouts: project.roomLayouts } : {}),
+    assetInstances: [...project.assetInstances, ...supportedItems],
     assetDefinitionRefs: project.assetDefinitionRefs
   });
 }

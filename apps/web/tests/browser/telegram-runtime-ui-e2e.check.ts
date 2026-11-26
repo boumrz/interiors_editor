@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { devices, expect, type Locator, type Page, test } from "@playwright/test";
 import { unzipSync } from "fflate";
 import type {} from "./telegram-runtime-ui-harness";
 import { encryptProjectTransfer } from "../../src/adapters/telegram/encrypted-project-transfer";
@@ -472,6 +472,182 @@ test("TMA-UI-RESOURCE-02: opening a project retries one unreadable pinned blob",
 	expect(await rows(page, "a")).toEqual(before);
 });
 
+test("TMA-INTERIOR-IDB: upgrades an existing scope without rewriting its current revision", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, "Совместимая комната");
+	const before = await rows(page, "a");
+	const version = () => page.evaluate(() => window.__telegramRuntimeUi.databaseVersion("a"));
+	expect(await version()).toBe(3);
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible", "compatible"));
+	await open(page, "Совместимая комната");
+	expect(await version()).toBe(3);
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await open(page, "Совместимая комната");
+	expect(await version()).toBe(6);
+	expect(await rows(page, "a")).toEqual(before);
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible", "compatible"));
+	await open(page, "Совместимая комната");
+	expect(await version()).toBe(6);
+	expect(await rows(page, "a")).toEqual(before);
+});
+
+for (const version of [2, 3, 4, 5, 6]) {
+	test(`TMA-INTERIOR-COMPAT: v${version} keeps supported editing without a storage upgrade`, async ({ page }) => {
+		const name = `Совместимое хранилище v${version}`;
+		await page.evaluate((version) => window.__telegramRuntimeUi.mountNavigable(
+			"a", true, version >= 3 ? "exact" : undefined,
+			version >= 4 ? "authoring" : undefined, version === 6 ? "authoring" : undefined,
+		), version);
+		await createRoom(page, name);
+		if (version === 5) await page.evaluate(() => window.__telegramRuntimeUi.prepareVersionFive("a"));
+		const databaseVersion = () => page.evaluate(() => window.__telegramRuntimeUi.databaseVersion("a"));
+		expect(await databaseVersion()).toBe(version);
+		const before = await rows(page, "a");
+		await page.evaluate((version) => window.__telegramRuntimeUi.mountNavigable(
+			"a", true, version === 2 ? "exact" : undefined,
+			version <= 3 ? "authoring" : undefined, "compatible",
+		), version);
+		await open(page, name);
+		expect(await rows(page, "a")).toEqual(before);
+		expect(await databaseVersion()).toBe(version);
+
+		await openEditorCatalog(page);
+		await expect(page.locator('[data-greybox-preset="table-lamp"]')).toHaveCount(0);
+		await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
+		await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
+		const exactAngle = page.getByTestId("item-placement-action-dock").locator('input[inputmode="decimal"]');
+		if (version >= 3) {
+			await exactAngle.fill("37,5");
+			await exactAngle.press("Enter");
+			await expect(exactAngle).toHaveValue(/37[.,]5/);
+		} else await expect(exactAngle).toHaveCount(0);
+		await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+		await saved(page);
+		const [placed] = (await currentProject(page)).assetInstances;
+		if (version >= 3) expect(placed).toHaveProperty("yawMilliDeg", 37500);
+		else expect(placed).not.toHaveProperty("yawMilliDeg");
+
+		await page.getByTestId("wall-segment").first().click();
+		const opening = await openOpeningDetailsOnSelectedWall(page);
+		const hinges = opening.getByRole("group", { name: "Петли" });
+		if (version >= 4) await hinges.getByRole("button", { name: "Справа", exact: true }).click();
+		else await expect(hinges).toHaveCount(0);
+		await opening.getByRole("button", { name: "Подтвердить", exact: true }).click();
+		await expect(opening).toHaveCount(0);
+		const [placedDoor] = (await currentProject(page)).level.openings;
+		if (version >= 4) expect(placedDoor).toHaveProperty("hingeEnd", "end");
+		else expect(placedDoor).not.toHaveProperty("hingeEnd", "end");
+		expect(await databaseVersion()).toBe(version);
+		expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 2);
+	});
+}
+
+test("TMA-INTERIOR-TRANSFER: compatible export and clean v6 import preserve layout graphs and exact GLB", async ({ page, browser: engine, baseURL }) => {
+	const fixture = await page.evaluate(async () => {
+		const model = await window.__telegramRuntimeUi.prepareUpperCustom("a");
+		await window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring");
+		return model;
+	});
+	await open(page, "Uppercase local model");
+	const roomId = (await currentProject(page)).level.rooms[0]?.roomId;
+	if (!roomId) throw new Error("Expected a room");
+	const wallId = (await currentProject(page)).level.wallSegments[0]?.wallSegmentId;
+	if (!wallId) throw new Error("Expected a wall");
+	await page.evaluate(id => window.__telegramRuntimeUi.addExistingWallLight(id), wallId);
+	await page.evaluate(id => window.__telegramRuntimeUi.authorInterior({
+		kind: "set-floor-finish", roomId: id, finish: { presetId: "light-oak", version: 1 },
+	}), roomId);
+	await saved(page);
+	await openEditorCatalog(page);
+	await page.locator('[data-greybox-preset="bedside-table"]').click();
+	await clickRectangularRoomPoint(page, { x: 0.72, y: 0.62 });
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	const host = (await currentProject(page)).assetInstances.find(item => item.label === "Тумбочка");
+	if (host?.anchorClass !== "floor") throw new Error("Expected a floor host");
+	await page.evaluate(id => window.__telegramRuntimeUi.authorInterior({
+		kind: "bind-preset", assetInstanceId: id, presetId: "bedside-table",
+	}), host.assetInstanceId);
+	await page.evaluate(id => window.__telegramRuntimeUi.authorInterior({
+		kind: "place-supported",
+		item: {
+			label: "Кашпо", widthMm: 350, depthMm: 350, heightMm: 450, color: "#536d62",
+			catalogPreset: { presetId: "planter", version: 1 },
+			supportAssetInstanceId: id, supportSurfaceKey: "top", offsetXMm: 40, offsetZMm: 0, relativeYawMilliDeg: 0,
+		},
+	}), host.assetInstanceId);
+	await page.evaluate(id => window.__telegramRuntimeUi.authorInterior({
+		kind: "room-layout", command: { kind: "create-second", roomId: id },
+	}), roomId);
+	await saved(page);
+	const source = await currentProject(page);
+	expect(source.supportedItems).toHaveLength(2);
+	expect(source.roomLayouts).toHaveLength(2);
+	expect(source.assetInstances.filter(item => item.anchorClass === "wall")).toEqual([
+		expect.objectContaining({ wallSegmentId: wallId, label: "Подсветка зеркала", color: "#416b91" }),
+	]);
+	const sourceRows = await rows(page, "a");
+
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible", "compatible"));
+	await open(page, "Uppercase local model");
+	expect(await currentProject(page)).toEqual(source);
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("button", { name: "Экспортировать проект", exact: true }).click();
+	await page.getByRole("button", { name: "Передать файл", exact: true }).click();
+	await expect(page.getByText(/Проверьте файл вне приложения/)).toBeVisible();
+	const file = await page.evaluate(() => window.__telegramRuntimeUi.sharedFile(0));
+	const entries = unzipSync(Uint8Array.from(file.bytes));
+	expect(JSON.parse(new TextDecoder().decode(entries["manifest.json"]))).toMatchObject({
+		projectSchemaId: "interiors.project/runtime-v1-interior-details", projectSchemaVersion: 1,
+	});
+	expect(entries[`custom/${fixture.actualDigest}.glb`]).toEqual(Uint8Array.from(fixture.sourceBytes));
+
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "exact", "authoring"));
+	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "exact", "compatible", "compatible"));
+	await expect(page.getByLabel("Импортировать проект", { exact: true })).toBeAttached();
+	const targetBefore = await rows(page, "b");
+	await page.evaluate(() => window.__telegramRuntimeUi.reselectSharedFile(0));
+	await expect(page.getByText(/backup создан более новой версией/)).toBeVisible();
+	expect(await rows(page, "b")).toEqual(targetBefore);
+
+	if (!baseURL) throw new Error("Expected isolated fixture origin");
+	const cleanProfile = await engine.newContext({ ...devices["iPhone 13"], baseURL });
+	try {
+		const clean = await cleanProfile.newPage();
+		await clean.route("**/*", route => new URL(route.request().url()).origin === new URL(baseURL).origin
+			? route.continue() : route.abort());
+		await clean.goto("/");
+		await clean.evaluate(async () => {
+			await window.__telegramRuntimeUi.initialize();
+			await window.__telegramRuntimeUi.mountNavigable("b", true, "exact", "authoring", "authoring");
+		});
+		const input = clean.getByLabel("Импортировать проект", { exact: true });
+		await expect(input).toBeAttached();
+		expect((await rows(clean, "b")).projects).toHaveLength(0);
+		await input.evaluate((element, source) => {
+			if (!(element instanceof HTMLInputElement)) throw new Error("Expected the file input");
+			const transfer = new DataTransfer();
+			transfer.items.add(new File([Uint8Array.from(source.bytes)], source.name, { type: source.mimeType }));
+			element.files = transfer.files;
+			element.dispatchEvent(new Event("change", { bubbles: true }));
+		}, file);
+		await saved(clean);
+		const imported = await currentProject(clean);
+		expect(imported.projectId).not.toBe(source.projectId);
+		expect(imported.level).toEqual(source.level);
+		expect(imported.roomLayouts).toEqual(source.roomLayouts);
+		expect(imported.assetInstances).toEqual(source.assetInstances);
+		expect(imported.supportedItems).toEqual(source.supportedItems);
+		expect(imported.assetDefinitionRefs).toEqual(source.assetDefinitionRefs);
+		await clean.getByRole("button", { name: "3D", exact: true }).click();
+		await expect(clean.getByTestId("three-dimensional-custom-glb-status")).toHaveText("rendered:1");
+	} finally {
+		await cleanProfile.close();
+	}
+	expect(await rows(page, "a")).toEqual(sourceRows);
+});
+
 test("TMA-EXACT-YAW: exact 2D placement restores in 3D and in the compatible runtime", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
 	await createRoom(page, "Точный поворот");
@@ -550,6 +726,29 @@ test("TMA-EXACT-YAW: exact 2D placement restores in 3D and in the compatible run
 	await saved(page);
 	expect((await currentProject(page)).assetInstances[0]).toMatchObject({ yawMilliDeg: 37500 });
 	await expect(left).toHaveValue(String(next));
+});
+
+test("TMA-PRESET-COLOR: an explicit pick of the preset swatch persists its variant", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, "Штатный цвет стула");
+	await openEditorCatalog(page);
+	await page.getByRole("dialog", { name: "Предметы интерьера" }).getByRole("button", { name: /^Стул / }).click();
+	await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
+	const before = await rows(page, "a");
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await expect(page.getByTestId("three-dimensional-item-placement-preview")).toHaveAttribute("data-placement-valid", "true");
+	await page.getByTestId("tma-placement-color").getByRole("button", { name: /^Цвет/ }).click();
+	const palette = page.getByRole("dialog", { name: "Цвет предмета" });
+	const blue = palette.getByRole("button", { name: "Глубокий синий", exact: true });
+	await expect(blue).toHaveAttribute("aria-pressed", "true");
+	await blue.click();
+	expect(await rows(page, "a")).toEqual(before);
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	expect((await currentProject(page)).assetInstances[0]).toMatchObject({
+		color: "#416b91",
+		colorVariantId: "alpha-blue",
+	});
 });
 
 async function expectBalancedRotationRow(left: Locator, angle: Locator, right: Locator, snap: Locator) {
@@ -887,6 +1086,8 @@ test("TMA-SELECTED-ROTATION: a selected Plan item offers exact angle and shared 
 	const apply = panel.getByRole("button", { name: "Применить угол", exact: true });
 	const cancel = panel.getByRole("button", { name: "Отменить ввод угла", exact: true });
 	await setRotationVisibleHeight(page, 390);
+	await expect(angle).toBeVisible();
+	await expect(inspector).toBeHidden();
 	for (const control of [angle, apply, cancel]) {
 		await expect.poll(async () => {
 			const bounds = await control.boundingBox();
@@ -1194,7 +1395,10 @@ for (const firstContact of ["ring", "floor"] as const) {
 		await openEditorCatalog(page);
 		await page.getByRole("button", { name: /Local upper triangle.*Кастомное/ }).click();
 		await page.getByRole("button", { name: "Разместить на плане", exact: true }).click();
-		await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
+		// The fixture already places a 700 mm model at x = 1500 mm.
+		await clickRectangularRoomPoint(page, { x: 0.68, y: 0.48 });
+		const confirm = page.getByTestId("item-placement-confirm");
+		await expect(confirm).toBeEnabled();
 		const preview = page.getByTestId("item-placement-preview").locator("polygon").first();
 		const originalPose = await preview.getAttribute("points");
 		const plan = page.getByTestId("plan-content");
@@ -1211,12 +1415,17 @@ for (const firstContact of ["ring", "floor"] as const) {
 		const moved = firstContact === "ring"
 			? { ...first, x: ringBox.x + ringBox.width, y }
 			: { ...first, y: first.y - 24 };
-		const second = { id: 62, x: x + 50, y: Math.min(y - 75, dockBox.y - 24) };
 		const cdp = await page.context().newCDPSession(page);
 		try {
 			await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [first] });
 			await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [moved] });
 			await expect(preview).not.toHaveAttribute("points", originalPose ?? "");
+			// The dock can expand to explain an invalid preview while the first finger moves.
+			const expandedDock = await page.getByTestId("item-placement-action-dock").boundingBox();
+			if (!expandedDock) throw new Error("Missing placement dock during drag");
+			const second = { id: 62, x: x + 50, y: Math.min(y - 75, expandedDock.y - 24) };
+			await expect.poll(() => page.getByTestId("plan-canvas").evaluate((canvas, point) =>
+				canvas.contains(document.elementFromPoint(point.x, point.y)), second)).toBe(true);
 			await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [moved, second] });
 			const translated = [moved, second].map((point) => ({ ...point, x: point.x + 35, y: point.y - 24 }));
 			await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: translated });
@@ -1227,12 +1436,12 @@ for (const firstContact of ["ring", "floor"] as const) {
 			await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: nextTranslation });
 			await expect.soft(plan).not.toHaveAttribute("transform", firstCameraMove ?? "", { timeout: 1500 });
 			await expect.soft(preview).toHaveAttribute("points", originalPose ?? "", { timeout: 1500 });
-			const remaining = nextTranslation[firstContact === "ring" ? 0 : 1];
-			await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [remaining] });
+			const [remaining, lifted] = firstContact === "ring" ? nextTranslation : [...nextTranslation].reverse();
+			await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [lifted] });
 			await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ ...remaining, x: remaining.x + 12 }] });
 			await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 			await expect.soft(preview).toHaveAttribute("points", originalPose ?? "", { timeout: 1500 });
-			await expect(page.getByTestId("item-placement-confirm")).toBeEnabled();
+			await expect(confirm).toBeEnabled();
 			expect(await rows(page, "a")).toEqual(before);
 		} finally {
 			await cdp.detach();
@@ -3142,4 +3351,414 @@ test("TMA-NOV23-CLEARANCE: TMA omits the pair picker and retains wall distances 
 	await expect(page.getByRole("button", { name: "Подтвердить перемещение", exact: true })).toHaveCount(0);
 	expect((await rows(page, "a")).revisions).toHaveLength(base.revisions.length + 1);
 	expect((await currentProject(page)).assetInstances[0]).not.toEqual(first);
+});
+
+test("TMA-INTERIOR-PROFILES: choose the next wall thickness and retain it through a touch draft", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await createRoom(page, "Профили стен");
+	const source = await currentProject(page);
+	const east = source.level.wallSegments.find(wall => [wall.startVertexId, wall.endVertexId].every(id =>
+		source.level.vertices.find(vertex => vertex.vertexId === id)?.xMm === 4100));
+	if (!east) throw new Error("Missing east wall");
+	await page.getByRole("button", { name: "Отдалить", exact: true }).click();
+	await page.getByRole("button", { name: "Отдалить", exact: true }).click();
+	const dock = page.getByTestId("editor-action-dock");
+	await dock.getByRole("button", { name: "Стена", exact: true }).click();
+	const profiles = page.getByRole("group", { name: "Профиль стены", exact: true });
+	await expect(profiles.getByRole("button", { name: "Перегородка · 100 мм", exact: true })).toHaveAttribute("aria-pressed", "true");
+	const bearing = profiles.getByRole("button", { name: "Несущая · 200 мм", exact: true });
+	await bearing.click();
+	const [first, last] = await verticalWallScreenEndpoints(page, east.wallSegmentId);
+	const height = Math.abs(first.y - last.y);
+	const x = first.x + height / 3100 * 1200;
+	const y = Math.min(first.y, last.y);
+	await dragPlanTouch(page, { x, y: y + height * 0.2 }, { x, y: y + height * 0.75 });
+	const draft = page.getByTestId("wall-draft-actions");
+	await draft.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect.poll(async () => (await currentProject(page)).level.wallSegments.find(wall =>
+		!source.level.wallSegments.some(other => other.wallSegmentId === wall.wallSegmentId)
+	)).toMatchObject({ profile: "bearing", thicknessMm: 200 });
+	await saved(page);
+	await expect(bearing).toHaveAttribute("aria-pressed", "true");
+	await dock.getByRole("button", { name: "Выбор и перемещение", exact: true }).click();
+	await dock.getByRole("button", { name: "Стена", exact: true }).click();
+	await expect(profiles.getByRole("button", { name: "Перегородка · 100 мм", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("TMA-INTERIOR-ROOM-FINISH: preview, cancel, confirm and reopen a floor material", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	const name = "Отделка комнаты";
+	await createRoom(page, name);
+	const source = await rows(page, "a");
+	await page.getByTestId("editor-action-dock").getByRole("button", { name: "Комната", exact: true }).click();
+	const room = page.getByTestId("room-directory-sheet");
+	await room.getByRole("button", { name: "Пол", exact: true }).click();
+	const finishes = page.getByRole("dialog", { name: "Пол", exact: true });
+	await finishes.getByRole("button", { name: "Светлый дуб", exact: true }).click();
+	await expect(page.getByTestId("room-finish-preview")).toBeVisible();
+	expect(await rows(page, "a")).toEqual(source);
+	await finishes.getByRole("button", { name: "Отменить", exact: true }).click();
+	await expect(page.getByTestId("room-finish-preview")).toHaveCount(0);
+	await room.getByRole("button", { name: "Пол", exact: true }).click();
+	await finishes.getByRole("button", { name: "Светлый дуб", exact: true }).click();
+	await finishes.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	const durable = await currentProject(page);
+	expect(durable.level.rooms[0]).toMatchObject({ floorFinish: { presetId: "light-oak", version: 1 } });
+	expect((await rows(page, "a")).revisions).toHaveLength(source.revisions.length + 1);
+	await page.reload();
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await open(page, name);
+	expect(await currentProject(page)).toEqual(durable);
+});
+
+test("TMA-INTERIOR-SUPPORT: place a planter from the catalog on a bedside table", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await createRoom(page, "Кашпо на тумбочке");
+	await openEditorCatalog(page);
+	await page.locator('[data-greybox-preset="bedside-table"]').click();
+	await clickRectangularRoomPoint(page, { x: 0.48, y: 0.58 });
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	const table = (await currentProject(page)).assetInstances[0];
+	expect(table).toMatchObject({ catalogPreset: { presetId: "bedside-table", version: 1 } });
+	await openEditorCatalog(page);
+	await page.locator('[data-greybox-preset="planter"]').click();
+	const placement = page.getByTestId("interior-supported-placement");
+	await expect(placement).toBeVisible();
+	await expect(page.getByRole("button", { name: "На мебель", exact: true })).toHaveCount(0);
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	const { scene, camera, bounds } = await currentSceneProjection(page);
+	const support = scene.items.find(item => item.assetInstanceId === table?.assetInstanceId);
+	if (!support) throw new Error("Expected the bedside table in 3D");
+	const tabletop = { ...support, centerYM: support.centerYM + support.heightM / 2 };
+	const contact = sceneContact(canvasPointForSceneItem(scene, camera, bounds, tabletop), bounds);
+	await page.touchscreen.tap(contact.x, contact.y);
+	await expect(placement.getByRole("status")).toContainText("Тумбочка · Верх");
+	await expect(page.getByTestId("interior-support-3d-preview")).toBeVisible();
+	await page.getByRole("button", { name: "План 2D", exact: true }).click();
+	await page.getByRole("button", { name: "Опора Тумбочка", exact: true }).tap();
+	await expect(page.getByTestId("interior-support-plan-preview")).toBeVisible();
+	await expect(placement).toContainText("600 мм");
+	await page.getByRole("button", { name: "3D", exact: true }).click();
+	await expect(placement.getByRole("status")).toContainText("Тумбочка · Верх");
+	const before = await rows(page, "a");
+	await placement.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	expect((await currentProject(page)).supportedItems).toMatchObject([{
+		anchorClass: "support", supportAssetInstanceId: table?.assetInstanceId,
+		supportSurfaceKey: "top", offsetXMm: 0, offsetZMm: 0,
+		catalogPreset: { presetId: "planter", version: 1 },
+	}]);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
+});
+
+test("TMA-INTERIOR-OPENING-UI: save a sliding door and an explicit wide single-section window", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await createRoom(page, "Варианты проёмов");
+	const walls = page.getByTestId("wall-segment");
+	await walls.first().click();
+	const door = await openOpeningDetailsOnSelectedWall(page, "Дверь");
+	await door.getByRole("button", { name: "Раздвижная", exact: true }).click();
+	const confirm = door.getByRole("button", { name: "Подтвердить", exact: true });
+	await expect(confirm).toBeDisabled();
+	await door.getByRole("button", { name: "К концу стены", exact: true }).click();
+	await expect(confirm).toBeEnabled();
+	await confirm.click();
+	await saved(page);
+	const [savedDoor] = (await currentProject(page)).level.openings;
+	await expect(page.getByTestId("door-opening").getByTestId("door-slide-arrow")).toBeVisible();
+	await expect(page.getByTestId("door-opening").getByTestId("door-swing")).toHaveCount(0);
+	expect(savedDoor).toMatchObject({ kind: "Door", variant: "sliding", slideDirection: "toward-end" });
+	expect(savedDoor).not.toHaveProperty("hingeEnd");
+	await walls.nth(1).click();
+	const windowDetails = await openOpeningDetailsOnSelectedWall(page, "Окно");
+	await windowDetails.getByRole("button", { name: "Одна секция", exact: true }).click();
+	await windowDetails.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await saved(page);
+	expect((await currentProject(page)).level.openings.find(item => item.kind === "Window")).toMatchObject({
+		widthMm: 1200, sections: 1,
+	});
+	await expect(page.getByTestId("window-frame").locator("..").locator("line[vector-effect]")).toHaveCount(2);
+});
+
+test("TMA-INTERIOR-SHELF-SELECTION: tap overlapping books directly on the plan without an extra support list", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+	await page.evaluate(() => window.__telegramRuntimeUi.createRoomInteriorDemo());
+	const project = await currentProject(page);
+	const book = project.supportedItems?.find(item => item.catalogPreset.presetId === "book");
+	if (!book) throw new Error("The demo book is missing");
+	await page.evaluate(({ assetInstanceId, supportAssetInstanceId, offsetXMm, offsetZMm, relativeYawMilliDeg }) =>
+		window.__telegramRuntimeUi.authorInterior({
+			kind: "copy-supported", assetInstanceId,
+			target: { supportAssetInstanceId, supportSurfaceKey: "shelf-3", offsetXMm, offsetZMm, relativeYawMilliDeg },
+		}), book);
+	const copies = (await currentProject(page)).supportedItems?.filter(item => item.catalogPreset.presetId === "book");
+	expect(copies).toHaveLength(2);
+	const second = copies?.find(item => item.supportSurfaceKey === "shelf-3");
+	if (!second) throw new Error("The book copy is missing");
+	const firstSymbol = page.locator(`[data-supported-id="${book.assetInstanceId}"]`);
+	const secondSymbol = page.locator(`[data-supported-id="${second.assetInstanceId}"]`);
+	const inspector = page.getByRole("region", { name: "Параметры декора", exact: true });
+	await firstSymbol.press("Enter");
+	await expect(inspector.getByRole("button", { name: "Переставить", exact: true })).toBeVisible();
+	await expect(inspector.getByRole("button", { name: "Дублировать", exact: true })).toBeVisible();
+	await expect(inspector.getByRole("group", { name: "Предметы на опоре", exact: true })).toHaveCount(0);
+	await expect(inspector.getByText(/Стеллаж · Полка/)).toHaveCount(0);
+	await inspector.getByRole("button", { name: "Закрыть параметры декора" }).tap();
+	const bounds = await secondSymbol.boundingBox();
+	if (!bounds) throw new Error("The books have no plan symbols");
+	const tapBooks = () => page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+	await tapBooks();
+	await expect(inspector).toBeVisible();
+	await expect(secondSymbol).toHaveAttribute("aria-pressed", "true");
+	await expect(firstSymbol).toHaveAttribute("aria-pressed", "false");
+	await tapBooks();
+	await expect(firstSymbol).toHaveAttribute("aria-pressed", "true");
+	await expect(secondSymbol).toHaveAttribute("aria-pressed", "false");
+	await tapBooks();
+	await expect(secondSymbol).toHaveAttribute("aria-pressed", "true");
+	await firstSymbol.dispatchEvent("click", { detail: 0 });
+	await expect(firstSymbol).toHaveAttribute("aria-pressed", "true");
+	await inspector.getByRole("button", { name: "Закрыть параметры декора" }).tap();
+	await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+	await expect(secondSymbol).toHaveAttribute("aria-pressed", "true");
+	await inspector.getByRole("button", { name: "Закрыть параметры декора" }).tap();
+	const hostSymbol = page.locator(`[data-item-id="${book.supportAssetInstanceId}"]`).getByTestId("schematic-item");
+	await hostSymbol.press("Enter");
+	const hostInspector = page.getByTestId("selected-item-inspector");
+	await expect(hostInspector).toBeVisible();
+	const expandHost = hostInspector.getByRole("button", { name: "Развернуть панель предмета" });
+	if (await expandHost.isVisible()) await expandHost.tap();
+	await hostInspector.getByRole("tab", { name: "Настройки", exact: true }).tap();
+	await expect(hostInspector.getByRole("button", { name: "Заблокировать предмет", exact: true })).toBeVisible();
+	await expect(hostInspector.getByRole("group", { name: "Предметы на опоре", exact: true })).toHaveCount(0);
+});
+
+test("TMA-INTERIOR-CHAIR-CANCEL: touching the chair leaves imported decor on its original support", async ({ page }, info) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await page.evaluate(() => window.__telegramRuntimeUi.createRoomInteriorDemo());
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("button", { name: "Экспортировать проект", exact: true }).click();
+	await page.getByRole("button", { name: "Передать файл", exact: true }).click();
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "exact", "authoring", "authoring"));
+	await expect(page.getByLabel("Импортировать проект", { exact: true })).toBeAttached();
+	await page.evaluate(() => window.__telegramRuntimeUi.reselectSharedFile(0));
+	await saved(page);
+	const original = await currentProject(page);
+	const originalRows = await rows(page, "b");
+	const planter = original.supportedItems?.find(item => item.catalogPreset.presetId === "planter");
+	const chair = original.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "chair");
+	const nightstand = original.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "bedside-table");
+	if (!planter || !chair || !nightstand) throw new Error("The imported chair, nightstand and supported planter are required");
+	expect(planter).toMatchObject({ supportAssetInstanceId: nightstand.assetInstanceId, supportSurfaceKey: "top" });
+	await page.locator(`[data-supported-id="${planter.assetInstanceId}"]`).press("Enter");
+	const properties = page.getByRole("region", { name: "Параметры декора" });
+	await expect(properties.getByRole("heading", { name: "Кашпо", exact: true })).toBeVisible();
+	await properties.getByRole("button", { name: "Переставить", exact: true }).tap();
+	await page.getByRole("button", { name: "3D", exact: true }).tap();
+	const contact = await currentChairSeatContact(page, chair.assetInstanceId);
+	expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), contact))
+		.toBe("three-dimensional-canvas");
+	await page.touchscreen.tap(contact.x, contact.y);
+	const placement = page.getByTestId("interior-supported-placement");
+	await expect(placement.getByRole("status")).toHaveText("«Стул» не поддерживает размещение декора.");
+	await expect(placement.getByRole("button", { name: "Подтвердить", exact: true })).toBeDisabled();
+	await expect(placement.getByRole("button", { name: "На полу", exact: true })).toHaveCount(0);
+	await expect(placement.getByRole("button", { name: "Точный ввод", exact: true })).toHaveCount(0);
+	await page.screenshot({ path: info.outputPath("chair-rejected.png"), scale: "css" });
+	await placement.getByRole("button", { name: "Отменить", exact: true }).tap();
+	await expect(placement).toHaveCount(0);
+	await expect(properties.getByRole("heading", { name: "Кашпо", exact: true })).toBeVisible();
+	expect(await currentProject(page)).toEqual(original);
+	expect(await rows(page, "b")).toEqual(originalRows);
+});
+
+test("TMA-INTERIOR-PLAN-SUPPORT: touching a highlighted host previews decor without saving during a pan", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await page.evaluate(() => window.__telegramRuntimeUi.createRoomInteriorDemo());
+	const project = await currentProject(page);
+	const vase = project.supportedItems?.find(item => item.catalogPreset.presetId === "vase");
+	const desk = project.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "desk");
+	const chair = project.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "chair");
+	if (!vase || !desk || !chair) throw new Error("Expected the demo vase, desk and chair");
+	const revisionsBefore = (await rows(page, "a")).revisions;
+	await page.locator(`[data-supported-id="${vase.assetInstanceId}"]`).press("Enter");
+	await page.getByRole("region", { name: "Параметры декора" })
+		.getByRole("button", { name: "Переставить", exact: true }).tap();
+	const host = page.getByTestId("plan-decor-support").filter({ has: page.getByTestId("plan-decor-support-surface") })
+		.and(page.getByRole("button", { name: "Опора Письменный стол", exact: true }));
+	await expect(host).toHaveAttribute("data-support-host-id", desk.assetInstanceId);
+	await expect(host.getByTestId("plan-decor-support-surface")).toHaveCSS("stroke-dasharray", "4px, 3px");
+	await expect(page.locator(`[data-support-host-id="${chair.assetInstanceId}"]`)).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Выбрать предмет «Стул»", exact: true })).toHaveCount(0);
+	const selection = page.getByTestId("interior-support-plan-preview");
+	const originalSelection = await selection.getAttribute("points");
+	await page.locator(`[data-item-id="${chair.assetInstanceId}"]`).getByTestId("schematic-item").tap();
+	await expect(selection).toHaveAttribute("points", originalSelection ?? "");
+	const target = await host.boundingBox();
+	if (!target) throw new Error("The desk support is missing its touch area");
+	const start = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+	const contact = await page.context().newCDPSession(page);
+	try {
+		await contact.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [start] });
+		await contact.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: start.x + 22, y: start.y }] });
+		await contact.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+	} finally {
+		await contact.detach();
+	}
+	await expect(selection).toHaveAttribute("points", originalSelection ?? "");
+	expect(await currentProject(page)).toEqual(project);
+	await host.tap();
+	await expect(host).toHaveAttribute("aria-pressed", "true");
+	await expect(selection).not.toHaveAttribute("points", originalSelection ?? "");
+	expect((await rows(page, "a")).revisions).toEqual(revisionsBefore);
+	const placement = page.getByTestId("interior-supported-placement");
+	await placement.getByRole("button", { name: "Подтвердить", exact: true }).tap();
+	await saved(page);
+	expect((await currentProject(page)).supportedItems?.find(item => item.assetInstanceId === vase.assetInstanceId))
+		.toMatchObject({ supportAssetInstanceId: desk.assetInstanceId, supportSurfaceKey: "top" });
+	expect((await rows(page, "a")).revisions).toHaveLength(revisionsBefore.length + 1);
+});
+
+test("TMA-INTERIOR-PLAN-SHELF: tapping a layered host opens only its own levels", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await page.evaluate(() => window.__telegramRuntimeUi.createRoomInteriorDemo());
+	const project = await currentProject(page);
+	const book = project.supportedItems?.find(item => item.catalogPreset.presetId === "book");
+	const shelf = project.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "open-shelf");
+	if (!book || !shelf) throw new Error("Expected the demo book and shelf");
+	await page.locator(`[data-supported-id="${book.assetInstanceId}"]`).press("Enter");
+	await page.getByRole("region", { name: "Параметры декора" })
+		.getByRole("button", { name: "Дублировать", exact: true }).tap();
+	const placement = page.getByTestId("interior-supported-placement");
+	await expect(placement.getByRole("group", { name: "Стеллаж", exact: true })).toHaveCount(0);
+	const target = page.getByTestId("plan-decor-support").and(page.getByRole("button", { name: "Опора Стеллаж", exact: true }));
+	await expect(target).toHaveAttribute("data-support-host-id", shelf.assetInstanceId);
+	await target.tap();
+	await expect(target).toHaveAttribute("aria-pressed", "true");
+	const levels = placement.getByRole("group", { name: "Стеллаж", exact: true });
+	await expect(levels).toBeVisible();
+	await expect(placement.getByRole("status")).toHaveText("Выберите уровень.");
+	await expect(placement.getByRole("button", { name: "Письменный стол · Верх", exact: true })).toHaveCount(0);
+	const confirm = placement.getByRole("button", { name: "Подтвердить", exact: true });
+	await expect(confirm).toBeDisabled();
+	await levels.getByRole("button", { name: "Стеллаж · Полка 2 снизу", exact: true }).tap();
+	await expect(page.getByTestId("interior-support-plan-preview")).toBeVisible();
+	await expect(confirm).toBeEnabled();
+	expect(await currentProject(page)).toEqual(project);
+	await confirm.tap();
+	await saved(page);
+	const books = (await currentProject(page)).supportedItems?.filter(item => item.catalogPreset.presetId === "book");
+	expect(books).toHaveLength(2);
+	expect(books).toContainEqual(book);
+	expect(books?.find(item => item.assetInstanceId !== book.assetInstanceId))
+		.toMatchObject({ supportAssetInstanceId: shelf.assetInstanceId, supportSurfaceKey: "shelf-2" });
+});
+
+test("TMA-INTERIOR-PLAN-UNIFIED: catalog decor can choose furniture or open floor in one draft", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await page.evaluate(() => window.__telegramRuntimeUi.createRoomInteriorDemo());
+	const original = await currentProject(page);
+	const chair = original.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "chair");
+	const desk = original.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "desk");
+	if (!chair || !desk) throw new Error("Expected the demo chair and desk");
+	const initialRevisions = (await rows(page, "a")).revisions;
+	const openDecor = async (presetId: string) => {
+		await openEditorCatalog(page);
+		await page.locator(`[data-greybox-preset="${presetId}"]`).tap();
+		await expect(placement).toBeVisible();
+	};
+	const placement = page.getByTestId("interior-supported-placement");
+	const confirm = placement.getByRole("button", { name: "Подтвердить", exact: true });
+	const floorArea = page.getByTestId("plan-decor-floor");
+	const floorItems = page.getByTestId("schematic-item");
+	const deskTarget = page.getByRole("button", { name: "Опора Письменный стол", exact: true });
+	const originalFloorItemCount = await floorItems.count();
+	await openDecor("book");
+	await expect(floorArea).toBeVisible();
+	await expect(deskTarget).toBeVisible();
+	await expect(confirm).toBeDisabled();
+
+	for (const blocked of [
+		page.locator(`[data-item-id="${chair.assetInstanceId}"]`).getByTestId("schematic-item"),
+		page.getByTestId("window-frame").first(),
+		page.getByTestId("wall-segment").first(),
+	]) {
+		const bounds = await blocked.boundingBox();
+		if (!bounds) throw new Error("Expected the blocked shape on the plan");
+		await page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+		await expect(confirm).toBeDisabled();
+	}
+	await expect(floorItems).toHaveCount(originalFloorItemCount);
+	const readFloorPoint = () => floorArea.evaluate(element => {
+		if (!(element instanceof SVGGraphicsElement)) throw new Error("Expected rendered usable floor geometry");
+		const box = element.getBBox();
+		const transform = element.getScreenCTM();
+		if (!transform) throw new Error("Missing plan transform");
+		const point = new DOMPoint(box.x + box.width * 0.29, box.y + box.height * 0.29).matrixTransform(transform);
+		return { x: point.x, y: point.y };
+	});
+	const gesture = await page.context().newCDPSession(page);
+	try {
+		const floorPoint = await readFloorPoint();
+		const planContent = page.getByTestId("plan-content");
+		const beforePan = await planContent.getAttribute("transform");
+		await gesture.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [floorPoint] });
+		await gesture.send("Input.dispatchTouchEvent", {
+			type: "touchMove", touchPoints: [{ x: floorPoint.x + 20, y: floorPoint.y + 12 }],
+		});
+		await gesture.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+		await expect(planContent).not.toHaveAttribute("transform", beforePan ?? "");
+		const first = await readFloorPoint();
+		const second = { x: first.x + 36, y: first.y + 14 };
+		const beforePinch = await planContent.getAttribute("transform");
+		await gesture.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [first, second] });
+		await gesture.send("Input.dispatchTouchEvent", {
+			type: "touchMove", touchPoints: [{ x: first.x - 8, y: first.y - 6 }, { x: second.x + 8, y: second.y + 6 }],
+		});
+		await gesture.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+		await expect(planContent).not.toHaveAttribute("transform", beforePinch ?? "");
+	} finally {
+		await gesture.detach();
+	}
+	await expect(confirm).toBeDisabled();
+	await deskTarget.tap();
+	await expect(deskTarget).toHaveAttribute("aria-pressed", "true");
+	await expect(floorArea).toBeVisible();
+	await expect(confirm).toBeEnabled();
+	const floorPoint = await readFloorPoint();
+	await page.touchscreen.tap(floorPoint.x, floorPoint.y);
+	await expect(floorItems).toHaveCount(originalFloorItemCount + 1);
+	const floorGhost = page.locator('[data-support-floor-preview="true"]');
+	await expect(floorGhost).toHaveCount(1);
+	await expect(deskTarget).toHaveAttribute("aria-pressed", "false");
+	await expect(confirm).toBeEnabled();
+	const originalGhostX = await floorGhost.getAttribute("x");
+	await page.touchscreen.tap(floorPoint.x + 2, floorPoint.y);
+	await expect(floorGhost).not.toHaveAttribute("x", originalGhostX ?? "");
+	expect((await rows(page, "a")).revisions).toEqual(initialRevisions);
+	await confirm.tap();
+	await saved(page);
+	const afterFloor = await currentProject(page);
+	expect(afterFloor.assetInstances).toContainEqual(expect.objectContaining({
+		anchorClass: "floor", catalogPreset: { presetId: "book", version: 1 },
+	}));
+	expect(afterFloor.supportedItems).toEqual(original.supportedItems);
+	expect((await rows(page, "a")).revisions).toHaveLength(initialRevisions.length + 1);
+
+	await openDecor("planter");
+	await expect(floorArea).toBeVisible();
+	await deskTarget.tap();
+	await expect(deskTarget).toHaveAttribute("aria-pressed", "true");
+	await expect(confirm).toBeEnabled();
+	await confirm.tap();
+	await saved(page);
+	const afterSupport = await currentProject(page);
+	expect(afterSupport.supportedItems).toContainEqual(expect.objectContaining({
+		anchorClass: "support", catalogPreset: { presetId: "planter", version: 1 },
+		supportAssetInstanceId: desk.assetInstanceId, supportSurfaceKey: "top",
+	}));
+	expect((await rows(page, "a")).revisions).toHaveLength(initialRevisions.length + 2);
 });

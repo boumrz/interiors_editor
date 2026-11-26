@@ -2,7 +2,7 @@ import { expect, it } from "@rstest/core";
 import type { DoorWallOpening, WindowWallOpening } from "../../domain/project";
 import { openingTemplateFor } from "./opening-template";
 
-const door: DoorWallOpening = {
+const door = {
 	kind: "Door",
 	offsetMm: 1400,
 	widthMm: 900,
@@ -10,7 +10,7 @@ const door: DoorWallOpening = {
 	sillMm: 200,
 	openingId: "door",
 	wallSegmentId: "host",
-};
+} as const satisfies DoorWallOpening;
 const window: WindowWallOpening = {
 	kind: "Window",
 	offsetMm: 1400,
@@ -22,6 +22,36 @@ const window: WindowWallOpening = {
 };
 const start = { xMm: -200, zMm: 900, vertexId: "start" };
 const end = { xMm: 1800, zMm: 2900, vertexId: "end" };
+
+it("keeps a widened one-section window and a narrow explicit two-section window", () => {
+	const panes = (widthMm: number, sections: 1 | 2) => openingTemplateFor(
+		{ ...window, widthMm, sections }, start, end, 100, 0, 0,
+	).filter(({ role }) => role === "glass");
+	expect(panes(1600, 1)).toHaveLength(1);
+	expect(panes(800, 2)).toHaveLength(2);
+});
+
+it("inserts glass in the swing leaf and places the slider parallel to the host", () => {
+	const glazed = openingTemplateFor({ ...door, variant: "glazed-swing" }, start, end, 100, 0, 0);
+	expect(glazed.filter(({ role }) => role === "glass")).toEqual([
+		expect.objectContaining({ box: expect.objectContaining({ widthM: 0.008, depthM: 0.64, heightM: 1.0506, centerYM: 1.5287 }) }),
+	]);
+	expect(glazed.filter(({ role }) => role === "leaf").map(({ box }) => box.depthM)).toEqual([0.82, 0.82, 0.09, 0.09]);
+	const slider = openingTemplateFor({
+		...door, variant: "sliding", slideSide: "left", slideDirection: "toward-start",
+	}, start, end, 100, 0, 0);
+	const leaf = slider.find(({ role }) => role === "leaf")?.box;
+	expect(leaf).toMatchObject({ widthM: 0.9, heightM: 2.06, depthM: 0.038, centerYM: 1.23, yawRadians: -Math.PI / 4 });
+	expect(leaf?.centerXM).toBeCloseTo((-200 + (1400 - 74) / Math.SQRT2) / 1000);
+	expect(leaf?.centerZM).toBeCloseTo((900 + (1400 + 74) / Math.SQRT2) / 1000);
+	const [rail, handle] = slider.filter(({ role }) => role === "hardware").map(({ box }) => box);
+	expect(rail).toMatchObject({ widthM: 1.8, heightM: 0.04, depthM: 0.016, centerYM: 2.28, yawRadians: -Math.PI / 4 });
+	expect(rail?.centerXM).toBeCloseTo((-200 + (950 - 74) / Math.SQRT2) / 1000);
+	expect(rail?.centerZM).toBeCloseTo((900 + (950 + 74) / Math.SQRT2) / 1000);
+	expect(handle).toMatchObject({ widthM: 0.022, heightM: 0.12, depthM: 0.024, centerYM: 1.2 });
+	expect(handle?.centerXM).toBeCloseTo((-200 + (1765 - 105) / Math.SQRT2) / 1000);
+	expect(handle?.centerZM).toBeCloseTo((900 + (1765 + 105) / Math.SQRT2) / 1000);
+});
 
 it.each([
 	["left", 1],

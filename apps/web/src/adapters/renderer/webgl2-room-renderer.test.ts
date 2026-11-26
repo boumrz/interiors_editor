@@ -1,10 +1,12 @@
-import { describe, expect, it } from "@rstest/core";
+import { describe, expect, it, rstest } from "@rstest/core";
 
 import type { RectangularRoomWebGlScene } from "./rectangular-room-projection";
 import { THREE_DIMENSIONAL_ROOM_SURFACE_COLORS } from "./three-dimensional-room-palette";
 import {
 	cameraEyeAndTargetFor,
 	createWebGl2Program,
+	createWebGl2RoomSceneRendererWithResizeOnChange,
+	drawFurniture,
 	drawWoodFloor,
 	floorPrismVerticesFor,
 	furnitureGreyboxPartsFor,
@@ -90,14 +92,14 @@ describe("WebGl2RoomRendererController", () => {
 		expect(top).toHaveLength(9);
 		expect(bottom).toHaveLength(9);
 		expect([top[1], top[4], top[7]]).toEqual([
-			expect.closeTo(0.02, 6),
-			expect.closeTo(0.02, 6),
-			expect.closeTo(0.02, 6),
+			expect.closeTo(0, 6),
+			expect.closeTo(0, 6),
+			expect.closeTo(0, 6),
 		]);
 		expect([bottom[1], bottom[4], bottom[7]]).toEqual([
-			expect.closeTo(-0.02, 6),
-			expect.closeTo(-0.02, 6),
-			expect.closeTo(-0.02, 6),
+			expect.closeTo(-0.04, 6),
+			expect.closeTo(-0.04, 6),
+			expect.closeTo(-0.04, 6),
 		]);
 		const twiceTopArea = Math.abs(
 			((top[3] ?? 0) - (top[0] ?? 0)) *
@@ -502,6 +504,127 @@ describe("WebGl2RoomRendererController", () => {
 		expect(background).toEqual([29 / 255, 37 / 255, 44 / 255, 1]);
 	});
 
+	it("blends a fading support glow, keeps glass independent and clears the glow when placement closes", () => {
+		let depthWritable = true;
+		let blendEquation = 0;
+		let blendFactors: readonly number[] = [];
+		let vertexColor = false;
+		let transpose = false;
+		let blendPasses = 0;
+		let bufferCount = 0;
+		let buffer = 0;
+		let bufferUploads = 0;
+		const uploaded = new Map<number, readonly number[]>();
+		const pointers = new Map<number, number>();
+		const attributes = new Set<number>([1]);
+		const enabled = new Set<number>();
+		const deleted = new Set<number>();
+		const readDraw = (count: number) => ({
+			count,
+			depthWritable,
+			depthTest: enabled.has(context.DEPTH_TEST),
+			blending: enabled.has(context.BLEND),
+			blendEquation,
+			blendFactors,
+			transpose,
+			hasColorAttribute: attributes.has(1),
+			positionCount: (uploaded.get(pointers.get(0) ?? 0)?.length ?? 0) / 3,
+			alphas: vertexColor && attributes.has(1)
+				? uploaded.get(pointers.get(1) ?? 0)?.filter((_value, index) => index % 4 === 3)
+				: undefined,
+		});
+		const draws: ReturnType<typeof readDraw>[] = [];
+		const noop = () => undefined;
+		const context = {
+			canvas: { clientWidth: 350, clientHeight: 480, width: 350, height: 480 },
+			DEPTH_TEST: 1, BLEND: 2, FUNC_ADD: 3, SRC_ALPHA: 4, ONE_MINUS_SRC_ALPHA: 5,
+			getContextAttributes: () => { throw Error("Use the procedural fallback in this fixture"); },
+			createShader: () => ({}), shaderSource: noop, compileShader: noop, getShaderParameter: () => true, deleteShader: noop,
+			createProgram: () => ({}), attachShader: noop, linkProgram: noop, getProgramParameter: () => true, deleteProgram: noop,
+			createBuffer: () => ++bufferCount, deleteBuffer: (id: number) => deleted.add(id),
+			getAttribLocation: (_program: unknown, name: string) => name === "a_position" ? 0 : 1,
+			getUniformLocation: () => ({}),
+			bindBuffer: (_target: number, id: number) => { buffer = id; },
+			bufferData: (_target: number, data: Float32Array) => { bufferUploads++; uploaded.set(buffer, [...data]); },
+			vertexAttribPointer: (index: number) => { pointers.set(index, buffer); },
+			enableVertexAttribArray: (index: number) => attributes.add(index),
+			disableVertexAttribArray: (index: number) => attributes.delete(index),
+			uniform1i: (_location: unknown, value: number) => { vertexColor = value === 1; },
+			uniform4fv: noop, uniformMatrix4fv: (_location: unknown, next: boolean) => { transpose = next; }, useProgram: noop,
+			bindFramebuffer: noop, bindVertexArray: noop, colorMask: noop, depthFunc: noop, depthRange: noop,
+			clearDepth: noop, viewport: noop, clearColor: noop, clear: noop,
+			depthMask: (next: boolean) => { depthWritable = next; },
+			blendEquation: (next: number) => { blendEquation = next; },
+			blendFunc: (...factors: number[]) => { blendFactors = factors; },
+			enable: (capability: number) => {
+				enabled.add(capability);
+				if (capability === context.BLEND) blendPasses++;
+			},
+			disable: (capability: number) => enabled.delete(capability),
+			drawArrays: (_mode: number, _start: number, count: number) => { draws.push(readDraw(count)); },
+		};
+		const renderedScene: RectangularRoomWebGlScene = {
+			...scene,
+			floors: [],
+			items: [{ centerXM: 2, centerYM: 0.5, centerZM: 2, widthM: 0.2, heightM: 1, depthM: 0.2 }],
+			supportHighlights: [{
+				heightM: 0.75,
+				outline: [{ xM: 1, zM: 1 }, { xM: 2, zM: 1 }, { xM: 2, zM: 2 }, { xM: 1, zM: 2 }],
+			}],
+			openingParts: [{ role: "glass", wallSegmentId: "window",
+				box: { centerXM: 1, centerYM: 1, centerZM: 2, widthM: 1, heightM: 1, depthM: 0.04 } }],
+		};
+		rstest.stubGlobal("window", { devicePixelRatio: 1 });
+		let renderer: WebGl2SceneRenderer | undefined;
+		try {
+			renderer = createWebGl2RoomSceneRendererWithResizeOnChange(context as unknown as WebGL2RenderingContext, renderedScene, "standard", {});
+			renderer.render();
+			const [opaque, glow, glass] = draws;
+			expect(draws).toHaveLength(3);
+			expect(opaque?.hasColorAttribute).toBe(false);
+			expect(glow).toMatchObject({
+				depthWritable: false, depthTest: true, blending: true, transpose: false,
+				blendEquation: context.FUNC_ADD, blendFactors: [context.SRC_ALPHA, context.ONE_MINUS_SRC_ALPHA],
+			});
+			expect(glow?.alphas).toContain(0);
+			expect(glow?.alphas?.some(alpha => alpha > 0 && alpha < 1)).toBe(true);
+			expect(glow?.count).toBe(glow?.positionCount);
+			expect(glow?.count).toBe(glow?.alphas?.length);
+			expect(glass).toMatchObject({ blending: true, hasColorAttribute: false, alphas: undefined });
+			expect(depthWritable).toBe(true);
+			expect(enabled.has(context.BLEND)).toBe(false);
+			expect(attributes.has(1)).toBe(false);
+			expect(vertexColor).toBe(false);
+
+			// The same outlines require no second upload when the view loses its glass.
+			const initialUploads = bufferUploads;
+			draws.length = 0;
+			renderer.render(undefined, undefined, { ...renderedScene, openingParts: [] });
+			expect(draws).toHaveLength(2);
+			expect(draws[1]).toMatchObject({ blending: true, count: glow?.count, alphas: glow?.alphas });
+			expect(bufferUploads).toBe(initialUploads);
+
+			// Cancel the placement. Glass keeps its own alpha pass without a zero-size glow draw.
+			draws.length = 0;
+			const afterCancel = { ...renderedScene, supportHighlights: undefined };
+			renderer.render(undefined, undefined, afterCancel);
+			expect(draws).toHaveLength(2);
+			expect(draws[1]).toMatchObject({ blending: true, hasColorAttribute: false, alphas: undefined });
+			expect(bufferUploads).toBe(initialUploads);
+
+			draws.length = 0;
+			const blendedBefore = blendPasses;
+			renderer.render(undefined, undefined, { ...afterCancel, openingParts: [] });
+			expect(draws).toHaveLength(1);
+			expect(draws[0]).toMatchObject({ blending: false, depthWritable: true, alphas: undefined });
+			expect(blendPasses).toBe(blendedBefore);
+		} finally {
+			renderer?.dispose();
+			rstest.unstubAllGlobals();
+		}
+		expect(deleted.size).toBe(bufferCount);
+	});
+
 	it("keeps the same scene, camera and cutaway while changing theme and restoring WebGL", () => {
 		const port = canvas({});
 		const renders: unknown[] = [];
@@ -660,6 +783,7 @@ describe("WebGl2RoomRendererController", () => {
 		expect(
 			firstSecondDraw.box.centerZM - firstSecondDraw.box.depthM / 2,
 		).toBeCloseTo(4, 8);
+		expect(lastFirstDraw.box.centerYM + lastFirstDraw.box.heightM / 2).toBeCloseTo(0, 8);
 		expect(lastFirstDraw.color).toEqual(firstSecondDraw.color);
 	});
 
@@ -693,7 +817,7 @@ describe("WebGl2RoomRendererController", () => {
 			widthM: 2,
 		});
 
-		expect(draws[0]?.box.centerYM).toBeCloseTo(0.02, 8);
+		expect(draws[0]?.box.centerYM).toBeCloseTo(-0.02, 8);
 		expect(draws[0]?.box.centerZM).toBeCloseTo(0.62, 8);
 		expect(draws[0]?.color).toEqual(
 			THREE_DIMENSIONAL_ROOM_SURFACE_COLORS.floorLightBoard,
@@ -852,6 +976,11 @@ describe("WebGl2RoomRendererController", () => {
 				"sofa",
 				["body:base", "seat:highlight", "back:shadow", "arm:base", "arm:base"],
 			],
+			[
+				"two-seat-sofa",
+				["body:shadow", "back:base", "arm:base", "arm:base", "seat:base", "seat:base",
+					"leg:foot", "leg:foot", "leg:foot", "leg:foot"],
+			],
 			["generic", ["body:base"]],
 		] as const);
 		const epsilon = 0.000000001;
@@ -907,7 +1036,7 @@ describe("WebGl2RoomRendererController", () => {
 			widthM: 1.2,
 		};
 
-		(["table", "chair", "bed", "storage", "sofa"] as const).forEach(
+		(["table", "chair", "bed", "storage", "sofa", "two-seat-sofa"] as const).forEach(
 			(furnitureKind) => {
 				const parts = furnitureGreyboxPartsFor(
 					{
@@ -919,6 +1048,18 @@ describe("WebGl2RoomRendererController", () => {
 				expectNoStrictBoxOverlap(parts.map((part) => part.box));
 			},
 		);
+	});
+
+	it("draws all four sofa feet in their fixed charcoal finish with the raw WebGL renderer", () => {
+		const draws: string[] = [];
+		drawFurniture({
+			centerXM: 0, centerYM: 0.425, centerZM: 0, widthM: 2.2, heightM: 0.85, depthM: 0.9,
+			material: { furnitureKind: "two-seat-sofa", colorHex: "#8a4f54" },
+		}, true, (_box, color) => {
+			draws.push(color.slice(0, 3).map(value => Math.round(value * 255).toString(16).padStart(2, "0")).join(""));
+		}, { azimuthRadians: 0, elevationRadians: 0, distance: 1, panXM: 0, panZM: 0 });
+		expect(draws.filter(color => color === "343735")).toHaveLength(4);
+		expect(draws.filter(color => color === "8a4f54")).toHaveLength(5);
 	});
 
 	it("opens one coherent exterior facade facing the active camera and never hides the interior divider", () => {

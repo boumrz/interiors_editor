@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@rstest/core";
 import {
+	Box3,
 	BoxGeometry,
 	Color,
 	Group,
@@ -21,10 +22,39 @@ import {
 import {
 	cloneRuntimeRootAsNeutralClay,
 	createThreeGreyboxItemGroup,
+	createThreeSupportGlow,
 	pickThreeSceneItem,
 	THREE_DIMENSIONAL_RUNTIME_CLAY,
 	threeDimensionalShadowFlagsFor,
 } from "./three-webgl2-room-renderer";
+
+it("uses linear vertex RGB and the original alpha on a single depth-tested glow mesh", () => {
+	const glow = createThreeSupportGlow();
+	const scene = new Group().add(glow.mesh);
+	const positions = new Float32Array([1, 0.6, 2, 2, 0.6, 3, 2, 0.6, 2]);
+	const colors = new Float32Array([0.5, 0.4, 0.25, 0.35, 1, 0, 0, 0.7, 0, 0.2, 1, 0]);
+	expect(glow.mesh.visible).toBe(false);
+	glow.update({ positions, colors });
+	expect(scene.children).toEqual([glow.mesh]);
+	expect(glow.mesh.visible).toBe(true);
+	expect(glow.mesh.material).toMatchObject({ vertexColors: true, transparent: true, depthTest: true, depthWrite: false, toneMapped: false });
+	expect(glow.mesh.geometry.getAttribute("position").count).toBe(3);
+	const rgba = glow.mesh.geometry.getAttribute("color");
+	expect(rgba.itemSize).toBe(4);
+	expect(Array.from(rgba.array)).toEqual([
+		expect.closeTo(0.214041, 5), expect.closeTo(0.132868, 5), expect.closeTo(0.050876, 5), expect.closeTo(0.35, 6),
+		1, 0, 0, expect.closeTo(0.7, 6), 0, expect.closeTo(0.033105, 5), 1, 0,
+	]);
+	expect(colors[0]).toBe(0.5);
+	const disposed: string[] = [];
+	glow.mesh.geometry.addEventListener("dispose", () => disposed.push("geometry"));
+	glow.mesh.material.addEventListener("dispose", () => disposed.push("material"));
+	glow.update(undefined);
+	expect(glow.mesh.visible).toBe(false);
+	glow.dispose();
+	expect(disposed).toEqual(["geometry", "material"]);
+	expect(scene.children).toHaveLength(0);
+});
 
 const chair: SceneBox = {
 	assetAnchor: "floor",
@@ -214,6 +244,65 @@ describe("3D room presentation", () => {
 });
 
 describe("createThreeGreyboxItemGroup", () => {
+	it.each([
+		{ widthM: 2.2, heightM: 0.85, depthM: 0.9, color: "#536d62", seam: 0.014, armWidth: 0.16 },
+		{ widthM: 3.1, heightM: 1.03, depthM: 1.2, color: "#8a4f54", seam: 0.014, armWidth: 0.16 },
+		{ widthM: 0.5, heightM: 0.32, depthM: 0.35, color: "#716796", seam: 0.0075, armWidth: 0.06 },
+	])("fits two upholstered seats and four dark feet inside a $widthM m built-in sofa", ({ widthM, heightM, depthM, color, seam, armWidth }) => {
+		const group = createThreeGreyboxItemGroup({
+			widthM, heightM, depthM, centerXM: 0, centerYM: heightM / 2, centerZM: 0,
+			material: { colorHex: color, furnitureKind: "two-seat-sofa" },
+		});
+		const all = group.children as Mesh<BoxGeometry, MeshStandardMaterial>[];
+		const bounds = new Box3().setFromObject(group, true);
+		const seats = all.filter((mesh) => mesh.name === "greybox:seat").sort((a, b) => a.position.x - b.position.x);
+		const arms = all.filter((mesh) => mesh.name === "greybox:arm");
+		const feet = all.filter((mesh) => mesh.name === "greybox:leg");
+		expect(seats).toHaveLength(2);
+		expect(arms).toHaveLength(2);
+		expect(feet).toHaveLength(4);
+		expect(bounds.min.y).toBeCloseTo(0, 6);
+		expect(bounds.max.y).toBeCloseTo(heightM, 6);
+		expect(bounds.min.x).toBeCloseTo(-widthM / 2, 6);
+		expect(bounds.max.x).toBeCloseTo(widthM / 2, 6);
+		expect(bounds.min.z).toBeCloseTo(-depthM / 2, 6);
+		expect(bounds.max.z).toBeCloseTo(depthM / 2, 6);
+		const [left, right] = seats.map((seat) => new Box3().setFromObject(seat, true));
+		const back = group.getObjectByName("greybox:back");
+		const base = group.getObjectByName("greybox:body");
+		if (!left || !right || !base || !back) throw new Error("Missing upholstered sofa parts");
+		const backBounds = new Box3().setFromObject(back, true);
+		const baseBounds = new Box3().setFromObject(base, true);
+		expect(right.min.x - left.max.x).toBeCloseTo(seam, 6);
+		expect(right.max.x).toBeCloseTo(widthM / 2 - armWidth - seam, 6);
+		expect(left.min.x).toBeCloseTo(-right.max.x, 6);
+		expect(left.min.y).toBeCloseTo(baseBounds.max.y, 6);
+		expect(left.max.z).toBeCloseTo(backBounds.min.z, 6);
+		expect(left.max.y).toBeCloseTo(heightM * 0.54, 6);
+		for (const arm of arms) {
+			const armBounds = new Box3().setFromObject(arm, true);
+			expect(armBounds.getSize(new Vector3()).x).toBeCloseTo(armWidth, 6);
+			expect(armBounds.min.z).toBeCloseTo(left.min.z, 6);
+			expect(armBounds.max.z).toBeCloseTo(backBounds.min.z, 6);
+			expect(armBounds.max.y).toBeCloseTo(heightM * 0.73, 6);
+		}
+		for (const mesh of [...seats, ...arms]) {
+			expect(mesh.geometry.type).toBe("RoundedBoxGeometry");
+			expect(mesh.material.color.getHexString()).toBe(color.slice(1));
+		}
+		expect(backBounds.max.y).toBeCloseTo(heightM, 6);
+		expect(new Set(feet.map((foot) => [Math.sign(foot.position.x), Math.sign(foot.position.z)].join(","))).size).toBe(4);
+		for (const foot of feet) {
+			const footBounds = new Box3().setFromObject(foot, true);
+			expect(foot.geometry.type).toBe("BoxGeometry");
+			expect(footBounds.max.z - footBounds.min.z).toBeCloseTo(Math.min(0.105, depthM * 0.16), 6);
+			expect(footBounds.max.y).toBeCloseTo(baseBounds.min.y, 6);
+			expect(Math.abs(foot.position.x)).toBeCloseTo(widthM / 2 - 0.75 * armWidth, 6);
+			expect(Math.max(footBounds.max.z, -footBounds.min.z)).toBeCloseTo(depthM * 0.425, 6);
+		}
+		expect(feet.every((foot) => foot.material.color.getHexString() === "343735")).toBe(true);
+	});
+
 	it("turns a classified chair into local neutral parts while its parent retains the canonical pose", () => {
 		const group = createThreeGreyboxItemGroup(chair);
 		const meshes = group.children as Mesh<BoxGeometry, MeshStandardMaterial>[];

@@ -59,6 +59,8 @@ jobs:
           INTERIORS_TELEGRAM_LINK: https://t.me/InteriorsEditorBot?startapp
           INTERIORS_EXACT_FLOOR_YAW: '1'
           INTERIORS_DOOR_HINGE_AUTHORING: '1'
+          INTERIORS_ROOM_INTERIOR_COMPATIBLE: '1'
+          INTERIORS_ROOM_INTERIOR_ENABLED: '1'
           INTERIORS_TELEGRAM_OUTPUT: ${{ runner.temp }}/interiors-verify/dist-telegram
         run: pnpm run build
       - run: pnpm run test:delivery
@@ -67,7 +69,13 @@ jobs:
         run: |
           node --test scripts/build-telegram-analytics.test.mjs
           pnpm exec node scripts/run-telegram-analytics.mjs
-      - run: pnpm run test:e2e
+      - name: Verify the editor and signed interior authoring build
+        env:
+          INTERIORS_EXACT_FLOOR_YAW: '1'
+          INTERIORS_DOOR_HINGE_AUTHORING: '1'
+          INTERIORS_ROOM_INTERIOR_COMPATIBLE: '1'
+          INTERIORS_ROOM_INTERIOR_ENABLED: '1'
+        run: pnpm run test:e2e
       - name: Seal the tested Telegram build
         if: inputs.package_release == true
         run: >-
@@ -78,7 +86,7 @@ jobs:
         if: inputs.package_release == true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: telegram-${{ github.sha }}
+          name: telegram-authoring-${{ github.sha }}
           path: ${{ runner.temp }}/interiors-verify/telegram.tar.gz
           if-no-files-found: error
           compression-level: 0

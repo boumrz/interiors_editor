@@ -5,8 +5,11 @@ import {
 	type Room,
 	type SchematicAssetInstance,
 	type Vertex,
+	type WallProfile,
 	type WallSegment,
 } from "./project";
+import { resolveOrthogonalPlanFaces } from "./derived-orthogonal-plan-faces";
+import { addGeneralWallToProject } from "./general-wall-project";
 
 /** The editing lattice is deliberately part of the domain contract, not a UI-only snap. */
 export const PLAN_GRID_STEP_MM = 100;
@@ -14,6 +17,7 @@ export const PLAN_GRID_STEP_MM = 100;
 export interface ConstrainedPartitionInput {
 	readonly orientation: "vertical" | "horizontal";
 	readonly offsetMm: number;
+	readonly profile?: WallProfile;
 }
 
 export interface OrthogonalGridExpansionInput {
@@ -55,6 +59,7 @@ export type AddConstrainedPartitionResult =
 			readonly reasonCode:
 				| "INVALID_DIMENSION"
 				| "PLAN_NOT_RECTANGULAR_STARTER"
+				| "WALL_DOOR_OPENING_COLLISION"
 				| "WALL_ITEM_COLLISION";
 	  };
 
@@ -81,6 +86,12 @@ export function addConstrainedPartition(
 	ids: IdSource,
 	updatedAt: string,
 ): AddConstrainedPartitionResult {
+	if (input.profile !== undefined || project.interiorSchemaVersion === 1 || project.roomLayouts?.length || project.supportedItems?.length ||
+		project.level.rooms.some((room) => room.floorFinish !== undefined) ||
+		project.level.wallSegments.some((wall, _, walls) => wall.profile !== undefined || wall.sideFinishes !== undefined ||
+			wall.thicknessMm !== walls[0]?.thicknessMm)) {
+		return addPlanGraphPartition(project, input, ids, updatedAt);
+	}
 	const grid = readOrthogonalGrid(project);
 	if (!grid) {
 		return { kind: "rejected", reasonCode: "PLAN_NOT_RECTANGULAR_STARTER" };
@@ -107,6 +118,49 @@ export function addConstrainedPartition(
 		kind: "accepted",
 		project: rebuildGrid(project, grid, xLines, zLines, ids, updatedAt),
 	};
+}
+
+function addPlanGraphPartition(
+	project: Project,
+	input: ConstrainedPartitionInput,
+	ids: IdSource,
+	updatedAt: string,
+): AddConstrainedPartitionResult {
+	const resolved = resolveOrthogonalPlanFaces(project);
+	if (resolved.kind === "rejected") return { kind: "rejected", reasonCode: "PLAN_NOT_RECTANGULAR_STARTER" };
+	const x = project.level.vertices.map((vertex) => vertex.xMm);
+	const z = project.level.vertices.map((vertex) => vertex.zMm);
+	const minX = Math.min(...x);
+	const maxX = Math.max(...x);
+	const minZ = Math.min(...z);
+	const maxZ = Math.max(...z);
+	const faceArea = resolved.plan.rooms.reduce((total, room) => {
+		if (room.facePolygonMm) {
+			const polygon = room.facePolygonMm;
+			const twiceArea = polygon.reduce((sum, point, index) => {
+				const next = polygon[(index + 1) % polygon.length];
+				return next ? sum + point.xMm * next.zMm - point.zMm * next.xMm : sum;
+			}, 0);
+			return total + Math.abs(twiceArea) / 2;
+		}
+		return total + room.faceTilesMm.reduce((area, box) => area + (box.maxXmm - box.minXmm) * (box.maxZmm - box.minZmm), 0);
+	}, 0);
+	if (faceArea !== (maxX - minX) * (maxZ - minZ)) return { kind: "rejected", reasonCode: "PLAN_NOT_RECTANGULAR_STARTER" };
+	const vertical = input.orientation === "vertical";
+	const thicknessMm = input.profile === "bearing" ? 200 : 100;
+	if (!isSnappedOffset(input.offsetMm, vertical ? minX : minZ, vertical ? maxX : maxZ, thicknessMm)) {
+		return { kind: "rejected", reasonCode: "INVALID_DIMENSION" };
+	}
+	const added = addGeneralWallToProject(project, {
+		start: { xMm: vertical ? input.offsetMm : minX, zMm: vertical ? minZ : input.offsetMm },
+		end: { xMm: vertical ? input.offsetMm : maxX, zMm: vertical ? maxZ : input.offsetMm },
+		thicknessMm,
+		...(input.profile === undefined ? {} : { profile: input.profile }),
+	}, ids, updatedAt);
+	if (added.kind === "accepted") return added;
+	const reasonCode = added.reasonCode;
+	return { kind: "rejected", reasonCode: reasonCode === "WALL_DOOR_OPENING_COLLISION" ? reasonCode :
+		reasonCode === "WALL_ITEM_COLLISION" || reasonCode === "ITEM_HOST_UNRESOLVABLE" ? "WALL_ITEM_COLLISION" : "INVALID_DIMENSION" };
 }
 
 /**

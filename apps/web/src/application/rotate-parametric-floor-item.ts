@@ -1,3 +1,4 @@
+import { floorItemSupportConflict } from '../domain/interior-support';
 import {
   setParametricFloorItemYaw,
   type CreateParametricFloorItemResult,
@@ -52,6 +53,8 @@ export class RotateParametricFloorItemUseCase {
     if (updated.kind === 'rejected') {
       return updated;
     }
+    const conflict = floorItemSupportConflict(updated.project, base.project, input.assetInstanceId);
+    if (conflict) return conflict;
     const serializedProject = this.dependencies.serializer.serialize(updated.project);
     const revision: Revision = {
       checksum: await this.dependencies.checksum.sha256(serializedProject),

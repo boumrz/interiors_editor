@@ -1,14 +1,18 @@
 import { describe, expect, it } from "@rstest/core";
 
 import type { RectangularRoomWebGlScene } from "../adapters/renderer/rectangular-room-projection";
+import { cameraEyeAndTargetFor } from "../adapters/renderer/webgl2-room-renderer-shared";
 import { initialThreeDimensionalViewport } from "./three-dimensional-viewport";
 import {
 	canvasPointForFloor,
+	canvasPointForWorld,
 	floorItemAtScreenPoint,
 	floorItemAtPoint,
 	floorPointForCanvas,
 	projectedItemFootprintFor,
 	roomIdAtFloorPoint,
+	supportSurfaceAtCanvasPoint,
+	visibleRoomFloorAtCanvasPoint,
 } from "./three-dimensional-floor-interaction";
 
 const scene: RectangularRoomWebGlScene = {
@@ -30,6 +34,87 @@ const scene: RectangularRoomWebGlScene = {
 };
 
 describe("three-dimensional floor interaction", () => {
+	it("targets only an exposed room floor, excluding an opaque wall, occupied point and concave notch", () => {
+		const size = { width: 360, height: 650 };
+		const camera = initialThreeDimensionalViewport;
+		const floor = { floor: { roomId: "room" }, heightM: 0.08, vertices: [
+			{ xM: 0, zM: 0 }, { xM: 4, zM: 0 }, { xM: 4, zM: 1.5 },
+			{ xM: 2, zM: 1.5 }, { xM: 2, zM: 3 }, { xM: 0, zM: 3 },
+		] };
+		const fixture = { ...scene, floorPolygons: [floor] };
+		const point = { xM: 1.4, zM: 2 };
+		const contact = canvasPointForFloor(fixture, camera, size, point);
+		const notch = canvasPointForFloor(fixture, camera, size, { xM: 3, zM: 2.2 });
+		if (!contact || !notch) throw new Error("Expected both floor positions in view");
+		const { eye } = cameraEyeAndTargetFor(fixture, camera);
+		const distanceM = Math.hypot(eye[0] - point.xM, eye[1], eye[2] - point.zM);
+		const pick = (hit?: { distanceM: number; assetInstanceId?: string }) => visibleRoomFloorAtCanvasPoint(fixture, camera, size, contact, hit);
+		expect(pick()).toMatchObject({ xM: expect.closeTo(point.xM, 6), zM: expect.closeTo(point.zM, 6) });
+		expect(pick({ distanceM })).toBeDefined();
+		expect(pick({ distanceM, assetInstanceId: "book" })).toBeUndefined();
+		expect(pick({ distanceM: distanceM - 0.02 })).toBeUndefined();
+		expect(pick({ distanceM: distanceM - 0.2, assetInstanceId: "chair" })).toBeUndefined();
+		expect(visibleRoomFloorAtCanvasPoint(fixture, camera, size, notch, undefined)).toBeUndefined();
+		expect(visibleRoomFloorAtCanvasPoint(scene, camera, size, contact, undefined)).toBeUndefined();
+		const tile = { widthM: 1, depthM: 1, heightM: 0.04, centerXM: 1.4, centerYM: 0, centerZM: 2 };
+		expect(visibleRoomFloorAtCanvasPoint({ ...scene, floors: [tile] }, camera, size, contact, undefined)).toBeUndefined();
+		expect(visibleRoomFloorAtCanvasPoint({ ...scene, floors: [{ ...tile, floor: { roomId: "room" } }] }, camera, size, contact, undefined))
+			.toMatchObject({ xM: expect.closeTo(point.xM, 6), zM: expect.closeTo(point.zM, 6) });
+		expect(visibleRoomFloorAtCanvasPoint(fixture, camera, { width: 0, height: size.height }, contact, undefined)).toBeUndefined();
+	});
+
+	it("resolves a diagonal usable floor among unrelated room faces", () => {
+		const size = { width: 360, height: 650 };
+		const camera = initialThreeDimensionalViewport;
+		const fixture = { ...scene, floorPolygons: [
+			{ floor: { roomId: "unrelated" }, heightM: 0.04, vertices: [] },
+			{ floor: { roomId: "diagonal" }, heightM: 0.04, vertices: [{ xM: 1, zM: 1 }, { xM: 3, zM: 1 }, { xM: 1, zM: 3 }] },
+		] };
+		const tap = (xM: number, zM: number) => {
+			const point = canvasPointForFloor(fixture, camera, size, { xM, zM });
+			if (!point) throw new Error("Expected on-screen contact");
+			return visibleRoomFloorAtCanvasPoint(fixture, camera, size, point, undefined);
+		};
+		expect(tap(1.15, 2.67)).toBeDefined();
+		expect(tap(1.81, 1.97)).toBeDefined();
+		expect(tap(1.91, 2.1)).toBeUndefined();
+		expect(tap(0.85, 1.5)).toBeUndefined();
+	});
+
+	it("chooses the touched lower shelf at a close orbit and rejects occluding furniture or an outer edge", () => {
+		const size = { width: 340, height: 640 };
+		const camera = { ...initialThreeDimensionalViewport, azimuthRadians: Math.PI / 2, elevationRadians: 0.27, distance: 0.33 };
+		const target = { x: 2.11, y: 0.6, z: 1.65 };
+		const contact = canvasPointForWorld(scene, camera, size, target);
+		if (!contact) throw new Error("Expected visible shelf contact");
+		const { eye } = cameraEyeAndTargetFor(scene, camera);
+		const distanceM = Math.hypot(eye[0] - target.x, eye[1] - target.y, eye[2] - target.z);
+		const outline = [{xM: 1.7, zM: 1.27}, {xM: 2.3, zM: 1.27}, {xM: 2.3, zM: 1.73}, {xM: 1.7, zM: 1.73}];
+		const lower = { hostId: "shelf", key: "shelf-2", heightM: 0.6, outline };
+		const upper = { ...lower, key: "shelf-3", heightM: 0.9 };
+		const pick = (hit: { assetInstanceId?: string; distanceM: number } | undefined, point = contact) =>
+			supportSurfaceAtCanvasPoint(scene, camera, size, point, [upper, lower], hit);
+		expect(pick({ assetInstanceId: "shelf", distanceM })).toEqual({
+			surface: lower, point: { xM: expect.closeTo(2.11, 5), zM: expect.closeTo(1.65, 5) },
+		});
+		expect(pick(undefined)).toBeUndefined();
+		expect(pick({ assetInstanceId: "shelf", distanceM: distanceM + 0.0005 })?.surface).toBe(lower);
+		expect(pick({ assetInstanceId: "shelf", distanceM: distanceM - 0.012 })).toBeUndefined();
+		expect(pick({ assetInstanceId: "book", distanceM })).toBeUndefined();
+		expect(pick({ distanceM: distanceM - 0.05 })).toBeUndefined();
+		const hit = { assetInstanceId: "shelf", distanceM };
+		const outsideOutline = outline.map(({ xM, zM }) => ({ xM, zM: zM - 0.15 }));
+		expect(supportSurfaceAtCanvasPoint(scene, camera, size, contact, [{ ...lower, outline: outsideOutline }], hit)).toBeUndefined();
+		const edgeOutline = outline.map(({ xM, zM }) => ({ xM, zM: zM - 0.08 }));
+		expect(supportSurfaceAtCanvasPoint(scene, camera, size, contact, [{ ...lower, outline: edgeOutline }], hit)?.surface.key).toBe("shelf-2");
+		const underside = { ...target, y: 1.2 };
+		const undersideContact = canvasPointForWorld(scene, camera, size, underside);
+		if (!undersideContact) throw new Error("Expected shelf underside on camera");
+		expect(supportSurfaceAtCanvasPoint(scene, camera, size, undersideContact, [{ ...upper, heightM: underside.y }], {
+			assetInstanceId: "shelf", distanceM: Math.hypot(eye[0] - underside.x, eye[1] - underside.y, eye[2] - underside.z),
+		})).toBeUndefined();
+	});
+
 	it("round-trips a floor point through the live camera projection", () => {
 		const size = { height: 600, width: 800 };
 		const projected = canvasPointForFloor(

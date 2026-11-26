@@ -1,5 +1,6 @@
 import type { Vertex, WallOpening } from "../../domain/project";
 import { doorOpeningOrientation } from "../../domain/door-opening-orientation";
+import { SLIDING_HANDLE_DEPTH_MM, SLIDING_LEAF_DEPTH_MM, slidingDoorSweepFor } from "../../domain/sliding-door-geometry";
 import type { SceneBox } from "./rectangular-room-projection";
 
 export const OPENING_FINISH = {
@@ -63,18 +64,37 @@ export function openingTemplateFor(
 	add("frame", w - frame / 2, h / 2, 0, frame, h, depth);
 	add("frame", w / 2, h - frame / 2, 0, clear, frame, depth);
 	if (opening.kind === "Door") {
+		if (opening.variant === "sliding") {
+			const sweep = slidingDoorSweepFor(opening, { thicknessMm }, start, end);
+			if (!sweep) return parts;
+			const side = opening.slideSide === "left" ? 1 : -1;
+			const step = opening.slideDirection === "toward-start" ? -1 : 1;
+			add("leaf", w / 2, (h - frame) / 2, sweep.leafNormalMm, w, h - frame, SLIDING_LEAF_DEPTH_MM);
+			add("hardware", w / 2 + step * w / 2, h - frame / 2, sweep.leafNormalMm, 2 * w, frame, 16);
+			if (h >= 300) {
+				add("hardware", w / 2 - step * (w / 2 - 85), Math.min(1000, h * 0.55),
+					sweep.leafNormalMm + side * (SLIDING_LEAF_DEPTH_MM + SLIDING_HANDLE_DEPTH_MM) / 2,
+					22, 120, SLIDING_HANDLE_DEPTH_MM);
+			}
+			return parts;
+		}
 		const leafDepth = Math.min(38, frame);
 		const { hingeAtEnd, swingSign } = doorOpeningOrientation(opening);
 		const pivot = hingeAtEnd ? w - frame - leafDepth / 2 : frame + leafDepth / 2;
-		add(
-			"leaf",
-			pivot,
-			(h - frame) / 2,
-			(swingSign * clear) / 2,
-			leafDepth,
-			h - frame,
-			clear,
-		);
+		const leafHeight = h - frame;
+		if (opening.variant === "glazed-swing") {
+			const stile = Math.min(90, clear * 0.18);
+			const bottom = leafHeight * 0.39;
+			const top = leafHeight * 0.9;
+			const glassCentre = (top + bottom) / 2;
+			add("leaf", pivot, bottom / 2, swingSign * clear / 2, leafDepth, bottom, clear);
+			add("leaf", pivot, (leafHeight + top) / 2, swingSign * clear / 2, leafDepth, leafHeight - top, clear);
+			add("leaf", pivot, glassCentre, swingSign * stile / 2, leafDepth, top - bottom, stile);
+			add("leaf", pivot, glassCentre, swingSign * (clear - stile / 2), leafDepth, top - bottom, stile);
+			add("glass", pivot, glassCentre, swingSign * clear / 2, Math.min(8, leafDepth / 2), top - bottom, clear - 2 * stile);
+		} else {
+			add("leaf", pivot, leafHeight / 2, swingSign * clear / 2, leafDepth, leafHeight, clear);
+		}
 		// A pair of levers joined through the leaf makes the latch edge visible
 		// from either side. Very low legacy openings retain their plain leaf.
 		if (h >= 300) {
@@ -99,7 +119,7 @@ export function openingTemplateFor(
 	add("frame", w / 2, frame / 2, 0, clear, frame, depth);
 	const glassHeight = h - frame * 2;
 	const glassDepth = Math.min(8, depth / 4);
-	if (w >= DIVIDED_WINDOW_MIN_WIDTH_MM) {
+	if ((opening.sections ?? (w >= DIVIDED_WINDOW_MIN_WIDTH_MM ? 2 : 1)) === 2) {
 		const pane = (clear - frame) / 2;
 		add("frame", w / 2, h / 2, 0, frame, glassHeight, depth);
 		add("glass", frame + pane / 2, h / 2, 0, pane, glassHeight, glassDepth);

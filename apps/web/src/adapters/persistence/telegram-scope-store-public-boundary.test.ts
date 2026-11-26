@@ -112,10 +112,13 @@ async function fixture(
 		malformedLock?: boolean;
 		denyLock?: boolean;
 		thrownOpen?: unknown;
+		interiorMode?: "compatible" | "authoring";
+		exactYaw?: boolean;
+		doorHinge?: boolean;
 	} = {},
 ) {
 	const session = new TelegramRuntimeSession(await scope),
-		opened = [deferred<void>(), deferred<void>()],
+		opened = Array.from({ length: 5 }, () => deferred<void>()),
 		requests: ReturnType<typeof requestCallbacks>[] = [],
 		calls: { name: string; version?: number }[] = [],
 		locks: { name: string; options: LockOptions }[] = [];
@@ -143,6 +146,10 @@ async function fixture(
 	const store = new TelegramScopeStore(session, {
 		indexedDb,
 		secureContext: options.secure ?? true,
+		...(options.interiorMode === "compatible" ? { roomInteriorCompatible: true } : {}),
+		...(options.interiorMode === "authoring" ? { roomInteriorEnabled: true } : {}),
+		...(options.exactYaw ? { databaseMode: "exact" } : {}),
+		...(options.doorHinge ? { doorHingeMode: "authoring" } : {}),
 		...(options.noLocks ? {} : { locks: lockPort }),
 	});
 	const command = rs.fn(
@@ -245,6 +252,53 @@ function lateHandle() {
 }
 
 describe("Telegram metadata public boundary; denial-only callbacks, no native durability claim", () => {
+	it("uses only the guarded compatible fallback chain for IndexedDB version refusals", async () => {
+		const x = await fixture({ interiorMode: "compatible" });
+		try {
+			const pending = x.run();
+			for (const [index, version] of [2, 3, 4, 5, 6].entries()) {
+				await beforeComplete(x.opened[index].promise, pending);
+				expect(x.calls[index]?.version).toBe(version);
+				x.fail(index, new DOMException("Existing version is newer", "VersionError"));
+			}
+			expect(await refused(pending)).toMatchObject({ name: "VersionError" });
+			expect(x.calls).toHaveLength(5);
+			expect(x.command).not.toHaveBeenCalled();
+		} finally {
+			await x.cleanup();
+		}
+	});
+	it("requests v6 for authoring and keeps other failures distinct from a compatible rollback", async () => {
+		for (const [mode, expectedVersion] of [["compatible", 2], ["authoring", 6]] as const) {
+			const x = await fixture({ interiorMode: mode });
+			try {
+				const pending = x.run();
+				await beforeComplete(x.opened[0].promise, pending);
+				expect(x.calls[0]?.version).toBe(expectedVersion);
+				x.fail(0, new DOMException("Storage denied", "SecurityError"));
+				expect(await refused(pending)).toMatchObject({ name: "SecurityError" });
+				expect(x.calls).toHaveLength(1);
+				expect(x.command).not.toHaveBeenCalled();
+			} finally {
+				await x.cleanup();
+			}
+		}
+	});
+	it("keeps the v3 and v4 routes when the interior channel is disabled", async () => {
+		for (const [options, version] of [[{ exactYaw: true }, 3], [{ exactYaw: true, doorHinge: true }, 4]] as const) {
+			const x = await fixture(options);
+			try {
+				const pending = x.run();
+				await beforeComplete(x.opened[0].promise, pending);
+				expect(x.calls[0]?.version).toBe(version);
+				x.fail(0, new DOMException("Existing version is newer", "VersionError"));
+				expect(await refused(pending)).toMatchObject({ name: "VersionError" });
+				expect(x.calls).toHaveLength(1);
+			} finally {
+				await x.cleanup();
+			}
+		}
+	});
 	it("constructor remains inert before any public work", async () => {
 		const x = await fixture();
 		try {

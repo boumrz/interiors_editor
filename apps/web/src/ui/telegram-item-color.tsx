@@ -227,7 +227,8 @@ function SceneColorPicker({
 									type="button"
 									onClick={() => {
 										dialogRef.current?.close();
-										if (color !== variant.color) onSelect(variant);
+										if (context === "placement" || color !== variant.color)
+											onSelect(variant);
 									}}
 								>
 									<span

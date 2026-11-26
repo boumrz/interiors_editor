@@ -1,3 +1,4 @@
+import { normalizeInteriorProject } from "../domain/interior-project";
 import { PROJECT_SCHEMA_VERSION, type Project } from '../domain/project';
 import type {
   ChecksumPort,
@@ -32,7 +33,8 @@ export async function prepareProjectPublication(
   project: Project,
   dependencies: ProjectPublicationDependencies
 ): Promise<PublicationCandidate> {
-  const serializedProject = dependencies.serializer.serialize(project);
+  const normalized = normalizeInteriorProject(project);
+  const serializedProject = dependencies.serializer.serialize(normalized);
   const revision = {
     checksum: await dependencies.checksum.sha256(serializedProject),
     createdAt: project.updatedAt,
@@ -41,7 +43,7 @@ export async function prepareProjectPublication(
     schemaVersion: PROJECT_SCHEMA_VERSION,
     serializedProject
   };
-  return { project, revision };
+  return { project: normalized, revision };
 }
 
 /** Keeps validation in each command and durability in its existing repository. */

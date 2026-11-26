@@ -1111,7 +1111,7 @@ describe("Telegram item front direction", () => {
 		const yaw = sceneItem.yawRadians ?? 0;
 		const reference = "reference" in fixture
 			? parts.find((part) => fixture.reference === "corner-back"
-				? part.tone === "shadow"
+				? part.role === "back"
 				: part.role === fixture.reference)
 			: undefined;
 		if ("reference" in fixture && !reference) throw new Error("Missing directional part in 3D");
@@ -1591,3 +1591,28 @@ for(const healthy of [false,true])
   if(healthy){expect(html).toContain("Healthy neighbor");expect(html).not.toContain('data-testid="project-recovery-screen"');}
   else {expect(html).toContain('data-testid="project-recovery-screen"');expect(html).toContain("Нужно восстановление");expect(html).toContain("Не удалось проверить сохранённую версию");expect(html).toContain("Повторить проверку");expect(html).not.toContain("Создать проект");}
  });
+
+describe("saved opening variants", () => {
+	it("passes a sliding variant without stale hinge fields and sends an explicit reset to solid", () => {
+		const saved = { kind: "Door", openingId: "door", offsetMm: 1800, sillMm: 0 } as const;
+		const draft = {
+			baseRevisionId: "revision", kind: "Door", openingId: saved.openingId,
+			heightMm: "2100", widthMm: "900", offsetMm: "1800",
+			swingSide: "right", hingeEnd: "end",
+			variant: "sliding", slideSide: "right", slideDirection: "toward-end",
+		} as const;
+		const sliding = openingEditInputFor(draft, saved, true);
+		expect(sliding).toMatchObject({ openingId: "door", variant: "sliding", slideSide: "right", slideDirection: "toward-end" });
+		expect(sliding).not.toHaveProperty("swingSide");
+		expect(sliding).not.toHaveProperty("hingeEnd");
+		expect(openingEditInputFor({ ...draft, variant: null }, saved, true)).toMatchObject({ variant: null, swingSide: "right" });
+	});
+	it("keeps explicit single-section windows wider than the legacy split threshold", () => {
+		const saved = { kind: "Window", openingId: "window", offsetMm: 1800, sillMm: 850 } as const;
+		const draft = {
+			baseRevisionId: "revision", kind: "Window", openingId: saved.openingId,
+			heightMm: "1300", widthMm: "1600", offsetMm: "1800", sections: 1,
+		} as const;
+		expect(openingEditInputFor(draft, saved, true)).toMatchObject({ sections: 1, offsetMm: 1800, sillMm: 850 });
+	});
+});

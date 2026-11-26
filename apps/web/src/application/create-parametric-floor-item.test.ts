@@ -134,3 +134,35 @@ describe('CreateParametricFloorItemUseCase', () => {
     }));
   });
 });
+
+it('rejects a tall placement into raised decor before serialization and publication', async () => {
+  const base = baseCandidate();
+  const project = {
+    ...base.project,
+    assetInstances: [{
+      assetInstanceId: 'stand', anchorClass: 'floor' as const, roomId: 'room-1', label: 'Тумбочка',
+      color: '#967a65', catalogPreset: { presetId: 'bedside-table', version: 1 as const },
+      widthMm: 500, depthMm: 400, heightMm: 600, xMm: 1500, zMm: 1500,
+    }],
+    supportedItems: [{
+      assetInstanceId: 'pot', anchorClass: 'support' as const, supportAssetInstanceId: 'stand', supportSurfaceKey: 'top',
+      label: 'Кашпо', color: '#587848', catalogPreset: { presetId: 'planter', version: 1 as const },
+      offsetXMm: 0, offsetZMm: 0, relativeYawMilliDeg: 0, widthMm: 350, depthMm: 350, heightMm: 450,
+    }],
+  };
+  const useCase = new CreateParametricFloorItemUseCase({
+    checksum: { sha256: async () => { throw Error('The conflict must not be hashed'); } },
+    clock: { now: () => project.updatedAt },
+    ids: ids('tower'),
+    repository: {
+      loadCurrent: async () => ({ kind: 'empty' }),
+      publish: async () => { throw Error('The conflict must not be published'); },
+      recover: async () => ({ kind: 'recovered' }),
+    },
+    serializer: canonicalProjectSerializer,
+  });
+  await expect(useCase.execute({ ...base, project }, {
+    label: 'Колонна', color: '#345678', widthMm: 150, depthMm: 150, heightMm: 900, roomId: 'room-1', xMm: 1500, zMm: 1500,
+  }, () => { throw Error('The screen must keep the durable revision'); }))
+    .resolves.toMatchObject({ kind: 'rejected', reasonCode: 'ITEM_COLLISION', conflictAssetInstanceId: 'pot' });
+});

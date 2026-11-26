@@ -1,3 +1,6 @@
+import { resolveSupportedPlacements } from "../domain/interior-support";
+import { supportSurfaceLabel, supportSurfacePlanVertices, type SupportOption } from "./supported-item-controls";
+import { telegramGreyboxLabelForDisplay } from "./telegram-greybox-catalog";
 import { copy } from "./editor-language";
 import { OpeningPlanSymbol } from "./opening-plan-symbol";
 import { DIVIDED_WINDOW_MIN_WIDTH_MM } from "../adapters/renderer/opening-template";
@@ -34,6 +37,7 @@ import {
 } from "./opening-gesture";
 import { wallOpeningIntervalMm } from "../domain/wall-opening";
 import styles from "./AppShell.module.css";
+import planStyles from "./PlanProjection.module.css";
 import rotationStyles from "./FloorRotationControls.module.css";
 import { PlacementRotationControl } from "./PlacementRotationControl";
 import { FloorRotationAngleField, RotationModeToggle } from "./FloorRotationAngleField";
@@ -45,7 +49,7 @@ import {
 	type RotationDomeGesture,
 } from "./three-dimensional-rotation-gesture";
 import { degreesForYawRadians, steppedYawRadians } from "./rotation-angle";
-import { observePlanChrome, placePlanRotationEditor } from "./plan-rotation-layout";
+import { observePlanChrome, placePlanRotationEditor, planRotationChromeReady } from "./plan-rotation-layout";
 import { DrawingDimensions } from "./DrawingDimensions";
 import { ItemWallDistanceFields, ItemWallDistanceLines, ItemWallDistanceValues } from "./ItemWallDistances";
 import { itemWallDistancePositionFor, itemWallDistancesFor, type ItemWallDistance } from "./item-wall-distances";
@@ -152,6 +156,12 @@ export function PlanProjection({
 	isWallVertexMoveMode,
 	movableWallVertexIds,
 	openingCreationPreview,
+	finishPreview,
+	supportPreview,
+	supportPlanTargets,
+	supportFloorPick,
+	supportFloorRoomIds,
+	supportFloorPreviewItemId,
 	onMoveOpeningCreationDraft,
 	openingHostIds,
 	onChooseOpeningHost,
@@ -188,6 +198,17 @@ export function PlanProjection({
 	onPwaUpdateSafetyChange,
 }: PlanProjectionProps) {
 	const wallHatchId = `wall-hatch-${useId()}`;
+	const supportOptionsByHost = useMemo(() => {
+		const groups = new Map<string, SupportOption[]>();
+		for (const option of supportPlanTargets?.options ?? []) {
+			const id = option.host.assetInstanceId;
+			const group = groups.get(id);
+			if (group) group.push(option);
+			else groups.set(id, [option]);
+		}
+		return groups;
+	}, [supportPlanTargets?.options]);
+	const pickingSupport = supportPlanTargets !== undefined || supportFloorPick !== undefined;
 	const hostGateRef = useRef(createEditorInteractionGate());
 	const hostGateDisposed = useRef(false);
 	const [, renderHostEpoch] = useState<EditorContactEpoch>(() => hostGateRef.current.capture());
@@ -515,7 +536,7 @@ export function PlanProjection({
 		setItemPointIsExact(exact);
 	}, []);
 	const itemPlacementDragRef = useRef<ItemPlacementDrag | undefined>(undefined);
-	// A wall can be tapped to select it, but it must not steal a drag
+	// A wall or a decor symbol can be tapped, but must not steal a drag
 	// that starts on the drawing.  Keep the possible selection transient until
 	// pointerup; a movement beyond the normal tap tolerance is a canvas pan.
 	const pendingCanvasSelectionRef = useRef<
@@ -523,6 +544,9 @@ export function PlanProjection({
 				readonly pointerId: number;
 				readonly pointerOrigin: PointerPosition;
 				readonly wallSegmentId?: string;
+				readonly supportedItemId?: string;
+				readonly supportAnchor?: "floor" | "host" | "blocked";
+				readonly supportHostId?: string;
 		  }
 		| undefined
 	>(undefined);
@@ -792,8 +816,15 @@ export function PlanProjection({
 				);
 				const rotationTop = Math.max(top, (visualViewport?.offsetTop ?? bounds.top) - bounds.top);
 				const rotationBottom = Math.max(0, bottom - bounds.top);
-				const ready = rotationInspectorState !== "pending" &&
-					(rotationInspectorState !== "present" || inspectorBoxes.some(({ selector }) => selector === selectedItemInspectorSelector));
+				const itemInspector = shell?.querySelector(selectedItemInspectorSelector);
+				const ready = planRotationChromeReady({
+					inspectorState: rotationInspectorState,
+					inspectorMeasured: inspectorBoxes.some(({ selector }) => selector === selectedItemInspectorSelector),
+					editingAngle: hasSelectedAngleDraft,
+					compactInspector: itemInspector?.matches(
+						'[data-inspector-expanded="false"][data-inspector-compact="true"]:not([hidden])',
+					) ?? false,
+				});
 				setRotationChrome((previous) =>
 					previous.top === rotationTop && previous.bottom === rotationBottom && previous.ready === ready
 						? previous
@@ -858,7 +889,7 @@ export function PlanProjection({
 		for (const target of shell?.querySelectorAll(chromeSelector) ?? [])
 			observer.observe(target);
 		return () => observer.disconnect();
-	}, [selectedWallId, selectedItemId, activeTool, isInteractionLocked, onRotationStepModeChange, plainLabels, rotationInspectorState]);
+	}, [selectedWallId, selectedItemId, activeTool, hasSelectedAngleDraft, isInteractionLocked, onRotationStepModeChange, plainLabels, rotationInspectorState]);
 
 	useLayoutEffect(() => {
 		if (!selectedRotationEditor) return;
@@ -977,6 +1008,13 @@ export function PlanProjection({
 					]
 				: [],
 		) ?? [];
+	const floorFinishRoom = finishPreview?.kind === "floor"
+		? derivedPlan?.rooms.find(room => room.roomId === finishPreview.roomId)
+		: undefined;
+	const floorFinishPolygon = floorFinishRoom?.usableFloorPolygonMm;
+	const supportFloorRooms = supportFloorPick && !readOnly && !isInteractionLocked
+		? derivedPlan?.rooms.filter(room => !supportFloorRoomIds || supportFloorRoomIds.has(room.roomId)) ?? []
+		: [];
 	const roomTypesById = new Map(
 		project.schemaVersion === 1
 			? project.level.rooms.map(
@@ -1795,6 +1833,32 @@ export function PlanProjection({
 			beginPinch(activePointers[0], activePointers[1]);
 			return;
 		}
+		if (pickingSupport && !readOnly) {
+			const enlargedHostId = (event.target as Element).closest("[data-support-host-id]")?.getAttribute("data-support-host-id");
+			const hits = event.currentTarget.ownerDocument.elementsFromPoint(event.clientX, event.clientY);
+			const itemIds = hits.flatMap(element => {
+				if (element.getAttribute("data-testid") !== "schematic-item") return [];
+				const id = element.closest("[data-item-id]")?.getAttribute("data-item-id");
+				return id && id !== supportFloorPreviewItemId ? [id] : [];
+			});
+			const onOpening = hits.some(element => element.closest("[data-opening-id]") !== null);
+			const onUsableFloor = hits.some(element => element.hasAttribute("data-support-floor-room-id"));
+			const preciseItemId = enlargedHostId && itemIds.includes(enlargedHostId) ? enlargedHostId : itemIds[0];
+			// A furniture target must not take a tap from adjacent free floor.
+			// Keep the expanded hit area only when floor placement is unavailable.
+			const hostId = preciseItemId ?? (!supportFloorPick ? enlargedHostId : undefined);
+			const supportAnchor = onOpening ? "blocked"
+				: hostId ? (supportOptionsByHost.has(hostId) ? "host" : "blocked")
+					: onUsableFloor ? "floor" : "blocked";
+			pendingCanvasSelectionRef.current = {
+				pointerId: event.pointerId,
+				pointerOrigin: canvasPoint,
+				supportAnchor,
+				...(supportAnchor === "host" && hostId ? { supportHostId: hostId } : {}),
+			};
+			startPan(canvasPoint);
+			return;
+		}
 		if (hasSelectedAngleDraft && activeTool === "select") {
 			// A tap can dismiss the keyboard while the exact angle awaits
 			// Apply or Cancel. The same contact can still pan the plan.
@@ -2037,6 +2101,23 @@ export function PlanProjection({
 			if (!item || ("locked" in item && item.locked)) return;
 			beginSelectedItemRotation(item, event);
 			return;
+		}
+		if (activeTool === "select" && (event.target as Element).closest("[data-supported-id]")) {
+			const ids = [...new Set(event.currentTarget.ownerDocument.elementsFromPoint(event.clientX, event.clientY)
+				.flatMap(element => {
+					const id = element.closest("[data-supported-id]")?.getAttribute("data-supported-id");
+					return id ? [id] : [];
+				}))];
+			const next = ids[(ids.indexOf(selectedItemId ?? "") + 1) % ids.length];
+			if (next) {
+				pendingCanvasSelectionRef.current = {
+					pointerId: event.pointerId,
+					pointerOrigin: canvasPoint,
+					supportedItemId: next,
+				};
+				startPan(canvasPoint);
+				return;
+			}
 		}
 		if (
 			activeTool === "select" &&
@@ -2809,7 +2890,16 @@ export function PlanProjection({
 				if (
 					distance(pendingSelection.pointerOrigin, canvasPointFor(event)) <= 6
 				) {
-					if (openingHostIds && onChooseOpeningHost) {
+					if (pendingSelection.supportAnchor) {
+						if (readOnlyRef.current) return;
+						if (pendingSelection.supportAnchor === "floor") {
+							supportFloorPick?.(projectPointFor(event));
+						} else if (pendingSelection.supportAnchor === "host" && pendingSelection.supportHostId && supportOptionsByHost.has(pendingSelection.supportHostId)) {
+							supportPlanTargets?.onPick(pendingSelection.supportHostId, projectPointFor(event));
+						}
+					} else if (pendingSelection.supportedItemId) {
+						onSelectItem(pendingSelection.supportedItemId);
+					} else if (openingHostIds && onChooseOpeningHost) {
 						const wall = project.level.wallSegments.find(candidate => candidate.wallSegmentId === pendingSelection.wallSegmentId);
 						const start = project.level.vertices.find(vertex => vertex.vertexId === wall?.startVertexId);
 						const end = project.level.vertices.find(vertex => vertex.vertexId === wall?.endVertexId);
@@ -3231,7 +3321,7 @@ export function PlanProjection({
 	const visualGridStep = visualGridStepMm();
 	const retainedHostTransform = retainedHostItemTransform();
 	const gridPhaseMm = PLAN_GRID_STEP_MM / 2;
-	const selectedAsset = onRotationStepModeChange && activeTool === "select" && !isInteractionLocked
+	const selectedAsset = onRotationStepModeChange && activeTool === "select" && !isInteractionLocked && !pickingSupport
 		? project.assetInstances.find((item) => item.assetInstanceId === selectedItemId)
 		: undefined;
 	const rotationItem = selectedAsset && isFloorEditorAsset(selectedAsset)
@@ -3251,6 +3341,10 @@ export function PlanProjection({
 			return submittedItemTransform.yawRadians;
 		return yawRadiansForEditorFloorAsset(item);
 	};
+	const supportPolygonPoints = (option: SupportOption) => supportSurfacePlanVertices(option).map(position => {
+		const point = pointFor(position.xMm, position.zMm);
+		return `${point.x},${point.y}`;
+	}).join(" ");
 	const rotationRadius = (item: EditorFloorAsset) => plainLabels
 		? Math.max(36 / viewport.zoom, (Math.hypot(item.widthMm, item.depthMm) * drawingScale) / 2 + 24 / viewport.zoom)
 		: Math.max(24, (Math.max(item.widthMm, item.depthMm) * drawingScale) / 2 + 18);
@@ -3301,6 +3395,7 @@ export function PlanProjection({
 						itemPlacementDragRef.current?.pointerId === event.pointerId ||
 						placementRotationContact.current?.pointerId === event.pointerId ||
 						itemRotationRef.current?.pointerId === event.pointerId ||
+						(pendingCanvasSelectionRef.current?.pointerId === event.pointerId && pendingCanvasSelectionRef.current.supportAnchor !== undefined) ||
 						(gesture.current?.kind === "pinch" && pointers.current.has(event.pointerId))
 					)
 						onPointerCancel(event);
@@ -3386,6 +3481,37 @@ export function PlanProjection({
 							/>
 						);
 					})}
+					{supportFloorRooms.map(room => {
+						const polygon = room.usableFloorPolygonMm;
+						const path = polygon && polygon.length >= 3
+							? polygon.map(({ xMm, zMm }, index) => {
+								const point = pointFor(xMm, zMm);
+								return `${index === 0 ? "M" : "L"}${point.x} ${point.y}`;
+							}).join(" ") + " Z"
+							: room.usableFloorTilesMm.map(tile => {
+								const from = pointFor(tile.minXmm, tile.minZmm);
+								const to = pointFor(tile.maxXmm, tile.maxZmm);
+								return `M${from.x} ${from.y} H${to.x} V${to.y} H${from.x} Z`;
+							}).join(" ");
+						return <path className={planStyles.supportFloorArea} pointerEvents="fill" d={path}
+							key={room.roomId} data-support-floor-room-id={room.roomId} data-testid="plan-decor-floor" />;
+					})}
+					{floorFinishRoom ? (
+						<g data-testid="room-finish-preview" pointerEvents="none">
+							{floorFinishPolygon && floorFinishPolygon.length >= 3 ? (
+								<polygon className={planStyles.finishPreview}
+									points={floorFinishPolygon.map(vertex => {
+										const point = pointFor(vertex.xMm, vertex.zMm);
+										return `${point.x},${point.y}`;
+									}).join(" ")} />
+							) : floorFinishRoom.usableFloorTilesMm.map(tile => {
+								const from = pointFor(tile.minXmm, tile.minZmm);
+								const to = pointFor(tile.maxXmm, tile.maxZmm);
+								return <rect className={planStyles.finishPreview} key={`${tile.minXmm}:${tile.minZmm}`}
+									x={from.x} y={from.y} width={to.x - from.x} height={to.y - from.y} />;
+							})}
+						</g>
+					) : null}
 					{roomLabels.map((room) => {
 						const center = pointFor(room.xMm, room.zMm);
 						return (
@@ -3509,7 +3635,11 @@ export function PlanProjection({
 											: openingMovePreview?.openingId === opening.openingId
 												? { ...opening, offsetMm: openingMovePreview.offsetMm,
 													...(opening.kind === "Door" && openingMovePreview.swingSide ? { swingSide: openingMovePreview.swingSide } : {}),
-													...(opening.kind === "Door" && openingMovePreview.hingeEnd !== undefined ? { hingeEnd: openingMovePreview.hingeEnd ?? undefined } : {}) }
+													...(opening.kind === "Door" && openingMovePreview.hingeEnd !== undefined ? { hingeEnd: openingMovePreview.hingeEnd ?? undefined } : {}),
+											...(openingMovePreview.variant !== undefined ? { variant: openingMovePreview.variant ?? undefined } : {}),
+											...(openingMovePreview.slideSide ? { slideSide: openingMovePreview.slideSide } : {}),
+											...(openingMovePreview.slideDirection ? { slideDirection: openingMovePreview.slideDirection } : {}),
+											...(openingMovePreview.sections ? { sections: openingMovePreview.sections } : {}) }
 												: opening;
 								const interval = wallOpeningIntervalMm(renderedOpening);
 								return [
@@ -3598,6 +3728,8 @@ export function PlanProjection({
 									<g data-testid="opening-creation-preview" className={styles.openingSymbolPreview} pointerEvents="none">
 										<OpeningPlanSymbol {...openingCreationSegment} kind={openingCreationPreview.kind}
 												swingSide={openingCreationPreview.swingSide} hingeEnd={openingCreationPreview.hingeEnd} thickness={wall.thicknessMm * drawingScale}
+											variant={openingCreationPreview.variant ?? undefined} slideSide={openingCreationPreview.slideSide}
+											slideDirection={openingCreationPreview.slideDirection} sections={openingCreationPreview.sections}
 											divided={openingCreationPreview.widthMm >= DIVIDED_WINDOW_MIN_WIDTH_MM} />
 										{onMoveOpeningCreationDraft ? (
 											<g data-opening-creation-handle style={{ cursor: "grab" }}>
@@ -3690,6 +3822,8 @@ export function PlanProjection({
 														data-door-opening-handle={opening.openingId} data-door-opening-wall={wall.wallSegmentId}>
 														<OpeningPlanSymbol start={openingStart} end={openingEnd} kind={opening.kind}
 																swingSide={opening.swingSide} hingeEnd={opening.hingeEnd} thickness={wall.thicknessMm * drawingScale}
+														variant={opening.variant} slideSide={opening.slideSide}
+														slideDirection={opening.slideDirection} sections={opening.sections}
 															divided={opening.widthMm >= DIVIDED_WINDOW_MIN_WIDTH_MM} />
 													</g>
 												) : <>
@@ -4025,6 +4159,21 @@ export function PlanProjection({
 								);
 							})()
 						: null}
+					{finishPreview?.kind === "wall" ? (() => {
+						const wall = project.level.wallSegments.find(segment => segment.wallSegmentId === finishPreview.wallSegmentId);
+						const start = project.level.vertices.find(vertex => vertex.vertexId === wall?.startVertexId);
+						const end = project.level.vertices.find(vertex => vertex.vertexId === wall?.endVertexId);
+						if (!wall || !start || !end) return null;
+						const dx = end.xMm - start.xMm;
+						const dz = end.zMm - start.zMm;
+						const length = Math.hypot(dx, dz);
+						if (!length) return null;
+						const offset = wall.thicknessMm / 2 * (finishPreview.side === "left" ? 1 : -1) / length;
+						const from = pointFor(start.xMm - offset * dz, start.zMm + offset * dx);
+						const to = pointFor(end.xMm - offset * dz, end.zMm + offset * dx);
+						return <line className={planStyles.finishPreview} data-testid="wall-finish-preview" pointerEvents="none"
+							x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
+					})() : null}
 					{project.assetInstances.map((item) => {
 						if (!isFloorEditorAsset(item)) return null;
 						const position = renderedItemPosition(item);
@@ -4043,6 +4192,7 @@ export function PlanProjection({
 							Math.min(12, (item.depthMm * drawingScale) / 2 - 2),
 						);
 						const selected = selectedItemId === item.assetInstanceId;
+						const floorSupportPreview = supportFloorPreviewItemId === item.assetInstanceId;
 						const hasPlacementCollision = itemPlacementCollisionIds.items.has(
 							item.assetInstanceId,
 						);
@@ -4057,7 +4207,7 @@ export function PlanProjection({
 						const renderedYawDegrees = -(renderedYawRadians * 180) / Math.PI;
 						const rotationBlocked = !!retainedHostTransform && (retainedHostTransform.kind !== "rotation" || retainedHostTransform.assetInstanceId !== item.assetInstanceId);
 						const moveBlocked = !!retainedHostTransform && (retainedHostTransform.kind !== "move" || retainedHostTransform.assetInstanceId !== item.assetInstanceId);
-						const keyboardSelectable = keyboardItemMovement && activeTool === "select" && !isInteractionLocked && !isWallMoveMode && !isWallSplitMode && !isWallVertexMoveMode;
+						const keyboardSelectable = keyboardItemMovement && activeTool === "select" && !pickingSupport && !isInteractionLocked && !isWallMoveMode && !isWallSplitMode && !isWallVertexMoveMode;
 
 						const selectionFrameInset = 4 / viewport.zoom;
 						const selectionHandleRadius = 5 / viewport.zoom;
@@ -4074,7 +4224,8 @@ export function PlanProjection({
 									transform={`rotate(${renderedYawDegrees} ${center.x} ${center.y})`}
 								>
 									<rect
-										className={`${styles.schematicItem} ${selected ? styles.selectedItem : ""} ${hasPlacementCollision ? styles.previewCollisionItem : ""}`}
+										className={`${styles.schematicItem} ${selected ? styles.selectedItem : ""} ${hasPlacementCollision ? styles.previewCollisionItem : ""} ${floorSupportPreview ? planStyles.supportFloorPreview : ""}`}
+										data-support-floor-preview={floorSupportPreview || undefined}
 										data-preview-collision={
 											hasPlacementCollision ? "item" : undefined
 										}
@@ -4180,7 +4331,7 @@ export function PlanProjection({
 										))}
 									</g>
 								) : null}
-								{selected && (!plainLabels || (!readOnly && !("locked" in item && item.locked))) ? (
+								{selected && !pickingSupport && (!plainLabels || (!readOnly && !("locked" in item && item.locked))) ? (
 									<g
 										className={`${styles.rotationGizmo} rotationGizmo`}
 										data-item-id={item.assetInstanceId}
@@ -4232,6 +4383,37 @@ export function PlanProjection({
 							</Fragment>
 						);
 					})}
+					{project.schemaVersion === 1 ? resolveSupportedPlacements(project).map(({ item, host }) => {
+						const at = renderedItemPosition(host);
+						const yaw = renderedItemYaw(host);
+						const xMm = at.xMm + Math.cos(yaw) * item.offsetXMm + Math.sin(yaw) * item.offsetZMm;
+						const zMm = at.zMm - Math.sin(yaw) * item.offsetXMm + Math.cos(yaw) * item.offsetZMm;
+						const position = pointFor(xMm, zMm);
+						const rotation = yaw * 180 / Math.PI + item.relativeYawMilliDeg / 1000;
+						const selected = item.assetInstanceId === selectedItemId;
+						return (
+							// biome-ignore lint/a11y/useSemanticElements: a focusable SVG group selects the supported item in plan coordinates.
+							<g aria-label={`${item.label} · ${supportSurfaceLabel(item.supportSurfaceKey)}`}
+								aria-hidden={pickingSupport || undefined}
+								aria-pressed={selected} data-testid="plan-supported-item" data-supported-id={item.assetInstanceId}
+								key={item.assetInstanceId} role="button" tabIndex={pickingSupport ? -1 : 0}
+								pointerEvents={pickingSupport ? "none" : undefined}
+								onClick={event => { event.stopPropagation(); if (!pickingSupport && event.detail === 0) onSelectItem(item.assetInstanceId); }}
+								onKeyDown={event => {
+									if (!pickingSupport && (event.key === "Enter" || event.key === " ")) {
+										event.preventDefault();
+										onSelectItem(item.assetInstanceId);
+									}
+								}}>
+								<title>{item.label} · {supportSurfaceLabel(item.supportSurfaceKey)}</title>
+								<rect x={position.x - item.widthMm * drawingScale / 2} y={position.y - item.depthMm * drawingScale / 2}
+									width={item.widthMm * drawingScale} height={item.depthMm * drawingScale}
+									className={planStyles.supportedSymbol} data-selected={selected} fill={item.color}
+									transform={`rotate(${-rotation} ${position.x} ${position.y})`} />
+							</g>
+						);
+					}) : null}
+
 					{project.schemaVersion === 1
 						? project.assetInstances.map((item) => {
 								if (item.anchorClass !== "wall") return null;
@@ -4514,6 +4696,55 @@ export function PlanProjection({
 								);
 							})()
 						: null}
+					{!readOnly && !isInteractionLocked && supportPlanTargets ? Array.from(supportOptionsByHost, ([id, options]) => {
+						const host = options[0]?.host;
+						if (!host) return null;
+						const label = telegramGreyboxLabelForDisplay(host.label);
+						const center = pointFor(host.xMm, host.zMm);
+						const angle = -yawRadiansForEditorFloorAsset(host) * 180 / Math.PI;
+						const width = host.widthMm * drawingScale;
+						const height = host.depthMm * drawingScale;
+						const minimum = MINIMUM_TOUCH_TARGET_PX / viewport.zoom;
+						const hitWidth = supportFloorPick ? width : Math.max(width, minimum);
+						const hitHeight = supportFloorPick ? height : Math.max(height, minimum);
+						const contours = new Set(options.map(supportPolygonPoints));
+						const activate = () => {
+							if (hostGateRef.current.canBegin()) supportPlanTargets.onPick(id);
+						};
+						return (
+							// biome-ignore lint/a11y/useSemanticElements: this projected support needs an SVG geometry and adapts keyboard events into the same picker.
+							<g aria-label={copy(`Опора ${label}`, `Support ${label}`)}
+								aria-pressed={id === (supportPlanTargets.selectedHostId ?? supportPreview?.host.assetInstanceId)}
+								className={planStyles.supportHost}
+								data-support-host-id={id}
+								data-support-surface-count={options.length}
+								data-testid="plan-decor-support"
+								key={id}
+								role="button"
+								tabIndex={0}
+								onClick={event => { if (event.detail === 0) activate(); }}
+								onKeyDown={event => {
+									if (event.key !== "Enter" && event.key !== " ") return;
+									event.preventDefault();
+									activate();
+								}}>
+								{Array.from(contours, points => (
+									<polygon key={points} className={planStyles.supportSurface} data-testid="plan-decor-support-surface"
+										points={points} pointerEvents="none" />
+								))}
+								<g transform={`translate(${center.x} ${center.y}) rotate(${angle})`}>
+									<rect className={planStyles.supportHostOutline} pointerEvents="none"
+										width={width} height={height} x={-width / 2} y={-height / 2} />
+									<rect fill="transparent" pointerEvents="all" width={hitWidth} height={hitHeight}
+										x={-hitWidth / 2} y={-hitHeight / 2} />
+								</g>
+							</g>
+						);
+					}) : null}
+					{supportPreview ? (
+						<polygon data-testid="interior-support-plan-preview" className={planStyles.finishPreview} pointerEvents="none"
+							points={supportPolygonPoints(supportPreview)} />
+					) : null}
 				</g>
 				<DrawingDimensions layouts={dimensionLayouts} />
 				{wallDistances.length > 0 ? (

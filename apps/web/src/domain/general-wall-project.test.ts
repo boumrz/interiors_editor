@@ -29,6 +29,7 @@ import {
 import { createInitialProject } from "./initial-project";
 import { createParametricFloorItem } from "./parametric-item";
 import { createParametricWallItem } from "./parametric-wall-item";
+import { isFloorSchematicAssetInstance, type Project } from "./project";
 import { configureRectangularRoom } from "./rectangular-room";
 
 function ids(...values: string[]) {
@@ -71,6 +72,143 @@ function starterProject() {
 	}
 	return configured.project;
 }
+
+it("records both mixed profiles and carries their metadata across a wall split", () => {
+	const start = { xMm: 1500, zMm: 3100 };
+	const result = addGeneralWallToProject(starterProject(), {
+		start, end: { xMm: 1500, zMm: 6600 }, thicknessMm: 200, profile: "bearing",
+	}, ids("split", "new-vertex", "tail", "bearing-wall"), "2026-11-26T10:00:00.000Z");
+	if (result.kind !== "accepted") throw new Error(`Expected valid wall: ${result.reasonCode}`);
+	const bearing = result.project.level.wallSegments.find(({ thicknessMm }) => thicknessMm === 200);
+	expect(bearing?.profile).toBe("bearing");
+	if (!bearing) throw new Error("Expected bearing wall");
+	const split = splitGeneralWall(result.project, { wallSegmentId: bearing.wallSegmentId, pointMm: {xMm: 1500, zMm: 4500} }, ids("new-joint", "new-piece"), "2026-11-26T10:01:00.000Z");
+	if (split.kind !== "accepted") throw new Error(`Expected valid split: ${split.reasonCode}`);
+	expect(split.project.level.wallSegments.filter(({ profile, thicknessMm }) => profile === "bearing" && thicknessMm === 200)).toHaveLength(2);
+});
+
+it("preserves the same physical finished side and full sliding track when reversing or splitting a wall", () => {
+	const date = "2026-11-26T10:00:00.000Z";
+	const starter = starterProject();
+	const finish = { presetId: "muted-green-paint", version: 1 } as const;
+	const source = { ...starter, level: { ...starter.level, wallSegments: starter.level.wallSegments.map((wall) =>
+		wall.wallSegmentId === "wall-1" ? { ...wall, profile: "partition" as const, sideFinishes: { left: finish } } : wall) } };
+	const added = addDoorOpeningToProject(source, {
+		wallSegmentId: "wall-1", offsetMm: 1500, widthMm: 900, heightMm: 2100, sillMm: 0,
+		variant: "sliding", slideSide: "left", slideDirection: "toward-end",
+	}, ids("slider"), date);
+	if (added.kind !== "accepted") throw new Error(`Expected valid slider: ${added.reasonCode}`);
+	const reversed = reverseGeneralWall(added.project, { wallSegmentId: "wall-1" }, date);
+	if (reversed.kind !== "accepted") throw new Error(`Expected valid reversal: ${reversed.reasonCode}`);
+	expect(reversed.project.level.wallSegments.find(({ wallSegmentId }) => wallSegmentId === "wall-1")?.sideFinishes).toEqual({ right: finish });
+	expect(reversed.project.level.openings[0]).toMatchObject({ offsetMm: 2600, slideSide: "right", slideDirection: "toward-start" });
+	const cut = splitGeneralWall(added.project, { wallSegmentId: "wall-1", positionMm: 2300 }, idsThatMustNotAllocate(), date);
+	expect(cut.kind).toBe("rejected");
+	const split = splitGeneralWall(added.project, { wallSegmentId: "wall-1", positionMm: 3200 }, ids("joint", "tail"), date);
+	if (split.kind !== "accepted") throw new Error(`Expected valid split: ${split.reasonCode}`);
+	expect(split.project.level.wallSegments.filter(({ profile }) => profile === "partition").map(({ sideFinishes }) => sideFinishes)).toEqual([{ left: finish }, { left: finish }]);
+});
+
+it("inherits floor finish in both split rooms and resolves a later unequal merge independently of metadata", () => {
+	const date = "2026-11-26T10:00:00.000Z";
+	const starter = starterProject();
+	const oak = { presetId: "light-oak", version: 1 } as const;
+	const tile = { presetId: "matte-floor-tile", version: 1 } as const;
+	const source = { ...starter, level: { ...starter.level, rooms: starter.level.rooms.map((room) => ({ ...room, floorFinish: oak })) } };
+	const added = addGeneralWallToProject(source, {
+		start: { xMm: 2050, zMm: 0 }, end: { xMm: 2050, zMm: 3100 }, thicknessMm: 100,
+	}, ids("divider-bottom", "divider-top", "bottom-tail", "top-tail", "divider", "room-right"), date);
+	if (added.kind !== "accepted") throw new Error(`Expected split rooms: ${added.reasonCode}`);
+	expect(added.project.level.rooms.map(({ floorFinish }) => floorFinish)).toEqual([oak, oak]);
+	const unequal = { ...added.project, level: { ...added.project.level, rooms: added.project.level.rooms.map((room) =>
+		room.roomId === "room-right" ? { ...room, floorFinish: tile } : room) } };
+	const preview = previewWallDeletionConflict(unequal, { wallSegmentId: "divider" });
+	const conflict = preview.kind === "conflict" ? preview.roomMetadataConflicts?.[0] : undefined;
+	if (!conflict) throw new Error("Expected merge conflict");
+	expect(conflict.floorFinishChoices).toEqual([{ roomId: "room-1", floorFinish: oak }, { roomId: "room-right", floorFinish: tile }]);
+	const merged = deleteGeneralWallWithConsequenceResolution(unequal, {
+		wallSegmentId: "divider", openingIds: [], itemIds: [], roomIds: ["room-1", "room-right"],
+		roomMetadataResolutions: [{ targetFaceKey: conflict.targetFaceKey, retainedRoomId: "room-1", retainedFloorFinishRoomId: "room-right" }],
+	}, date);
+	expect(merged).toMatchObject({ kind: "accepted", project: { level: { rooms: [{ roomId: "room-1", floorFinish: tile }] } } });
+});
+
+it("inherits both room layouts when a contour split assigns furniture to the new room", () => {
+	const source = projectWithTable(3000, 1500);
+	const layouts = [
+		{ roomId: "room-1", layoutId: "old-a", slot: "A", name: "Первый" },
+		{ roomId: "room-1", layoutId: "old-b", slot: "B", name: "Второй" },
+	] as const;
+	const configured: Project = { ...source, roomLayouts: layouts, assetInstances: source.assetInstances.map((item) =>
+		isFloorSchematicAssetInstance(item) ? { ...item, roomLayoutId: "old-b" } : item) };
+	const split = addGeneralWallToProject(configured, {
+		start: { xMm: 2050, zMm: 0 }, end: { xMm: 2050, zMm: 3100 }, thicknessMm: 100,
+	}, ids("divider-bottom", "divider-top", "bottom-tail", "top-tail", "divider", "room-right", "right-a", "right-b"), source.updatedAt);
+	if (split.kind !== "accepted") throw new Error(`Expected split: ${split.reasonCode}`);
+	expect(split.project.roomLayouts).toEqual([...layouts,
+		{ ...layouts[0], roomId: "room-right", layoutId: "right-a" },
+		{ ...layouts[1], roomId: "room-right", layoutId: "right-b" },
+	]);
+	expect(split.project.assetInstances[0]).toMatchObject({ assetInstanceId: "item-1", roomId: "room-right", roomLayoutId: "right-b" });
+});
+
+it("duplicates the incoming support and its guest when one room merges into a two-layout room", () => {
+	const date = "2026-11-26T10:00:00.000Z";
+	const divided = addGeneralWallToProject(starterProject(), {
+		start: { xMm: 2050, zMm: 0 }, end: { xMm: 2050, zMm: 3100 }, thicknessMm: 100,
+	}, ids("divider-bottom", "divider-top", "bottom-tail", "top-tail", "divider", "room-right"), date);
+	if (divided.kind !== "accepted") throw new Error(`Expected rooms: ${divided.reasonCode}`);
+	const cabinet = createParametricFloorItem(divided.project, {
+		roomId: "room-right", label: "Тумбочка", catalogPreset: { presetId: "bedside-table", version: 1 },
+		xMm: 3000, zMm: 1500, widthMm: 500, depthMm: 400, heightMm: 600, color: "#536d62",
+	}, ids("cabinet"), date);
+	if (cabinet.kind !== "accepted") throw new Error(`Expected support: ${cabinet.reasonCode}`);
+	const source: Project = { ...cabinet.project, roomLayouts: [
+		{ roomId: "room-1", layoutId: "original-a", slot: "A", name: "А" },
+		{ roomId: "room-1", layoutId: "original-b", slot: "B", name: "Б" },
+	], supportedItems: [{
+		assetInstanceId: "plant", anchorClass: "support", label: "Кашпо", catalogPreset: { presetId: "planter", version: 1 },
+		widthMm: 350, depthMm: 350, heightMm: 450, color: "#536d62", supportAssetInstanceId: "cabinet", supportSurfaceKey: "top",
+		offsetXMm: 40, offsetZMm: 0, relativeYawMilliDeg: 0,
+	}] };
+	const preview = previewWallDeletionConflict(source, { wallSegmentId: "divider" });
+	const conflict = preview.kind === "conflict" ? preview.roomMetadataConflicts?.[0] : undefined;
+	if (!conflict) throw new Error("Expected room metadata decision");
+	const merged = deleteGeneralWallWithConsequenceResolution(source, {
+		wallSegmentId: "divider", openingIds: [], itemIds: [], roomIds: ["room-1", "room-right"],
+		roomMetadataResolutions: [{ targetFaceKey: conflict.targetFaceKey, retainedRoomId: "room-1" }],
+	}, date, false, ids("cabinet-b", "plant-b"));
+	if (merged.kind !== "accepted") throw new Error(`Expected merge: ${merged.reasonCode}`);
+	expect(merged.project.assetInstances).toMatchObject([
+		{ assetInstanceId: "cabinet", roomId: "room-1", roomLayoutId: "original-a" },
+		{ assetInstanceId: "cabinet-b", roomId: "room-1", roomLayoutId: "original-b" },
+	]);
+	expect(merged.project.supportedItems).toMatchObject([
+		{ assetInstanceId: "plant", supportAssetInstanceId: "cabinet" },
+		{ assetInstanceId: "plant-b", supportAssetInstanceId: "cabinet-b" },
+	]);
+});
+
+it("rejects merging two rooms that each contain two layouts without consuming an identity", () => {
+	const date = "2026-11-26T10:00:00.000Z";
+	const divided = addGeneralWallToProject(starterProject(), {
+		start: { xMm: 2050, zMm: 0 }, end: { xMm: 2050, zMm: 3100 }, thicknessMm: 100,
+	}, ids("divider-bottom", "divider-top", "bottom-tail", "top-tail", "divider", "room-right"), date);
+	if (divided.kind !== "accepted") throw new Error(`Expected split: ${divided.reasonCode}`);
+	const layouts = ["room-1", "room-right"].flatMap((roomId) => (["A", "B"] as const).map((slot) => ({
+		roomId, slot, layoutId: `${roomId}-${slot}`, name: slot,
+	})));
+	const source: Project = { ...divided.project, roomLayouts: layouts };
+	const preview = previewWallDeletionConflict(source, { wallSegmentId: "divider" });
+	const conflict = preview.kind === "conflict" ? preview.roomMetadataConflicts?.[0] : undefined;
+	if (!conflict) throw new Error("Expected metadata decision");
+	const before = JSON.stringify(source);
+	expect(deleteGeneralWallWithConsequenceResolution(source, {
+		wallSegmentId: "divider", openingIds: [], itemIds: [], roomIds: ["room-1", "room-right"],
+		roomMetadataResolutions: [{ targetFaceKey: conflict.targetFaceKey, retainedRoomId: "room-1" }],
+	}, date, false, idsThatMustNotAllocate())).toMatchObject({ kind: "rejected", reasonCode: "ITEM_HOST_UNRESOLVABLE" });
+	expect(JSON.stringify(source)).toBe(before);
+});
 
 function projectWithTable(xMm = 2000, zMm = 1500) {
 	const placed = createParametricFloorItem(

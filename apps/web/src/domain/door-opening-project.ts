@@ -1,5 +1,6 @@
 import { resolveOrthogonalPlanFaces } from "./derived-orthogonal-plan-faces";
-import { floorItemFootprintIntersectsDoorSwing } from "./parametric-item";
+import { resolveSupportedPlacements } from "./interior-support";
+import { floorItemFootprintIntersectsDoorSwing, footprintsOverlap } from "./parametric-item";
 import {
 	isFloorSchematicAssetInstance,
 	isWallSchematicAssetInstance,
@@ -7,6 +8,7 @@ import {
 	type Vertex,
 	type WallSegment,
 } from "./project";
+import { orientedWallFootprint, slidingDoorSweepFor } from "./sliding-door-geometry";
 import type { UpdateWallOpeningInput } from "./wall-opening";
 import {
 	type AddDoorOpeningInput,
@@ -23,7 +25,7 @@ import {
 	type WallOpening,
 	type WallOpeningHost,
 	type WallOpeningState,
-	wallOpeningIntervalMm,
+	wallItemObstructsOpening,
 	type WindowOpening,
 } from "./wall-opening";
 
@@ -66,7 +68,7 @@ export function addDoorOpeningToProject(
 	const added = addDoorOpening(
 		{ openings: project.level.openings, wallHosts },
 		input,
-		ids,
+		{ next: () => "" },
 	);
 	if (added.kind === "rejected") {
 		return added;
@@ -81,7 +83,8 @@ export function addDoorOpeningToProject(
 		kind: "accepted",
 		project: {
 			...project,
-			level: { ...project.level, openings: added.openings },
+			level: { ...project.level, openings: added.openings.map((opening, index) =>
+				index === project.level.openings.length ? { ...opening, openingId: ids.next() } : opening) },
 			updatedAt,
 		},
 	};
@@ -296,22 +299,8 @@ function openingsKeepWallItemsClear(
 	project: Project,
 	openings: readonly Project["level"]["openings"][number][],
 ): boolean {
-	return openings.every((opening) =>
-		project.assetInstances.every((item) => {
-			if (!isWallSchematicAssetInstance(item)) return true;
-			if (item.wallSegmentId !== opening.wallSegmentId) return true;
-			const interval = wallOpeningIntervalMm(opening);
-			const itemHalfWidthMm = item.widthMm / 2;
-			const itemHalfHeightMm = item.heightMm / 2;
-			return !(
-				item.offsetMm - itemHalfWidthMm < interval.endMm &&
-				item.offsetMm + itemHalfWidthMm > interval.startMm &&
-				item.elevationMm - itemHalfHeightMm <
-					opening.sillMm + opening.heightMm &&
-				item.elevationMm + itemHalfHeightMm > opening.sillMm
-			);
-		}),
-	);
+	return openings.every((opening) => project.assetInstances.every((item) =>
+		!isWallSchematicAssetInstance(item) || !wallItemObstructsOpening(item, opening)));
 }
 
 function openingsKeepFloorItemsClear(
@@ -320,22 +309,29 @@ function openingsKeepFloorItemsClear(
 ): boolean {
 	const verticesById = indexVertices(project.level.vertices);
 	if (!verticesById) return false;
+	const guests = project.supportedItems?.length ? resolveSupportedPlacements(project) : [];
 	return openings.every((opening) => {
-		if (opening.kind !== "Door" || opening.sillMm !== 0) return true;
+		if (opening.kind !== "Door" || (opening.variant !== "sliding" && opening.sillMm !== 0)) return true;
 		const wall = project.level.wallSegments.find(
 			(candidate) => candidate.wallSegmentId === opening.wallSegmentId,
 		);
 		const start = wall ? verticesById.get(wall.startVertexId) : undefined;
 		const end = wall ? verticesById.get(wall.endVertexId) : undefined;
-		return Boolean(
-			start &&
-				end &&
-				project.assetInstances.every(
-					(item) =>
-						!isFloorSchematicAssetInstance(item) ||
-						!floorItemFootprintIntersectsDoorSwing(item, opening, start, end),
-				),
-		);
+		if (!wall || !start || !end) return false;
+		const slider = slidingDoorSweepFor(opening, wall, start, end);
+		if (!slider) return project.assetInstances.every((item) => !isFloorSchematicAssetInstance(item) ||
+			!floorItemFootprintIntersectsDoorSwing(item, opening, start, end));
+		if (guests.some((guest) => guest.bottomMm < slider.topMm && guest.topMm > slider.bottomMm &&
+			footprintsOverlap(guest, slider.footprint))) return false;
+		for (const other of project.level.wallSegments) {
+			if (other.wallSegmentId === wall.wallSegmentId) continue;
+			const a = verticesById.get(other.startVertexId);
+			const b = verticesById.get(other.endVertexId);
+			if (!a || !b) return false;
+			if (footprintsOverlap(slider.footprint, orientedWallFootprint(a, b, other.thicknessMm))) return false;
+		}
+		return project.assetInstances.every((item) => !isFloorSchematicAssetInstance(item) ||
+			item.heightMm <= slider.bottomMm || !footprintsOverlap(item, slider.footprint));
 	});
 }
 

@@ -4,7 +4,8 @@ import { alphaBackupFeasibilityLimits } from '../../application/backup-feasibili
 import { parsePpjA1JsonBytes } from '../../domain/ppj-a1-lossless-json';
 import { containsLoneSurrogate, decodeRuntimeV1Utf16, encodeRuntimeV1Utf16, scanRuntimeV1Json, type RuntimeV1Node } from './runtime-v1-raw-scanner';
 import { decodeRuntimeV1LegacyProject, decodeRegisteredRuntimeV1Project, encodeRegisteredRuntimeProject,
-  isRegisteredRuntimeV1SchemaId, RUNTIME_V1_DOOR_HINGE_SCHEMA_ID, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, type RuntimeV1Project } from './runtime-v1-wire';
+  isRegisteredRuntimeV1SchemaId, RUNTIME_V1_DOOR_HINGE_SCHEMA_ID, RUNTIME_V1_FLOOR_YAW_SCHEMA_ID, RUNTIME_V1_INTERIOR_SCHEMA_ID,
+  RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID, type RuntimeV1Project } from './runtime-v1-wire';
 import { readPpjA1ZipCentralDirectory } from './ppj-a1-zip-central-directory';
 import type { PpjA1ArchiveEntry } from './ppj-a1-canonical-project-member-ingress';
 
@@ -40,7 +41,7 @@ export type RuntimePpjValidationHandoff = {
 };
 export type RuntimePortableEncodeInput = { readonly project: unknown; readonly createdAt: string; readonly resources: readonly RuntimePortableResource[] };
 export type RuntimePortableEncodeResult<TDomainReason extends string = string> = { readonly kind: 'encoded'; readonly bytes: Uint8Array; readonly mimeType: 'application/zip'; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason>;
-export type RuntimePortableDecodeResult<TDomainReason extends string = string> = { readonly kind: 'decoded'; readonly schema: 'runtime-v1-wire' | 'runtime-v1-floor-yaw' | 'runtime-v1-door-hinge' | 'runtime-v1-legacy'; readonly decodedProject: RuntimeV1Project; readonly projectBytes: Uint8Array; readonly resources: readonly RuntimePortableResource[]; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason> | RuntimePpjValidationHandoff;
+export type RuntimePortableDecodeResult<TDomainReason extends string = string> = { readonly kind: 'decoded'; readonly schema: 'runtime-v1-wire' | 'runtime-v1-floor-yaw' | 'runtime-v1-door-hinge' | 'runtime-v1-room-layouts' | 'runtime-v1-interior-details' | 'runtime-v1-legacy'; readonly decodedProject: RuntimeV1Project; readonly projectBytes: Uint8Array; readonly resources: readonly RuntimePortableResource[]; readonly metadata: RuntimePortableMetadata } | RuntimePortableRejection | RuntimePortableDomainRejection<TDomainReason> | RuntimePpjValidationHandoff;
 type ObjectNode = Extract<RuntimeV1Node, { readonly kind: 'object' }>;
 type ManifestEntry = { readonly byteLength: number; readonly path: string; readonly mediaType: string; readonly sha256: string };
 type ResourceMapping = { readonly path: string; readonly resourceHash: string };
@@ -62,7 +63,12 @@ function rejected(error: unknown): RuntimePortableRejection {
 
 /** A separate codec: no old port implementation, storage writes, IDs, pins, or publication. */
 export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
-  constructor(private readonly checksum: BinaryChecksumPort, private readonly validateProject: RuntimePortableProjectValidator<TDomainReason>) {}
+  constructor(private readonly checksum: BinaryChecksumPort, private readonly validateProject: RuntimePortableProjectValidator<TDomainReason>,
+    private readonly allowTelegramExtendedSchemas = false) {}
+
+  private admitsSchema(schemaId: string): boolean {
+    return this.allowTelegramExtendedSchemas || schemaId !== RUNTIME_V1_INTERIOR_SCHEMA_ID && schemaId !== RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID;
+  }
 
   async encode(input: RuntimePortableEncodeInput, signal?: AbortSignal): Promise<RuntimePortableEncodeResult<TDomainReason>> {
     try {
@@ -71,6 +77,7 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
       const encoded = encodeRegisteredRuntimeProject(input.project);
       if (encoded.kind === 'rejected') return encoded;
       const { projectSchemaId } = encoded;
+      if (!this.admitsSchema(projectSchemaId)) fail('BACKUP_SCHEMA_UNREADABLE');
       const decoded = decodeRegisteredRuntimeV1Project(encoded.bytes, projectSchemaId);
       if (decoded.kind === 'rejected') return decoded;
       const project = decoded.project;
@@ -146,7 +153,8 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
         preview = await readEntry(projectEntry, alphaBackupFeasibilityLimits.maxProjectBytes, 'BACKUP_PROJECT_LIMIT', signal);
         if (probeRootSelector(preview) !== 'absent') return ppjHandoff(ownedArchive, manifestBytes, ledgerBytes, projectEntry, controlEntries, header);
       }
-      const wireSchema = header.projectSchemaVersion === 1 && isRegisteredRuntimeV1SchemaId(header.projectSchemaId) ? header.projectSchemaId : undefined;
+      const wireSchema = header.projectSchemaVersion === 1 && this.admitsSchema(header.projectSchemaId) &&
+        isRegisteredRuntimeV1SchemaId(header.projectSchemaId) ? header.projectSchemaId : undefined;
       const knownWire = wireSchema !== undefined;
       const knownLegacy = header.projectSchemaId === PPJ && header.projectSchemaVersion === 1;
       const manifest = parseManifest(manifestRoot, knownWire, knownLegacy);
@@ -172,9 +180,11 @@ export class RuntimePortableBackupCodec<TDomainReason extends string = string> {
       if (validation.kind === 'rejected') return { kind: 'project-validation-rejected', reasonCode: validation.reasonCode };
       const resources = await this.readProjectResources(project, manifest, paths, signal);
       checkCancelled(signal);
-      const schema = wireSchema === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID
-        ? 'runtime-v1-door-hinge'
-        : wireSchema === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID ? 'runtime-v1-floor-yaw' : knownWire ? 'runtime-v1-wire' : 'runtime-v1-legacy';
+      const schema = wireSchema === RUNTIME_V1_INTERIOR_SCHEMA_ID ? 'runtime-v1-interior-details'
+        : wireSchema === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID ? 'runtime-v1-room-layouts'
+        : wireSchema === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID ? 'runtime-v1-door-hinge'
+        : wireSchema === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID ? 'runtime-v1-floor-yaw'
+        : knownWire ? 'runtime-v1-wire' : 'runtime-v1-legacy';
       return { kind: 'decoded', schema, decodedProject: project, projectBytes: bytes, resources,
         metadata: { sourceProjectId: manifest.sourceProjectId, createdAt: manifest.createdAt, projectSchemaId: manifest.projectSchemaId, projectSchemaVersion: manifest.projectSchemaVersion } };
     } catch (error) { return rejected(error); }

@@ -5,10 +5,9 @@ import {
 } from "./item-color-variant";
 import type {
 	Project,
-	WallOpening,
 	WallSchematicAssetInstance,
 } from "./project";
-import { wallOpeningIntervalMm } from "./wall-opening";
+import { wallItemObstructsOpening } from "./wall-opening";
 
 export type ParametricWallItemInput = {
 	readonly assetDefinitionId?: string;
@@ -48,6 +47,7 @@ export type ParametricWallItemPlacementRejectionReason =
 	| "INVALID_DIMENSION"
 	| "OUTSIDE_WALL_HOST"
 	| "WALL_OPENING_COLLISION"
+	| "WALL_ITEM_COLLISION"
 	| "WALL_HOST_NOT_FOUND";
 
 export type ParametricWallItemPlacementWarning = {
@@ -62,6 +62,7 @@ export type ParametricWallItemPlacementAssessment =
 	  }
 	| {
 			readonly kind: "rejected";
+			readonly conflictAssetInstanceId?: string;
 			readonly reasonCode: ParametricWallItemPlacementRejectionReason;
 	  };
 
@@ -187,7 +188,7 @@ export function assessParametricWallItemPlacement(
 	}
 	if (
 		project.level.openings.some((opening) =>
-			wallItemIntersectsOpening(input, opening),
+			wallItemObstructsOpening(input, opening),
 		)
 	) {
 		return { kind: "rejected", reasonCode: "WALL_OPENING_COLLISION" };
@@ -371,22 +372,6 @@ export function deleteParametricWallItem(
 function withoutLock(item: WallSchematicAssetInstance): WallSchematicAssetInstance {
 	const { locked: _locked, ...unlocked } = item;
 	return unlocked;
-}
-
-function wallItemIntersectsOpening(
-	item: ParametricWallItemInput,
-	opening: WallOpening,
-): boolean {
-	if (item.wallSegmentId !== opening.wallSegmentId) return false;
-	const openingInterval = wallOpeningIntervalMm(opening);
-	const itemHalfWidthMm = item.widthMm / 2;
-	const itemHalfHeightMm = item.heightMm / 2;
-	return (
-		item.offsetMm - itemHalfWidthMm < openingInterval.endMm &&
-		item.offsetMm + itemHalfWidthMm > openingInterval.startMm &&
-		item.elevationMm - itemHalfHeightMm < opening.sillMm + opening.heightMm &&
-		item.elevationMm + itemHalfHeightMm > opening.sillMm
-	);
 }
 
 function wallItemOverlappingExisting(

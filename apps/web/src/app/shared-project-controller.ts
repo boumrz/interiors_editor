@@ -81,6 +81,7 @@ export type SharedProjectRepository = ProjectRepositoryPort &
 	WriterLeaseControllerPort;
 
 export interface SharedProjectControllerDependencies {
+	readonly roomInteriorEnabled?: boolean;
 	readonly repository: SharedProjectRepository;
 	readonly resources: CustomAssetResourceStorePort;
 	readonly library: CustomAssetLibraryPort;
@@ -177,6 +178,7 @@ export function createSharedProjectController(
 		undefined,
 		false,
 		{
+			roomInterior: dependencies.roomInteriorEnabled ? mutationDependencies : undefined,
 			registeredPortableBackupImporter: portable.registeredTransfer?.decoder
 				? new ImportPortableBackupUseCase({
 						...portableImportDependencies,

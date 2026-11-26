@@ -81,6 +81,22 @@ function roomProject() {
 	return result.project;
 }
 
+it("places and moves objects independently in each room layout", () => {
+	const project = { ...roomProject(), roomLayouts: [
+		{ layoutId: "a", roomId: "room-1", slot: "A", name: "A" },
+		{ layoutId: "b", roomId: "room-1", slot: "B", name: "B" },
+	] as const };
+	const item = { roomId: "room-1", label: "Столик", color: "#536d62", xMm: 1800, zMm: 1400, widthMm: 600, depthMm: 400, heightMm: 400 };
+	const a = createParametricFloorItem(project, { ...item, roomLayoutId: "a" }, ids("table-a"), project.updatedAt, "reject");
+	if (a.kind !== "accepted") throw new Error("Expected table in layout A");
+	const b = createParametricFloorItem(a.project, { ...item, roomLayoutId: "b", xMm: 2100 }, ids("table-b"), project.updatedAt, "reject");
+	if (b.kind !== "accepted") throw new Error("Expected independent table in layout B");
+	const moved = moveParametricFloorItem(b.project, { assetInstanceId: "table-b", xMm: item.xMm, zMm: item.zMm }, project.updatedAt, "reject");
+	if (moved.kind !== "accepted") throw new Error("Expected move through hidden layout A");
+	expect(moved.project.assetInstances).toMatchObject([{ roomLayoutId: "a", xMm: item.xMm }, { roomLayoutId: "b", xMm: item.xMm }]);
+	expect(createParametricFloorItem(moved.project, { ...item, roomLayoutId: "b" }, idsThatMustNotAllocate(), project.updatedAt, "reject")).toEqual({ kind: "rejected", reasonCode: "ITEM_COLLISION" });
+});
+
 describe("the initial floor-item pose", () => {
 	it("rejects malformed initial steps before allocating a durable item", () => {
 		const project = roomProject();
@@ -2274,5 +2290,31 @@ it("keeps the optional variant absent for ordinary placement and rejects incorre
 		{ ...placement, color: "no#8c6e4c" },
 	]) {
 		expect(createParametricFloorItem(project, input, idsThatMustNotAllocate(), project.updatedAt).kind).toBe("rejected");
+	}
+});
+
+it("admits exact contact with all four inner faces of the mixed-thickness demo outline", () => {
+	const updatedAt = "2026-11-26T12:00:00.000Z";
+	const allocator = ids();
+	let project = createInitialProject({ createdAt: updatedAt, levelId: "mixed", name: "Гостиная", projectId: "demo" });
+	const corners = [{ xMm: 0, zMm: 0 }, { xMm: 5600, zMm: 0 }, { xMm: 5600, zMm: 4400 }, { xMm: 0, zMm: 4400 }] as const;
+	for (const [index, start] of corners.entries()) {
+		const end = corners[(index + 1) % corners.length]!;
+		const bearing = index % 2 === 0;
+		const added = addGeneralWallToProject(project, {
+			start, end, thicknessMm: bearing ? 200 : 100, profile: bearing ? "bearing" : "partition",
+		}, allocator, updatedAt);
+		if (added.kind !== "accepted") throw Error("Expected the mixed demo outline");
+		project = added.project;
+	}
+	const roomId = project.level.rooms[0]?.roomId;
+	if (!roomId) throw Error("Expected a derived room");
+	const item = { roomId, label: "Предмет", color: "#536d62", widthMm: 200, depthMm: 200, heightMm: 250 };
+	const contacts = [[2800, 200, 0, -1], [5450, 2200, 1, 0], [2800, 4200, 0, 1], [150, 2200, -1, 0]] as const;
+	for (const [xMm, zMm, dx, dz] of contacts) {
+		expect(assessParametricFloorItemPlacement(project, { ...item, xMm, zMm }, undefined, "reject"))
+			.toEqual({ kind: "valid" });
+		expect(assessParametricFloorItemPlacement(project, { ...item, xMm: xMm + dx, zMm: zMm + dz }, undefined, "reject"))
+			.toEqual({ kind: "invalid", reasonCode: "OUTSIDE_ROOM_HOST" });
 	}
 });

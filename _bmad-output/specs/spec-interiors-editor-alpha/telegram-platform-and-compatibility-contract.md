@@ -26,11 +26,13 @@ FR-59 и FR-60 меняют интерфейс Telegram. Направляющи�
 определяет точные измерения, размещение и совместимость. Одинаковые принятые
 команды над одинаковым Project сохраняют эквивалентный доменный результат.
 
-Retired Focus/fullscreen, Walk, PNG, назначение покрытий, independent Project
+Retired Focus/fullscreen, Walk, PNG, independent Project
 variants и FBX/ZIP не возвращаются. Ноябрьские REL/FUP сохраняют отсутствие
 обучающих подсказок, команды разворота стены, dock-delete и автоматической
 панели стены; перенос Opening подтверждается без полей изменения размеров.
 Исторические implementation-evidence и NFR-15 не удостоверяют Telegram.
+Локальные отличия интерьера и запись по FR-63–67 задаёт
+[контракт жилой комнаты](telegram-room-interior-contract.md).
 
 ## Host, scope и состояние
 

@@ -47,6 +47,11 @@ jobs:
       - name: Verify existing-only Telegram snapshot reads without provisioning
         run: pnpm exec node scripts/run-telegram-readonly-source.mjs
       - name: Verify the actual signed production target and retained releases
+        env:
+          INTERIORS_EXACT_FLOOR_YAW: '1'
+          INTERIORS_DOOR_HINGE_AUTHORING: '1'
+          INTERIORS_ROOM_INTERIOR_COMPATIBLE: '1'
+          INTERIORS_ROOM_INTERIOR_ENABLED: '1'
         run: pnpm exec node scripts/run-telegram-entry.mjs
       - name: Verify the common editor through the scoped Telegram runtime
         run: pnpm exec node scripts/run-telegram-runtime-ui.mjs

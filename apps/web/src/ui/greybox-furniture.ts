@@ -32,7 +32,7 @@ export const greyboxFurniturePresets: readonly GreyboxFurniturePreset[] = [
   { category: 'sleep', color: '#8c6e4c', depthMm: '400', heightMm: '600', id: 'bedside-table', label: 'Тумбочка', widthMm: '500' },
   { category: 'storage', color: '#835a45', depthMm: '500', heightMm: '900', id: 'dresser', label: 'Комод', widthMm: '1200' },
   { category: 'storage', color: '#536d62', depthMm: '600', heightMm: '2200', id: 'wardrobe', label: 'Шкаф', widthMm: '1200' },
-  { category: 'seating', color: '#8a4f54', depthMm: '900', heightMm: '850', id: 'sofa', label: 'Диван', widthMm: '2200' }
+  { category: 'seating', color: '#536d62', depthMm: '900', heightMm: '850', id: 'sofa', label: 'Диван', widthMm: '2200' }
 ];
 
 /**

@@ -3,7 +3,7 @@ import { PerspectiveCamera, Vector3 } from "three";
 
 import type { RectangularRoomWebGlScene, SceneBox } from "./rectangular-room-projection";
 import { clipWallBodyToInterval, wallBodiesForProjection } from "./wall-body-projection";
-import { pickProceduralSceneItem } from "./webgl2-item-picking";
+import { pickProceduralSceneHit, pickProceduralSceneItem } from "./webgl2-item-picking";
 import { cameraEyeAndTargetFor } from "./webgl2-room-renderer-shared";
 
 const item: SceneBox = {
@@ -33,6 +33,33 @@ const wall = {
 } satisfies SceneBox;
 
 describe("procedural renderer item picking", () => {
+	it("retains the named shelf planes for a support target in a reduced fallback scene", () => {
+		const shelf: SceneBox = {
+			...item, assetInstanceId: "shelf", material: { colorHex: "#b8b4aa", furnitureKind: "catalog:open-shelf" },
+			centerYM: 0.9, heightM: 1.8, widthM: 0.8, depthM: 0.35, showSupportLevels: true,
+		};
+		const project = { ...scene, items: [shelf] };
+		const orbit = { ...camera, azimuthRadians: Math.PI / 2, distance: 0.33, elevationRadians: 0.27 };
+		const nearView = new PerspectiveCamera(60, aspect, 0.1, 100);
+		const viewpoint = cameraEyeAndTargetFor(project, orbit);
+		nearView.position.set(...viewpoint.eye);
+		nearView.lookAt(...viewpoint.target);
+		nearView.updateMatrixWorld();
+		const lowerShelf = new Vector3(2, 0.598, 1.64);
+		const hit = pickProceduralSceneHit(project, orbit, aspect, lowerShelf.clone().project(nearView), undefined, false);
+		expect(hit).toEqual({ assetInstanceId: "shelf", distanceM: expect.closeTo(nearView.position.distanceTo(lowerShelf), 5) });
+	});
+
+	it("returns metric distance to a tabletop and identifies a nearer room occluder", () => {
+		const tabletop = new Vector3(item.centerXM, item.centerYM + item.heightM / 2, item.centerZM);
+		const projected = tabletop.clone().project(view);
+		const hit = pickProceduralSceneHit(scene, camera, aspect, projected, undefined, false);
+		expect(hit).toEqual({ assetInstanceId: "item", distanceM: expect.closeTo(view.position.distanceTo(tabletop), 5) });
+		const obstruction = pickProceduralSceneHit({ ...scene, walls: [wall] }, camera, aspect, projected, undefined, false);
+		expect(obstruction?.assetInstanceId).toBeUndefined();
+		expect(obstruction?.distanceM).toBeLessThan(hit?.distanceM ?? 0);
+	});
+
 	it("picks the front item at a shared screen position independent of their list order", () => {
 		const front = { ...item, assetInstanceId: "front", centerXM: 3.1, centerYM: 0.63 };
 		const pick = (items: readonly SceneBox[]) => pickProceduralSceneItem({ ...scene, items }, camera, aspect, centre, undefined, true);

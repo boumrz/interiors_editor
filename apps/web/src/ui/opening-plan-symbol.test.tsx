@@ -4,6 +4,19 @@ import { DoorSwingPicker } from "./door-swing-picker";
 import { OpeningPlanSymbol } from "./opening-plan-symbol";
 
 it.each([
+	["left", "toward-start", 3.5, -15, -9],
+	["right", "toward-end", -3.5, 45, 39],
+] as const)("draws a slider on the %s side, pointing %s", (slideSide, slideDirection, y, tip, arrowBase) => {
+	const markup = renderToStaticMarkup(<svg role="img" aria-label="Проём"><OpeningPlanSymbol kind="Door" variant="sliding" slideSide={slideSide} slideDirection={slideDirection}
+		start={{ x: 10, y: 20 }} end={{ x: 10, y: 50 }} thickness={3} /></svg>);
+	expect(markup).toContain('transform="translate(10 20) rotate(90)"');
+	expect(markup).toContain(`data-testid="door-slide" x1="0" x2="30" y1="${y}" y2="${y}"`);
+	expect(markup).toContain(`data-testid="door-slide-arrow" d="M15 ${y} H${tip} M${arrowBase} ${y - 3} L${tip} ${y} L${arrowBase} ${y + 3}"`);
+	expect(markup).not.toContain('data-testid="door-swing"');
+	expect(markup).not.toContain('data-testid="door-leaf"');
+});
+
+it.each([
 	["left", 1],
 	["right", -1],
 	[undefined, -1],

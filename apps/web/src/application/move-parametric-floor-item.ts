@@ -1,3 +1,4 @@
+import { floorItemSupportConflict } from '../domain/interior-support';
 import { publishProjectMutation } from './project-mutation-publication';
 import {
   moveParametricFloorItem,
@@ -51,6 +52,8 @@ export class MoveParametricFloorItemUseCase {
     if (updated.kind === 'rejected') {
       return updated;
     }
+    const conflict = floorItemSupportConflict(updated.project, base.project, input.assetInstanceId);
+    if (conflict) return conflict;
     const publication = await publishProjectMutation(updated.project, this.dependencies, onStatus, base.revision.revisionId);
     return publication.kind === 'durable' && updated.warnings
       ? { ...publication, warnings: updated.warnings }

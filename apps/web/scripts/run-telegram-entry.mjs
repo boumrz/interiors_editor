@@ -48,6 +48,24 @@ await build(empty, {
 	INTERIORS_TELEGRAM_ENVIRONMENT: "",
 	INTERIORS_TELEGRAM_LINK: "",
 });
+const roomInteriorAuthoring = environment.INTERIORS_ROOM_INTERIOR_ENABLED === "1";
+const roomInteriorCompatible = environment.INTERIORS_ROOM_INTERIOR_COMPATIBLE === "1";
+const releasePaths = new Map([
+	["/__entry-proof/activate-base", base],
+	["/__entry-proof/activate-next", next],
+]);
+if (roomInteriorCompatible && !roomInteriorAuthoring) {
+	for (const version of [3, 4]) {
+		const directory = join(root, `v${version}`, "dist-telegram");
+		await build(directory, {
+			INTERIORS_EXACT_FLOOR_YAW: "1",
+			INTERIORS_DOOR_HINGE_AUTHORING: version === 4 ? "1" : "0",
+			INTERIORS_ROOM_INTERIOR_ENABLED: "0",
+			INTERIORS_ROOM_INTERIOR_COMPATIBLE: "0",
+		});
+		releasePaths.set(`/__entry-proof/activate-v${version}`, directory);
+	}
+}
 const preview = await createTelegramPreviewServer({ directory: base }),
 	emptyPreview = await createTelegramPreviewServer({ directory: empty });
 const listen = async (server) => {
@@ -99,19 +117,16 @@ preview.server.on("request", (request, response) => {
 							nextApplicationPath,
 							exactFloorYaw: environment.INTERIORS_EXACT_FLOOR_YAW === "1",
 							doorHingeAuthoring: environment.INTERIORS_DOOR_HINGE_AUTHORING === "1",
+							roomInteriorAuthoring,
+							roomInteriorCompatible,
 							served,
 						}),
 					);
 				return;
 			}
-			if (
-				request.method === "POST" &&
-				[
-					"/__entry-proof/activate-base",
-					"/__entry-proof/activate-next",
-				].includes(request.url)
-			) {
-				await preview.activate(request.url.endsWith("next") ? next : base);
+			const requestedRelease = releasePaths.get(request.url);
+			if (request.method === "POST" && requestedRelease) {
+				await preview.activate(requestedRelease);
 				response
 					.writeHead(200, { "Content-Type": "application/json" })
 					.end(JSON.stringify({ activeBuildId: preview.activeBuildId() }));

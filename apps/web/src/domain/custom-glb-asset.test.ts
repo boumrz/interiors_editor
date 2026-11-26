@@ -204,6 +204,25 @@ describe("createCustomGlbFloorItem", () => {
 		});
 	});
 
+	it("registers a custom floor instance only in its selected room layout", () => {
+		const project = roomProject();
+		const result = createCustomGlbFloorItem({
+			...project,
+			roomLayouts: [
+				{ roomId: "room-1", layoutId: "layout-a", slot: "A", name: "A" },
+				{ roomId: "room-1", layoutId: "layout-b", slot: "B", name: "B" },
+			],
+		}, { asset: customAsset, color: "#716796", roomId: "room-1", xMm: 2200, zMm: 1800, roomLayoutId: "layout-b" },
+		ids("instance-sofa"), project.updatedAt);
+		expect(result).toMatchObject({
+			kind: "accepted",
+			project: {
+				assetInstances: [{ assetInstanceId: "instance-sofa", roomLayoutId: "layout-b" }],
+				assetDefinitionRefs: [customAsset],
+			},
+		});
+	});
+
 	it("keeps a custom definition immutable instead of silently replacing a same-id asset", () => {
 		const first = createCustomGlbFloorItem(
 			roomProject(),

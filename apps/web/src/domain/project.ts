@@ -2,6 +2,30 @@ import type { ItemColorVariantId } from "./item-color-variant";
 
 export const PROJECT_SCHEMA_VERSION = 1 as const;
 
+export type WallProfile = "partition" | "bearing";
+export type WallSide = "left" | "right";
+export type OpeningSlideDirection = "toward-start" | "toward-end";
+
+export type FloorFinishId = "light-oak" | "matte-floor-tile" | "plain-floor";
+export type WallFinishId = "warm-white-paint" | "sand-paint" | "muted-green-paint" | "neutral-wall-tile";
+
+export interface SurfaceFinish<Id extends string = FloorFinishId | WallFinishId> {
+	readonly presetId: Id;
+	readonly version: 1;
+}
+
+export interface CatalogPresetReference {
+	readonly presetId: string;
+	readonly version: 1;
+}
+
+export interface RoomLayout {
+	readonly layoutId: string;
+	readonly roomId: string;
+	readonly slot: "A" | "B";
+	readonly name: string;
+}
+
 export interface Vertex {
 	readonly vertexId: string;
 	readonly xMm: number;
@@ -13,12 +37,15 @@ export interface WallSegment {
 	readonly startVertexId: string;
 	readonly endVertexId: string;
 	readonly thicknessMm: number;
+	readonly profile?: WallProfile;
+	readonly sideFinishes?: Readonly<Partial<Record<WallSide, SurfaceFinish<WallFinishId>>>>;
 }
 
 export interface Room {
 	readonly roomId: string;
 	readonly faceFingerprint: string;
 	readonly heightMm: number;
+	readonly floorFinish?: SurfaceFinish<FloorFinishId>;
 	/**
 	 * Optional while reading revisions authored before Room properties existed.
 	 * The editor supplies readable defaults until the user makes an explicit
@@ -82,6 +109,8 @@ export type FloorSchematicAssetInstance = {
 	/** Absent only for built-in parametric Alpha items. */
 	readonly assetDefinitionId?: string;
 	readonly anchorClass: "floor";
+	readonly roomLayoutId?: string;
+	readonly catalogPreset?: CatalogPresetReference;
 	/**
 	 * Floor placement is grounded. Older revisions omitted this explicit zero and
 	 * are interpreted identically until their next durable mutation.
@@ -131,6 +160,24 @@ export type WallSchematicAssetInstance = {
 	readonly widthMm: number;
 };
 
+export interface SupportedSchematicAssetInstance {
+	readonly anchorClass: "support";
+	readonly assetInstanceId: string;
+	readonly label: string;
+	readonly widthMm: number;
+	readonly depthMm: number;
+	readonly heightMm: number;
+	readonly color: string;
+	readonly colorVariantId?: ItemColorVariantId;
+	readonly locked?: true;
+	readonly catalogPreset: CatalogPresetReference;
+	readonly supportAssetInstanceId: string;
+	readonly supportSurfaceKey: string;
+	readonly offsetXMm: number;
+	readonly offsetZMm: number;
+	readonly relativeYawMilliDeg: number;
+}
+
 export type SchematicAssetInstance =
 	| FloorSchematicAssetInstance
 	| WallSchematicAssetInstance;
@@ -157,8 +204,12 @@ interface WallOpeningBase {
 	readonly sillMm: number;
 }
 
-export interface DoorWallOpening extends WallOpeningBase {
+interface HingedDoorWallOpening extends WallOpeningBase {
 	readonly kind: "Door";
+	readonly variant?: "glazed-swing";
+	readonly slideSide?: never;
+	readonly slideDirection?: never;
+	readonly sections?: never;
 	/**
 	 * The side into which a hinged door swings, relative to the canonical
 	 * start→end direction of its host wall. Older revisions without a value
@@ -169,8 +220,24 @@ export interface DoorWallOpening extends WallOpeningBase {
 	readonly hingeEnd?: "end";
 }
 
+interface SlidingDoorWallOpening extends WallOpeningBase {
+	readonly kind: "Door";
+	readonly variant: "sliding";
+	readonly slideSide: WallSide;
+	readonly slideDirection: OpeningSlideDirection;
+	readonly swingSide?: never;
+	readonly hingeEnd?: never;
+	readonly sections?: never;
+}
+
+export type DoorWallOpening = HingedDoorWallOpening | SlidingDoorWallOpening;
+
 export interface WindowWallOpening extends WallOpeningBase {
 	readonly kind: "Window";
+	readonly sections?: 1 | 2;
+	readonly variant?: never;
+	readonly slideSide?: never;
+	readonly slideDirection?: never;
 	/** Windows have no hinge or open/close state in Alpha. */
 	readonly swingSide?: never;
 	readonly hingeEnd?: never;
@@ -193,6 +260,9 @@ export interface Project {
 	readonly createdAt: string;
 	readonly updatedAt: string;
 	readonly lifecycle: "active";
+	readonly interiorSchemaVersion?: 1;
+	readonly roomLayouts?: readonly RoomLayout[];
+	readonly supportedItems?: readonly SupportedSchematicAssetInstance[];
 	readonly level: Level;
 	readonly assetInstances: readonly SchematicAssetInstance[];
 	readonly assetDefinitionRefs: readonly CustomGlbAssetDefinition[];

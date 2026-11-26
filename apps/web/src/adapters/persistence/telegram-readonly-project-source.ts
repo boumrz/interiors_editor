@@ -37,6 +37,7 @@ export interface TelegramReadonlyProjectSourceDependencies {
   readonly openTimeoutMs?: number;
   readonly acceptExactFloorYawStorage?: boolean;
   readonly acceptDoorHingeStorage?: boolean;
+  readonly acceptRoomInteriorStorage?: boolean;
  };
  readonly checksum: ChecksumPort;
  readonly binaryChecksum: BinaryChecksumPort;
@@ -137,7 +138,7 @@ class ReadonlyReader {
     if (!database) return unavailable();
     const snapshot = await this.snapshot(database, projectId, true, signal);
     if (!record(snapshot.pointer) || snapshot.pointer.currentRevisionId !== revisionId) return unavailable();
-    const verified = await verifyTelegramReadonlyCurrentSnapshot(snapshot, this.dependencies.checksum);
+    const verified = await verifyTelegramReadonlyCurrentSnapshot(snapshot, this.dependencies.checksum, database.version);
     this.assertActive(signal);
     if (!verified || !snapshot.resources || snapshot.resources.length !== verified.resourceManifest.length) return unavailable();
     const bytes = new Map<string, Uint8Array>();
@@ -245,7 +246,8 @@ class ReadonlyReader {
     if (settled || abandoned !== undefined || signal.aborted || absentUpgrade) { database.close(); if (!settled) fail(new ReadonlyUnavailable("Abandoned readonly database handle")); return; }
     const supportsVersion = database.version === 2
       || (database.version === 3 && this.dependencies.technical.acceptExactFloorYawStorage === true)
-      || (database.version === 4 && this.dependencies.technical.acceptDoorHingeStorage === true);
+      || (database.version === 4 && this.dependencies.technical.acceptDoorHingeStorage === true)
+      || ((database.version === 5 || database.version === 6) && this.dependencies.technical.acceptRoomInteriorStorage === true);
     if (!supportsVersion || !sameNames(database.objectStoreNames, Object.keys(stores))) { database.close(); void this.dispose(); fail(new ReadonlyMetadataFault("Readonly database schema is unsupported")); return; }
     this.handle = database;
     database.onversionchange = () => { void this.dispose(); database.close(); };

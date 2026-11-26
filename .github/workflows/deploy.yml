@@ -187,7 +187,7 @@ jobs:
           --archive "$RUNNER_TEMP/interiors-release/telegram.tar.gz"
           --receipt "$RUNNER_TEMP/interiors-release/deployment-receipt.json"
       - name: Preserve the verified deployment receipt
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0c250532a479d7789f # v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: telegram-deployment-receipt-${{ inputs.release_mode }}
           path: ${{ runner.temp }}/interiors-release/deployment-receipt.json

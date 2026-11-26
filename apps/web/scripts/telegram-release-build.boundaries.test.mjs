@@ -10,6 +10,12 @@ const productionWorkflow = readFileSync(
   'utf8',
 );
 
+test('all actions in the production workflow use complete pinned revisions', () => {
+  for (const match of productionWorkflow.matchAll(/\buses:\s+([^@\s]+)@([^\s#]+)/g)) {
+    assert.match(match[2], /^[a-f0-9]{40}$/, `Incomplete revision for ${match[1]}`);
+  }
+});
+
 test('main validates and packages the exact Telegram target', () => {
   assert.match(productionWorkflow, /^on:\n  push:\n    branches: \[main\]$/m);
   assert.match(productionWorkflow, /^        default: prepare\n        options: \[prepare, compatible, authoring\]$/m);

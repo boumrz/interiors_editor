@@ -2204,7 +2204,7 @@ test("TMA-DOOR-HINGE: the signed editor chooses both door settings and restores 
 			level: expect.objectContaining({ openings: [expect.objectContaining({ hingeEnd: "end" })] }),
 		}) }),
 	}));
-	expect(await scopedDatabaseVersions(page)).toEqual([environment.roomInteriorAuthoring ? 6 : 4]);
+	expect(await scopedDatabaseVersions(page)).toEqual([environment.roomInteriorAuthoring ? 7 : 4]);
 
 	const reopen = page.getByRole("button", { name: `Открыть ${project}`, exact: true });
 	await page.getByRole("button", { name: "Назад", exact: true }).click();

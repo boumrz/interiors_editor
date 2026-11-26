@@ -3969,7 +3969,7 @@ test("TMA-INTERIOR-PLAN-SHELF: tapping a layered host opens only its own levels"
 		.toMatchObject({ supportAssetInstanceId: shelf.assetInstanceId, supportSurfaceKey: "shelf-2" });
 });
 
-test("TMA-INTERIOR-DRAG: an existing book snaps to furniture in 2D and 3D", async ({ page }) => {
+test("TMA-INTERIOR-DRAG: an existing book snaps to furniture in 2D and 3D", async ({ page, browserName }) => {
 	test.setTimeout(45_000);
 	const name = "Перетаскивание декора";
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
@@ -3994,15 +3994,17 @@ test("TMA-INTERIOR-DRAG: an existing book snaps to furniture in 2D and 3D", asyn
 	};
 	const from = await centerOf(book.assetInstanceId);
 	const to = await centerOf(table.assetInstanceId);
-	const touch = await page.context().newCDPSession(page);
-	try {
-		await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
-		await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [to] });
-		await touch.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
-	} finally {
-		await touch.detach();
+	if (browserName === "chromium") {
+		const touch = await page.context().newCDPSession(page);
+		try {
+			await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
+			await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [to] });
+			await touch.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+		} finally {
+			await touch.detach();
+		}
+		expect(await currentProject(page)).toEqual(original);
 	}
-	expect(await currentProject(page)).toEqual(original);
 	await page.mouse.move(from.x, from.y);
 	await page.mouse.down();
 	await page.mouse.move(to.x, to.y, { steps: 6 });
@@ -4026,13 +4028,20 @@ test("TMA-INTERIOR-DRAG: an existing book snaps to furniture in 2D and 3D", asyn
 	};
 	const bookContact = await sceneContactFor(book.assetInstanceId, false);
 	const standContact = await sceneContactFor(stand.assetInstanceId, true);
-	const drag3d = await page.context().newCDPSession(page);
-	try {
-		await drag3d.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [bookContact] });
-		await drag3d.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [standContact] });
-		await drag3d.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-	} finally {
-		await drag3d.detach();
+	if (browserName === "chromium") {
+		const drag3d = await page.context().newCDPSession(page);
+		try {
+			await drag3d.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [bookContact] });
+			await drag3d.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [standContact] });
+			await drag3d.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+		} finally {
+			await drag3d.detach();
+		}
+	} else {
+		await page.mouse.move(bookContact.x, bookContact.y);
+		await page.mouse.down();
+		await page.mouse.move(standContact.x, standContact.y);
+		await page.mouse.up();
 	}
 	await expect.poll(async () => (await currentProject(page)).supportedItems).toMatchObject([{
 		assetInstanceId: book.assetInstanceId, supportAssetInstanceId: stand.assetInstanceId, supportSurfaceKey: "top",

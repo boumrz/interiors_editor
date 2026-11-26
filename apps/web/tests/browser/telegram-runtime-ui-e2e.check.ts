@@ -4081,6 +4081,56 @@ test("TMA-EDITOR-QUIET-HEADER: saved and draft status is accessible without usin
 	expect(await rows(page, "a")).toEqual(baseline);
 });
 
+test("TMA-INTERIOR-WALL-PALETTE: keyboard focus stays visible around desktop color swatches", async ({ page, browserName }, info) => {
+	await page.setViewportSize({ width: 422, height: 650 });
+	await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+	await page.evaluate(async () => {
+		window.__telegramRuntimeUi.setAppearance("ru", "light");
+		await window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring");
+	});
+	await createRoom(page, "Проверка рамки палитры");
+	await page.getByTestId("wall-segment").first().click();
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	const trigger = page.getByRole("button", { name: "Цвет стены", exact: true });
+	const palette = page.getByRole("dialog", { name: "Цвет стены", exact: true });
+	await trigger.click();
+	await palette.getByRole("button", { name: "Песочный", exact: true }).click();
+	await expect(palette).toHaveCount(0);
+	await trigger.click();
+	const swatches = palette.locator("button[aria-pressed]");
+	await expect(swatches).toHaveCount(4);
+	await palette.getByRole("button", { name: "Закрыть палитру", exact: true }).focus();
+	for (const swatch of await swatches.all()) {
+		await page.keyboard.press(browserName === "webkit" ? "Alt+Tab" : "Tab");
+		await expect(swatch).toBeFocused();
+		const focus = await swatch.evaluate(button => {
+			const style = getComputedStyle(button);
+			const width = Number.parseFloat(style.outlineWidth);
+			const offset = Number.parseFloat(style.outlineOffset);
+			const extent = Math.max(0, width + offset);
+			const bounds = button.getBoundingClientRect();
+			const clippedBy = [];
+			for (let parent = button.parentElement; parent; parent = parent.parentElement) {
+				const frame = parent.getBoundingClientRect();
+				const { overflowX, overflowY } = getComputedStyle(parent);
+				if (overflowX !== "visible" && (bounds.left - extent < frame.left || bounds.right + extent > frame.right) ||
+					overflowY !== "visible" && (bounds.top - extent < frame.top || bounds.bottom + extent > frame.bottom)) {
+					clippedBy.push({ tag: parent.tagName, className: parent.className, width, offset, bounds: bounds.toJSON(), frame: frame.toJSON(), overflowX, overflowY });
+				}
+				if (parent instanceof HTMLDialogElement) break;
+			}
+			return { visible: button.matches(":focus-visible") && style.outlineStyle !== "none" && width >= 2, clippedBy };
+		});
+		expect(focus).toEqual({ visible: true, clippedBy: [] });
+	}
+	await page.keyboard.press(browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab");
+	await expect(palette.getByRole("button", { name: "Песочный", pressed: true, exact: true })).toBeFocused();
+	await page.screenshot({ path: info.outputPath("wall-palette-desktop-keyboard.png") });
+	await page.keyboard.press("Escape");
+	await expect(palette).toHaveCount(0);
+	await expect(trigger).toBeFocused();
+});
+
 test("TMA-WALL-COLOR-NATIVE: the wall palette uses a padded native sheet and writes one revision per changed swatch", async ({ page }, info) => {
 	await page.setViewportSize({ width: 320, height: 700 });
 	await page.evaluate(async () => {

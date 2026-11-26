@@ -12,7 +12,7 @@ import {
 } from "../../domain/derived-orthogonal-plan-faces";
 import { resolveProjectV2Plan } from "../../domain/derived-project-v2-plan";
 import type {
-	CatalogPresetReference, FloorFinishId, SurfaceFinish, WallFinishId, WallSide,
+	CatalogPresetReference, FloorFinishId, SurfaceFinish, WallFinish, WallSide,
 	Project,
 	Vertex,
 	WallOpening,
@@ -61,7 +61,7 @@ export interface SceneFloorMaterial {
 	readonly anchorZM?: number;
 }
 
-export interface SceneWallFinishes extends Readonly<Partial<Record<WallSide, SurfaceFinish<WallFinishId>>>> {
+export interface SceneWallFinishes extends Readonly<Partial<Record<WallSide, WallFinish>>> {
 	readonly normalX: number;
 	readonly normalZ: number;
 	readonly anchorXM: number;

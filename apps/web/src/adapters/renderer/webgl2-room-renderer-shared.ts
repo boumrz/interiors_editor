@@ -23,7 +23,7 @@ export interface WebGl2SceneRenderer {
 	/** Selects an item from the most recently drawn frame. */
 	pickItem?(point: NormalizedCanvasPoint): string | undefined;
 	/** Glass is pass-through for item and support rays; a dedicated selection can also pick glazing. */
-	pickHit?(point: NormalizedCanvasPoint, includeGlazing?: boolean): WebGl2SceneHit | undefined;
+	pickHit?(point: NormalizedCanvasPoint, includeGlazing?: boolean, excludedAssetInstanceId?: string): WebGl2SceneHit | undefined;
 	/** Replaces only decoded local model roots; shell/camera state stays live. */
 	updateRuntimeModels?(runtimeModels: WebGl2RuntimeModels): void;
 	dispose(): void;

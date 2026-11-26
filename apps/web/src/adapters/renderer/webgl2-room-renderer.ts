@@ -1,4 +1,4 @@
-import { floorFinishColors, wallFinishColors } from "../../domain/interior-materials";
+import { floorFinishColors, wallFinishColor } from "../../domain/interior-materials";
 import { catalogProfileGeometry } from "./catalog-profile-geometry";
 import { GLASS_OPACITY, OPENING_FINISH, type OpeningPart } from "./opening-template";
 import { FLOOR_DESTINATION_TINT, sceneStructureSelection, STRUCTURE_SELECTION_TINT, supportGlowGeometry, type SceneSurfaceHighlight } from "./scene-surface-highlights";
@@ -228,8 +228,8 @@ export class WebGl2RoomRendererController {
 		return this.renderer?.pickHit ? this.pickHit(point)?.assetInstanceId : this.renderer?.pickItem?.(point);
 	}
 
-	public pickHit(point: NormalizedCanvasPoint, includeGlazing?: boolean): WebGl2SceneHit | undefined {
-		return this.renderer?.pickHit?.(point, includeGlazing);
+	public pickHit(point: NormalizedCanvasPoint, includeGlazing?: boolean, excludedAssetInstanceId?: string): WebGl2SceneHit | undefined {
+		return this.renderer?.pickHit?.(point, includeGlazing, excludedAssetInstanceId);
 	}
 
 	public dispose(): void {
@@ -750,7 +750,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 	};
 
 	return {
-		pickHit: (point, includeGlazing) => pickProceduralSceneHit(
+		pickHit: (point, includeGlazing, excludedAssetInstanceId) => pickProceduralSceneHit(
 			activeScene,
 			lastCamera,
 			context.canvas.width / context.canvas.height,
@@ -758,6 +758,7 @@ function createProceduralWebGl2RoomSceneRenderer(
 			cutaway?.hiddenWallSegmentIds,
 			shouldUseDetailedFurniture(activeScene.items.length),
 			includeGlazing,
+			excludedAssetInstanceId,
 		),
 		dispose: () => {
 			context.deleteBuffer(vertexBuffer);
@@ -1238,7 +1239,7 @@ function drawAssignedWallSides(wall: SceneBox, draw: DrawBox, camera: WebGl2Came
 		const bottom = wall.centerYM - wall.heightM / 2;
 		const a = (height: number) => [start.xM + nx * 0.00008, height, start.zM + nz * 0.00008];
 		const b = (height: number) => [end.xM + nx * 0.00008, height, end.zM + nz * 0.00008];
-		draw({ centerXM: 0, centerYM: 0, centerZM: 0, widthM: 1, heightM: 1, depthM: 1 }, colorFor(wallFinishColors[finish.presetId]),
+		draw({ centerXM: 0, centerYM: 0, centerZM: 0, widthM: 1, heightM: 1, depthM: 1 }, colorFor(wallFinishColor(finish)),
 			camera, new Float32Array([...a(bottom), ...b(bottom), ...b(top), ...a(bottom), ...b(top), ...a(top)]));
 	}
 }

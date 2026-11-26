@@ -2,10 +2,11 @@ import type {
 	FloorFinishId,
 	Project,
 	SurfaceFinish,
-	WallFinishId,
+	WallFinish,
 	WallSide,
 } from "../domain/project";
-import { floorFinishColors, wallFinishColors } from "../domain/interior-materials";
+import { type RefObject, useState } from "react";
+import { floorFinishColors, parseCustomWallFinish, wallFinishColor } from "../domain/interior-materials";
 import { resolveOrthogonalPlanFaces } from "../domain/derived-orthogonal-plan-faces";
 import { copy } from "./editor-language";
 import styles from "./AppShell.module.css";
@@ -13,7 +14,7 @@ import { TelegramColorPaletteDialog } from "./telegram-item-color";
 
 export type FinishDraft =
 	| { readonly kind: "floor"; readonly roomId: string; readonly finish: SurfaceFinish<FloorFinishId> | undefined }
-	| { readonly kind: "wall"; readonly wallSegmentId: string; readonly side: WallSide; readonly finish: SurfaceFinish<WallFinishId> | undefined };
+	| { readonly kind: "wall"; readonly wallSegmentId: string; readonly side: WallSide; readonly finish: WallFinish | undefined };
 
 type FinishOption<Id extends string> = {
 	readonly id: Id;
@@ -28,14 +29,39 @@ const floorFinishes: readonly FinishOption<FloorFinishId>[] = [
 	{ id: "plain-floor", ru: "Однотонное покрытие", en: "Solid finish", color: floorFinishColors["plain-floor"] },
 ];
 
-const wallColors = [
-	{ id: undefined, ru: "По умолчанию", en: "Default", color: "var(--editor-host-line, var(--line))" },
-	{ id: "warm-white-paint", ru: "Тёплый белый", en: "Warm white", color: wallFinishColors["warm-white-paint"] },
-	{ id: "sand-paint", ru: "Песочный", en: "Sand", color: wallFinishColors["sand-paint"] },
-	{ id: "muted-green-paint", ru: "Зелёный", en: "Green", color: wallFinishColors["muted-green-paint"] },
-] as const;
+const defaultWallSwatch = "var(--editor-host-line, var(--line))";
+const wallSwatches: readonly {
+	readonly ru: string;
+	readonly en: string;
+	readonly finish?: WallFinish;
+}[] = [
+	{ ru: "По умолчанию", en: "Default" },
+	{ ru: "Тёплый белый", en: "Warm white", finish: { presetId: "warm-white-paint", version: 1 } },
+	{ ru: "Песочный", en: "Sand", finish: { presetId: "sand-paint", version: 1 } },
+	{ ru: "Зелёный", en: "Green", finish: { presetId: "muted-green-paint", version: 1 } },
+	{ ru: "Серо-голубой", en: "Blue gray", finish: { color: "#859eaf", version: 2 } },
+	{ ru: "Сиреневый", en: "Lilac", finish: { color: "#aa9cb8", version: 2 } },
+	{ ru: "Терракотовый", en: "Terracotta", finish: { color: "#b77361", version: 2 } },
+	{ ru: "Графитовый", en: "Graphite", finish: { color: "#525b62", version: 2 } },
+];
 
 type WallPoint = { readonly xMm: number; readonly zMm: number };
+
+export function WallColorButton({ finish, disabled, triggerRef, onClick }: {
+	readonly finish: WallFinish | undefined;
+	readonly disabled: boolean;
+	readonly triggerRef: RefObject<HTMLButtonElement | null>;
+	readonly onClick: () => void;
+}) {
+	return (
+		<button type="button" ref={triggerRef} aria-haspopup="dialog" className={styles.wallColorButton}
+			disabled={disabled} onClick={onClick}>
+			<span aria-hidden="true" className={styles.itemColorSwatch}
+				style={{ backgroundColor: finish ? wallFinishColor(finish) : defaultWallSwatch }} />
+			{copy("Цвет стены", "Wall color")}
+		</button>
+	);
+}
 
 export function interiorWallSide(project: Project, wallId: string, target?: WallSide | WallPoint): WallSide | undefined {
 	const wall = project.level.wallSegments.find(candidate => candidate.wallSegmentId === wallId);
@@ -59,21 +85,45 @@ export function WallColorPalette({ draft, disabled, busy, error, onClose, onSele
 	readonly busy: boolean;
 	readonly error: string | undefined;
 	readonly onClose: () => void;
-	readonly onSelect: (finish: SurfaceFinish<WallFinishId> | undefined) => void;
+	readonly onSelect: (finish: WallFinish | undefined) => void;
 }) {
-	const current = wallColors.find(color => color.id === draft.finish?.presetId);
+	const currentColor = draft.finish ? wallFinishColor(draft.finish) : undefined;
+	const [hex, setHex] = useState(currentColor ?? "#eae2d5");
+	const custom = parseCustomWallFinish(hex);
+	const canApply = custom !== undefined && custom.color !== currentColor && !disabled;
 	return (
 		<TelegramColorPaletteDialog title={copy("Цвет стены", "Wall color")}
-			currentLabel={current && copy(current.ru, current.en)} busy={busy} error={error} onClose={onClose}>
-			{wallColors.map(({ id, ru, en, color }) => (
-				<button key={en} type="button" aria-pressed={draft.finish?.presetId === id} disabled={disabled}
-					onClick={() => onSelect(id ? { presetId: id, version: 1 } : undefined)}>
-					<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: color }}>
-						{draft.finish?.presetId === id ? "✓" : ""}
-					</span>
-					<span>{copy(ru, en)}</span>
-				</button>
-			))}
+			busy={busy} error={error} onClose={onClose}
+			customControl={(
+				<form className={styles.wallCustomColor} onSubmit={event => {
+					event.preventDefault();
+					if (canApply) onSelect(custom);
+				}}>
+					<h3>{copy("Свой цвет", "Custom color")}</h3>
+					<input className={styles.wallCustomColorPicker} type="color" value={custom?.color ?? currentColor ?? "#eae2d5"}
+						aria-label={copy("Выбрать свой цвет", "Choose custom color")}
+						disabled={disabled} onChange={event => setHex(event.currentTarget.value)} />
+					<input className={styles.wallCustomColorHex} type="text" value={hex} maxLength={7} spellCheck={false} autoCapitalize="off"
+						aria-label={copy("Код цвета HEX", "HEX color code")}
+						disabled={disabled} onChange={event => setHex(event.currentTarget.value)} />
+					<button type="submit" aria-label={copy("Применить свой цвет", "Apply custom color")}
+						disabled={!canApply}>
+						{copy("Применить", "Apply")}
+					</button>
+				</form>
+			)}>
+			{wallSwatches.map(({ finish, ru, en }) => {
+				const swatch = finish ? wallFinishColor(finish) : undefined;
+				const active = draft.finish?.version === finish?.version && currentColor === swatch;
+				return (
+					<button key={en} type="button" aria-label={copy(ru, en)}
+						aria-pressed={active} disabled={disabled} onClick={() => onSelect(finish)}>
+						<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: swatch ?? defaultWallSwatch }}>
+							{active ? "✓" : ""}
+						</span>
+					</button>
+				);
+			})}
 		</TelegramColorPaletteDialog>
 	);
 }

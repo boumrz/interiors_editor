@@ -362,10 +362,10 @@ const fixture = {
 	async databaseVersion(value: Scope) {
 		return (await indexedDB.databases()).find(entry => entry.name === databaseName(value))?.version;
 	},
-	async prepareVersionFive(value: Scope) {
+	async prepareExistingInteriorVersion(value: Scope, version: 5 | 6) {
 		await dispose();
 		await new Promise<void>((resolve, reject) => {
-			const request = indexedDB.open(databaseName(value), 5);
+			const request = indexedDB.open(databaseName(value), version);
 			request.onupgradeneeded = (event) => {
 				if (event.oldVersion !== 4) request.transaction?.abort();
 			};
@@ -374,6 +374,14 @@ const fixture = {
 				resolve();
 			};
 			request.onerror = () => reject(request.error);
+		});
+	},
+	async requestLegacyInteriorWriter(value: Scope): Promise<string | undefined> {
+		return new Promise((resolve, reject) => {
+			const request = indexedDB.open(databaseName(value), 6);
+			request.onupgradeneeded = () => { request.transaction?.abort(); reject(Error("Expected an existing interior database")); };
+			request.onsuccess = () => { request.result.close(); resolve(undefined); };
+			request.onerror = () => resolve(request.error?.name);
 		});
 	},
 	async authorInterior(command: import("../../src/domain/interior-project").InteriorCommand) {

@@ -1,6 +1,10 @@
 import { expect, it } from "@rstest/core";
 import { serializeProjectCanonically } from "../../domain/canonical-serialization";
+import { parseCustomWallFinish, wallFinishColor } from "../../domain/interior-materials";
+import { applyInteriorCommand } from "../../domain/interior-project";
+import { isStructurallyValidTelegramProject } from "../../domain/project-json-transfer";
 import type { Project } from "../../domain/project";
+import { sameWallSurfaceMetadata, wallSurfaceMetadata } from "../../domain/wall-surface-metadata";
 import { RuntimePortableBackupCodec } from "./runtime-portable-backup-codec";
 import {
 	decodeRegisteredRuntimeV1Project,
@@ -10,6 +14,7 @@ import {
 
 const schemaId = "interiors.project/runtime-v1-interior-details";
 const layoutSchemaId = "interiors.project/runtime-v1-room-layouts";
+const wallColorSchemaId = "interiors.project/runtime-v1-wall-colors";
 const project = {
 	schemaVersion: 1,
 	interiorSchemaVersion: 1,
@@ -55,6 +60,79 @@ function codeResidentMember(value: unknown): string {
 	if (encoded.kind !== "encoded") throw new Error("Expected an encodable project");
 	return new TextDecoder().decode(encoded.bytes);
 }
+
+function withCustomWallColor(color = "#1b2c3d") {
+	const wall = project.level.wallSegments[0];
+	return { ...project, interiorSchemaVersion: 2, level: { ...project.level, wallSegments: [{
+		...wall, sideFinishes: { ...wall.sideFinishes, right: { color, version: 2 } },
+	}] } };
+}
+
+it("normalizes an entered hex color and resolves its exact swatch alongside an existing preset", () => {
+	const finish = parseCustomWallFinish(" 2Ac4eF ");
+	expect(finish).toEqual({ color: "#2ac4ef", version: 2 });
+	if (!finish) throw Error("Expected a valid input color");
+	expect(wallFinishColor(finish)).toBe("#2ac4ef");
+	expect(wallFinishColor(project.level.wallSegments[0].sideFinishes.left)).toBe("#c7ad8f");
+	expect(parseCustomWallFinish("#234567")).toEqual({ color: "#234567", version: 2 });
+	for (const invalid of ["", "#fff", "##2ac4ef", "#2ac4eg", "#2ac4ef0"]) {
+		expect(parseCustomWallFinish(invalid)).toBeUndefined();
+	}
+});
+
+it("records a custom color for one physical wall face and only changes the selector while it is present", () => {
+	const { supportedItems: _guests, ...room } = project;
+	const initial: Project = { ...room, assetInstances: [] };
+	const finish = { color: "#1b2c3d", version: 2 } as const;
+	const edit = (snapshot: Project, candidate: unknown) => applyInteriorCommand(snapshot, {
+		kind: "set-wall-finish", wallSegmentId: "wall", side: "right", finish: candidate,
+	} as Parameters<typeof applyInteriorCommand>[1], { next: () => "unused" }, project.updatedAt);
+	const result = edit(initial, finish);
+	if (result.kind !== "accepted") throw Error("Expected a durable wall color candidate");
+	expect(result.project).toMatchObject({ interiorSchemaVersion: 2, level: { wallSegments: withCustomWallColor().level.wallSegments } });
+	expect(isStructurallyValidTelegramProject(result.project)).toBe(true);
+	expect(edit(result.project, finish)).toMatchObject({ kind: "unchanged" });
+	for (const invalid of [
+		null, "red", { ...finish, color: "#abcdefg" }, { ...finish, color: "#AABBCC" },
+		{ ...finish, presetId: "sand-paint" }, { presetId: "sand-paint", version: 3 },
+		{ presetId: "missing", version: 1 }, { color: "#abcdef", invalidVersion: 2 },
+		Object.assign(Object.create({ color: "#abcdef" }), { version: 2, extra: true }),
+		Object.defineProperty({ version: 2 }, "color", { value: "#abcdef", enumerable: false }),
+	]) expect(edit(result.project, invalid)).toMatchObject({ kind: "rejected" });
+	const [wall] = result.project.level.wallSegments;
+	expect(wallSurfaceMetadata(wall!, true)).toMatchObject({ sideFinishes: { left: finish, right: { presetId: "sand-paint" } } });
+	const otherColor = { ...wall!, sideFinishes: { ...wall!.sideFinishes, right: { color: "#abcdef", version: 2 as const } } };
+	expect(sameWallSurfaceMetadata(wall!, otherColor, false)).toBe(false);
+	const cleared = edit(result.project, undefined);
+	if (cleared.kind !== "accepted") throw Error("Expected reset to remove only the chosen assignment");
+	expect(serializeProjectCanonically(cleared.project)).toBe(serializeProjectCanonically(initial));
+	expect(encodeRegisteredRuntimeProject(cleared.project)).toMatchObject({ kind: "encoded", projectSchemaId: schemaId });
+});
+
+it("round-trips a custom wall color with the old furniture/layout graph using the new selector only", () => {
+	const custom = withCustomWallColor();
+	const encoded = encodeRegisteredRuntimeProject(custom);
+	if (encoded.kind !== "encoded") throw Error("Expected a portable wall color member");
+	expect(encoded.projectSchemaId).toBe(wallColorSchemaId);
+	expect(decodeRegisteredRuntimeV1Project(encoded.bytes, encoded.projectSchemaId))
+		.toMatchObject({ kind: "decoded", project: custom });
+	const oldMember = new TextEncoder().encode(codeResidentMember(project));
+	expect(decodeRegisteredRuntimeV1Project(oldMember, encoded.projectSchemaId)).toMatchObject({ kind: "rejected" });
+	const customLabel = codeResidentMember(project).replace(schemaId, wallColorSchemaId);
+	expect(decodeRegisteredRuntimeV1Project(new TextEncoder().encode(customLabel), encoded.projectSchemaId)).toMatchObject({ kind: "rejected" });
+	expect(decodeRegisteredRuntimeV1Project(encoded.bytes, schemaId)).toMatchObject({ kind: "rejected" });
+	const legacyLabel = new TextDecoder().decode(encoded.bytes).replace(wallColorSchemaId, schemaId);
+	expect(decodeRegisteredRuntimeV1Project(new TextEncoder().encode(legacyLabel), schemaId)).toMatchObject({ kind: "rejected" });
+	for (const invalidColor of ["#EF1234", "#abc", "transparent", "#112233\\n"]) {
+		expect(isStructurallyValidTelegramProject(withCustomWallColor(invalidColor))).toBe(false);
+		expect(encodeRegisteredRuntimeProject(withCustomWallColor(invalidColor))).toMatchObject({ kind: "rejected" });
+	}
+	expect(isStructurallyValidTelegramProject({ ...custom, interiorSchemaVersion: 1 })).toBe(false);
+	expect(encodeRegisteredRuntimeProject({ ...custom, interiorSchemaVersion: 1 })).toMatchObject({ kind: "rejected" });
+	const { interiorSchemaVersion: _required, ...unmarked } = custom;
+	expect(isStructurallyValidTelegramProject(unmarked)).toBe(false);
+	expect(encodeRegisteredRuntimeProject(unmarked)).toMatchObject({ kind: "rejected" });
+});
 
 it("selects the registered interior member and preserves the derived host context across representations", () => {
 	const text = codeResidentMember(project);
@@ -130,6 +208,8 @@ it("refuses contradictory support and local-marker representations at the encode
 	const rawSupport = JSON.parse(codeResidentMember(project)).assetInstances[1];
 	for (const fixture of [
 		{ ...project, interiorSchemaVersion: 2 },
+		{ ...project, interiorSchemaVersion: 3 },
+		{ ...project, interiorSchemaVersion: undefined },
 		{ ...project, supportedItems: [] },
 		{ ...project, supportedItems: [{ ...guest, context: rawSupport.context }] },
 		{ ...project, supportedItems: [{ ...guest, supportAssetInstanceId: "missing" }] },
@@ -175,4 +255,11 @@ it("admits the interior archive only through an opted-in codec", async () => {
 	expect(await legacy.encode(input)).toMatchObject({ kind: "rejected", reasonCode: "BACKUP_SCHEMA_UNREADABLE" });
 	expect(await legacy.decode(archive.bytes)).toMatchObject({ kind: "rejected", reasonCode: "BACKUP_SCHEMA_UNREADABLE" });
 	expect(await extended.decode(archive.bytes)).toMatchObject({ kind: "decoded", schema: "runtime-v1-interior-details", decodedProject: project });
+	const custom = withCustomWallColor();
+	const customArchive = await extended.encode({ ...input, project: custom });
+	if (customArchive.kind !== "encoded") throw new Error(`Expected a custom wall archive: ${customArchive.reasonCode}`);
+	expect(await legacy.encode({ ...input, project: custom })).toMatchObject({ kind: "rejected", reasonCode: "BACKUP_SCHEMA_UNREADABLE" });
+	expect(await legacy.decode(customArchive.bytes)).toMatchObject({ kind: "rejected", reasonCode: "BACKUP_SCHEMA_UNREADABLE" });
+	expect(await extended.decode(customArchive.bytes)).toMatchObject({ kind: "decoded", schema: "runtime-v1-wall-colors",
+		metadata: { projectSchemaId: wallColorSchemaId, projectSchemaVersion: 1 }, decodedProject: custom });
 });

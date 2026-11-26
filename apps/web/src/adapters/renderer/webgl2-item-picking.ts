@@ -29,6 +29,7 @@ export function pickProceduralSceneHit(
 	hiddenWallSegmentIds: ReadonlySet<string> | undefined,
 	detailedFurniture: boolean,
 	includeGlazing = false,
+	excludedAssetInstanceId?: string,
 ): WebGl2SceneHit | undefined {
 	if (!(aspect > 0)) return undefined;
 	const { eye: [x, y, z], target } = cameraEyeAndTargetFor(scene, camera);
@@ -59,6 +60,7 @@ export function pickProceduralSceneHit(
 		closestDistance = distanceM;
 	}
 	for (const item of scene.items) {
+		if (excludedAssetInstanceId !== undefined && item.assetInstanceId === excludedAssetInstanceId) continue;
 		for (const { box, opacity, profile } of furnitureGreyboxPartsFor(item, detailedFurniture)) {
 			if (opacity !== undefined) continue;
 			const boundsDistance = rayDistanceToBox(eye, ray, box, near);

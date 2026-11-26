@@ -246,6 +246,7 @@ export function visualGridStepMm(): number {
 }
 
 export interface PlanProjectionProps {
+	readonly supportDrag?: import("./supported-drag").SupportedDrag | undefined;
 	readonly finishPreview?: import("./room-interior-controls").FinishDraft;
 	readonly supportPreview?: import("./supported-item-controls").SupportOption | undefined;
 	readonly supportPlanTargets?: {

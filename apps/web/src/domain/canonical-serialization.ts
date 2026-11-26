@@ -1,13 +1,14 @@
 import type { Project } from './project';
-import { projectUsesInteriorDetails, supportContextFor } from './interior-project-format';
+import { interiorSchemaVersionFor, supportContextFor } from './interior-project-format';
 
 export function serializeProjectCanonically(project: Project): string {
+  const interiorSchemaVersion = interiorSchemaVersionFor(project);
   const supportedItems = (project.supportedItems ?? []).map(item => ({
     ...item, context: supportContextFor(item, project),
   }));
   return JSON.stringify({
     schemaVersion: project.schemaVersion,
-    ...(projectUsesInteriorDetails(project) ? { interiorSchemaVersion: 1 } : {}),
+    ...(interiorSchemaVersion === undefined ? {} : { interiorSchemaVersion }),
     projectId: project.projectId,
     name: project.name,
     createdAt: project.createdAt,

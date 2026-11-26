@@ -14,6 +14,13 @@ export interface SurfaceFinish<Id extends string = FloorFinishId | WallFinishId>
 	readonly version: 1;
 }
 
+export interface CustomWallFinish {
+	readonly color: string;
+	readonly version: 2;
+}
+
+export type WallFinish = SurfaceFinish<WallFinishId> | CustomWallFinish;
+
 export interface CatalogPresetReference {
 	readonly presetId: string;
 	readonly version: 1;
@@ -38,7 +45,7 @@ export interface WallSegment {
 	readonly endVertexId: string;
 	readonly thicknessMm: number;
 	readonly profile?: WallProfile;
-	readonly sideFinishes?: Readonly<Partial<Record<WallSide, SurfaceFinish<WallFinishId>>>>;
+	readonly sideFinishes?: Readonly<Partial<Record<WallSide, WallFinish>>>;
 }
 
 export interface Room {
@@ -260,7 +267,7 @@ export interface Project {
 	readonly createdAt: string;
 	readonly updatedAt: string;
 	readonly lifecycle: "active";
-	readonly interiorSchemaVersion?: 1;
+	readonly interiorSchemaVersion?: 1 | 2;
 	readonly roomLayouts?: readonly RoomLayout[];
 	readonly supportedItems?: readonly SupportedSchematicAssetInstance[];
 	readonly level: Level;

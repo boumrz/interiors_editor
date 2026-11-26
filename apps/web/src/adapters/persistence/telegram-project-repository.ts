@@ -1,4 +1,4 @@
-import { projectUsesInteriorDetails } from "../../domain/interior-project-format";
+import { projectUsesCustomWallColors, projectUsesInteriorDetails } from "../../domain/interior-project-format";
 import { ScopedProjectRepository } from "./scoped-project-repository";
 import type {
 	ScopedProjectProtocol,
@@ -11,10 +11,12 @@ const telegramProtocol: ScopedProjectProtocol = {
 	async assertNewRevisionIdentity(transaction, candidate) {
 		const version = transaction.db.version;
 		const { project } = candidate;
-		if (![2, 3, 4, 5, 6].includes(version)) throw new Error("Unknown Telegram storage version");
+		if (![2, 3, 4, 5, 6, 7].includes(version)) throw new Error("Unknown Telegram storage version");
 		if (project.schemaVersion !== 1) throw new Error("Unsupported Telegram Project schema");
-		if (projectUsesInteriorDetails(project) && version !== 6)
-			throw new Error("Room interior requires Telegram storage version 6");
+		if (version < 7 && projectUsesCustomWallColors(project))
+			throw new Error("Custom wall colors require Telegram storage version 7");
+		if (version < 6 && projectUsesInteriorDetails(project))
+			throw new Error("Room interior requires Telegram storage version 6 or later");
 		if (project.roomLayouts !== undefined && version < 5)
 			throw new Error("Room layouts require current Telegram storage");
 		if (version < 3 && project.assetInstances.some(

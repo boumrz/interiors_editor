@@ -24,6 +24,17 @@ export function projectUsesInteriorDetails(project: {
 		project.assetInstances.some(asset => asset.anchorClass === "floor" && asset.catalogPreset !== undefined));
 }
 
+export function projectUsesCustomWallColors(project: Pick<Project, "level">): boolean {
+	return project.level.wallSegments.some(
+		({ sideFinishes }) => sideFinishes?.left?.version === 2 || sideFinishes?.right?.version === 2,
+	);
+}
+
+export function interiorSchemaVersionFor(project: Project): Project["interiorSchemaVersion"] {
+	if (projectUsesCustomWallColors(project)) return 2;
+	return projectUsesInteriorDetails(project) ? 1 : undefined;
+}
+
 type SupportContext = { readonly roomId: string; readonly layoutId?: string };
 
 /** Storage-only witness, derived from the authoritative host before serialization. */

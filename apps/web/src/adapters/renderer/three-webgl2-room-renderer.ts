@@ -210,13 +210,13 @@ export function createThreeWebGl2RoomSceneRenderer(
 	syncItems(scene.items, itemGroup, itemNodes, activeRuntimeModels);
 
 	return {
-		pickHit: (point, includeGlazing) => pickThreeSceneHit(camera, point, [
+		pickHit: (point, includeGlazing, excludedAssetInstanceId) => pickThreeSceneHit(camera, point, [
 			...roomPickSurfaces,
 			...Array.from(itemNodes.values(), (node) => ({
 				root: node.group,
 				assetInstanceId: node.assetInstanceId,
 			})),
-		], includeGlazing),
+		], includeGlazing, excludedAssetInstanceId),
 		dispose: () => {
 			for (const node of itemNodes.values()) disposeItemNode(node);
 			itemNodes.clear();
@@ -362,9 +362,11 @@ export function pickThreeSceneHit(
 	point: NormalizedCanvasPoint,
 	surfaces: readonly ThreePickSurface[],
 	includeGlazing = false,
+	excludedAssetInstanceId?: string,
 ): WebGl2SceneHit | undefined {
 	const ownerByMesh = new Map<Object3D, ThreePickSurface>();
 	for (const surface of surfaces) {
+		if (excludedAssetInstanceId !== undefined && surface.assetInstanceId === excludedAssetInstanceId) continue;
 		const pickGlazing = includeGlazing && surface.openingId !== undefined;
 		surface.root.traverseVisible((node) => {
 			if (node instanceof Mesh && asMaterials(node.material).some(material => material.visible && (material.depthWrite || pickGlazing))) {

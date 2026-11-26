@@ -1,6 +1,7 @@
 import { resolveSupportedPlacements } from "../domain/interior-support";
-import { wallFinishColors } from "../domain/interior-materials";
+import { wallFinishColor } from "../domain/interior-materials";
 import { supportSurfaceLabel, supportSurfacePlanVertices, type SupportOption } from "./supported-item-controls";
+import { planSupportDrop, type SupportDragDestination, type SupportDragSource } from "./supported-drag";
 import { telegramGreyboxLabelForDisplay } from "./telegram-greybox-catalog";
 import { copy } from "./editor-language";
 import { OpeningPlanSymbol } from "./opening-plan-symbol";
@@ -161,6 +162,7 @@ export function PlanProjection({
 	finishPreview,
 	supportPreview,
 	supportPlanTargets,
+	supportDrag,
 	supportFloorPick,
 	supportFloorRoomIds,
 	supportFloorPreviewItemId,
@@ -292,6 +294,9 @@ export function PlanProjection({
 			readonly zMm: number;
 		};
 		readonly start: { readonly xMm: number; readonly zMm: number };
+		readonly supportSource?: SupportDragSource | undefined;
+		readonly supportHostId?: string | undefined;
+		readonly supportedSelectionId?: string | undefined;
 	}>();
 	const [canvasInsets, setCanvasInsets] = useState({ top: 116, bottom: 96 });
 	const [rotationChrome, setRotationChrome] = useState({ top: 0, bottom: 0, ready: false });
@@ -1665,12 +1670,15 @@ export function PlanProjection({
 		readonly assetInstanceId: string;
 		readonly xMm: number;
 		readonly zMm: number;
-	}) => {
+	}, destination?: SupportDragDestination) => {
 		if (readOnly || isConfirmingItemTransform) return;
 		setIsConfirmingItemTransform(true);
 		try {
-			const accepted = await onMoveItem(move);
-			if (!accepted) {
+			const publishSupport = destination && supportDrag && (() => supportDrag.onDrop(destination.command));
+			const accepted = publishSupport
+				? await (hostEnabledRef.current ? hostCommand(publishSupport, false) : publishSupport())
+				: await onMoveItem(move);
+			if (!accepted || destination) {
 				setSubmittedItemTransform((active) =>
 					active?.assetInstanceId === move.assetInstanceId ? undefined : active,
 				);
@@ -1678,6 +1686,27 @@ export function PlanProjection({
 		} finally {
 			setIsConfirmingItemTransform(false);
 		}
+	};
+
+	const startItemDrag = (event: ReactPointerEvent<SVGSVGElement>, canvasPoint: PointerPosition,
+		assetInstanceId: string, original: { readonly xMm: number; readonly zMm: number }, supportedSelectionId?: string) => {
+		const pointerPoint = projectPointFor(event);
+		const retained = hostEnabledRef.current && itemDragRef.current?.assetInstanceId === assetInstanceId ? itemDragRef.current : undefined;
+		const point = retained?.end ?? original;
+		hostRetainedItemDrag.current = retained;
+		const contact = {
+			assetInstanceId, end: point, moved: false, pointerOrigin: canvasPoint,
+			pointerToItemOffset: { xMm: pointerPoint.xMm - point.xMm, zMm: pointerPoint.zMm - point.zMm },
+			start: point, supportSource: supportDrag?.source(assetInstanceId), supportedSelectionId,
+		};
+		itemDragRef.current = contact;
+		setItemDrag(hostEnabledRef.current ? retained : contact);
+		itemDragCancelledByMultiTouch.current = false;
+		itemDragCancelledPointerIds.current.clear();
+		itemDragSawMultiTouchRef.current = false;
+		itemDragPointerIdRef.current = event.pointerId;
+		markHostDraftContact(event.pointerId);
+		pointerCountAtItemDragStartRef.current = pointers.current.size;
 	};
 
 	const persistItemRotation = async (rotation: {
@@ -2123,6 +2152,11 @@ export function PlanProjection({
 				}))];
 			const next = ids[(ids.indexOf(selectedItemId ?? "") + 1) % ids.length];
 			if (next) {
+				const source = supportDrag?.source(selectedItemId && ids.includes(selectedItemId) ? selectedItemId : next);
+				if (source && !readOnly && activePointers.length === 1) {
+					startItemDrag(event, canvasPoint, source.assetInstanceId, source.point, next);
+					return;
+				}
 				pendingCanvasSelectionRef.current = {
 					pointerId: event.pointerId,
 					pointerOrigin: canvasPoint,
@@ -2143,37 +2177,15 @@ export function PlanProjection({
 					isFloorEditorAsset(candidate),
 			);
 			if (!item) return;
-			const pointerPoint = projectPointFor(event);
-			const retained = hostEnabledRef.current && itemDragRef.current?.assetInstanceId === assetInstanceId ? itemDragRef.current : undefined;
-			const point = retained?.end ?? { xMm: item.xMm, zMm: item.zMm };
 			onSelectItem(assetInstanceId);
 			if (readOnly) {
 				return;
 			}
-			hostRetainedItemDrag.current = retained;
 			// A hit on an item always belongs to that item.  The old long-press
 			// fallback could steal unrotated item drags and pan the whole canvas.
-			const contact = {
-				assetInstanceId,
-				end: point,
-				moved: false,
-				pointerOrigin: canvasPoint,
-				pointerToItemOffset: {
-					xMm: pointerPoint.xMm - point.xMm,
-					zMm: pointerPoint.zMm - point.zMm,
-				},
-				start: point,
-			};
 			// Selection opens its inspector on contact. Only movement beyond the
 			// gesture tolerance becomes a new edit visible to navigation and history.
-			itemDragRef.current = contact;
-			setItemDrag(hostEnabledRef.current ? retained : contact);
-			itemDragCancelledByMultiTouch.current = false;
-			itemDragCancelledPointerIds.current.clear();
-			itemDragSawMultiTouchRef.current = false;
-			itemDragPointerIdRef.current = event.pointerId;
-			markHostDraftContact(event.pointerId);
-			pointerCountAtItemDragStartRef.current = pointers.current.size;
+			startItemDrag(event, canvasPoint, assetInstanceId, item);
 			return;
 		}
 		if (
@@ -2531,12 +2543,17 @@ export function PlanProjection({
 			}
 			clearLongPressPan();
 			const point = projectPointFor(event);
+			const position = {
+				xMm: point.xMm - activeItemDrag.pointerToItemOffset.xMm,
+				zMm: point.zMm - activeItemDrag.pointerToItemOffset.zMm,
+			};
+			const legalDrop = supportDrag && activeItemDrag.supportSource && planSupportDrop(supportDrag, activeItemDrag.supportSource, point, position);
+			const supportDestination = legalDrop?.kind === "place" ? legalDrop.destination : undefined;
+			const supportHostId = legalDrop?.kind === "choose-level" ? legalDrop.hostId : supportDestination?.option?.host.assetInstanceId;
 			const nextItemDrag = {
 				...activeItemDrag,
-				end: itemMovePointFor({
-					xMm: point.xMm - activeItemDrag.pointerToItemOffset.xMm,
-					zMm: point.zMm - activeItemDrag.pointerToItemOffset.zMm,
-				}, activeItemDrag.assetInstanceId),
+				end: supportDestination?.point ?? itemMovePointFor(position, activeItemDrag.assetInstanceId),
+				supportHostId,
 				moved:
 					activeItemDrag.moved ||
 					distance(activeItemDrag.pointerOrigin, canvasPoint) > 6,
@@ -2750,17 +2767,22 @@ export function PlanProjection({
 		) {
 			const cancelledByMultiTouch = itemDragCancelledByMultiTouch.current;
 			const point = projectPointFor(event);
-			const end = itemMovePointFor({
+			const position = {
 				xMm: point.xMm - (activeItemDrag?.pointerToItemOffset.xMm ?? 0),
 				zMm: point.zMm - (activeItemDrag?.pointerToItemOffset.zMm ?? 0),
-			}, activeItemDrag?.assetInstanceId);
+			};
+			const source = activeItemDrag?.supportSource;
+			const drop = supportDrag && source && planSupportDrop(supportDrag, source, point, position);
+			const floor = itemMovePointFor(position, activeItemDrag?.assetInstanceId);
+			const destination = drop?.kind === "place" ? drop.destination : (supportDrag && source ? supportDrag.onFloor(source, floor) : undefined);
+			const end = destination?.point ?? floor;
 			const canvasPoint = canvasPointFor(event);
 			const wasSinglePointer =
 				pointers.current.size === 1 && gesture.current?.kind !== "pinch";
 			const retained = hostRetainedItemDrag.current;
 			hostRetainedItemDrag.current = undefined;
-			const hasFreshTransform = activeItemDrag && (activeItemDrag.moved || distance(activeItemDrag.pointerOrigin, canvasPoint) > 6) &&
-				(end.xMm !== activeItemDrag.start.xMm || end.zMm !== activeItemDrag.start.zMm);
+			const moved = activeItemDrag && (activeItemDrag.moved || distance(activeItemDrag.pointerOrigin, canvasPoint) > 6);
+			const hasFreshTransform = moved && (drop !== undefined || end.xMm !== activeItemDrag.start.xMm || end.zMm !== activeItemDrag.start.zMm);
 			if (hostEnabledRef.current && retained && activeItemDrag && wasSinglePointer && !cancelledByMultiTouch && !itemDragSawMultiTouchRef.current && !hasFreshTransform) {
 				const completedContactEpoch = hostGateRef.current.capture();
 				invalidateHostContacts();
@@ -2780,21 +2802,22 @@ export function PlanProjection({
 				!itemDragSawMultiTouchRef.current &&
 				activeItemDrag &&
 				pointerCountAtItemDragStartRef.current === 1 &&
-				wasSinglePointer &&
-				(activeItemDrag.moved ||
-					distance(activeItemDrag.pointerOrigin, canvasPoint) > 6)
+				wasSinglePointer
 			) {
-				const move = {
+				if (!moved) {
+					if (activeItemDrag.supportedSelectionId) onSelectItem(activeItemDrag.supportedSelectionId);
+				} else if (drop?.kind === "choose-level" && source && supportDrag) {
+					onSelectItem(source.assetInstanceId);
+					supportDrag.onChooseLevel(source, drop.hostId, drop.point);
+				} else if (destination || (!source?.originalSupport && hasFreshTransform)) {
+					if (activeItemDrag.supportedSelectionId) onSelectItem(activeItemDrag.assetInstanceId);
+					const move = {
 					assetInstanceId: activeItemDrag.assetInstanceId,
 					xMm: end.xMm,
 					zMm: end.zMm,
-				};
-				if (
-					move.xMm !== activeItemDrag.start.xMm ||
-					move.zMm !== activeItemDrag.start.zMm
-				) {
+					};
 					setSubmittedItemTransform({ kind: "move", ...move });
-					void persistItemMove(move);
+					void persistItemMove(move, destination);
 				}
 			}
 			if (pointers.current.size === 0 && event.pointerType !== "touch") {
@@ -3003,11 +3026,9 @@ export function PlanProjection({
 		}
 		pointers.current.delete(event.pointerId);
 		setItemDrag(undefined);
-		if (hostEnabledRef.current) {
-			itemDragRef.current = undefined;
-			itemDragPointerIdRef.current = undefined;
-			hostRetainedItemDrag.current = undefined;
-		}
+		itemDragRef.current = undefined;
+		itemDragPointerIdRef.current = undefined;
+		hostRetainedItemDrag.current = undefined;
 		itemDragCancelledByMultiTouch.current = false;
 		itemDragSawMultiTouchRef.current = false;
 		updateItemPoint(undefined);
@@ -3406,6 +3427,7 @@ export function PlanProjection({
 						doorOpeningDragRef.current?.pointerId === event.pointerId ||
 						splitGrabRef.current?.pointerId === event.pointerId ||
 						itemPlacementDragRef.current?.pointerId === event.pointerId ||
+						itemDragPointerIdRef.current === event.pointerId ||
 						placementRotationContact.current?.pointerId === event.pointerId ||
 						itemRotationRef.current?.pointerId === event.pointerId ||
 						(pendingCanvasSelectionRef.current?.pointerId === event.pointerId && pendingCanvasSelectionRef.current.supportAnchor !== undefined) ||
@@ -3710,6 +3732,16 @@ export function PlanProjection({
 												.join(" ")}
 											pointerEvents="none"
 										/>
+										{"sideFinishes" in wall && wall.sideFinishes ? (["right", "left"] as const).map((side, index) => {
+											const finish = wall.sideFinishes?.[side];
+											const outline = wallBody.outlinesMm[index];
+											if (!finish || !outline) return null;
+											const from = pointFor(outline[0].xMm, outline[0].zMm);
+											const to = pointFor(outline[1].xMm, outline[1].zMm);
+											return <line key={side} className={planStyles.wallSidePaint}
+												data-testid="plan-wall-finish" stroke={wallFinishColor(finish)} pointerEvents="none"
+												x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
+										}) : null}
 									</>
 								) : null}
 								<line
@@ -4172,22 +4204,6 @@ export function PlanProjection({
 								);
 							})()
 						: null}
-					{finishPreview?.kind === "wall" ? (() => {
-						const wall = project.level.wallSegments.find(segment => segment.wallSegmentId === finishPreview.wallSegmentId);
-						const start = project.level.vertices.find(vertex => vertex.vertexId === wall?.startVertexId);
-						const end = project.level.vertices.find(vertex => vertex.vertexId === wall?.endVertexId);
-						if (!wall || !start || !end) return null;
-						const dx = end.xMm - start.xMm;
-						const dz = end.zMm - start.zMm;
-						const length = Math.hypot(dx, dz);
-						if (!length) return null;
-						const offset = wall.thicknessMm / 2 * (finishPreview.side === "left" ? 1 : -1) / length;
-						const from = pointFor(start.xMm - offset * dz, start.zMm + offset * dx);
-						const to = pointFor(end.xMm - offset * dz, end.zMm + offset * dx);
-						return <line className={planStyles.finishPreview} data-testid="wall-finish-preview" pointerEvents="none"
-							style={finishPreview.finish ? { stroke: wallFinishColors[finishPreview.finish.presetId] } : undefined}
-							x1={from.x} y1={from.y} x2={to.x} y2={to.y} />;
-					})() : null}
 					{planFloorItems.map((item) => {
 						const position = renderedItemPosition(item);
 						const start = pointFor(
@@ -4401,7 +4417,10 @@ export function PlanProjection({
 						const yaw = renderedItemYaw(host);
 						const xMm = at.xMm + Math.cos(yaw) * item.offsetXMm + Math.sin(yaw) * item.offsetZMm;
 						const zMm = at.zMm - Math.sin(yaw) * item.offsetXMm + Math.cos(yaw) * item.offsetZMm;
-						const position = pointFor(xMm, zMm);
+						const dragPosition = itemDrag?.assetInstanceId === item.assetInstanceId ? itemDrag.end
+							: submittedItemTransform?.kind === "move" && submittedItemTransform.assetInstanceId === item.assetInstanceId
+								? submittedItemTransform : undefined;
+						const position = pointFor(dragPosition?.xMm ?? xMm, dragPosition?.zMm ?? zMm);
 						const rotation = yaw * 180 / Math.PI + item.relativeYawMilliDeg / 1000;
 						const selected = item.assetInstanceId === selectedItemId;
 						return (
@@ -4757,6 +4776,16 @@ export function PlanProjection({
 					{supportPreview ? (
 						<polygon data-testid="interior-support-plan-preview" className={planStyles.finishPreview} pointerEvents="none"
 							points={supportPolygonPoints(supportPreview)} />
+					) : null}
+					{itemDrag?.moved && itemDrag.supportSource && supportDrag ? (
+						<g pointerEvents="none" className={planStyles.supportHost}>
+							{[...new Set(supportDrag.optionsFor(itemDrag.supportSource).map(supportPolygonPoints))].map(points => (
+								<polygon key={points} className={planStyles.supportSurface} points={points} />
+							))}
+							{itemDrag.supportHostId && [...new Set(supportDrag.options.filter(option => option.host.assetInstanceId === itemDrag.supportHostId).map(supportPolygonPoints))].map(points => (
+								<polygon key={points} className={planStyles.finishPreview} points={points} />
+							))}
+						</g>
 					) : null}
 				</g>
 				<DrawingDimensions layouts={dimensionLayouts} />

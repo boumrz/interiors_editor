@@ -133,14 +133,14 @@ export function TelegramItemColor({
 }
 
 export function TelegramColorPaletteDialog({
-	dialogId, title, currentLabel, busy = false, error, children, onClose,
+	dialogId, title, busy = false, error, children, customControl, onClose,
 }: {
 	readonly dialogId?: string;
 	readonly title: string;
-	readonly currentLabel?: string | undefined;
 	readonly busy?: boolean;
 	readonly error?: string | undefined;
 	readonly children: ReactNode;
+	readonly customControl?: ReactNode;
 	readonly onClose: () => void;
 }) {
 	const titleId = useId();
@@ -171,11 +171,12 @@ export function TelegramColorPaletteDialog({
 				if (!event.currentTarget.open) onClose();
 			}}
 		>
-			<SheetHeader title={title} titleId={titleId} subtitle={currentLabel}
+			<SheetHeader title={title} titleId={titleId}
 				closeLabel={copy("Закрыть палитру", "Close color palette")}
 				closeDisabled={busy} onClose={() => dialogRef.current?.close()} />
 			<div className={sheetStyles.body}>
 				<div className={sceneStyles.colorOptions}>{children}</div>
+				{customControl}
 				<p className={sceneStyles.colorNote}>{copy("Цвет на экране приблизительный.", "Colors are approximate on screen.")}</p>
 				{error ? <p className={styles.fieldError} role="alert">{error}</p> : null}
 			</div>
@@ -234,7 +235,6 @@ function SceneColorPicker({
 				<TelegramColorPaletteDialog
 					dialogId={dialogId}
 					title={copy("Цвет предмета", "Item color")}
-					currentLabel={current ? telegramItemColorLabelForDisplay(current) : undefined}
 					onClose={() => setOpen(false)}
 				>
 					{alphaParametricItemColorVariants.map((variant) => (
@@ -252,7 +252,6 @@ function SceneColorPicker({
 							<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: variant.color }}>
 								{color === variant.color ? "✓" : ""}
 							</span>
-							<span>{swatchNames[variant.variantId]}</span>
 						</button>
 					))}
 				</TelegramColorPaletteDialog>

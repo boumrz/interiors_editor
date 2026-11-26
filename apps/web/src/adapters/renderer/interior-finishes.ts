@@ -1,5 +1,5 @@
 import { Color, type MeshStandardMaterial, Vector2 } from "three";
-import { floorFinishColors, wallFinishColors } from "../../domain/interior-materials";
+import { floorFinishColors, wallFinishColor } from "../../domain/interior-materials";
 import type { SceneFloorMaterial, SceneWallFinishes } from "./rectangular-room-projection";
 
 export function applyFloorInteriorFinish(material: MeshStandardMaterial, floor?: SceneFloorMaterial, patterned = true): void {
@@ -17,10 +17,10 @@ export function applyWallInteriorFinish(material: MeshStandardMaterial, faces?: 
 	if (!faces) return;
 	applySurfaceShader(material, {
 		floor: false,
-		left: faces.left ? new Color(wallFinishColors[faces.left.presetId]) : undefined,
-		right: faces.right ? new Color(wallFinishColors[faces.right.presetId]) : undefined,
-		leftPattern: patterned && faces.left?.presetId === "neutral-wall-tile" ? 2 : 0,
-		rightPattern: patterned && faces.right?.presetId === "neutral-wall-tile" ? 2 : 0,
+		left: faces.left ? new Color(wallFinishColor(faces.left)) : undefined,
+		right: faces.right ? new Color(wallFinishColor(faces.right)) : undefined,
+		leftPattern: patterned && faces.left?.version === 1 && faces.left.presetId === "neutral-wall-tile" ? 2 : 0,
+		rightPattern: patterned && faces.right?.version === 1 && faces.right.presetId === "neutral-wall-tile" ? 2 : 0,
 		anchor: new Vector2(faces.anchorXM, faces.anchorZM), leftNormal: new Vector2(faces.normalX, faces.normalZ),
 	});
 }

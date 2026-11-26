@@ -1,16 +1,17 @@
-import { floorCatalogPresetIds, projectUsesInteriorDetails } from "./interior-project-format";
+import { floorCatalogPresetIds, interiorSchemaVersionFor } from "./interior-project-format";
 import { alphaParametricItemColorVariantFor, type ItemColorVariantId } from "./item-color-variant";
-import { floorFinishColors, wallFinishColors } from "./interior-materials";
-import { isSupportedDecorPreset, supportedItemConflict, type SupportAddress } from "./interior-support";
+import { floorFinishColors, isWallFinish } from "./interior-materials";
+import { floorDecorPresetFor, isSupportedDecorPreset, supportedItemConflict, supportHostPresetFor, type SupportAddress } from "./interior-support";
 import {
 	createParametricFloorItem, deleteParametricFloorItem, findRoomForFloorItem,
 	floorItemFootprintsCollide, type ParametricFloorItemInput,
 } from "./parametric-item";
 import type {
 	FloorFinishId, FloorSchematicAssetInstance, Project, SupportedSchematicAssetInstance,
-	SurfaceFinish, WallFinishId, WallSide,
+	SurfaceFinish, WallFinish, WallSide,
 } from "./project";
 import { applyRoomLayoutCommand, projectRoomLayoutView, type RoomLayoutCommand, validateRoomLayouts } from "./room-layouts";
+import { sameSurfaceFinish } from "./wall-surface-metadata";
 
 const floorPresetIds = new Set<string>(floorCatalogPresetIds);
 
@@ -20,13 +21,13 @@ export function isInteriorFloorPreset(presetId: string): boolean {
 
 export function normalizeInteriorProject(project: Project): Project {
 	const { interiorSchemaVersion, supportedItems, roomLayouts, ...base } = project;
-	const needsInterior = projectUsesInteriorDetails(project);
-	if ((interiorSchemaVersion === 1) === needsInterior
+	const version = interiorSchemaVersionFor(project);
+	if (interiorSchemaVersion === version
 		&& (supportedItems === undefined || supportedItems.length > 0)
 		&& (roomLayouts === undefined || roomLayouts.length > 0)) return project;
 	return {
 		...base,
-		...(needsInterior ? { interiorSchemaVersion: 1 as const } : {}),
+		...(version === undefined ? {} : { interiorSchemaVersion: version }),
 		...(supportedItems?.length ? { supportedItems } : {}),
 		...(roomLayouts?.length ? { roomLayouts } : {}),
 	};
@@ -45,7 +46,7 @@ type NewDecor = DecorAppearance & SupportAddress;
 
 export type InteriorCommand =
 	| { readonly kind: "set-floor-finish"; readonly roomId: string; readonly finish?: SurfaceFinish<FloorFinishId> }
-	| { readonly kind: "set-wall-finish"; readonly wallSegmentId: string; readonly side: WallSide; readonly finish?: SurfaceFinish<WallFinishId> }
+	| { readonly kind: "set-wall-finish"; readonly wallSegmentId: string; readonly side: WallSide; readonly finish?: WallFinish }
 	| { readonly kind: "bind-preset"; readonly assetInstanceId: string; readonly presetId: string }
 	| { readonly kind: "place-supported"; readonly item: NewDecor; readonly sourceAssetInstanceId?: string }
 	| { readonly kind: "place-decor-on-floor"; readonly item: DecorAppearance; readonly target: FloorTarget; readonly sourceAssetInstanceId?: string }
@@ -135,7 +136,12 @@ export function applyInteriorCommand(
 		if ("supportAssetInstanceId" in target) {
 			const host = source.assetInstances.find(item => item.assetInstanceId === target.supportAssetInstanceId);
 			if (host?.anchorClass !== "floor" || selectedInteriorLayoutId(source, host.roomId, preferences) !== host.roomLayoutId) return undefined;
-			return withGuests(source, [...(source.supportedItems ?? []), {
+			// Once attached, the placement relies on the saved preset instead of the legacy label.
+			const catalogPreset = host.catalogPreset === undefined ? supportHostPresetFor(host) : undefined;
+			const base = catalogPreset
+				? { ...source, assetInstances: source.assetInstances.map(item => item === host ? { ...host, catalogPreset } : item) }
+				: source;
+			return withGuests(base, [...(source.supportedItems ?? []), {
 				...guest, ...target, anchorClass: "support",
 				// Canonical JSON stores a single representation of zero.
 				offsetXMm: target.offsetXMm + 0, offsetZMm: target.offsetZMm + 0,
@@ -175,8 +181,8 @@ export function applyInteriorCommand(
 			const wall = project.level.wallSegments.find(value => value.wallSegmentId === command.wallSegmentId);
 			const { side, finish } = command;
 			if (!wall || (side !== "left" && side !== "right")
-				|| (finish && (finish.version !== 1 || !Object.hasOwn(wallFinishColors, finish.presetId)))) return invalidTarget;
-			if (wall.sideFinishes?.[side]?.presetId === finish?.presetId) return { kind: "unchanged", project };
+				|| (finish !== undefined && !isWallFinish(finish))) return invalidTarget;
+			if (sameSurfaceFinish(wall.sideFinishes?.[side], finish)) return { kind: "unchanged", project };
 			const { sideFinishes: old, ...base } = wall;
 			const sides = { ...old };
 			if (finish) sides[side] = finish;
@@ -197,7 +203,7 @@ export function applyInteriorCommand(
 			const source = command.sourceAssetInstanceId === undefined ? undefined : existingFloor(command.sourceAssetInstanceId);
 			const newPreset = command.item.catalogPreset?.presetId;
 			if (!newPreset || !isSupportedDecorPreset(newPreset) || (command.sourceAssetInstanceId !== undefined &&
-				(!source || source.assetDefinitionId || source.catalogPreset?.presetId !== newPreset))) return invalidTarget;
+				(!source || floorDecorPresetFor(source)?.presetId !== newPreset))) return invalidTarget;
 			if (source?.locked) return itemConflict(source.assetInstanceId, "INTERIOR_ITEM_LOCKED");
 			const id = source?.assetInstanceId ?? allocate();
 			if (!id) return invalidTarget;

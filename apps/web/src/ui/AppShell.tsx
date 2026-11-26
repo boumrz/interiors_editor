@@ -1,6 +1,6 @@
 import { copy, editorLanguage } from "./editor-language";
 import { projectInteriorView, supportedGuestsFor, type SupportTarget } from "../domain/interior-project";
-import { isSupportedDecorPreset, resolveSupportedPlacements, supportSurfacesFor } from "../domain/interior-support";
+import { floorDecorPresetFor, isSupportedDecorPreset, resolveSupportedPlacements, supportSurfacesFor } from "../domain/interior-support";
 import type { RoomLayoutCommand } from "../domain/room-layouts";
 import {
 	RoomLayoutControls,
@@ -10,7 +10,9 @@ import {
 	supportOptions,
 } from "./supported-item-controls";
 import { availableSupportOptions, supportAddressAt, supportPlacementCommand } from "./supported-placement-targets";
-import { finishLabel, interiorWallSide, projectWithFinishPreview, RoomFinishControls, WallColorPalette, type FinishDraft } from "./room-interior-controls";
+import { createSupportedDrag, supportDragLevels } from "./supported-drag";
+import { finishLabel, interiorWallSide, projectWithFinishPreview, RoomFinishControls, WallColorButton, WallColorPalette, type FinishDraft } from "./room-interior-controls";
+import { SceneSelectionActions } from "./scene-selection-actions";
 import type { ProductMetric, ProductMetricSink } from "../application/editor-product-metrics";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
 import { DoorSwingPicker } from "./door-swing-picker";
@@ -3141,7 +3143,21 @@ export function AppShell({
 	const supportSource = supportDraft?.sourceId === undefined ? undefined :
 		(visibleProject?.schemaVersion === 1 ? visibleProject.supportedItems?.find(item => item.assetInstanceId === supportDraft.sourceId) : undefined)
 		?? visibleProject?.assetInstances.find(item => item.assetInstanceId === supportDraft.sourceId);
-	const supportDecor = supportDraft?.mode === "catalog" ? itemPlacementDraft : supportSource;
+	const supportFloorPreset = supportSource?.anchorClass === "floor" && floorDecorPresetFor(supportSource);
+	const supportDecor = useMemo(() => supportDraft?.mode === "catalog" ? itemPlacementDraft
+		: supportFloorPreset && supportSource ? { ...supportSource, catalogPreset: supportFloorPreset } : supportSource,
+	[itemPlacementDraft, supportDraft?.mode, supportSource, supportFloorPreset]);
+	const supportedDrag = roomInteriorEnabled && visibleProject?.schemaVersion === 1 ? createSupportedDrag(visibleProject,
+		command => controller.previewInteriorCommand(command).kind === "accepted", async command => {
+			setDimensionError(undefined);
+			const result = await controller.applyInteriorCommand(command);
+			if (result.kind === "rejected") showEditRejection(result.reasonCode);
+			return result.kind === "durable";
+		}, (source, planHostId, dragPoint) => {
+			setSupportMessage(undefined);
+			setIsSelectionInspectorExpanded(false);
+			setSupportDraft({ mode: source.originalSupport ? "move" : "attach", sourceId: source.assetInstanceId, planHostId, dragPoint });
+		}, selectableSupports) : undefined;
 	const supportYaw = supportTarget && "relativeYawMilliDeg" in supportTarget ? supportTarget.relativeYawMilliDeg : 0;
 	const availableSupports = useMemo(() => {
 		if (!supportDraft || !roomInteriorEnabled || project?.schemaVersion !== 1) return [];
@@ -3157,7 +3173,9 @@ export function AppShell({
 		);
 	}, [controller, furnitureRemovalId, project, roomInteriorEnabled, selectableSupports, supportDecor, supportDraft, supportYaw]);
 	const planSupportLevels = supportDraft?.planHostId && viewMode === "plan"
-		? availableSupports.filter(option => option.host.assetInstanceId === supportDraft.planHostId) : [];
+		? supportDraft.dragPoint && supportDraft.sourceId && supportedDrag
+			? supportDragLevels(supportedDrag, supportDraft.sourceId, supportDraft.planHostId, supportDraft.dragPoint)
+			: availableSupports.filter(option => option.host.assetInstanceId === supportDraft.planHostId) : [];
 	const supportCommand = useMemo(() => supportDraft && supportTarget
 		? supportPlacementCommand(supportDraft, supportTarget, supportDecor) : undefined, [supportDraft, supportTarget, supportDecor]);
 	const supportAssessment = useMemo(() => supportCommand && roomInteriorEnabled && project?.schemaVersion === 1
@@ -4128,10 +4146,6 @@ export function AppShell({
 	};
 	const selectWallColor = async (finish: Extract<FinishDraft, { kind: "wall" }>["finish"]) => {
 		if (finishDraft?.kind !== "wall" || isWallColorSaving || isEditorReadOnly || isMutationBlocked) return;
-		if (finishDraft.finish?.presetId === finish?.presetId) {
-			closeFinishDraft();
-			return;
-		}
 		setDimensionError(undefined);
 		setIsWallColorSaving(true);
 		try {
@@ -5626,7 +5640,7 @@ export function AppShell({
 		if (result.kind === "rejected") showEditRejection(result.reasonCode);
 	};
 	const chooseSupportOption = (option: SupportOption) => {
-		const anchor = availableSupports.find(candidate => candidate.host.assetInstanceId === option.host.assetInstanceId
+		const anchor = (supportDraft?.dragPoint ? planSupportLevels : availableSupports).find(candidate => candidate.host.assetInstanceId === option.host.assetInstanceId
 			&& candidate.surface.key === option.surface.key)?.anchor;
 		if (anchor) chooseSupportTarget(anchor);
 	};
@@ -5634,15 +5648,16 @@ export function AppShell({
 		const options = availableSupports.filter(option => option.host.assetInstanceId === hostId);
 		const option = options[0];
 		if (!option || !supportDraft) return;
+		const { dragPoint: _, ...draft } = supportDraft;
 		setSupportMessage(undefined);
 		if (options.length > 1) {
-			setSupportDraft({ ...supportDraft, planHostId: hostId, target: undefined });
+			setSupportDraft({ ...draft, planHostId: hostId, target: undefined });
 			return;
 		}
 		const position = supportAddressAt(option, supportYaw, point);
 		const command = point && supportPlacementCommand(supportDraft, position, supportDecor);
 		setSupportDraft({
-			...supportDraft,
+			...draft,
 			planHostId: undefined,
 			target: command && controller.previewInteriorCommand(command).kind === "accepted" ? position : option.anchor,
 		});
@@ -7925,7 +7940,7 @@ export function AppShell({
 						if (result.kind === "rejected") showEditRejection(result.reasonCode);
 					}}>{copy("Назначить встроенный шаблон", "Use built-in template")}</button>
 			) : null}
-			{roomInteriorEnabled && selectedFloorPresetId && isSupportedDecorPreset(selectedFloorPresetId) ? (
+			{roomInteriorEnabled && selectedItem.anchorClass === "floor" && floorDecorPresetFor(selectedItem) ? (
 				<button type="button" disabled={isEditorReadOnly || isMutationBlocked || selectedItemLocked}
 					onClick={() => openSupportEdit("attach", selectedItem.assetInstanceId)}>{copy("Переставить", "Move decor")}</button>
 			) : null}
@@ -8250,25 +8265,13 @@ export function AppShell({
 				{!isStarterContourVisible ? storagePressureNotice : null}
 
 				{hostNavigation && viewMode === "three-dimensional" && !isItemPlacementActive && !supportDraft &&
-					!selectionBehindSheet && !isSelectionInspectorExpanded && !finishDraft && !selectedOpening &&
-					(selectedItem || selectedWall || selectedSceneRoom) ? (
-					<div className={styles.tmaSceneSelectionActions}>
-						{selectedItem ? <>
-							<button ref={floorPropertiesTriggerRef} className={styles.tmaDuplicateAction} type="button"
-								onClick={openSelectionProperties}>{copy("Параметры", "Settings")}</button>
-							<button className={styles.tmaDuplicateAction} type="button"
-								disabled={isEditorReadOnly || isMutationBlocked} onClick={duplicateSelectedItem}>
-								{copy("Дублировать", "Duplicate")}
-							</button>
-						</> : selectedWall ? <>
-							{wallPaintSide && !sceneWallItem ? <button className={styles.tmaDuplicateAction} type="button" ref={finishTriggerRef}
-								disabled={isEditorReadOnly || isMutationBlocked} onClick={openWallColor}>{copy("Цвет стены", "Wall color")}</button> : null}
-							<button ref={selectionPropertiesTriggerRef} className={styles.tmaDuplicateAction} type="button"
-								onClick={openSelectionProperties}>{sceneWallItem ? copy("Параметры", "Settings") : copy("Свойства стены", "Wall properties")}</button>
-						</> : selectedSceneRoom ?
-							<button ref={sceneRoomPropertiesRef} className={styles.tmaDuplicateAction} type="button"
-								onClick={() => openRoomDirectory(selectedSceneRoom.roomId)}>{copy("Помещение", "Room")}</button> : null}
-					</div>
+					!selectionBehindSheet && !isSelectionInspectorExpanded && !finishDraft && !selectedOpening ? (
+					selectedItem ? <SceneSelectionActions action={{ kind: "item", duplicate: duplicateSelectedItem, readOnly: isEditorReadOnly || isMutationBlocked }}
+						triggerRef={floorPropertiesTriggerRef} open={openSelectionProperties} />
+					: selectedWall ? <SceneSelectionActions action={{ kind: "wall", wallItem: !!sceneWallItem }}
+						triggerRef={selectionPropertiesTriggerRef} open={openSelectionProperties} />
+					: selectedSceneRoom ? <SceneSelectionActions action={{ kind: "room" }}
+						triggerRef={sceneRoomPropertiesRef} open={() => openRoomDirectory(selectedSceneRoom.roomId)} /> : null
 				) : null}
 				{viewMode === "three-dimensional" && threeDimensionalScene ? (
 					<RoomScene3d
@@ -8317,6 +8320,7 @@ export function AppShell({
 						}}
 						customGlbResourceStates={customGlbResourceStates}
 						canTransformSelectedItem={!selectedItemLocked && !supportDraft && !selectedSupportedItem}
+						supportDrag={!supportDraft && supportedDrag && threeDimensionalOrigin ? { ...supportedDrag, origin: threeDimensionalOrigin } : undefined}
 						copyingHostId={furnitureCopyId}
 						supportInteraction={supportDraft && threeDimensionalOrigin ? {
 							options: availableSupports, selected: supportChoice, origin: threeDimensionalOrigin,
@@ -8440,8 +8444,9 @@ export function AppShell({
 						isWallVertexMoveMode={isWallVertexMoveMode}
 						movableWallVertexIds={movableSelectedWallVertexIds}
 						openingCreationPreview={openingCreationPreview}
-						{...(finishDraft ? { finishPreview: finishDraft } : {})}
+						{...(finishDraft?.kind === "floor" ? { finishPreview: finishDraft } : {})}
 						supportPreview={supportChoice}
+						supportDrag={!supportDraft ? supportedDrag : undefined}
 						supportPlanTargets={supportDraft ? {
 							options: availableSupports, onPick: choosePlanSupport,
 							selectedHostId: supportDraft.planHostId ?? supportChoice?.host.assetInstanceId,
@@ -10353,11 +10358,10 @@ export function AppShell({
 						)}
 
 						{wallPaintSide && !sceneWallItem ? (
-							<button type="button" ref={finishTriggerRef} aria-haspopup="dialog"
+							<WallColorButton triggerRef={finishTriggerRef}
+								finish={"sideFinishes" in selectedWall ? selectedWall.sideFinishes?.[wallPaintSide] : undefined}
 								disabled={isEditorReadOnly || isMutationBlocked}
-								onClick={openWallColor}>
-								{copy("Цвет стены", "Wall color")}
-							</button>
+								onClick={openWallColor} />
 						) : null}
 						{!sceneWallItem && "profile" in selectedWall && selectedWall.profile !== undefined ? (
 							<p className={styles.openingRow}>

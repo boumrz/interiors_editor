@@ -1,7 +1,12 @@
-import type { SurfaceFinish, WallSegment } from "./project";
+import type { CustomWallFinish, SurfaceFinish, WallSegment } from "./project";
 
-export function sameSurfaceFinish(left: SurfaceFinish | undefined, right: SurfaceFinish | undefined): boolean {
-	return left?.presetId === right?.presetId && left?.version === right?.version;
+export function sameSurfaceFinish(
+	left: SurfaceFinish | CustomWallFinish | undefined,
+	right: SurfaceFinish | CustomWallFinish | undefined,
+): boolean {
+	if (left?.version === 2) return right?.version === 2 && left.color === right.color;
+	if (right?.version === 2) return false;
+	return left?.version === right?.version && left?.presetId === right?.presetId;
 }
 
 export function wallSurfaceMetadata(

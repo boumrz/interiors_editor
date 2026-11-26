@@ -50,13 +50,14 @@ export async function verifyTelegramReadonlyCurrentSnapshot(
  databaseVersion = 4,
 ): Promise<VerifiedTelegramReadonlyProject | undefined> {
  try {
-  const extended = databaseVersion === 5 || databaseVersion === 6;
+  const extended = databaseVersion === 5 || databaseVersion === 6 || databaseVersion === 7;
   const validate = extended ? validateTelegramRuntimeV1Project : validateRuntimeV1Project;
   const { scope, projectId, pointer, revision, creation } = input;
   if (!record(pointer) || Object.keys(pointer).length !== 4 || pointer.scope !== scope || pointer.projectId !== projectId || typeof pointer.currentRevisionId !== "string") return undefined;
   if (!record(revision) || Object.keys(revision).length !== 6 || !isV1Candidate(revision.candidate, extended)) return undefined;
   const candidate = revision.candidate;
-  if (projectUsesInteriorDetails(candidate.project) && databaseVersion !== 6) return undefined;
+  if (databaseVersion < 7 && candidate.project.interiorSchemaVersion === 2) return undefined;
+  if (databaseVersion < 6 && projectUsesInteriorDetails(candidate.project)) return undefined;
   if (revision.scope !== scope || revision.projectId !== projectId || revision.revisionId !== pointer.currentRevisionId || typeof revision.creationAttemptId !== "string" || candidate.project.projectId !== projectId || candidate.revision.projectId !== projectId || candidate.revision.revisionId !== pointer.currentRevisionId || pointer.name !== candidate.project.name) return undefined;
   // Bound the derived manifest through the existing closed grammar and policy before walking metadata arrays.
   if (encodeRegisteredRuntimeProject(candidate.project).kind !== "encoded" || validate(candidate.project).kind !== "accepted") return undefined;

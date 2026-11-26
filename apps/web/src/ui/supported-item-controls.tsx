@@ -12,6 +12,7 @@ export type SupportedEditDraft = {
 	readonly mode: "catalog" | "attach" | "move" | "copy" | "rehome";
 	readonly sourceId?: string;
 	readonly planHostId?: string;
+	readonly dragPoint?: import("./supported-drag").SupportDragPoint;
 	readonly target?: SupportTarget | undefined;
 };
 

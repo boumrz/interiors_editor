@@ -1,7 +1,7 @@
 import { expect, it } from "@rstest/core";
 import { applyInteriorCommand, projectInteriorView } from "./interior-project";
 import { createInitialProject } from "./initial-project";
-import { floorItemSupportConflict, resolveSupportedPlacements, supportSurfacesFor, validateSupportedItems } from "./interior-support";
+import { floorDecorPresetFor, floorItemSupportConflict, resolveSupportedPlacements, supportSurfacesFor, validateSupportedItems } from "./interior-support";
 import type { FloorSchematicAssetInstance, Project, SupportedSchematicAssetInstance } from "./project";
 import { configureRectangularRoom } from "./rectangular-room";
 
@@ -40,10 +40,73 @@ it("resolves the planter height and rotates its local offset with the nightstand
 it("rejects duplicate IDs, an unsupported chair or user GLB, impossible placement, and an unknown shelf", () => {
 	const { project, host, pot } = fixture();
 	expect(validateSupportedItems({ ...project, supportedItems: [pot, pot] })).toBe(false);
+	expect(validateSupportedItems({ ...project, assetInstances: [] })).toBe(false);
 	expect(validateSupportedItems({ ...project, assetInstances: [{ ...host, catalogPreset: { presetId: "chair", version: 1 } }] })).toBe(false);
 	expect(validateSupportedItems({ ...project, assetInstances: [{ ...host, assetDefinitionId: "custom" }] })).toBe(false);
 	expect(validateSupportedItems({ ...project, supportedItems: [{ ...pot, offsetXMm: 230 }] })).toBe(false);
 	expect(validateSupportedItems({ ...project, supportedItems: [{ ...pot, supportSurfaceKey: "shelf-99" }] })).toBe(false);
+});
+
+it("offers an existing catalog table and records its preset only when a guest is placed", () => {
+	const { project, host, pot } = fixture();
+	const { catalogPreset: _, ...legacy } = host;
+	const table: FloorSchematicAssetInstance = {
+		...legacy, label: "Стол", widthMm: 1200, depthMm: 700, heightMm: 750, locked: true,
+	};
+	const chair = { ...legacy, assetInstanceId: "chair", label: "Стул", xMm: 2600 };
+	const source = { ...project, assetInstances: [table, chair], supportedItems: undefined };
+	const place = (offsetXMm: number) => applyInteriorCommand(source, {
+		kind: "place-supported", item: { ...pot, offsetXMm },
+	}, { next: () => pot.assetInstanceId }, source.updatedAt);
+
+	expect(supportSurfacesFor(table)).toMatchObject([{ key: "top", heightMm: 750 }]);
+	expect(place(700)).toMatchObject({ kind: "rejected" });
+	expect(source.assetInstances[0]).not.toHaveProperty("catalogPreset");
+
+	const placed = place(40);
+	if (placed.kind !== "accepted") throw Error("Expected a placement on the existing table");
+	expect(placed.project.assetInstances).toEqual([{ ...table, catalogPreset: { presetId: "table", version: 1 } }, chair]);
+	expect(placed.project.supportedItems).toEqual([pot]);
+	expect(resolveSupportedPlacements(placed.project)[0]).toMatchObject({ bottomMm: 750, topMm: 1200 });
+	expect(validateSupportedItems({ ...placed.project, assetInstances: [table] })).toBe(false);
+});
+
+it("offers only known legacy shapes and never overrides a custom model or an explicit template", () => {
+	const { host } = fixture();
+	const { catalogPreset: _, ...legacy } = host;
+	const shelf = { ...legacy, label: "Стеллаж", widthMm: 800, depthMm: 350, heightMm: 1800 };
+	expect(supportSurfacesFor(shelf).map(surface => surface.key))
+		.toEqual(["shelf-1", "shelf-2", "shelf-3", "shelf-4", "shelf-5"]);
+	expect(supportSurfacesFor({ ...legacy, label: "Стул" })).toEqual([]);
+	expect(supportSurfacesFor({ ...legacy, label: "Случайный стол" })).toEqual([]);
+	expect(supportSurfacesFor({ ...shelf, assetDefinitionId: "custom" })).toEqual([]);
+	expect(supportSurfacesFor({ ...shelf, catalogPreset: { presetId: "chair", version: 1 } })).toEqual([]);
+});
+
+it("moves an existing catalog decor item from the floor onto existing furniture in one command", () => {
+	const { project, host, pot } = fixture();
+	const { catalogPreset: _, ...legacy } = host;
+	const floorPot: FloorSchematicAssetInstance = {
+		...legacy, assetInstanceId: pot.assetInstanceId, label: pot.label, color: pot.color,
+		widthMm: pot.widthMm, depthMm: pot.depthMm, heightMm: pot.heightMm, xMm: 3100,
+	};
+	const source = { ...project, assetInstances: [legacy, floorPot], supportedItems: undefined };
+	const place = (item: FloorSchematicAssetInstance) => applyInteriorCommand({ ...source, assetInstances: [legacy, item] }, {
+		kind: "place-supported", sourceAssetInstanceId: item.assetInstanceId, item: pot,
+	}, { next: () => "unexpected-copy" }, source.updatedAt);
+
+	expect(floorDecorPresetFor(floorPot)).toEqual(pot.catalogPreset);
+	expect(floorDecorPresetFor({ ...floorPot, label: "Стол" })).toBeUndefined();
+	const moved = place(floorPot);
+	if (moved.kind !== "accepted") throw Error("Expected the floor decor to move to the nightstand");
+	expect(moved.project.assetInstances).toEqual([host]);
+	expect(moved.project.supportedItems).toEqual([pot]);
+	for (const item of [
+		{ ...floorPot, locked: true as const },
+		{ ...floorPot, assetDefinitionId: "custom" },
+		{ ...floorPot, catalogPreset: { presetId: "table", version: 1 as const } },
+		{ ...floorPot, label: "Растение" },
+	]) expect(place(item)).toMatchObject({ kind: "rejected" });
 });
 
 it("gives separate vertical volumes to books with coincident footprints on the shelf", () => {
@@ -120,7 +183,7 @@ it("leaves the opposite wall finish untouched and removes the empty intervention
 		left: { presetId: "muted-green-paint", version: 1 }, right: { presetId: "neutral-wall-tile", version: 1 },
 	});
 	const right = command(both, { kind: "set-wall-finish", wallSegmentId, side: "left" });
-	expect(right.level.wallSegments[0]?.sideFinishes?.right?.presetId).toBe("neutral-wall-tile");
+	expect(right.level.wallSegments[0]?.sideFinishes?.right).toEqual({ presetId: "neutral-wall-tile", version: 1 });
 	const resetSides = command(right, { kind: "set-wall-finish", wallSegmentId, side: "right" });
 	const reset = command(resetSides, { kind: "set-floor-finish", roomId });
 	expect(reset.level.wallSegments[0]?.sideFinishes).toBeUndefined();

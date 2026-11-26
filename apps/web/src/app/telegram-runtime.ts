@@ -227,7 +227,8 @@ export function createTelegramRuntime(
 					const result = await decoder.decode(archive, signal);
 					if (result.kind !== "accepted") return result;
 					const format = result.projectMember?.format;
-					const requiredVersion = format === "runtime-v1-interior-details" ? 6
+					const requiredVersion = format === "runtime-v1-wall-colors" ? 7
+						: format === "runtime-v1-interior-details" ? 6
 						: format === "runtime-v1-room-layouts" ? 5
 						: format === "runtime-v1-door-hinge" ? 4
 						: format === "runtime-v1-floor-yaw" ? 3 : undefined;

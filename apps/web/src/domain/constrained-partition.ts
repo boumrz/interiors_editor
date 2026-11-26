@@ -86,7 +86,7 @@ export function addConstrainedPartition(
 	ids: IdSource,
 	updatedAt: string,
 ): AddConstrainedPartitionResult {
-	if (input.profile !== undefined || project.interiorSchemaVersion === 1 || project.roomLayouts?.length || project.supportedItems?.length ||
+	if (input.profile !== undefined || project.interiorSchemaVersion !== undefined || project.roomLayouts?.length || project.supportedItems?.length ||
 		project.level.rooms.some((room) => room.floorFinish !== undefined) ||
 		project.level.wallSegments.some((wall, _, walls) => wall.profile !== undefined || wall.sideFinishes !== undefined ||
 			wall.thicknessMm !== walls[0]?.thicknessMm)) {

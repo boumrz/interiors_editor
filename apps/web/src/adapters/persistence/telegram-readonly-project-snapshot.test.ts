@@ -2,6 +2,9 @@ import { completeReadonlyUnitOperation } from "../../../tests/verification/reado
 import { describe, expect, it } from "@rstest/core";
 import { createInitialProject } from "../../domain/initial-project";
 import { serializeProjectCanonically } from "../../domain/canonical-serialization";
+import { configureRectangularRoom } from "../../domain/rectangular-room";
+import { applyInteriorCommand } from "../../domain/interior-project";
+import type { Project } from "../../domain/project";
 import { verifiedReadonlyTestScope } from "../../../tests/fixtures/telegram-readonly-signed-launch";
 import {
  readUnverifiedTelegramSnapshot,
@@ -17,9 +20,9 @@ const checksum = { async sha256(text: string) {
  return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, "0")).join("");
 } };
 // Unit record fixture only; the separate native case uses the actual repository producer.
-async function snapshot() {
+async function snapshot(update: (project: Project) => Project = project => project) {
  const scope = await verifiedReadonlyTestScope(), projectId = "unit-project\ud800";
- const project = createInitialProject({ projectId, levelId: "level", name: "Readonly Project", createdAt: "2026-11-05T00:00:00.000Z" });
+ const project = update(createInitialProject({ projectId, levelId: "level", name: "Readonly Project", createdAt: "2026-11-05T00:00:00.000Z" }));
  const serializedProject = serializeProjectCanonically(project), digest = await checksum.sha256(serializedProject);
  const candidate = { project, revision: { schemaVersion: 1 as const, projectId, revisionId: "revision", createdAt: project.createdAt, serializedProject, checksum: digest } };
  const creationAttemptId = `tma-v1:${scope}:attempt:1`;
@@ -34,6 +37,25 @@ describe("readonly Telegram snapshot proof", () => {
   expect(result?.candidate).toBe(input.revision.candidate);
   expect(result?.candidate.project.projectId).toBe("unit-project\ud800");
   expect(serializeProjectCanonically(input.revision.candidate.project)).toBe(before);
+ });
+ it("proves the original custom wall receipt only in the storage version that owns its format", async () => {
+  const input = await snapshot(project => {
+   let next = 0;
+   const ids = { next: () => `room-element-${++next}` };
+   const room = configureRectangularRoom(project, { widthMm: "4000", depthMm: "3000", heightMm: "2500" }, ids, project.updatedAt);
+   if (room.kind !== "accepted") throw Error("Expected a closed room");
+   const wallSegmentId = room.project.level.wallSegments[0]?.wallSegmentId;
+   if (!wallSegmentId) throw Error("Expected a physical wall");
+   const colored = applyInteriorCommand(room.project, {
+    kind: "set-wall-finish", wallSegmentId, side: "left", finish: { color: "#1b2c3d", version: 2 },
+   }, ids, project.updatedAt);
+   if (colored.kind !== "accepted") throw Error("Expected a new wall color");
+   return colored.project;
+  });
+  expect(await verifyTelegramReadonlyCurrentSnapshot(input, checksum, 6)).toBeUndefined();
+  expect((await verifyTelegramReadonlyCurrentSnapshot(input, checksum, 7))?.candidate).toBe(input.revision.candidate);
+  const altered = { ...input, creation: { ...input.creation, serializedProject: input.creation.serializedProject.replace("#1b2c3d", "#abcdef") } };
+  expect(await verifyTelegramReadonlyCurrentSnapshot(altered, checksum, 7)).toBeUndefined();
  });
  it("requires the original published creation receipt rather than a prepared or internally mismatched record", async () => {
   const input = await snapshot();

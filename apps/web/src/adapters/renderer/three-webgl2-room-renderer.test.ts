@@ -12,6 +12,7 @@ import {
 } from "three";
 
 import type { SceneBox } from "./rectangular-room-projection";
+import { applyWallInteriorFinish } from "./interior-finishes";
 import { sceneStructureSelection } from "./scene-surface-highlights";
 import {
 	DARK_ROOM_SURFACE_COLORS,
@@ -30,6 +31,22 @@ import {
 	THREE_DIMENSIONAL_RUNTIME_CLAY,
 	threeDimensionalShadowFlagsFor,
 } from "./three-webgl2-room-renderer";
+
+it("passes the exact custom color to the shader on its assigned wall face", () => {
+	const material = new MeshStandardMaterial();
+	applyWallInteriorFinish(material, {
+		left: { color: "#2d7684", version: 2 },
+		right: { presetId: "neutral-wall-tile", version: 1 },
+		normalX: 0, normalZ: 1, anchorXM: 1, anchorZM: 2,
+	});
+	const shader = {
+		uniforms: {}, vertexShader: "#include <begin_vertex>", fragmentShader: "#include <color_fragment>",
+	} as Parameters<typeof material.onBeforeCompile>[0];
+	material.onBeforeCompile(shader, {} as Parameters<typeof material.onBeforeCompile>[1]);
+	expect(shader.uniforms.interiorLeftColor?.value.getHexString()).toBe("2d7684");
+	expect(shader.uniforms.interiorRightColor?.value.getHexString()).not.toBe("2d7684");
+	expect(shader.uniforms.interiorPatterns?.value.toArray()).toEqual([0, 2]);
+});
 
 it("glows only the selected mesh materials while preserving their base finish and glass depth behavior", () => {
 	const wall = new MeshStandardMaterial({ color: "#bec4c7" });

@@ -14,11 +14,11 @@ const scopedStores = {
 	library: "resourceHash",
 } as const;
 
-type TelegramScopeDatabaseVersion = 2 | 3 | 4 | 5 | 6;
+type TelegramScopeDatabaseVersion = 2 | 3 | 4 | 5 | 6 | 7;
 export type TelegramDoorHingeMode = "compatible" | "authoring";
 
 function admittedDatabaseVersion(version: number): TelegramScopeDatabaseVersion {
-	if (version === 2 || version === 3 || version === 4 || version === 5 || version === 6)
+	if (version === 2 || version === 3 || version === 4 || version === 5 || version === 6 || version === 7)
 		return version;
 	throw new Error("Unknown Telegram database version");
 }
@@ -239,10 +239,10 @@ export class TelegramScopeStore {
 
 	private async openAdmittedVersion(): Promise<IDBDatabase> {
 		const preferredVersion =
-			this.roomInteriorMode === "authoring" ? 6 : this.roomInteriorMode === "compatible" ? 2
+			this.roomInteriorMode === "authoring" ? 7 : this.roomInteriorMode === "compatible" ? 2
 			: this.doorHingeMode === "authoring" ? 4 : this.databaseMode === "exact" ? 3 : 2;
 		const backups: TelegramScopeDatabaseVersion[] = [];
-		if (this.roomInteriorMode === "compatible") backups.push(3, 4, 5, 6);
+		if (this.roomInteriorMode === "compatible") backups.push(3, 4, 5, 6, 7);
 		else {
 			if (preferredVersion === 2 && this.databaseMode === "compatible") backups.push(3);
 			if (this.doorHingeMode === "compatible") backups.push(4);
@@ -292,7 +292,7 @@ export class TelegramScopeStore {
 				once: true,
 			});
 			request.onupgradeneeded = (event) => {
-				if (failed || this.disposed || !allowUpgrade || event.oldVersion > 5) {
+				if (failed || this.disposed || !allowUpgrade || event.oldVersion > 6) {
 					request.transaction?.abort();
 					return;
 				}

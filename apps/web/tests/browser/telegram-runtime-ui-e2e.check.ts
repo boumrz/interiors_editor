@@ -472,34 +472,37 @@ test("TMA-UI-RESOURCE-02: opening a project retries one unreadable pinned blob",
 	expect(await rows(page, "a")).toEqual(before);
 });
 
-test("TMA-INTERIOR-IDB: upgrades an existing scope without rewriting its current revision", async ({ page }) => {
-	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+test("TMA-INTERIOR-IDB: upgrades v6 without rewriting its current revision and blocks the previous writer", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring"));
 	await createRoom(page, "Совместимая комната");
 	const before = await rows(page, "a");
 	const version = () => page.evaluate(() => window.__telegramRuntimeUi.databaseVersion("a"));
-	expect(await version()).toBe(3);
+	await page.evaluate(() => window.__telegramRuntimeUi.prepareExistingInteriorVersion("a", 6));
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible", "compatible"));
 	await open(page, "Совместимая комната");
-	expect(await version()).toBe(3);
+	expect(await version()).toBe(6);
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
 	await open(page, "Совместимая комната");
-	expect(await version()).toBe(6);
+	expect(await version()).toBe(7);
 	expect(await rows(page, "a")).toEqual(before);
+	expect(await page.evaluate(() => window.__telegramRuntimeUi.requestLegacyInteriorWriter("a"))).toBe("VersionError");
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible", "compatible"));
 	await open(page, "Совместимая комната");
-	expect(await version()).toBe(6);
+	expect(await version()).toBe(7);
 	expect(await rows(page, "a")).toEqual(before);
 });
 
-for (const version of [2, 3, 4, 5, 6]) {
+for (const version of [2, 3, 4, 5, 6, 7] as const) {
 	test(`TMA-INTERIOR-COMPAT: v${version} keeps supported editing without a storage upgrade`, async ({ page }) => {
 		const name = `Совместимое хранилище v${version}`;
 		await page.evaluate((version) => window.__telegramRuntimeUi.mountNavigable(
 			"a", true, version >= 3 ? "exact" : undefined,
-			version >= 4 ? "authoring" : undefined, version === 6 ? "authoring" : undefined,
+			version >= 4 ? "authoring" : undefined, version === 7 ? "authoring" : undefined,
 		), version);
 		await createRoom(page, name);
-		if (version === 5) await page.evaluate(() => window.__telegramRuntimeUi.prepareVersionFive("a"));
+		if (version === 5 || version === 6) await page.evaluate(
+			next => window.__telegramRuntimeUi.prepareExistingInteriorVersion("a", next), version,
+		);
 		const databaseVersion = () => page.evaluate(() => window.__telegramRuntimeUi.databaseVersion("a"));
 		expect(await databaseVersion()).toBe(version);
 		const before = await rows(page, "a");
@@ -542,7 +545,8 @@ for (const version of [2, 3, 4, 5, 6]) {
 	});
 }
 
-test("TMA-INTERIOR-TRANSFER: compatible export and clean v6 import preserve layout graphs and exact GLB", async ({ page, browser: engine, baseURL }) => {
+for (const customColor of [false, true]) {
+test(`TMA-INTERIOR-TRANSFER: compatible export and clean v7 import preserve layout graphs and exact GLB (${customColor ? "custom wall color" : "preset-only"})`, async ({ page, browser: engine, baseURL }) => {
 	const fixture = await page.evaluate(async () => {
 		const model = await window.__telegramRuntimeUi.prepareUpperCustom("a");
 		await window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring");
@@ -579,8 +583,12 @@ test("TMA-INTERIOR-TRANSFER: compatible export and clean v6 import preserve layo
 	await page.evaluate(id => window.__telegramRuntimeUi.authorInterior({
 		kind: "room-layout", command: { kind: "create-second", roomId: id },
 	}), roomId);
+	if (customColor) await page.evaluate(id => window.__telegramRuntimeUi.authorInterior({
+		kind: "set-wall-finish", wallSegmentId: id, side: "left", finish: { color: "#1b2c3d", version: 2 },
+	}), wallId);
 	await saved(page);
 	const source = await currentProject(page);
+	expect(source.interiorSchemaVersion).toBe(customColor ? 2 : 1);
 	expect(source.supportedItems).toHaveLength(2);
 	expect(source.roomLayouts).toHaveLength(2);
 	expect(source.assetInstances.filter(item => item.anchorClass === "wall")).toEqual([
@@ -598,12 +606,14 @@ test("TMA-INTERIOR-TRANSFER: compatible export and clean v6 import preserve layo
 	const file = await page.evaluate(() => window.__telegramRuntimeUi.sharedFile(0));
 	const entries = unzipSync(Uint8Array.from(file.bytes));
 	expect(JSON.parse(new TextDecoder().decode(entries["manifest.json"]))).toMatchObject({
-		projectSchemaId: "interiors.project/runtime-v1-interior-details", projectSchemaVersion: 1,
+		projectSchemaId: customColor ? "interiors.project/runtime-v1-wall-colors" : "interiors.project/runtime-v1-interior-details",
+		projectSchemaVersion: 1,
 	});
 	expect(entries[`custom/${fixture.actualDigest}.glb`]).toEqual(Uint8Array.from(fixture.sourceBytes));
 
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "exact", "authoring"));
 	await expect(page.getByRole("button", { name: "Новый проект", exact: true })).toBeVisible();
+	if (customColor) await page.evaluate(() => window.__telegramRuntimeUi.prepareExistingInteriorVersion("b", 6));
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("b", true, "exact", "compatible", "compatible"));
 	await expect(page.getByLabel("Импортировать проект", { exact: true })).toBeAttached();
 	const targetBefore = await rows(page, "b");
@@ -647,6 +657,7 @@ test("TMA-INTERIOR-TRANSFER: compatible export and clean v6 import preserve layo
 	}
 	expect(await rows(page, "a")).toEqual(sourceRows);
 });
+}
 
 test("TMA-EXACT-YAW: exact 2D placement restores in 3D and in the compatible runtime", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
@@ -3102,13 +3113,18 @@ test("TMA-INTERIOR-SCENE-EDIT: choose and edit a window, door, wall, and room wi
 		y: colorWall.centerYM,
 		z: colorWall.centerZM - exteriorNormal.z * distance,
 	});
-	await page.getByRole("button", { name: "Цвет стены", exact: true }).click();
+	await expect(page.getByRole("button", { name: "Цвет стены", exact: true })).toHaveCount(0);
+	await page.getByRole("button", { name: "Свойства стены", exact: true }).click();
+	const wallProperties = page.getByTestId("selected-wall-inspector");
+	await expect(wallProperties.getByRole("button", { name: "Удалить стену", exact: true })).toBeVisible();
+	await wallProperties.getByRole("button", { name: "Цвет стены", exact: true }).click();
 	const palette = page.getByRole("dialog", { name: "Цвет стены" });
 	await palette.getByRole("button", { name: "Песочный", exact: true }).click();
 	await expect(palette).toHaveCount(0);
 	await saved(page);
 	expect((await currentProject(page)).level.wallSegments.find(wall => wall.wallSegmentId === windowOpening.wallSegmentId)?.sideFinishes)
 		.toEqual({ left: { presetId: "sand-paint", version: 1 } });
+	await wallProperties.getByRole("button", { name: "Закрыть свойства стены", exact: true }).click();
 	await clickWorld({ x: 2.1, y: 0, z: 1.55 });
 	await page.getByRole("button", { name: "Помещение", exact: true }).click();
 	const room = page.getByTestId("room-directory-sheet");
@@ -3217,7 +3233,7 @@ for (const [scheme, procedural] of [["light", false], ["dark", true]] as const) 
 		await expect.poll(() => contrastAt(doorContact)).toBeGreaterThan(doorBase + 4);
 		expect(await contrastAt(windowContact)).toBeCloseTo(windowBase, 0);
 		await tap(wallContact);
-		await expect(page.getByRole("button", { name: "Цвет стены", exact: true })).toBeVisible();
+		await expect(page.getByRole("button", { name: "Свойства стены", exact: true })).toBeVisible();
 		await expect.poll(() => contrastAt(wallContact)).toBeGreaterThan(wallBase + 4);
 		expect(await contrastAt(doorContact)).toBeCloseTo(doorBase, 0);
 		expect(await currentProject(page)).toEqual(source);
@@ -3678,6 +3694,71 @@ test("TMA-INTERIOR-SUPPORT: place a planter from the catalog on a bedside table"
 	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
 });
 
+test("TMA-INTERIOR-LEGACY-SUPPORT: a book attaches to a pre-existing table in 3D", async ({ page }) => {
+	const name = "Книга на старом столе";
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible", "compatible"));
+	await createRoom(page, name);
+	await openEditorCatalog(page);
+	await page.locator('[data-greybox-preset="table"]').click();
+	await clickRectangularRoomPoint(page, { x: 0.48, y: 0.58 });
+	await page.getByRole("button", { name: "Подтвердить размещение предмета", exact: true }).click();
+	await saved(page);
+	const legacy = (await currentProject(page)).assetInstances[0];
+	if (!legacy) throw new Error("Expected a table saved by the old catalog");
+	expect(legacy.label).toBe("Стол");
+	expect(legacy).not.toHaveProperty("catalogPreset");
+
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await open(page, name);
+	const before = await rows(page, "a");
+	const placement = page.getByTestId("interior-supported-placement");
+	const chooseBook = async () => {
+		await openEditorCatalog(page);
+		await page.locator('[data-greybox-preset="book"]').click();
+		await expect(placement).toBeVisible();
+	};
+	await chooseBook();
+	await page.getByRole("button", { name: "Опора Стол", exact: true }).tap();
+	await expect(page.getByTestId("interior-support-plan-preview")).toBeVisible();
+	await placement.getByRole("button", { name: "Отменить", exact: true }).tap();
+	expect(await rows(page, "a")).toEqual(before);
+
+	await page.getByRole("button", { name: "3D", exact: true }).tap();
+	await chooseBook();
+	const { scene, camera, bounds } = await currentSceneProjection(page);
+	const table = scene.items.find(item => item.assetInstanceId === legacy.assetInstanceId);
+	if (!table) throw new Error("Expected to see the old table in 3D");
+	const tabletop = table.centerYM + table.heightM / 2;
+	const contact = sceneContact(canvasPointForSceneItem(scene, camera, bounds, { ...table, centerYM: tabletop }), bounds);
+	await page.touchscreen.tap(contact.x, contact.y);
+	await expect(placement.getByRole("status")).toContainText("Стол · Верх");
+	await expect(page.getByTestId("interior-support-3d-preview")).toBeVisible();
+	await placement.getByRole("button", { name: "Подтвердить", exact: true }).tap();
+	await saved(page);
+	const durable = await currentProject(page);
+	expect(durable.assetInstances).toEqual([{ ...legacy, catalogPreset: { presetId: "table", version: 1 } }]);
+	expect(durable.supportedItems).toMatchObject([{
+		catalogPreset: { presetId: "book", version: 1 }, anchorClass: "support",
+		supportAssetInstanceId: legacy.assetInstanceId, supportSurfaceKey: "top",
+	}]);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.revisions.length + 1);
+
+	await page.reload();
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await open(page, name);
+	expect(await currentProject(page)).toEqual(durable);
+	await page.getByRole("button", { name: "3D", exact: true }).tap();
+	const reloaded = await currentSceneProjection(page);
+	const book = reloaded.scene.items.find(item => item.assetInstanceId === durable.supportedItems?.[0]?.assetInstanceId);
+	if (!book) throw new Error("Expected a projected book above the table after reopening");
+	expect(book.material?.furnitureKind).toBe("catalog:book");
+	expect(book.centerYM - book.heightM / 2).toBeCloseTo(tabletop);
+	const bookTop = { ...book, centerYM: book.centerYM + book.heightM / 2 };
+	const bookContact = sceneContact(canvasPointForSceneItem(reloaded.scene, reloaded.camera, reloaded.bounds, bookTop), reloaded.bounds);
+	await page.touchscreen.tap(bookContact.x, bookContact.y);
+	await expect(page.getByRole("region", { name: "Параметры декора", exact: true })).toContainText("Книга");
+});
+
 for (const width of [320, 620]) {
 	test(`TMA-INTERIOR-OPENING-UI: save a sliding door and a single-section window at ${width}px`, async ({ page }) => {
 		await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
@@ -3888,6 +3969,77 @@ test("TMA-INTERIOR-PLAN-SHELF: tapping a layered host opens only its own levels"
 		.toMatchObject({ supportAssetInstanceId: shelf.assetInstanceId, supportSurfaceKey: "shelf-2" });
 });
 
+test("TMA-INTERIOR-DRAG: an existing book snaps to furniture in 2D and 3D", async ({ page }) => {
+	test.setTimeout(45_000);
+	const name = "Перетаскивание декора";
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await createRoom(page, name);
+	for (const [presetId, x, y] of [["table", 0.28, 0.42], ["bedside-table", 0.73, 0.42], ["book", 0.5, 0.65]] as const) {
+		await openEditorCatalog(page);
+		await page.locator(`[data-greybox-preset="${presetId}"]`).tap();
+		await clickRectangularRoomPoint(page, { x, y });
+		await page.getByRole("button", { name: presetId === "book" ? "Подтвердить" : "Подтвердить размещение предмета", exact: true }).tap();
+		await saved(page);
+	}
+	const original = await currentProject(page);
+	const table = original.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "table");
+	const stand = original.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "bedside-table");
+	const book = original.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "book");
+	if (!table || !stand || !book) throw new Error("Expected two surfaces and an existing floor book");
+	const before = (await rows(page, "a")).revisions;
+	const centerOf = async (id: string) => {
+		const bounds = await page.locator(`[data-item-id="${id}"]`).getByTestId("schematic-item").boundingBox();
+		if (!bounds) throw new Error(`Expected a plan item for ${id}`);
+		return { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+	};
+	const from = await centerOf(book.assetInstanceId);
+	const to = await centerOf(table.assetInstanceId);
+	const touch = await page.context().newCDPSession(page);
+	try {
+		await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [from] });
+		await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [to] });
+		await touch.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+	} finally {
+		await touch.detach();
+	}
+	expect(await currentProject(page)).toEqual(original);
+	await page.mouse.move(from.x, from.y);
+	await page.mouse.down();
+	await page.mouse.move(to.x, to.y, { steps: 6 });
+	await page.mouse.up();
+	await expect.poll(async () => (await currentProject(page)).supportedItems).toMatchObject([{
+		assetInstanceId: book.assetInstanceId, supportAssetInstanceId: table.assetInstanceId, supportSurfaceKey: "top",
+	}]);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.length + 1);
+
+	await page.reload();
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await open(page, name);
+	await page.getByRole("button", { name: "3D", exact: true }).tap();
+	const sceneContactFor = async (assetInstanceId: string, top: boolean) => {
+		const { scene, camera, bounds } = await currentSceneProjection(page);
+		const item = scene.items.find(candidate => candidate.assetInstanceId === assetInstanceId);
+		if (!item) throw new Error(`Expected a visible 3D item for ${assetInstanceId}`);
+		return sceneContact(canvasPointForSceneItem(scene, camera, bounds, {
+			...item, centerYM: item.centerYM + (top ? item.heightM / 2 : 0),
+		}), bounds);
+	};
+	const bookContact = await sceneContactFor(book.assetInstanceId, false);
+	const standContact = await sceneContactFor(stand.assetInstanceId, true);
+	const drag3d = await page.context().newCDPSession(page);
+	try {
+		await drag3d.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [bookContact] });
+		await drag3d.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [standContact] });
+		await drag3d.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+	} finally {
+		await drag3d.detach();
+	}
+	await expect.poll(async () => (await currentProject(page)).supportedItems).toMatchObject([{
+		assetInstanceId: book.assetInstanceId, supportAssetInstanceId: stand.assetInstanceId, supportSurfaceKey: "top",
+	}]);
+	expect((await rows(page, "a")).revisions).toHaveLength(before.length + 2);
+});
+
 test("TMA-INTERIOR-PLAN-UNIFIED: catalog decor can choose furniture or open floor in one draft", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
 	await page.evaluate(() => window.__telegramRuntimeUi.createRoomInteriorDemo());
@@ -4082,7 +4234,7 @@ test("TMA-EDITOR-QUIET-HEADER: saved and draft status is accessible without usin
 });
 
 test("TMA-INTERIOR-WALL-PALETTE: keyboard focus stays visible around desktop color swatches", async ({ page, browserName }, info) => {
-	await page.setViewportSize({ width: 422, height: 650 });
+	await page.setViewportSize({ width: 422, height: 470 });
 	await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
 	await page.evaluate(async () => {
 		window.__telegramRuntimeUi.setAppearance("ru", "light");
@@ -4098,7 +4250,8 @@ test("TMA-INTERIOR-WALL-PALETTE: keyboard focus stays visible around desktop col
 	await expect(palette).toHaveCount(0);
 	await trigger.click();
 	const swatches = palette.locator("button[aria-pressed]");
-	await expect(swatches).toHaveCount(4);
+	await expect(swatches).toHaveCount(8);
+	await expect(palette).not.toContainText(/По умолчанию|Тёплый белый|Песочный|Зелёный/);
 	await palette.getByRole("button", { name: "Закрыть палитру", exact: true }).focus();
 	for (const swatch of await swatches.all()) {
 		await page.keyboard.press(browserName === "webkit" ? "Alt+Tab" : "Tab");
@@ -4123,15 +4276,14 @@ test("TMA-INTERIOR-WALL-PALETTE: keyboard focus stays visible around desktop col
 		});
 		expect(focus).toEqual({ visible: true, clippedBy: [] });
 	}
-	await page.keyboard.press(browserName === "webkit" ? "Alt+Shift+Tab" : "Shift+Tab");
-	await expect(palette.getByRole("button", { name: "Песочный", pressed: true, exact: true })).toBeFocused();
+	await expect(palette.getByRole("button", { name: "Песочный", pressed: true, exact: true })).toBeVisible();
 	await page.screenshot({ path: info.outputPath("wall-palette-desktop-keyboard.png") });
 	await page.keyboard.press("Escape");
 	await expect(palette).toHaveCount(0);
 	await expect(trigger).toBeFocused();
 });
 
-test("TMA-WALL-COLOR-NATIVE: the wall palette uses a padded native sheet and writes one revision per changed swatch", async ({ page }, info) => {
+test("TMA-INTERIOR-WALL-COLOR-NATIVE: the wall palette uses a padded native sheet and writes one revision per changed swatch", async ({ page }, info) => {
 	await page.setViewportSize({ width: 320, height: 700 });
 	await page.evaluate(async () => {
 		document.documentElement.style.fontSize = "150%";
@@ -4148,7 +4300,7 @@ test("TMA-WALL-COLOR-NATIVE: the wall palette uses a padded native sheet and wri
 	await trigger.click();
 	await expect(palette).toBeVisible();
 	expect(await palette.evaluate(element => element instanceof HTMLDialogElement && element.open)).toBe(true);
-	await expect(palette.getByRole("button")).toHaveCount(5);
+	await expect(palette.locator('button[aria-pressed="false"]')).toHaveCount(7);
 	const defaultSwatch = palette.getByRole("button", { name: "По умолчанию", exact: true });
 	const green = palette.getByRole("button", { name: "Зелёный", exact: true });
 	const sand = palette.getByRole("button", { name: "Песочный", exact: true });
@@ -4204,4 +4356,43 @@ test("TMA-WALL-COLOR-NATIVE: the wall palette uses a padded native sheet and wri
 	await recovery.getByRole("button", { name: "Повторить сохранение", exact: true }).click();
 	await saved(page);
 	expect((await rows(page, "a")).revisions).toHaveLength(painted.revisions.length + 1);
+});
+
+test("TMA-INTERIOR-WALL-CUSTOM-COLOR: apply a custom HEX from the mobile palette and reopen it", async ({ page }, info) => {
+	await page.setViewportSize({ width: 320, height: 600 });
+	await page.evaluate(async () => {
+		document.documentElement.style.fontSize = "150%";
+		window.__telegramRuntimeUi.setAppearance("ru", "dark");
+		await window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring");
+	});
+	await createRoom(page, "Свой цвет стены");
+	await page.getByTestId("wall-segment").first().click();
+	await page.getByRole("button", { name: "Свойства", exact: true }).click();
+	const trigger = page.getByTestId("selected-wall-inspector").getByRole("button", { name: "Цвет стены", exact: true });
+	const palette = page.getByRole("dialog", { name: "Цвет стены", exact: true });
+	await trigger.tap();
+	const hex = palette.getByRole("textbox", { name: "Код цвета HEX" });
+	const apply = palette.getByRole("button", { name: "Применить свой цвет", exact: true });
+	await hex.fill("#B00");
+	await expect(apply).toBeDisabled();
+	await hex.fill("#2D7684");
+	await expect(apply).toBeEnabled();
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(palette).toHaveCount(0);
+	expect((await currentProject(page)).level.wallSegments.every(wall => wall.sideFinishes === undefined)).toBe(true);
+	await trigger.tap();
+	await hex.fill("#2D7684");
+	await expect.poll(() => palette.evaluate(element => element.getAnimations().every(animation => animation.playState !== "running"))).toBe(true);
+	await expect(hex).toBeInViewport({ ratio: 1 });
+	await expect(apply).toBeInViewport({ ratio: 1 });
+	await page.screenshot({ path: info.outputPath("custom-wall-color-dark-320.png") });
+	await apply.tap();
+	await expect(palette).toHaveCount(0);
+	await saved(page);
+	const finishes = (await currentProject(page)).level.wallSegments.flatMap(wall => Object.values(wall.sideFinishes ?? {}));
+	expect(finishes).toEqual([{ color: "#2d7684", version: 2 }]);
+	await expect(page.getByTestId("plan-wall-finish")).toHaveCSS("stroke", "rgb(45, 118, 132)");
+	await trigger.tap();
+	await expect(hex).toHaveValue("#2d7684");
+	await expect(apply).toBeDisabled();
 });

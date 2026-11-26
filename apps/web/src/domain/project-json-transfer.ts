@@ -1,5 +1,6 @@
 import { serializeProjectCanonically } from "./canonical-serialization";
-import { floorCatalogPresetIds, floorFinishIds, projectUsesInteriorDetails, supportedPresetIds, wallFinishIds } from "./interior-project-format";
+import { floorCatalogPresetIds, floorFinishIds, interiorSchemaVersionFor, supportedPresetIds } from "./interior-project-format";
+import { isWallFinish } from "./interior-materials";
 import { alphaParametricItemColorVariantFor } from "./item-color-variant";
 import { parsePpjA1JsonBytes } from "./ppj-a1-lossless-json";
 import type { Project, RoomType, RotationStep } from "./project";
@@ -165,7 +166,7 @@ function isProjectShape(value: unknown, telegram: boolean): value is Project {
 	const supports = Object.hasOwn(project, "supportedItems");
 	if (
 		project.schemaVersion !== 1 ||
-		(interiorMarker && project.interiorSchemaVersion !== 1) ||
+		(interiorMarker && project.interiorSchemaVersion !== 1 && project.interiorSchemaVersion !== 2) ||
 		(layouts && (!Array.isArray(project.roomLayouts) || project.roomLayouts.length < 1 || project.roomLayouts.length > MAXIMUM_ROOMS * 2 ||
 			!project.roomLayouts.every(isRoomLayout))) ||
 		(supports && (!Array.isArray(project.supportedItems) || project.supportedItems.length < 1 ||
@@ -214,7 +215,8 @@ function isProjectShape(value: unknown, telegram: boolean): value is Project {
 	// The structural checks above cover every key. Membership is shared with the domain.
 	const typed = value as unknown as Project;
 	if (layouts && validateRoomLayouts(typed).kind !== "accepted") return false;
-	return !interiorMarker || projectUsesInteriorDetails(typed);
+	const version = interiorSchemaVersionFor(typed);
+	return interiorMarker ? project.interiorSchemaVersion === version : version !== 2;
 }
 
 function isLevel(value: unknown, interior: boolean): value is Project["level"] {
@@ -503,7 +505,7 @@ function isVersionedPreset(value: unknown, ids: readonly string[]): boolean {
 function isSideFinishes(value: unknown): boolean {
 	if (!hasExactKeys(value, [], ["left", "right"])) return false;
 	const sides = Object.values(value as Record<string, unknown>);
-	return sides.length > 0 && sides.every(finish => isVersionedPreset(finish, wallFinishIds));
+	return sides.length > 0 && sides.every(isWallFinish);
 }
 
 function isRoomLayout(value: unknown): boolean {

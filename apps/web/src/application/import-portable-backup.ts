@@ -491,12 +491,12 @@ function decodeCanonicalProject(bytes: Uint8Array): Project | undefined {
 
 /** Wire wrappers carry values that a raw JSON.parse cannot preserve. */
 function decodeRegisteredProjectMember(member: { readonly format: string; readonly project: unknown }): Project | undefined {
-	if (member.format === "runtime-v1-interior-details" || member.format === "runtime-v1-room-layouts") {
+	if (member.format === "runtime-v1-wall-colors" || member.format === "runtime-v1-interior-details" || member.format === "runtime-v1-room-layouts") {
 		try {
 			const project = member.project;
 			if (!isStructurallyValidTelegramProject(project)) return undefined;
-			if (member.format === "runtime-v1-interior-details" ? project.interiorSchemaVersion !== 1
-				: project.interiorSchemaVersion !== undefined || !project.roomLayouts?.length) return undefined;
+			const expected = member.format === "runtime-v1-wall-colors" ? 2 : member.format === "runtime-v1-interior-details" ? 1 : undefined;
+			if (project.interiorSchemaVersion !== expected || (expected === undefined && !project.roomLayouts?.length)) return undefined;
 			return copyProject(project);
 		} catch { return undefined; }
 	}

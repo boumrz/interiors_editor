@@ -1,4 +1,5 @@
 import { supportSurfacePlanVertices, type SupportOption } from "./supported-item-controls";
+import type { SupportedDrag, SupportDragDestination, SupportDragPoint, SupportDragSource } from "./supported-drag";
 import { createEditorInteractionGate, type EditorContactEpoch, type RegisterEditorTransientBoundary } from "./editor-host-boundary";
 import {
 	type PointerEvent as ReactPointerEvent,
@@ -97,7 +98,22 @@ type SupportInteraction = {
 	readonly onPick: (option?: SupportOption, point?: ThreeDimensionalFloorPoint, unsupportedItemId?: string) => void;
 };
 
+function sceneSupportSurfaces(options: readonly SupportOption[], origin: SupportDragPoint) {
+	return options.map(option => ({
+		option,
+		hostId: option.host.assetInstanceId,
+		heightM: option.surface.heightMm / 1000,
+		outline: supportSurfacePlanVertices(option).map(position => ({
+			xM: (position.xMm - origin.xMm) / 1000,
+			zM: (position.zMm - origin.zMm) / 1000,
+		})),
+	}));
+}
+
+type DragSupportSurfaces = ReturnType<typeof sceneSupportSurfaces>;
+
 interface RoomScene3dProps {
+	readonly supportDrag?: (SupportedDrag & { readonly origin: SupportDragPoint }) | undefined;
 	readonly supportInteraction?: SupportInteraction | undefined;
 	readonly copyingHostId?: string | undefined;
 	readonly onProductMetric?: ProductMetricSink | undefined;
@@ -309,6 +325,7 @@ export function RoomScene3d({
 	readOnly = false,
 	canTransformSelectedItem = true,
 	supportInteraction,
+	supportDrag,
 	copyingHostId,
 	itemPlacementDraft,
 	itemPlacementControls,
@@ -428,6 +445,9 @@ export function RoomScene3d({
 				readonly kind: "move-item";
 				readonly moved: boolean;
 				readonly pointerId: number;
+				readonly pointerOrigin: Point;
+				readonly supportSource?: SupportDragSource | undefined;
+				readonly supportSurfaces?: DragSupportSurfaces | undefined;
 		  }
 		| { readonly kind: "place-item"; readonly pointerId: number }
 		| undefined
@@ -471,25 +491,6 @@ export function RoomScene3d({
 	const supportZoomMinimum = supportInteraction
 		? 0.65 / Math.max(1, scene.cameraBounds.widthM, scene.cameraBounds.depthM)
 		: undefined;
-	const supportOptions = supportInteraction?.options;
-	const supportOrigin = supportInteraction?.origin;
-	const selectedSupport = supportInteraction?.selected;
-	const highlightFloor = supportInteraction?.onFloorPick ? true : undefined;
-	const supportSurfaces = useMemo(() => supportOptions && supportOrigin ? supportOptions.map(option => ({
-		option,
-		hostId: option.host.assetInstanceId,
-		heightM: option.surface.heightMm / 1000,
-		outline: supportSurfacePlanVertices(option).map(position => ({
-			xM: (position.xMm - supportOrigin.xMm) / 1000,
-			zM: (position.zMm - supportOrigin.zMm) / 1000,
-		})),
-	})) : [], [supportOptions, supportOrigin]);
-	const shelfHostIds = useMemo(() => new Set(supportSurfaces.filter(surface => surface.option.surface.key !== "top")
-		.map(surface => surface.hostId)), [supportSurfaces]);
-	const supportHighlights = useMemo(() => supportSurfaces.map(surface => ({
-		...surface, selected: selectedSupport?.host.assetInstanceId === surface.hostId &&
-			selectedSupport.surface.key === surface.option.surface.key ? true as const : undefined,
-	})), [supportSurfaces, selectedSupport]);
 	const cameraRef = useRef(camera);
 	cameraRef.current = camera;
 	const [cutawayMode, setCutawayMode] = useState<"auto" | "show-all">("auto");
@@ -534,6 +535,9 @@ export function RoomScene3d({
 				readonly xM?: number;
 				readonly yawRadians?: number;
 				readonly zM?: number;
+				readonly bottomM?: number;
+				readonly supportSurfaces?: DragSupportSurfaces | undefined;
+				readonly supportOption?: SupportOption | undefined;
 		  }
 		| undefined
 	>(undefined);
@@ -547,9 +551,21 @@ export function RoomScene3d({
 				readonly xM?: number;
 				readonly yawRadians?: number;
 				readonly zM?: number;
+				readonly bottomM?: number;
 		  }
 		| undefined
 	>(undefined);
+	const selectedSupport = supportInteraction?.selected ?? itemPreview?.supportOption;
+	const highlightFloor = supportInteraction?.onFloorPick ? true : undefined;
+	const { options: supportOptions, origin: supportOrigin } = supportInteraction ?? {};
+	const placementSupportSurfaces = useMemo(() => supportOptions && supportOrigin ? sceneSupportSurfaces(supportOptions, supportOrigin) : [], [supportOptions, supportOrigin]);
+	const supportSurfaces = itemPreview?.supportSurfaces ?? placementSupportSurfaces;
+	const shelfHostIds = useMemo(() => new Set(supportSurfaces.filter(surface => surface.option.surface.key !== "top")
+		.map(surface => surface.hostId)), [supportSurfaces]);
+	const supportHighlights = useMemo(() => supportSurfaces.map(surface => ({
+		...surface, selected: selectedSupport?.host.assetInstanceId === surface.hostId &&
+			selectedSupport.surface.key === surface.option.surface.key ? true as const : undefined,
+	})), [supportSurfaces, selectedSupport]);
 	const [isConfirmingItemTransform, setIsConfirmingItemTransform] =
 		useState(false);
 	const hasTransientItemTransform = hasRawAngleDraft || hasUndurableThreeDimensionalItemTransform({
@@ -791,6 +807,7 @@ export function RoomScene3d({
 		const destination = source && visualItemPreview ? {
 			...source,
 			centerXM: visualItemPreview.xM ?? source.centerXM,
+			centerYM: visualItemPreview.bottomM === undefined ? source.centerYM : visualItemPreview.bottomM + source.heightM / 2,
 			centerZM: visualItemPreview.zM ?? source.centerZM,
 			yawRadians: visualItemPreview.yawRadians ?? source.yawRadians ?? 0,
 		} : undefined;
@@ -854,7 +871,8 @@ export function RoomScene3d({
 			durableItem &&
 			(submittedItemPreview.kind === "move"
 				? durableItem.centerXM === submittedItemPreview.xM &&
-					durableItem.centerZM === submittedItemPreview.zM
+					durableItem.centerZM === submittedItemPreview.zM &&
+					(submittedItemPreview.bottomM === undefined || Math.abs(durableItem.centerYM - durableItem.heightM / 2 - submittedItemPreview.bottomM) < 1e-7)
 				: durableItem.yawRadians === submittedItemPreview.yawRadians);
 		if (isConfirmed) {
 			setSubmittedItemPreview(undefined);
@@ -1327,12 +1345,12 @@ export function RoomScene3d({
 		readonly xM?: number;
 		readonly yawRadians?: number;
 		readonly zM?: number;
-	}) => {
+	}, destination?: SupportDragDestination) => {
 		if (readOnly || isConfirmingItemTransform) return;
 		const perform = async () => {
 		setIsConfirmingItemTransform(true);
 		try {
-			const accepted =
+			const accepted = destination && supportDrag ? await supportDrag.onDrop(destination.command) :
 				transform.kind === "move"
 					? await onMoveItem?.({
 							assetInstanceId: transform.assetInstanceId,
@@ -1343,7 +1361,7 @@ export function RoomScene3d({
 							assetInstanceId: transform.assetInstanceId,
 							yawRadians: transform.yawRadians ?? 0,
 						});
-			if (!accepted) setSubmittedItemPreview(undefined);
+			if (!accepted || destination) setSubmittedItemPreview(undefined);
 		} finally {
 			setIsConfirmingItemTransform(false);
 		}
@@ -1352,6 +1370,27 @@ export function RoomScene3d({
 		if (!hostGateRef.current.canBegin()) return;
 		return hostGateRef.current.run(perform);
 	};
+
+	const supportedDragDestination = (source: SupportDragSource, point: Point, surfaces: DragSupportSurfaces | undefined): SupportDragDestination | undefined => {
+		if (!supportDrag) return undefined;
+		const size = interactionCanvasSize();
+		if (size.width <= 0 || size.height <= 0 || point.x < 0 || point.y < 0 || point.x >= size.width || point.y >= size.height) return undefined;
+		const hit = controllerRef.current?.pickHit({ x: 2 * point.x / size.width - 1, y: 1 - 2 * point.y / size.height }, false, source.assetInstanceId);
+		const toPlan = (target: ThreeDimensionalFloorPoint) => ({
+			xMm: target.xM * 1000 + supportDrag.origin.xMm, zMm: target.zM * 1000 + supportDrag.origin.zMm,
+		});
+		const candidate = supportSurfaceAtCanvasPoint(scene, camera, size, point, surfaces ?? [], hit);
+		if (candidate) return supportDrag.onSurface(source, candidate.surface.option, toPlan(candidate.point));
+		const hitRug = hit?.assetInstanceId !== undefined && scene.items.some(item =>
+			item.assetInstanceId === hit.assetInstanceId && item.assetAnchor === "floor" && item.material?.furnitureKind === "catalog:rug");
+		const floor = source.originalSupport && visibleRoomFloorAtCanvasPoint(scene, camera, size, point, hitRug ? undefined : hit);
+		return floor ? supportDrag.onFloor(source, toPlan(floor)) : undefined;
+	};
+	const supportPreviewPose = (destination: SupportDragDestination) => ({
+		xM: (destination.point.xMm - (supportDrag?.origin.xMm ?? 0)) / 1000,
+		zM: (destination.point.zMm - (supportDrag?.origin.zMm ?? 0)) / 1000,
+		bottomM: destination.heightMm / 1000,
+	});
 
 	const finishRotation = (pointerId: number, cancelled = false) => {
 		if (!isHostContactCurrent(pointerId, true)) return;
@@ -1435,13 +1474,14 @@ export function RoomScene3d({
 				: (floorPoint ? floorItemAtPoint(renderedScene.items, floorPoint) : undefined) ??
 					(point ? floorItemAtScreenPoint(renderedScene.items, renderedScene, camera, size, point) : undefined);
 			if (!item && !canSelectGeometry) onClearSelection?.();
-			if (item?.assetInstanceId) onSelectItem?.(item.assetInstanceId);
+			const supportSource = item?.assetInstanceId ? supportDrag?.source(item.assetInstanceId) : undefined;
+			const directDecorDrag = !readOnly && floorPoint && supportSource;
+			if (item?.assetInstanceId && (!directDecorDrag || item.assetInstanceId === selectedItemId)) onSelectItem?.(item.assetInstanceId);
 			if (
 				!readOnly &&
-				canTransformSelectedItem &&
 				item?.assetInstanceId &&
 				item.assetAnchor !== "wall" &&
-				item.assetInstanceId === selectedItemId &&
+				(supportSource || (canTransformSelectedItem && item.assetInstanceId === selectedItemId)) &&
 				floorPoint
 			) {
 				if (!allowsHostItemTransform("move", item.assetInstanceId)) {
@@ -1454,6 +1494,9 @@ export function RoomScene3d({
 					kind: "move-item",
 					moved: false,
 					pointerId: event.pointerId,
+					pointerOrigin: activePointers[0],
+					supportSource,
+					supportSurfaces: supportSource && supportDrag ? sceneSupportSurfaces(supportDrag.optionsFor(supportSource), supportDrag.origin) : undefined,
 				};
 				return;
 			}
@@ -1523,17 +1566,23 @@ export function RoomScene3d({
 				: undefined;
 			if (floorPoint) {
 				const target = snapFloorItemPoint?.(floorPoint, activeGesture.assetInstanceId) ?? floorPoint;
+				const source = activeGesture.supportSource;
+				const dragMoved = source !== undefined && Math.hypot(event.clientX - activeGesture.pointerOrigin.x, event.clientY - activeGesture.pointerOrigin.y) > TAP_MOVE_LIMIT_PX;
+				const destination = source && point && dragMoved ? supportedDragDestination(source, point, activeGesture.supportSurfaces) : undefined;
+				if (source && !activeGesture.moved && !dragMoved) return;
+				const fallback = source?.originalSupport ? {} : { xM: target.xM, zM: target.zM };
 				setItemPreview({
 					assetInstanceId: activeGesture.assetInstanceId,
 					kind: "move",
-					xM: target.xM,
-					zM: target.zM,
+					...(destination ? supportPreviewPose(destination) : fallback),
+					supportSurfaces: activeGesture.supportSurfaces,
+					supportOption: destination?.option,
 				});
 				gesture.current = {
 					...activeGesture,
 					floorPoint,
 					moved:
-						activeGesture.moved ||
+						activeGesture.moved || dragMoved ||
 						Math.hypot(
 							floorPoint.xM - activeGesture.floorPoint.xM,
 							floorPoint.zM - activeGesture.floorPoint.zM,
@@ -1627,16 +1676,23 @@ export function RoomScene3d({
 			activeGesture?.kind === "move-item" &&
 			activeGesture.pointerId === event.pointerId
 		) {
+			const source = activeGesture.supportSource;
+			if (source && selectedItemId !== source.assetInstanceId) onSelectItem?.(source.assetInstanceId);
 			if (activeGesture.moved && !readOnly) {
+				const releasePoint = source && canvasPoint(event);
+				const destination = source && releasePoint ? supportedDragDestination(source, releasePoint, activeGesture.supportSurfaces) : undefined;
 				const target = snapFloorItemPoint?.(activeGesture.floorPoint, activeGesture.assetInstanceId) ?? activeGesture.floorPoint;
 				const completedMove = {
 					assetInstanceId: activeGesture.assetInstanceId,
 					kind: "move" as const,
-					xM: Math.round(target.xM * 1000) / 1000,
-					zM: Math.round(target.zM * 1000) / 1000,
+					...(destination ? supportPreviewPose(destination) : {
+						xM: Math.round(target.xM * 1000) / 1000, zM: Math.round(target.zM * 1000) / 1000,
+					}),
 				};
-				setSubmittedItemPreview(completedMove);
-				void persistItemTransform(completedMove);
+				if (destination || !source?.originalSupport) {
+					setSubmittedItemPreview(completedMove);
+					void persistItemTransform(completedMove, destination);
+				}
 			}
 			setItemPreview(hostEnabledRef.current && !activeGesture.moved ? hostRetainedItemPreview.current : undefined);
 			hostRetainedItemPreview.current = undefined;
@@ -2148,6 +2204,7 @@ export function RoomScene3d({
 					onPointerDown={onPointerDown}
 					onPointerMove={onPointerMove}
 					onPointerUp={onPointerUp}
+					onLostPointerCapture={event => { if (pointers.current.has(event.pointerId)) onPointerCancel(event); }}
 					ref={canvasRef}
 					role="img"
 					style={{ touchAction: "none" }}

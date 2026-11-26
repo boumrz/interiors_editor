@@ -247,7 +247,7 @@ class ReadonlyReader {
     const supportsVersion = database.version === 2
       || (database.version === 3 && this.dependencies.technical.acceptExactFloorYawStorage === true)
       || (database.version === 4 && this.dependencies.technical.acceptDoorHingeStorage === true)
-      || ((database.version === 5 || database.version === 6) && this.dependencies.technical.acceptRoomInteriorStorage === true);
+      || ((database.version === 5 || database.version === 6 || database.version === 7) && this.dependencies.technical.acceptRoomInteriorStorage === true);
     if (!supportsVersion || !sameNames(database.objectStoreNames, Object.keys(stores))) { database.close(); void this.dispose(); fail(new ReadonlyMetadataFault("Readonly database schema is unsupported")); return; }
     this.handle = database;
     database.onversionchange = () => { void this.dispose(); database.close(); };

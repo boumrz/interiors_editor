@@ -51,7 +51,7 @@ export type PortableBackupDecodeResult =
 			readonly projectBytes: Uint8Array;
 			/** Exact object owned by a fully validated registered V1 decoder. */
 			readonly projectMember?: {
-				readonly format: "runtime-v1-wire" | "runtime-v1-floor-yaw" | "runtime-v1-door-hinge" | "runtime-v1-room-layouts" | "runtime-v1-interior-details" | "runtime-v1-legacy";
+				readonly format: "runtime-v1-wire" | "runtime-v1-floor-yaw" | "runtime-v1-door-hinge" | "runtime-v1-room-layouts" | "runtime-v1-interior-details" | "runtime-v1-wall-colors" | "runtime-v1-legacy";
 				readonly project: unknown;
 			};
 			/** Omitted for older resource-free envelopes; every supplied byte is verified. */

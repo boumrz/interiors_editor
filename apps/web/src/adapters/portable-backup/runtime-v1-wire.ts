@@ -1,6 +1,7 @@
 import type { Project, SchematicAssetInstance } from '../../domain/project';
 import type { ItemColorVariantId } from '../../domain/item-color-variant';
-import { floorCatalogPresetIds, floorFinishIds, projectUsesInteriorDetails, supportedPresetIds, wallFinishIds } from '../../domain/interior-project-format';
+import { floorCatalogPresetIds, floorFinishIds, projectUsesCustomWallColors, projectUsesInteriorDetails, supportedPresetIds, wallFinishIds } from '../../domain/interior-project-format';
+import { isCanonicalWallColor } from '../../domain/interior-materials';
 import { supportsCatalogSurface } from '../../domain/interior-support';
 import { validateProjectName } from '../../domain/project-name-policy';
 import { containsLoneSurrogate, decodeRuntimeV1Utf16, encodeRuntimeV1Utf16, RUNTIME_V1_LIMITS,
@@ -11,13 +12,14 @@ export const RUNTIME_V1_FLOOR_YAW_SCHEMA_ID = 'interiors.project/runtime-v1-floo
 export const RUNTIME_V1_DOOR_HINGE_SCHEMA_ID = 'interiors.project/runtime-v1-door-hinge' as const;
 export const RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID = 'interiors.project/runtime-v1-room-layouts' as const;
 export const RUNTIME_V1_INTERIOR_SCHEMA_ID = 'interiors.project/runtime-v1-interior-details' as const;
-export type RegisteredRuntimeV1SchemaId = typeof RUNTIME_V1_SCHEMA_ID | typeof RUNTIME_V1_FLOOR_YAW_SCHEMA_ID | typeof RUNTIME_V1_DOOR_HINGE_SCHEMA_ID | typeof RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID | typeof RUNTIME_V1_INTERIOR_SCHEMA_ID;
+export const RUNTIME_V1_WALL_COLORS_SCHEMA_ID = 'interiors.project/runtime-v1-wall-colors' as const;
+export type RegisteredRuntimeV1SchemaId = typeof RUNTIME_V1_SCHEMA_ID | typeof RUNTIME_V1_FLOOR_YAW_SCHEMA_ID | typeof RUNTIME_V1_DOOR_HINGE_SCHEMA_ID | typeof RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID | typeof RUNTIME_V1_INTERIOR_SCHEMA_ID | typeof RUNTIME_V1_WALL_COLORS_SCHEMA_ID;
 export type RegisteredRuntimeV1EncodeResult =
   | (Extract<RuntimeV1EncodeResult, { readonly kind: 'encoded' }> & { readonly projectSchemaId: RegisteredRuntimeV1SchemaId })
   | RuntimeV1Rejection;
 
 export function isRegisteredRuntimeV1SchemaId(id: string): id is RegisteredRuntimeV1SchemaId {
-  return id === RUNTIME_V1_SCHEMA_ID || id === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID || id === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID || id === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID || id === RUNTIME_V1_INTERIOR_SCHEMA_ID;
+  return id === RUNTIME_V1_SCHEMA_ID || id === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID || id === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID || id === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID || allowsInterior(id);
 }
 export type RuntimeV1VariantValue = ItemColorVariantId | readonly [RuntimeV1VariantValue];
 type ExactItem<T> = T extends SchematicAssetInstance ? Omit<T, 'colorVariantId'> & { readonly colorVariantId?: RuntimeV1VariantValue } : never;
@@ -40,8 +42,11 @@ const layoutKeys = new Set(['roomLayouts', 'roomLayoutId', 'layoutId', 'slot']);
 const interiorKeys = new Set(['floorFinish', 'profile', 'sideFinishes', 'left', 'right', 'presetId', 'version',
   'variant', 'slideSide', 'slideDirection', 'sections', 'catalogPreset', 'supportAssetInstanceId',
   'supportSurfaceKey', 'offsetXMm', 'offsetZMm', 'relativeYawMilliDeg', 'context']);
+function allowsInterior(schemaId: string): schemaId is typeof RUNTIME_V1_INTERIOR_SCHEMA_ID | typeof RUNTIME_V1_WALL_COLORS_SCHEMA_ID {
+  return schemaId === RUNTIME_V1_INTERIOR_SCHEMA_ID || schemaId === RUNTIME_V1_WALL_COLORS_SCHEMA_ID;
+}
 const allowsLayouts = (schemaId: RegisteredRuntimeV1SchemaId) =>
-  schemaId === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID || schemaId === RUNTIME_V1_INTERIOR_SCHEMA_ID;
+  schemaId === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID || allowsInterior(schemaId);
 const reject = (error: unknown): RuntimeV1Rejection => {
   if (error instanceof RuntimeV1Fault) return { kind: 'rejected', reasonCode: error.reasonCode };
   throw error;
@@ -70,6 +75,10 @@ const hash: Read = node => {
 };
 const color: Read = node => {
   if (node.kind !== 'string' || !/^#[a-fA-F0-9]{6}$/.test(node.value)) return unreadable();
+  return node.value;
+};
+const canonicalWallColor: Read = node => {
+  if (node.kind !== 'string' || !isCanonicalWallColor(node.value)) return unreadable();
   return node.value;
 };
 const clock: Read = node => {
@@ -141,11 +150,15 @@ class Decoder {
   decode(node: RuntimeV1Node): RuntimeV1Project {
     const string = this.string;
     const layouts = allowsLayouts(this.schemaId);
-    const interior = this.schemaId === RUNTIME_V1_INTERIOR_SCHEMA_ID;
+    const interior = allowsInterior(this.schemaId);
+    const customWallColors = this.schemaId === RUNTIME_V1_WALL_COLORS_SCHEMA_ID;
     const allowsDoorHinge = this.schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID || layouts;
     const allowsPreciseYaw = this.schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID || allowsDoorHinge;
     const versioned = (...ids: readonly string[]): Read => n => this.record(n, { presetId: oneOf(...ids), version: interiorNumber(1, 1) });
-    const wallFinish = versioned(...wallFinishIds);
+    const wallPreset = versioned(...wallFinishIds);
+    const wallFinish: Read = n => customWallColors && n.kind === 'object' && n.members.has('color')
+      ? this.record(n, { color: canonicalWallColor, version: interiorNumber(2, 2) })
+      : wallPreset(n);
     const sideFinishes: Read = n => {
       const result = this.record(n, {}, { left: wallFinish, right: wallFinish });
       return Object.keys(result).length > 0 ? result : unreadable();
@@ -230,13 +243,14 @@ class Decoder {
     const value = this.record(node, rules, layouts ? { roomLayouts: this.array(layout, 100) } : {});
     delete value.projectSchemaId;
     const guests = interior ? splitSupportRecords(value) : [];
-    if (interior) value.interiorSchemaVersion = 1;
+    if (interior) value.interiorSchemaVersion = customWallColors ? 2 : 1;
     if (guests.length > 0) value.supportedItems = guests;
     // Closed validated wire shape, deliberately not a claim of domain Project validity.
     const project = value as RuntimeV1Project;
     if (this.schemaId === RUNTIME_V1_FLOOR_YAW_SCHEMA_ID && !project.assetInstances.some(item => Object.hasOwn(item, 'yawMilliDeg'))) return unreadable();
     if (this.schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID && !project.level.openings.some(opening => opening.hingeEnd === 'end')) return unreadable();
     if (this.schemaId === RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID && !project.roomLayouts?.length) return unreadable();
+    if (customWallColors && !projectUsesCustomWallColors(project)) return unreadable();
     if (interior && !projectUsesInteriorDetails(project)) return unreadable();
     references(project);
     if (layouts) layoutReferences(project);
@@ -343,8 +357,9 @@ export function encodeRegisteredRuntimeProject(project: unknown): RegisteredRunt
     let projectSchemaId: RegisteredRuntimeV1SchemaId;
     let snapshot = project;
     if (projectRecord && hasInteriorSourceFields(projectRecord)) {
-      projectSchemaId = RUNTIME_V1_INTERIOR_SCHEMA_ID;
-      snapshot = interiorSnapshot(projectRecord);
+      const interiorVersion = Object.getOwnPropertyDescriptor(projectRecord, 'interiorSchemaVersion')?.value === 2 ? 2 : 1;
+      projectSchemaId = interiorVersion === 2 ? RUNTIME_V1_WALL_COLORS_SCHEMA_ID : RUNTIME_V1_INTERIOR_SCHEMA_ID;
+      snapshot = interiorSnapshot(projectRecord, interiorVersion);
     } else if (projectRecord && Object.hasOwn(projectRecord, 'roomLayouts')) {
       projectSchemaId = RUNTIME_V1_ROOM_LAYOUTS_SCHEMA_ID;
     } else {
@@ -382,9 +397,9 @@ function memberEntries(value: unknown): unknown[] {
   });
 }
 
-function interiorSnapshot(value: object): RecordValue {
+function interiorSnapshot(value: object, version: 1 | 2): RecordValue {
   const { interiorSchemaVersion, supportedItems, ...project } = dataRecord(value);
-  if (Object.hasOwn(value, 'interiorSchemaVersion') && interiorSchemaVersion !== 1) return unreadable();
+  if (Object.hasOwn(value, 'interiorSchemaVersion') && interiorSchemaVersion !== version) return unreadable();
   const floorAndWall = memberEntries(project.assetInstances);
   const records = floorAndWall.map(dataRecord);
   if (records.some(item => item.anchorClass !== 'floor' && item.anchorClass !== 'wall')) return unreadable();
@@ -468,7 +483,7 @@ function encodeMember(project: unknown, schemaId: RegisteredRuntimeV1SchemaId): 
         const preciseYawKey = key === 'yawMilliDeg' && schemaId !== RUNTIME_V1_SCHEMA_ID;
         const doorHingeKey = key === 'hingeEnd' && (schemaId === RUNTIME_V1_DOOR_HINGE_SCHEMA_ID || allowsLayouts(schemaId));
         const layoutKey = allowsLayouts(schemaId) && layoutKeys.has(key);
-        const interiorKey = schemaId === RUNTIME_V1_INTERIOR_SCHEMA_ID && interiorKeys.has(key);
+        const interiorKey = allowsInterior(schemaId) && interiorKeys.has(key);
         if (!Array.isArray(value) && (key.length > 32 || !sourceKeys.has(key) && !preciseYawKey && !doorHingeKey && !layoutKey && !interiorKey)) return unreadable();
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (!descriptor || !Object.hasOwn(descriptor, 'value') || (!descriptor.enumerable && !(Array.isArray(value) && key === 'length'))) return unreadable();

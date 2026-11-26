@@ -118,7 +118,7 @@ async function fixture(
 	} = {},
 ) {
 	const session = new TelegramRuntimeSession(await scope),
-		opened = Array.from({ length: 5 }, () => deferred<void>()),
+		opened = Array.from({ length: 6 }, () => deferred<void>()),
 		requests: ReturnType<typeof requestCallbacks>[] = [],
 		calls: { name: string; version?: number }[] = [],
 		locks: { name: string; options: LockOptions }[] = [];
@@ -256,20 +256,20 @@ describe("Telegram metadata public boundary; denial-only callbacks, no native du
 		const x = await fixture({ interiorMode: "compatible" });
 		try {
 			const pending = x.run();
-			for (const [index, version] of [2, 3, 4, 5, 6].entries()) {
+			for (const [index, version] of [2, 3, 4, 5, 6, 7].entries()) {
 				await beforeComplete(x.opened[index].promise, pending);
 				expect(x.calls[index]?.version).toBe(version);
 				x.fail(index, new DOMException("Existing version is newer", "VersionError"));
 			}
 			expect(await refused(pending)).toMatchObject({ name: "VersionError" });
-			expect(x.calls).toHaveLength(5);
+			expect(x.calls).toHaveLength(6);
 			expect(x.command).not.toHaveBeenCalled();
 		} finally {
 			await x.cleanup();
 		}
 	});
-	it("requests v6 for authoring and keeps other failures distinct from a compatible rollback", async () => {
-		for (const [mode, expectedVersion] of [["compatible", 2], ["authoring", 6]] as const) {
+	it("requests v7 for authoring and keeps other failures distinct from a compatible rollback", async () => {
+		for (const [mode, expectedVersion] of [["compatible", 2], ["authoring", 7]] as const) {
 			const x = await fixture({ interiorMode: mode });
 			try {
 				const pending = x.run();

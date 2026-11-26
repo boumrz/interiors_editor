@@ -8,6 +8,7 @@ import {
 } from "./parametric-item";
 import { slidingDoorSweepFor } from "./sliding-door-geometry";
 import type {
+	CatalogPresetReference,
 	FloorSchematicAssetInstance,
 	Project,
 	SupportedSchematicAssetInstance,
@@ -47,12 +48,44 @@ const guestBaseRatio = {
 	vase: 0.64,
 } as const;
 
+// Older catalog items stored these exact labels as their only built-in identity.
+const legacyPresetByLabel = new Map<string, string>([
+	["Стол", "table"],
+	["Письменный стол", "desk"],
+	["Журнальный столик", "coffee-table"],
+	["Тумбочка", "bedside-table"],
+	["Комод", "dresser"],
+	["Тумба под телевизор", "tv-stand"],
+	["Стеллаж", "open-shelf"],
+	["Кашпо", "planter"],
+	["Настольная лампа", "table-lamp"],
+	["Книга", "book"],
+	["Ваза", "vase"],
+]);
+
+function floorPresetFor(item: FloorSchematicAssetInstance): CatalogPresetReference | undefined {
+	if (item.assetDefinitionId !== undefined) return undefined;
+	if (item.catalogPreset !== undefined) return item.catalogPreset.version === 1 ? item.catalogPreset : undefined;
+	const presetId = legacyPresetByLabel.get(item.label);
+	return presetId === undefined ? undefined : { presetId, version: 1 };
+}
+
 export function isSupportedDecorPreset(id: string): id is keyof typeof guestBaseRatio {
 	return Object.hasOwn(guestBaseRatio, id);
 }
 
 function isTopPreset(id: string): id is keyof typeof supportTopTemplates {
 	return Object.hasOwn(supportTopTemplates, id);
+}
+
+export function floorDecorPresetFor(item: FloorSchematicAssetInstance): CatalogPresetReference | undefined {
+	const preset = floorPresetFor(item);
+	return preset && isSupportedDecorPreset(preset.presetId) ? preset : undefined;
+}
+
+export function supportHostPresetFor(host: FloorSchematicAssetInstance): CatalogPresetReference | undefined {
+	const preset = floorPresetFor(host);
+	return preset && (isTopPreset(preset.presetId) || preset.presetId === "open-shelf") ? preset : undefined;
 }
 
 export function supportsCatalogSurface(presetId: string, surfaceKey: string): boolean {
@@ -78,8 +111,9 @@ export interface SupportSurface {
 }
 
 export function supportSurfacesFor(host: FloorSchematicAssetInstance): readonly SupportSurface[] {
-	if (host.assetDefinitionId !== undefined || host.catalogPreset?.version !== 1) return [];
-	const id = host.catalogPreset.presetId;
+	const preset = supportHostPresetFor(host);
+	if (!preset) return [];
+	const id = preset.presetId;
 	const surface = (key: string, template: SurfaceTemplate, ceiling?: number): SupportSurface => {
 		const [bottom, heightMm] = supportPlateY(template.y, host.heightMm);
 		const width = host.widthMm * (template.x[1] - template.x[0]);
@@ -150,23 +184,20 @@ export function resolveSupportedPlacements(project: Project): readonly Supported
 	const hosts = floorHosts(project);
 	return (project.supportedItems ?? []).flatMap((item) => {
 		const host = hosts.get(item.supportAssetInstanceId);
-		const surface = host && supportSurfacesFor(host).find((candidate) => candidate.key === item.supportSurfaceKey);
-		return host && surface ? [supportedPose(item, host, surface)] : [];
+		if (host?.catalogPreset?.version !== 1) return [];
+		const surface = supportSurfacesFor(host).find(candidate => candidate.key === item.supportSurfaceKey);
+		return surface ? [supportedPose(item, host, surface)] : [];
 	});
 }
 
 const epsilon = 1e-7;
 
-function containedBase(item: SupportedSchematicAssetInstance, surface: SupportSurface): boolean {
-	const id = item.catalogPreset.presetId;
-	if (!isSupportedDecorPreset(id)) return false;
+export function supportedDecorBasePoints(id: string, baseFootprint: FloorItemFootprint): readonly { readonly xMm: number; readonly zMm: number }[] {
+	if (!isSupportedDecorPreset(id)) return [];
 	const ratio = guestBaseRatio[id];
-	const base = {
-		xMm: item.offsetXMm, zMm: item.offsetZMm,
-		widthMm: item.widthMm * ratio, depthMm: item.depthMm * ratio, yawMilliDeg: item.relativeYawMilliDeg,
-	};
+	const base = { ...baseFootprint, widthMm: baseFootprint.widthMm * ratio, depthMm: baseFootprint.depthMm * ratio };
 	const angle = yawRadiansFor(base);
-	const points = id === "book" ? floorItemFootprintCorners(base) : Array.from({ length: 20 }, (_, index) => {
+	return id === "book" ? floorItemFootprintCorners(base) : Array.from({ length: 20 }, (_, index) => {
 		const theta = index * Math.PI / 10;
 		const x = Math.cos(theta) * base.widthMm / 2;
 		const z = Math.sin(theta) * base.depthMm / 2;
@@ -175,7 +206,13 @@ function containedBase(item: SupportedSchematicAssetInstance, surface: SupportSu
 			zMm: base.zMm - Math.sin(angle) * x + Math.cos(angle) * z,
 		};
 	});
-	return points.every(({ xMm, zMm }) => {
+}
+
+function containedBase(item: SupportedSchematicAssetInstance, surface: SupportSurface): boolean {
+	const points = supportedDecorBasePoints(item.catalogPreset.presetId, {
+		xMm: item.offsetXMm, zMm: item.offsetZMm, widthMm: item.widthMm, depthMm: item.depthMm, yawMilliDeg: item.relativeYawMilliDeg,
+	});
+	return points.length > 0 && points.every(({ xMm, zMm }) => {
 		if (xMm < surface.minXMm - epsilon || xMm > surface.maxXMm + epsilon
 			|| zMm < surface.minZMm - epsilon || zMm > surface.maxZMm + epsilon) return false;
 		if (surface.radiusXMm === 0 || surface.radiusZMm === 0) return true;

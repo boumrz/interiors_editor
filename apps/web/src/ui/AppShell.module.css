@@ -3788,6 +3788,64 @@
 	white-space: normal;
 }
 .editorShell .selectionInspectorPanel[data-testid="selected-wall-inspector"] .deleteAction { color:var(--danger); }
+.wallColorButton {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+	justify-content: center;
+}
+.wallCustomColor {
+	border-top: 1px solid var(--editor-host-line, var(--line));
+	display: grid;
+	gap: 8px;
+	grid-template-columns: 56px minmax(0, 1fr);
+	margin-top: 8px;
+	padding: 12px 4px 4px;
+}
+.wallCustomColor h3 {
+	font: 600 .82rem/1.3 var(--font-display);
+	grid-column: 1 / -1;
+	margin: 0;
+}
+.wallCustomColor input {
+	background: var(--editor-host-canvas, var(--canvas));
+	border: 1px solid var(--editor-host-line, var(--line));
+	border-radius: var(--editor-host-radius, 12px);
+	box-sizing: border-box;
+	color: inherit;
+	font: inherit;
+	height: 44px;
+	min-width: 0;
+}
+.wallCustomColorPicker {
+	cursor: pointer;
+	padding: 5px;
+	width: 100%;
+}
+.wallCustomColorPicker::-webkit-color-swatch {
+	border: 0;
+	border-radius: 6px;
+}
+.wallCustomColor .wallCustomColorHex {
+	font-family: var(--font-mono, monospace);
+	padding: 0 10px;
+	width: 100%;
+}
+.wallCustomColor button {
+	background: var(--editor-host-primary, var(--blue));
+	border: 1px solid transparent;
+	border-radius: var(--editor-host-radius, 12px);
+	color: var(--editor-host-primary-text, #fff);
+	cursor: pointer;
+	font: 650 .82rem/1.3 var(--font-display);
+	grid-column: 1 / -1;
+	min-height: 44px;
+	padding: 5px 8px;
+}
+.wallCustomColor button:disabled {
+	cursor: default;
+	opacity: .52;
+}
 
 /* The dock can grow with text size, long translated labels and safe areas. */
 .editorShell[data-view-mode="plan"] .canvasHistory,

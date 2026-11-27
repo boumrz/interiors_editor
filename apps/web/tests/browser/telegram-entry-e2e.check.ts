@@ -698,9 +698,10 @@ test("TMA-LANGUAGE-01: the saved bot language localizes a direct signed launch, 
 	await page.getByRole("textbox", { name: "Height, mm", exact: true }).fill("2800");
 	await page.getByRole("button", { name: "Create outline", exact: true }).click();
 	await expect(page.getByTestId("editor-top-bar").getByRole("status")).toHaveText("Saved");
-	await expect(page.getByTestId("editor-action-dock").getByRole("button")).toHaveText(["Room", "Wall", "Add", "Select"]);
+	await expect(page.getByTestId("editor-action-dock").getByRole("button")).toHaveText(["Rooms", "Wall", "Add", "Select"]);
 	await page.getByRole("button", { name: "3D", exact: true }).click();
 	await expect(page.getByTestId("three-dimensional-canvas")).toBeVisible();
+	await expect(page.getByRole("button", { name: "Rooms", exact: true })).toBeVisible();
 	const durable = await semanticRows(page);
 	await page.reload();
 	await page.getByRole("button", { name: `Open ${name}`, exact: true }).click();

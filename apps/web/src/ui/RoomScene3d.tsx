@@ -131,6 +131,7 @@ interface RoomScene3dProps {
 	readonly selectedItemId?: string;
 	readonly selectedWallId?: string | undefined;
 	readonly selectedOpeningId?: string | undefined;
+	readonly selectedFloorRoomId?: string | undefined;
 	readonly readOnly?: boolean;
 	readonly itemPlacementControls?: ReactNode;
 	readonly selectedItemControls?: ReactNode;
@@ -321,6 +322,7 @@ export function RoomScene3d({
 	customGlbResources = {},
 	selectedItemId,
 	selectedWallId,
+	selectedFloorRoomId,
 	selectedOpeningId,
 	readOnly = false,
 	canTransformSelectedItem = true,
@@ -826,7 +828,7 @@ export function RoomScene3d({
 			})) : [];
 		return {
 			...scene,
-			structureSelection: sceneStructureSelection(selectedWallId, selectedOpeningId),
+			structureSelection: sceneStructureSelection(selectedWallId, selectedOpeningId, selectedFloorRoomId),
 			highlightFloor,
 			supportHighlights,
 			items: preview
@@ -850,7 +852,7 @@ export function RoomScene3d({
 					]
 				: renderedItems,
 		};
-	}, [scene, selectedWallId, selectedOpeningId, threeDimensionalItemPlacementPreview, visualItemPreview, copyingHostId, shelfHostIds, highlightFloor, supportHighlights]);
+	}, [scene, selectedWallId, selectedOpeningId, selectedFloorRoomId, threeDimensionalItemPlacementPreview, visualItemPreview, copyingHostId, shelfHostIds, highlightFloor, supportHighlights]);
 	const renderedSceneRef = useRef(renderedScene);
 	renderedSceneRef.current = renderedScene;
 	const rendererStructureKey = rendererStructureKeyFor(scene);

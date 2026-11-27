@@ -160,7 +160,6 @@ export function PlanProjection({
 	isWallVertexMoveMode,
 	movableWallVertexIds,
 	openingCreationPreview,
-	finishPreview,
 	supportPreview,
 	supportPlanTargets,
 	supportDrag,
@@ -188,6 +187,7 @@ export function PlanProjection({
 	onPlaceItem: rawOnPlaceItem,
 	onSelectItem,
 	onSelectWall,
+	onSelectFloor,
 	onSelectOpening,
 	onOpeningMoveStart,
 	onClearSelection,
@@ -197,6 +197,7 @@ export function PlanProjection({
 	project,
 	selectedItemId,
 	selectedWallId,
+	selectedFloorRoomId,
 	wallThicknessMm,
 	viewport,
 	setViewport,
@@ -551,7 +552,7 @@ export function PlanProjection({
 		setItemPointIsExact(exact);
 	}, []);
 	const itemPlacementDragRef = useRef<ItemPlacementDrag | undefined>(undefined);
-	// A wall or a decor symbol can be tapped, but must not steal a drag
+	// A surface or a decor symbol can be tapped, but must not steal a drag
 	// that starts on the drawing.  Keep the possible selection transient until
 	// pointerup; a movement beyond the normal tap tolerance is a canvas pan.
 	const pendingCanvasSelectionRef = useRef<
@@ -559,6 +560,7 @@ export function PlanProjection({
 				readonly pointerId: number;
 				readonly pointerOrigin: PointerPosition;
 				readonly wallSegmentId?: string;
+				readonly floorRoomId?: string;
 				readonly supportedItemId?: string;
 				readonly supportAnchor?: "floor" | "host" | "blocked";
 				readonly supportHostId?: string;
@@ -1031,13 +1033,11 @@ export function PlanProjection({
 					]
 				: [],
 		) ?? [];
-	const floorFinishRoom = finishPreview?.kind === "floor"
-		? derivedPlan?.rooms.find(room => room.roomId === finishPreview.roomId)
-		: undefined;
-	const floorFinishPolygon = floorFinishRoom?.usableFloorPolygonMm;
-	const supportFloorRooms = supportFloorPick && !readOnly && !isInteractionLocked
-		? derivedPlan?.rooms.filter(room => !supportFloorRoomIds || supportFloorRoomIds.has(room.roomId)) ?? []
-		: [];
+	const canPickSupportFloor = supportFloorPick && !readOnly && !isInteractionLocked;
+	const canSelectFloor = onSelectFloor && activeTool === "select" && !pickingSupport && !isInteractionLocked && !openingHostIds;
+	const floorPickRooms = canPickSupportFloor
+		? derivedPlan?.rooms.filter(room => !supportFloorRoomIds || supportFloorRoomIds.has(room.roomId))
+		: canSelectFloor ? derivedPlan?.rooms : undefined;
 	const roomTypesById = new Map(
 		project.schemaVersion === 1
 			? project.level.rooms.map(
@@ -2276,9 +2276,11 @@ export function PlanProjection({
 		}
 		if (activePointers.length === 1 && activePointers[0]) {
 			if (activeTool === "select") {
+				const floorRoomId = (event.target as Element).closest("[data-floor-room-id]")?.getAttribute("data-floor-room-id");
 				pendingCanvasSelectionRef.current = {
 					pointerId: event.pointerId,
 					pointerOrigin: canvasPoint,
+					...(floorRoomId ? { floorRoomId } : {}),
 				};
 			}
 			startPan(activePointers[0]);
@@ -2957,6 +2959,8 @@ export function PlanProjection({
 						}
 					} else if (pendingSelection.wallSegmentId) {
 						onSelectWall(pendingSelection.wallSegmentId, projectPointFor(event));
+					} else if (pendingSelection.floorRoomId && onSelectFloor) {
+						onSelectFloor(pendingSelection.floorRoomId);
 					} else {
 						onClearSelection?.();
 					}
@@ -3529,7 +3533,7 @@ export function PlanProjection({
 							/>
 						);
 					})}
-					{supportFloorRooms.map(room => {
+					{floorPickRooms?.map(room => {
 						const polygon = room.usableFloorPolygonMm;
 						const path = polygon && polygon.length >= 3
 							? polygon.map(({ xMm, zMm }, index) => {
@@ -3541,25 +3545,12 @@ export function PlanProjection({
 								const to = pointFor(tile.maxXmm, tile.maxZmm);
 								return `M${from.x} ${from.y} H${to.x} V${to.y} H${from.x} Z`;
 							}).join(" ");
-						return <path className={planStyles.supportFloorArea} pointerEvents="fill" d={path}
-							key={room.roomId} data-support-floor-room-id={room.roomId} data-testid="plan-decor-floor" />;
+						return canPickSupportFloor
+							? <path className={planStyles.supportFloorArea} pointerEvents="fill" d={path}
+								key={room.roomId} data-support-floor-room-id={room.roomId} data-testid="plan-decor-floor" />
+							: <path className={planStyles.selectableFloor} pointerEvents="fill" d={path}
+								key={room.roomId} data-floor-room-id={room.roomId} data-selected={room.roomId === selectedFloorRoomId} />;
 					})}
-					{floorFinishRoom ? (
-						<g data-testid="room-finish-preview" pointerEvents="none">
-							{floorFinishPolygon && floorFinishPolygon.length >= 3 ? (
-								<polygon className={planStyles.finishPreview}
-									points={floorFinishPolygon.map(vertex => {
-										const point = pointFor(vertex.xMm, vertex.zMm);
-										return `${point.x},${point.y}`;
-									}).join(" ")} />
-							) : floorFinishRoom.usableFloorTilesMm.map(tile => {
-								const from = pointFor(tile.minXmm, tile.minZmm);
-								const to = pointFor(tile.maxXmm, tile.maxZmm);
-								return <rect className={planStyles.finishPreview} key={`${tile.minXmm}:${tile.minZmm}`}
-									x={from.x} y={from.y} width={to.x - from.x} height={to.y - from.y} />;
-							})}
-						</g>
-					) : null}
 					{roomLabels.map((room) => {
 						const center = pointFor(room.xMm, room.zMm);
 						return (
@@ -3576,7 +3567,7 @@ export function PlanProjection({
 							</text>
 						);
 					})}
-					<g data-testid="infinite-grid">
+					<g data-testid="infinite-grid" pointerEvents="none">
 						{gridLinesBetween(
 							visibleBounds.minXMm,
 							visibleBounds.maxXMm,

@@ -6,6 +6,18 @@
 	vector-effect: non-scaling-stroke;
 }
 
+.selectableFloor {
+	cursor: pointer;
+	fill: transparent;
+}
+
+.selectableFloor[data-selected="true"] {
+	fill: color-mix(in srgb, var(--editor-host-primary, var(--blue)) 20%, transparent);
+	stroke: var(--editor-host-primary, var(--blue));
+	stroke-width: 2px;
+	vector-effect: non-scaling-stroke;
+}
+
 .wallSidePaint {
 	stroke-width: 3px;
 	vector-effect: non-scaling-stroke;

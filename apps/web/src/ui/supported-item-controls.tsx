@@ -1,11 +1,10 @@
 import { type SupportSurface, supportSurfacesFor } from "../domain/interior-support";
 import type { SupportTarget } from "../domain/interior-project";
-import type { FloorSchematicAssetInstance, Project, RoomLayout } from "../domain/project";
-import type { RoomLayoutCommand } from "../domain/room-layouts";
+import type { FloorSchematicAssetInstance, Project } from "../domain/project";
 import { copy } from "./editor-language";
 import { telegramGreyboxLabelForDisplay } from "./telegram-greybox-catalog";
 import styles from "./AppShell.module.css";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { yawRadiansFor } from "../domain/parametric-item";
 
 export type SupportedEditDraft = {
@@ -85,68 +84,6 @@ export function SupportedPlacementControls(props: SupportedPlacementControlsProp
 					{draft.mode === "rehome" ? copy("Выбрать место", "Choose position") : copy("Подтвердить", "Confirm")}
 				</button>
 			</div>
-		</section>
-	);
-}
-
-interface RoomLayoutControlsProps {
-	readonly roomId: string;
-	readonly layouts: readonly RoomLayout[];
-	readonly activeLayoutId?: string | undefined;
-	readonly disabled: boolean;
-	readonly onSelect: (layoutId: string) => void;
-	readonly onCommand: (command: RoomLayoutCommand) => void;
-}
-
-export function RoomLayoutControls({ roomId, layouts, activeLayoutId, disabled, onSelect, onCommand }: RoomLayoutControlsProps) {
-	const [editingName, setEditingName] = useState<string>();
-	const [deleting, setDeleting] = useState(false);
-	const active = layouts.find(layout => layout.layoutId === activeLayoutId) ?? layouts.find(layout => layout.slot === "A") ?? layouts[0];
-	const survivor = layouts.find(layout => layout.layoutId !== active?.layoutId);
-	return (
-		<section aria-label={copy("Расстановки", "Layouts")}>
-			<div className={styles.interiorChoices}>
-				{layouts.length === 0 ? <span>{copy("Расстановка A", "Layout A")}</span> : layouts.map(layout => (
-					<button type="button" key={layout.layoutId} disabled={disabled}
-						aria-pressed={layout.layoutId === active?.layoutId} onClick={() => {
-							setEditingName(undefined);
-							setDeleting(false);
-							onSelect(layout.layoutId);
-						}}>{layout.name}</button>
-				))}
-				{layouts.length < 2 ? (
-					<button type="button" disabled={disabled} onClick={() => onCommand({ kind: "create-second", roomId })}>
-						{copy("Создать второй вариант", "Create second layout")}
-					</button>
-				) : null}
-				<button type="button" disabled={disabled} onClick={() => setEditingName(active?.name ?? copy("Расстановка A", "Layout A"))}>
-					{copy("Переименовать расстановку", "Rename layout")}
-				</button>
-				{active && survivor ? <button type="button" disabled={disabled} onClick={() => setDeleting(true)}>
-					{copy("Удалить расстановку", "Delete layout")}
-				</button> : null}
-			</div>
-			{editingName !== undefined ? (
-				<div className={styles.interiorChoices}>
-					<input aria-label={copy("Название расстановки", "Layout name")} disabled={disabled}
-						value={editingName} onChange={event => setEditingName(event.currentTarget.value)} />
-					<button type="button" disabled={disabled} onClick={() => setEditingName(undefined)}>{copy("Отменить", "Cancel")}</button>
-					<button type="button" disabled={disabled || editingName.trim().length === 0} onClick={() => {
-						onCommand({ kind: "rename", roomId, name: editingName, ...(active ? { layoutId: active.layoutId } : {}) });
-						setEditingName(undefined);
-					}}>{copy("Сохранить название", "Save name")}</button>
-				</div>
-			) : null}
-			{deleting && active && survivor ? (
-				<div className={styles.interiorChoices}>
-					<p>{copy(`Удалить «${active.name}»? Останется «${survivor.name}».`, `Delete “${active.name}”? “${survivor.name}” will remain.`)}</p>
-					<button type="button" disabled={disabled} onClick={() => setDeleting(false)}>{copy("Отменить", "Cancel")}</button>
-					<button type="button" disabled={disabled} onClick={() => {
-						onCommand({ kind: "delete", roomId, layoutId: active.layoutId });
-						setDeleting(false);
-					}}>{copy("Подтвердить удаление", "Confirm deletion")}</button>
-				</div>
-			) : null}
 		</section>
 	);
 }

@@ -163,21 +163,21 @@ export function createThreeWebGl2RoomSceneRenderer(
 	let highlightedFloor: true | undefined;
 	let appliedStructureSelection: SceneStructureSelection | undefined;
 
-	const floorMeshes = [
+	const floorSurfaces = [
 		...scene.floors.map((floor) => {
 			const mesh = boxMesh({ ...floor, centerYM: floor.centerYM - floor.heightM / 2 }, THREE_DIMENSIONAL_ROOM_PALETTE.floor, "floor");
 			applyFloorInteriorFinish(mesh.material, floor.floor, qualityTier === "standard");
-			return mesh;
+			return { root: mesh, material: mesh.material, structureSelection: sceneStructureSelection(undefined, undefined, floor.floor?.roomId) };
 		}),
 		...(scene.floorPolygons ?? []).map((floor) => {
 			const mesh = polygonFloorMesh(floor);
 			applyFloorInteriorFinish(mesh.material, floor.floor, qualityTier === "standard");
-			return mesh;
+			return { root: mesh, material: mesh.material, structureSelection: sceneStructureSelection(undefined, undefined, floor.floor.roomId) };
 		}),
 	];
+	const floorMeshes = floorSurfaces.map(({ root }) => root);
 	for (const floor of floorMeshes) roomGroup.add(floor);
-	const usableFloorMeshes = floorMeshes.filter((_, index) => index >= scene.floors.length || scene.floors[index]?.floor?.roomId);
-	const roomPickSurfaces: ThreePickSurface[] = floorMeshes.map(root => ({ root }));
+	const roomPickSurfaces: ThreePickSurface[] = [...floorSurfaces];
 	const addWallPart = (part: Mesh<BufferGeometry, MeshStandardMaterial>, wallSegmentId: string | undefined, owner: Omit<ThreePickSurface, "root">) => {
 		const wallGroup = new Group();
 		wallGroup.add(part);
@@ -232,20 +232,14 @@ export function createThreeWebGl2RoomSceneRenderer(
 		) => {
 			activeScene = sceneOverride;
 			const structureSelection = activeScene.structureSelection;
-			if (appliedStructureSelection !== structureSelection) {
+			if (appliedStructureSelection !== structureSelection || highlightedFloor !== activeScene.highlightFloor) {
 				appliedStructureSelection = structureSelection;
-				applyThreeStructureSelection(roomPickSurfaces, structureSelection);
+				highlightedFloor = activeScene.highlightFloor;
+				applyThreeStructureSelection(roomPickSurfaces, structureSelection, highlightedFloor);
 			}
 			if (appliedHighlights !== activeScene.supportHighlights) {
 				appliedHighlights = activeScene.supportHighlights;
 				supportGlow.update(supportGlowGeometry(appliedHighlights));
-			}
-			if (highlightedFloor !== activeScene.highlightFloor) {
-				highlightedFloor = activeScene.highlightFloor;
-				for (const floor of usableFloorMeshes) {
-					floor.material.emissive.set(highlightedFloor ? FLOOR_DESTINATION_TINT : 0);
-					floor.material.emissiveIntensity = 0.16;
-				}
 			}
 			if (theme !== appliedTheme) {
 				appliedTheme = theme;
@@ -301,11 +295,13 @@ interface ThreeStructureSurface {
 }
 
 /** Emit from the real surface so its depth, cutaway and material finish are retained. */
-export function applyThreeStructureSelection(surfaces: readonly ThreeStructureSurface[], selection: SceneStructureSelection | undefined): void {
+export function applyThreeStructureSelection(surfaces: readonly ThreeStructureSurface[], selection: SceneStructureSelection | undefined, highlightFloor?: true): void {
 	for (const { material, structureSelection } of surfaces) {
 		if (!material) continue;
-		material.emissive.set(selection !== undefined && selection === structureSelection ? STRUCTURE_SELECTION_TINT : 0);
-		material.emissiveIntensity = 0.58;
+		const selected = selection !== undefined && selection === structureSelection;
+		const targetFloor = highlightFloor && structureSelection?.startsWith("floor:");
+		material.emissive.set(selected ? STRUCTURE_SELECTION_TINT : targetFloor ? FLOOR_DESTINATION_TINT : 0);
+		material.emissiveIntensity = selected || !targetFloor ? 0.58 : 0.16;
 	}
 }
 

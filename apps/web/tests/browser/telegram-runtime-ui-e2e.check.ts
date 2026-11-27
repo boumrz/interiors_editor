@@ -153,7 +153,7 @@ test("TMA-ADD-OPENING: the ordinary plan adds a door or window at the specified 
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
 	await createRoom(page, "Проёмы на плане");
 	const dock = page.getByTestId("editor-action-dock");
-	await expect(dock.getByRole("button")).toHaveText(["Комната", "Стена", "Добавить", "Выбор"]);
+	await expect(dock.getByRole("button")).toHaveText(["Помещения", "Стена", "Добавить", "Выбор"]);
 	const add = dock.getByRole("button", { name: "Добавить", exact: true });
 	await add.click();
 	const chooser = page.getByRole("dialog", { name: "Добавить", exact: true });
@@ -3140,6 +3140,14 @@ test("TMA-INTERIOR-SCENE-EDIT: choose and edit a window, door, wall, and room wi
 	await page.getByRole("button", { name: "3D", exact: true }).click();
 	const workspace = page.getByTestId("editor-workspace");
 	const canvas = page.getByTestId("three-dimensional-canvas");
+	const roomsButton = page.getByRole("button", { name: "Помещения", exact: true });
+	await roomsButton.click();
+	const room = page.getByTestId("room-directory-sheet");
+	await expect(room.getByRole("combobox", { name: "Тип помещения", exact: true })).toBeVisible();
+	await expect(room.getByRole("textbox", { name: "Высота помещения, мм", exact: true })).toBeVisible();
+	await expect(room.getByRole("region", { name: "Расстановки" })).toHaveCount(0);
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(room).toHaveCount(0);
 	const view = await canvas.boundingBox();
 	if (!view) throw new Error("Expected the interactive 3D canvas");
 	await page.mouse.move(view.x + view.width * 0.5, view.y + view.height * 0.46);
@@ -3185,6 +3193,7 @@ test("TMA-INTERIOR-SCENE-EDIT: choose and edit a window, door, wall, and room wi
 	await doorSheet.getByRole("textbox", { name: "Высота дверного проёма, мм" }).fill(String(door.heightMm - 20));
 	const doorType = doorSheet.getByRole("combobox", { name: "Тип двери" });
 	const saveDoor = doorSheet.getByRole("button", { name: "Сохранить проём" });
+	await expect.poll(() => doorSheet.evaluate(element => element.getAnimations().every(animation => animation.playState !== "running"))).toBe(true);
 	const saveButtonBefore = await saveDoor.boundingBox();
 	await doorType.selectOption("solid-swing");
 	expect(await saveDoor.boundingBox()).toEqual(saveButtonBefore);
@@ -3236,20 +3245,24 @@ test("TMA-INTERIOR-SCENE-EDIT: choose and edit a window, door, wall, and room wi
 		.toEqual({ left: { presetId: "sand-paint", version: 1 } });
 	await wallProperties.getByRole("button", { name: "Закрыть свойства стены", exact: true }).click();
 	await clickWorld({ x: 2.1, y: 0, z: 1.55 });
-	await page.getByRole("button", { name: "Помещение", exact: true }).click();
-	const room = page.getByTestId("room-directory-sheet");
-	await room.getByRole("button", { name: "Пол", exact: true }).click();
-	const floor = page.getByRole("dialog", { name: "Пол" });
+	await expect(roomsButton).toHaveCount(0);
+	const floorTrigger = page.getByRole("button", { name: "Материал пола", exact: true });
+	await floorTrigger.click();
+	const floor = page.getByRole("dialog", { name: "Материал пола", exact: true });
+	await expect(floor).toHaveAttribute("data-scene-color-palette", "");
+	await expect(floor.getByRole("button", { name: "Светлый дуб", exact: true, pressed: true })).toBeFocused();
 	await floor.getByRole("button", { name: "Матовая плитка" }).click();
-	await floor.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect(floor).toHaveCount(0);
+	await expect(floorTrigger).toBeFocused();
 	await saved(page);
 	expect((await currentProject(page)).level.rooms[0]?.floorFinish?.presetId).toBe("matte-floor-tile");
-	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
-	await expect(room).toHaveCount(0);
 	await clickWorld({ x: 4.25, y: 0.45, z: 1.35 });
+	await expect(roomsButton).toHaveCount(0);
 	await page.getByRole("button", { name: "Параметры", exact: true }).click();
 	const item = page.getByTestId("selected-item-inspector");
 	await expect(item).toBeVisible();
+	await item.getByRole("tab", { name: "Настройки", exact: true }).click();
+	await expect(item.getByRole("button", { name: "Расстановки", exact: true })).toHaveCount(0);
 	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
 	await expect(item).toHaveCount(0);
 	await page.evaluate(wallId => window.__telegramRuntimeUi.addExistingWallLight(wallId), door.wallSegmentId);
@@ -3313,6 +3326,7 @@ for (const [scheme, procedural] of [["light", false], ["dark", true]] as const) 
 		const windowContact = contactAt(pane.centerXM, pane.centerYM, pane.centerZM);
 		const doorContact = contactAt(leaf.centerXM, leaf.centerYM, leaf.centerZM);
 		const wallContact = contactAt(wall.centerXM - normal.x * wallOffset, wall.centerYM, wall.centerZM - normal.z * wallOffset);
+		const floorContact = contactAt(2.1, 0, 1.55);
 		const contrastAt = async ({ x, y }: { x: number; y: number }) => {
 			const pixels = await page.screenshot({ clip: { x: Math.floor(x) - 1, y: Math.floor(y) - 1, width: 3, height: 3 }, scale: "css" });
 			return page.evaluate(async bytes => {
@@ -3334,6 +3348,7 @@ for (const [scheme, procedural] of [["light", false], ["dark", true]] as const) 
 		const windowBase = await contrastAt(windowContact);
 		const doorBase = await contrastAt(doorContact);
 		const wallBase = await contrastAt(wallContact);
+		const floorBase = await contrastAt(floorContact);
 		await tap(windowContact);
 		await expect(page.getByRole("complementary", { name: "Выбранное окно" })).toBeVisible();
 		await expect.poll(() => contrastAt(windowContact)).toBeGreaterThan(windowBase + 4);
@@ -3346,6 +3361,10 @@ for (const [scheme, procedural] of [["light", false], ["dark", true]] as const) 
 		await expect(page.getByRole("button", { name: "Свойства стены", exact: true })).toBeVisible();
 		await expect.poll(() => contrastAt(wallContact)).toBeGreaterThan(wallBase + 4);
 		expect(await contrastAt(doorContact)).toBeCloseTo(doorBase, 0);
+		await tap(floorContact);
+		await expect(page.getByRole("button", { name: "Материал пола", exact: true })).toBeVisible();
+		await expect.poll(() => contrastAt(floorContact)).toBeGreaterThan(floorBase + 4);
+		expect(await contrastAt(wallContact)).toBeCloseTo(wallBase, 0);
 		expect(await currentProject(page)).toEqual(source);
 	});
 }
@@ -3658,6 +3677,7 @@ test("TMA-NOV23-COPY: a locked exact item duplicates into the current 3D view", 
 	const inspector = page.getByTestId("selected-item-inspector");
 	await inspector.getByRole("button", { name: "Развернуть панель предмета" }).click();
 	await inspector.getByRole("tab", { name: "Настройки" }).click();
+	await expect(inspector.getByRole("button", { name: "Дублировать предмет", exact: true })).toHaveCount(0);
 	await inspector.getByRole("button", { name: "Заблокировать предмет" }).click();
 	await saved(page);
 	const original = (await currentProject(page)).assetInstances[0];
@@ -3719,11 +3739,20 @@ test("TMA-INTERIOR-PROFILES: choose the next wall thickness and retain it throug
 	await page.getByRole("button", { name: "Отдалить", exact: true }).click();
 	await page.getByRole("button", { name: "Отдалить", exact: true }).click();
 	const dock = page.getByTestId("editor-action-dock");
-	await dock.getByRole("button", { name: "Стена", exact: true }).click();
+	const wallTool = dock.getByRole("button", { name: "Стена", exact: true });
+	await wallTool.click();
 	const profiles = page.getByRole("group", { name: "Профиль стены", exact: true });
-	await expect(profiles.getByRole("button", { name: "Перегородка · 100 мм", exact: true })).toHaveAttribute("aria-pressed", "true");
+	const partition = profiles.getByRole("button", { name: "Перегородка · 100 мм", exact: true });
+	await expect(partition).toHaveAttribute("aria-pressed", "true");
 	const bearing = profiles.getByRole("button", { name: "Несущая · 200 мм", exact: true });
-	await bearing.click();
+	for (const scheme of ["light", "dark"] as const) {
+		await page.evaluate((colorScheme) => window.__telegramRuntimeUi.setAppearance("ru", colorScheme), scheme);
+		const selectedToolColor = await wallTool.evaluate((button) => getComputedStyle(button).color);
+		await partition.click();
+		await expect(partition).toHaveCSS("color", selectedToolColor);
+		await bearing.click();
+		await expect(bearing).toHaveCSS("color", selectedToolColor);
+	}
 	const [first, last] = await verticalWallScreenEndpoints(page, east.wallSegmentId);
 	const height = Math.abs(first.y - last.y);
 	const x = first.x + height / 3100 * 1200;
@@ -3737,31 +3766,45 @@ test("TMA-INTERIOR-PROFILES: choose the next wall thickness and retain it throug
 	await saved(page);
 	await expect(bearing).toHaveAttribute("aria-pressed", "true");
 	await dock.getByRole("button", { name: "Выбор и перемещение", exact: true }).click();
-	await dock.getByRole("button", { name: "Стена", exact: true }).click();
-	await expect(profiles.getByRole("button", { name: "Перегородка · 100 мм", exact: true })).toHaveAttribute("aria-pressed", "true");
+	await wallTool.click();
+	await expect(partition).toHaveAttribute("aria-pressed", "true");
 });
 
-test("TMA-INTERIOR-ROOM-FINISH: preview, cancel, confirm and reopen a floor material", async ({ page }) => {
+test("TMA-INTERIOR-ROOM-FINISH: select the floor in Plan and save its material directly", async ({ page }) => {
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
 	const name = "Отделка комнаты";
 	await createRoom(page, name);
 	const source = await rows(page, "a");
-	await page.getByTestId("editor-action-dock").getByRole("button", { name: "Комната", exact: true }).click();
+	const rooms = page.getByRole("button", { name: "Помещения", exact: true });
+	await rooms.click();
 	const room = page.getByTestId("room-directory-sheet");
-	await room.getByRole("button", { name: "Пол", exact: true }).click();
-	const finishes = page.getByRole("dialog", { name: "Пол", exact: true });
-	await finishes.getByRole("button", { name: "Светлый дуб", exact: true }).click();
-	await expect(page.getByTestId("room-finish-preview")).toBeVisible();
+	await expect(room.getByRole("combobox", { name: "Тип помещения", exact: true })).toBeVisible();
+	await expect(room.getByRole("button", { name: "Пол", exact: true })).toHaveCount(0);
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(room).toHaveCount(0);
+	await clickRectangularRoomPoint(page, { x: 0.42, y: 0.48 });
+	const selectedFloor = page.getByTestId("plan-canvas").locator('[data-floor-room-id][data-selected="true"]');
+	await expect(selectedFloor).toHaveCount(1);
+	await expect(selectedFloor).not.toHaveCSS("stroke", "none");
+	await expect(rooms).toHaveCount(0);
+	const material = page.getByRole("button", { name: "Материал пола", exact: true });
+	const finishes = page.getByRole("dialog", { name: "Материал пола", exact: true });
+	await material.click();
+	await expect(finishes.getByRole("button", { name: "По умолчанию", exact: true })).toHaveAttribute("aria-pressed", "true");
+	await page.evaluate(() => window.__telegramRuntimeUi.hostBack());
+	await expect(finishes).toHaveCount(0);
 	expect(await rows(page, "a")).toEqual(source);
-	await finishes.getByRole("button", { name: "Отменить", exact: true }).click();
-	await expect(page.getByTestId("room-finish-preview")).toHaveCount(0);
-	await room.getByRole("button", { name: "Пол", exact: true }).click();
+	await material.click();
 	await finishes.getByRole("button", { name: "Светлый дуб", exact: true }).click();
-	await finishes.getByRole("button", { name: "Подтвердить", exact: true }).click();
+	await expect(finishes).toHaveCount(0);
 	await saved(page);
 	const durable = await currentProject(page);
 	expect(durable.level.rooms[0]).toMatchObject({ floorFinish: { presetId: "light-oak", version: 1 } });
 	expect((await rows(page, "a")).revisions).toHaveLength(source.revisions.length + 1);
+	await expect(selectedFloor).toHaveCount(1);
+	await page.getByRole("button", { name: "Выбор и перемещение", exact: true }).click();
+	await expect(selectedFloor).toHaveCount(0);
+	await expect(rooms).toBeVisible();
 	await page.reload();
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
 	await open(page, name);

@@ -811,9 +811,16 @@ function createProceduralWebGl2RoomSceneRenderer(
 				0,
 				0,
 			);
+			const structureSelection = activeScene.structureSelection;
+			const tintForFloor = (roomId?: string) => {
+				if (!roomId) return undefined;
+				if (structureSelection === sceneStructureSelection(undefined, undefined, roomId)) return { color: structureTint, amount: 0.42 };
+				return activeScene.highlightFloor ? { color: floorTint, amount: 0.1 } : undefined;
+			};
 			activeScene.floors.forEach((floor) => {
-				const draw: DrawBox = activeScene.highlightFloor && floor.floor?.roomId
-					? (box, color, view, vertices) => drawBox(box, tintSurface(color, floorTint, 0.1), view, vertices)
+				const tint = tintForFloor(floor.floor?.roomId);
+				const draw: DrawBox = tint
+					? (box, color, view, vertices) => drawBox(box, tintSurface(color, tint.color, tint.amount), view, vertices)
 					: drawBox;
 				if (floor.floor?.finish) {
 					draw({ ...floor, centerYM: floor.centerYM - floor.heightM / 2 }, colorFor(floorFinishColors[floor.floor.finish.presetId]), camera);
@@ -821,9 +828,10 @@ function createProceduralWebGl2RoomSceneRenderer(
 			});
 			activeScene.floorPolygons?.forEach((floor) => {
 				const color = floor.floor.finish ? colorFor(floorFinishColors[floor.floor.finish.presetId]) : surfaceColors.floorLightBoard;
+				const tint = tintForFloor(floor.floor.roomId);
 				drawWorldTriangles(
 					floorPrismVerticesFor(floor),
-					activeScene.highlightFloor ? tintSurface(color, floorTint, 0.1) : color,
+					tint ? tintSurface(color, tint.color, tint.amount) : color,
 					camera,
 				);
 			});
@@ -835,7 +843,6 @@ function createProceduralWebGl2RoomSceneRenderer(
 			const visibleWalls = activeScene.walls.filter(
 				(wall) => !hiddenWallSegmentIds.has(wall.wall?.wallSegmentId ?? ""),
 			);
-			const structureSelection = activeScene.structureSelection;
 			visibleWalls.forEach((wall) => {
 				const drawWall: DrawBox = structureSelection && structureSelection === sceneStructureSelection(wall.wall?.wallSegmentId)
 					? (box, color, view, vertices) => drawBox(box, tintSurface(color, structureTint, 0.42), view, vertices)

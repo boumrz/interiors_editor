@@ -133,7 +133,7 @@ export function TelegramItemColor({
 }
 
 export function TelegramColorPaletteDialog({
-	dialogId, title, busy = false, error, children, customControl, onClose,
+	dialogId, title, busy = false, error, children, customControl, labeledSwatches, onClose,
 }: {
 	readonly dialogId?: string;
 	readonly title: string;
@@ -141,6 +141,7 @@ export function TelegramColorPaletteDialog({
 	readonly error?: string | undefined;
 	readonly children: ReactNode;
 	readonly customControl?: ReactNode;
+	readonly labeledSwatches?: boolean;
 	readonly onClose: () => void;
 }) {
 	const titleId = useId();
@@ -175,7 +176,7 @@ export function TelegramColorPaletteDialog({
 				closeLabel={copy("Закрыть палитру", "Close color palette")}
 				closeDisabled={busy} onClose={() => dialogRef.current?.close()} />
 			<div className={sheetStyles.body}>
-				<div className={sceneStyles.colorOptions}>{children}</div>
+				<div className={sceneStyles.colorOptions} data-labeled-swatches={labeledSwatches || undefined}>{children}</div>
 				{customControl}
 				<p className={sceneStyles.colorNote}>{copy("Цвет на экране приблизительный.", "Colors are approximate on screen.")}</p>
 				{error ? <p className={styles.fieldError} role="alert">{error}</p> : null}

@@ -247,7 +247,6 @@ export function visualGridStepMm(): number {
 
 export interface PlanProjectionProps {
 	readonly supportDrag?: import("./supported-drag").SupportedDrag | undefined;
-	readonly finishPreview?: import("./room-interior-controls").FinishDraft;
 	readonly supportPreview?: import("./supported-item-controls").SupportOption | undefined;
 	readonly supportPlanTargets?: {
 		readonly options: readonly import("./supported-item-controls").SupportOption[];
@@ -357,6 +356,7 @@ export interface PlanProjectionProps {
 	}) => Promise<void> | void;
 	readonly onSelectItem: (assetInstanceId: string) => void;
 	readonly onSelectWall: (wallSegmentId: string, point?: { readonly xMm: number; readonly zMm: number }) => void;
+	readonly onSelectFloor?: ((roomId: string) => void) | undefined;
 	readonly onWallMoveModeChange: (isActive: boolean) => void;
 	readonly onWallSplitModeChange: (isActive: boolean) => void;
 	readonly onWallVertexMoveModeChange: (isActive: boolean) => void;
@@ -364,6 +364,7 @@ export interface PlanProjectionProps {
 	readonly selectedItemId: string | undefined;
 	readonly selectedOpeningId?: string;
 	readonly selectedWallId: string | undefined;
+	readonly selectedFloorRoomId?: string | undefined;
 	readonly wallThicknessMm: number | undefined;
 	readonly viewport: EditorViewport;
 	readonly setViewport: (

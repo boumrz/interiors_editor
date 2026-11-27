@@ -29,7 +29,7 @@ const floorFinishes: readonly FinishOption<FloorFinishId>[] = [
 	{ id: "plain-floor", ru: "Однотонное покрытие", en: "Solid finish", color: floorFinishColors["plain-floor"] },
 ];
 
-const defaultWallSwatch = "var(--editor-host-line, var(--line))";
+const defaultSwatch = "var(--editor-host-line, var(--line))";
 const wallSwatches: readonly {
 	readonly ru: string;
 	readonly en: string;
@@ -57,7 +57,7 @@ export function WallColorButton({ finish, disabled, triggerRef, onClick }: {
 		<button type="button" ref={triggerRef} aria-haspopup="dialog" className={styles.wallColorButton}
 			disabled={disabled} onClick={onClick}>
 			<span aria-hidden="true" className={styles.itemColorSwatch}
-				style={{ backgroundColor: finish ? wallFinishColor(finish) : defaultWallSwatch }} />
+				style={{ backgroundColor: finish ? wallFinishColor(finish) : defaultSwatch }} />
 			{copy("Цвет стены", "Wall color")}
 		</button>
 	);
@@ -118,7 +118,7 @@ export function WallColorPalette({ draft, disabled, busy, error, onClose, onSele
 				return (
 					<button key={en} type="button" aria-label={copy(ru, en)}
 						aria-pressed={active} disabled={disabled} onClick={() => onSelect(finish)}>
-						<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: swatch ?? defaultWallSwatch }}>
+						<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: swatch ?? defaultSwatch }}>
 							{active ? "✓" : ""}
 						</span>
 					</button>
@@ -133,44 +133,35 @@ export function finishLabel(finish?: SurfaceFinish) {
 	return option ? copy(option.ru, option.en) : copy("По умолчанию", "Default");
 }
 
-/** Scene preview keeps its source separate from the Project used for writes. */
-export function projectWithFinishPreview(project: Project, draft: Extract<FinishDraft, { kind: "floor" }>): Project {
-	return {
-		...project,
-		interiorSchemaVersion: 1,
-		level: {
-			...project.level,
-			rooms: project.level.rooms.map(room => {
-				if (room.roomId !== draft.roomId) return room;
-				const { floorFinish: _current, ...rest } = room;
-				return draft.finish ? { ...rest, floorFinish: draft.finish } : rest;
-			}),
-		},
-	};
-}
-
-type RoomFinishControlsProps = {
+export function FloorFinishPalette({ draft, disabled, busy, error, onClose, onSelect }: {
 	readonly draft: Extract<FinishDraft, { kind: "floor" }>;
 	readonly disabled: boolean;
-	readonly onChange: (draft: FinishDraft) => void;
-};
-
-export function RoomFinishControls({ draft, disabled, onChange }: RoomFinishControlsProps) {
-	const defaultButton = (
-		<button aria-pressed={!draft.finish} disabled={disabled} type="button" onClick={() => onChange({ ...draft, finish: undefined })}>
-			{copy("По умолчанию", "Default")}
-		</button>
-	);
-	const renderOption = <Id extends string>(option: FinishOption<Id>, onSelect: () => void) => (
-		<button aria-pressed={draft.finish?.presetId === option.id} disabled={disabled} key={option.id} onClick={onSelect} type="button">
-			<span aria-hidden="true" style={{ background: option.color }} />
-			{copy(option.ru, option.en)}
-		</button>
-	);
+	readonly busy: boolean;
+	readonly error?: string | undefined;
+	readonly onClose: () => void;
+	readonly onSelect: (finish: SurfaceFinish<FloorFinishId> | undefined) => void;
+}) {
 	return (
-		<>
-			{defaultButton}
-			{floorFinishes.map(option => renderOption(option, () => onChange({ ...draft, finish: { presetId: option.id, version: 1 } })))}
-		</>
+		<TelegramColorPaletteDialog title={copy("Материал пола", "Floor material")} labeledSwatches
+			busy={busy} error={error} onClose={onClose}>
+			<button type="button" aria-pressed={!draft.finish} disabled={disabled} onClick={() => onSelect(undefined)}>
+				<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: defaultSwatch }}>
+					{!draft.finish ? "✓" : ""}
+				</span>
+				{finishLabel()}
+			</button>
+			{floorFinishes.map(({ id, ru, en, color }) => {
+				const active = draft.finish?.presetId === id;
+				return (
+					<button key={id} type="button" aria-pressed={active} disabled={disabled}
+						onClick={() => onSelect({ presetId: id, version: 1 })}>
+						<span aria-hidden="true" className={styles.itemColorSwatch} style={{ backgroundColor: color }}>
+							{active ? "✓" : ""}
+						</span>
+						{copy(ru, en)}
+					</button>
+				);
+			})}
+		</TelegramColorPaletteDialog>
 	);
 }

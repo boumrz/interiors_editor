@@ -1,9 +1,7 @@
 import { copy, editorLanguage } from "./editor-language";
 import { projectInteriorView, supportedGuestsFor, type SupportTarget } from "../domain/interior-project";
 import { floorDecorPresetFor, isSupportedDecorPreset, resolveSupportedPlacements, supportSurfacesFor } from "../domain/interior-support";
-import type { RoomLayoutCommand } from "../domain/room-layouts";
 import {
-	RoomLayoutControls,
 	SupportedPlacementControls,
 	type SupportedEditDraft,
 	type SupportOption,
@@ -11,7 +9,7 @@ import {
 } from "./supported-item-controls";
 import { availableSupportOptions, supportAddressAt, supportPlacementCommand } from "./supported-placement-targets";
 import { createSupportedDrag, supportDragLevels } from "./supported-drag";
-import { finishLabel, interiorWallSide, projectWithFinishPreview, RoomFinishControls, WallColorButton, WallColorPalette, type FinishDraft } from "./room-interior-controls";
+import { finishLabel, FloorFinishPalette, interiorWallSide, WallColorButton, WallColorPalette, type FinishDraft } from "./room-interior-controls";
 import { SceneSelectionActions } from "./scene-selection-actions";
 import type { ProductMetric, ProductMetricSink } from "../application/editor-product-metrics";
 import type { RoomRenderTheme } from "../adapters/renderer/three-dimensional-room-palette";
@@ -477,6 +475,7 @@ const initialItemFields: ItemFields = {
 };
 const DEFAULT_DRAW_WALL_THICKNESS_MM = 100;
 const PRELOADED_GLB_DEFINITION_PREFIX = "preloaded-glb:";
+const defaultRoomLayouts: ReadonlyMap<string, string> = new Map();
 
 function ItemInspectorActions({ telegram, children }: {
 	readonly telegram: boolean;
@@ -1953,8 +1952,7 @@ export function AppShell({
 	const roomInteriorEnabled = hostNavigation !== undefined && controller.roomInteriorEnabled?.() === true;
 	const [wallDrawProfile, setWallDrawProfile] = useState<WallProfile>("partition");
 	const [finishDraft, setFinishDraft] = useState<FinishDraft>();
-	const [isWallColorSaving, setIsWallColorSaving] = useState(false);
-	const [layoutPreferences, setLayoutPreferences] = useState<ReadonlyMap<string, string>>(() => new Map());
+	const [isFinishSaving, setIsFinishSaving] = useState(false);
 	const [supportDraft, setSupportDraft] = useState<SupportedEditDraft>();
 	const [supportMessage, setSupportMessage] = useState<string>();
 	const [furnitureCopyId, setFurnitureCopyId] = useState<string>();
@@ -2430,10 +2428,9 @@ export function AppShell({
 			? writerRecoveryCopy.project
 			: (editorProject(state) ?? recoveryProjection);
 	const visibleProject = useMemo(() => project?.schemaVersion === 1
-		? projectInteriorView(project, layoutPreferences) : project, [project, layoutPreferences]);
+		? projectInteriorView(project, defaultRoomLayouts) : project, [project]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: interaction state is scoped by Project identity.
 	useEffect(() => {
-		setLayoutPreferences(new Map());
 		setSupportDraft(undefined);
 		setFurnitureRemovalId(undefined);
 		setFurnitureCopyId(undefined);
@@ -3166,6 +3163,7 @@ export function AppShell({
 		({ room }) => room.roomId === selectedRoomPropertyId,
 	);
 	const selectedSceneRoom = editableRooms.find(({ room }) => room.roomId === selectedSceneRoomId)?.room;
+	const hasNoCanvasSelection = !selectedSpatialItem && !selectedWall && !selectedOpening && !selectedSceneRoom;
 	const selectableSupports = useMemo(() => visibleProject?.schemaVersion === 1
 		? supportOptions(visibleProject) : [], [visibleProject]);
 	const supportsInView = useMemo(() => visibleProject?.schemaVersion === 1
@@ -3217,17 +3215,16 @@ export function AppShell({
 	const floorPreviewItemId = supportTarget && "roomId" in supportTarget && supportAssessment?.kind === "accepted"
 		? supportAssessment.project.assetInstances.at(-1)?.assetInstanceId : undefined;
 	const supportPreviewProject = useMemo(() => supportAssessment?.kind === "accepted"
-		? projectInteriorView(supportAssessment.project, layoutPreferences) : undefined,
-		[supportAssessment, layoutPreferences]);
+		? projectInteriorView(supportAssessment.project, defaultRoomLayouts) : undefined,
+		[supportAssessment]);
 	const previewProject = useMemo(() => {
 		const source = supportPreviewProject ?? visibleProject;
 		if (source?.schemaVersion !== 1) return source;
-		if (finishDraft?.kind === "floor") return projectWithFinishPreview(source, finishDraft);
 		if (viewMode === "three-dimensional" && openingEditAssessment?.kind === "accepted") {
-			return projectInteriorView(openingEditAssessment.project, layoutPreferences);
+			return projectInteriorView(openingEditAssessment.project, defaultRoomLayouts);
 		}
 		return source;
-	}, [finishDraft, layoutPreferences, openingEditAssessment, supportPreviewProject, viewMode, visibleProject]);
+	}, [openingEditAssessment, supportPreviewProject, viewMode, visibleProject]);
 	const threeDimensionalScene = useMemo(
 		() => previewProject ? projectRectangularRoomForWebGl(previewProject, localGreyboxCatalog ? telegramGreyboxKindForLabel : undefined, hostNavigation !== undefined) : undefined,
 		[previewProject, localGreyboxCatalog, hostNavigation],
@@ -3328,7 +3325,7 @@ export function AppShell({
 			: undefined;
 	const hasUndurableEditorDraft =
         hasRetainedHistoryTarget ||
-		isWallColorSaving ||
+		isFinishSaving ||
 		hasTransientPlanEdit ||
 		hasTransientThreeDimensionalEdit ||
 		(activeTool === "item" && itemPlacementDraft !== undefined) ||
@@ -3356,8 +3353,7 @@ export function AppShell({
 		return fields !== undefined && (fields.offsetMm !== String(item.offsetMm) || fields.elevationMm !== String(item.elevationMm));
 	});
 	const hasRawCustomImportDraft = customGlbImport.kind === "ready" || customGlbImport.kind === "checking" || fbxConversion.kind === "converting";
-	const finishChanged = finishDraft?.kind === "floor" && selectedRoomProperty?.room.floorFinish?.presetId !== finishDraft.finish?.presetId;
-	const hasRawEditorDraft = finishChanged || supportDraft !== undefined || furnitureRemovalId !== undefined || Object.keys(itemWallDrafts).length > 0 || hasRawRenameDraft || hasRawSelectedItemDraft || hasRawRoomPropertyDraft || hasRawProjectNameDraft || hasRawDimensionDraft || hasRawPlaceholderDraft || hasRawWallPositionDraft || hasRawCustomImportDraft || itemColorVariantDraft !== undefined;
+	const hasRawEditorDraft = supportDraft !== undefined || furnitureRemovalId !== undefined || Object.keys(itemWallDrafts).length > 0 || hasRawRenameDraft || hasRawSelectedItemDraft || hasRawRoomPropertyDraft || hasRawProjectNameDraft || hasRawDimensionDraft || hasRawPlaceholderDraft || hasRawWallPositionDraft || hasRawCustomImportDraft || itemColorVariantDraft !== undefined;
 	const isEditorPreview = state.kind === "saved" && (
 		isItemPlacementActive ||
 		(fullTransientNavigationProtection && (hasRawEditorDraft || hasUndurableEditorDraft))
@@ -3368,7 +3364,7 @@ export function AppShell({
 			: hasRetainedHistoryTarget || (state.kind === "saved" && dimensionNotice?.kind === "item-collision")
 				? copy("Правка не сохранена", "Edit unsaved")
 			: isEditorPreview
-				? supportDraft || finishChanged || furnitureRemovalId
+				? supportDraft || furnitureRemovalId
 					? copy("Черновик", "Draft")
 					: copy("Предпросмотр — не сохранено", "Preview · unsaved")
 				: state.kind === "saved"
@@ -4096,8 +4092,8 @@ export function AppShell({
 		setRoomHeightOpeningConflict(undefined);
 	};
 
-	const openRoomDirectory = (roomId?: string) => {
-		const roomToOpen = roomId ? editableRooms.find(({ room }) => room.roomId === roomId) : editableRooms[0];
+	const openRoomDirectory = () => {
+		const roomToOpen = editableRooms[0];
 		if (!roomToOpen) return;
 		restoreFocusRef.current =
 			document.activeElement instanceof HTMLElement
@@ -4182,27 +4178,34 @@ export function AppShell({
 			finish: "sideFinishes" in selectedWall ? selectedWall.sideFinishes?.[wallPaintSide] : undefined,
 		});
 	};
-	const confirmFinishDraft = async () => {
-		if (finishDraft?.kind !== "floor" || !finishChanged || isEditorReadOnly || isMutationBlocked) return;
-		const result = await controller.updateRoomFloorFinish({
-			roomId: finishDraft.roomId, ...(finishDraft.finish ? { finish: finishDraft.finish } : {}),
-		});
-		if (result.kind === "durable" || result.kind === "persist-failed") closeFinishDraft();
-		if (result.kind === "rejected") showEditRejection(result.reasonCode);
-	};
-	const selectWallColor = async (finish: Extract<FinishDraft, { kind: "wall" }>["finish"]) => {
-		if (finishDraft?.kind !== "wall" || isWallColorSaving || isEditorReadOnly || isMutationBlocked) return;
+	const openFloorFinish = (room: Room) => {
+		if (!roomInteriorEnabled || isEditorReadOnly || isMutationBlocked) return;
 		setDimensionError(undefined);
-		setIsWallColorSaving(true);
+		setFinishDraft({ kind: "floor", roomId: room.roomId, finish: room.floorFinish });
+	};
+	const saveSurfaceFinish = async (save: () => ReturnType<ProjectController["updateRoomFloorFinish"]>) => {
+		if (isFinishSaving || isEditorReadOnly || isMutationBlocked) return;
+		setDimensionError(undefined);
+		setIsFinishSaving(true);
 		try {
-			const result = await controller.updateWallSideFinish({
-				wallSegmentId: finishDraft.wallSegmentId, side: finishDraft.side, ...(finish ? { finish } : {}),
-			});
+			const result = await save();
 			if (result.kind === "rejected") showEditRejection(result.reasonCode);
 			else if (result.kind === "durable" || result.kind === "unchanged" || result.kind === "persist-failed") closeFinishDraft();
 		} finally {
-			setIsWallColorSaving(false);
+			setIsFinishSaving(false);
 		}
+	};
+	const selectFloorFinish = (finish: Extract<FinishDraft, { kind: "floor" }>["finish"]) => {
+		if (finishDraft?.kind !== "floor") return;
+		void saveSurfaceFinish(() => controller.updateRoomFloorFinish({
+			roomId: finishDraft.roomId, ...(finish ? { finish } : {}),
+		}));
+	};
+	const selectWallColor = (finish: Extract<FinishDraft, { kind: "wall" }>["finish"]) => {
+		if (finishDraft?.kind !== "wall") return;
+		void saveSurfaceFinish(() => controller.updateWallSideFinish({
+			wallSegmentId: finishDraft.wallSegmentId, side: finishDraft.side, ...(finish ? { finish } : {}),
+		}));
 	};
 	const openPlanInspector = () => {
 		setIsEditorActionMenuOpen(false);
@@ -4608,6 +4611,7 @@ export function AppShell({
 		setSelectedItemId(undefined);
 		setSelectedWallId(undefined);
 		setSelectedOpeningId(undefined);
+		setSelectedSceneRoomId(undefined);
 		setOpeningCreationDraft(undefined);
 		setOpeningDraft(undefined);
 		setWallDeletionConflict(undefined);
@@ -4685,6 +4689,7 @@ export function AppShell({
 			setActiveTool("select");
 			setSelectedItemId(undefined);
 			setSelectedOpeningId(undefined);
+			setSelectedSceneRoomId(undefined);
 			setWallDeletionConflict(undefined);
 			openingCreationRestoreFocusRef.current = addDockTriggerRef.current ?? undefined;
 			if (project?.schemaVersion === 1 && selectedWallOpeningHost && openingCreationHostsFor(project, kind).some(host => host.wallSegmentId === selectedWallOpeningHost.wallSegmentId)) {
@@ -4712,6 +4717,7 @@ export function AppShell({
 		setSelectedItemId(undefined);
 		setSelectedWallId(undefined);
 		setSelectedOpeningId(undefined);
+		setSelectedSceneRoomId(undefined);
 	};
 
 	const loadCatalogPublication = useCallback(async () => {
@@ -4764,6 +4770,7 @@ export function AppShell({
 		restoreFocusRef.current = trigger ?? undefined;
 		setActiveTool("select");
 		setSelectedItemId(undefined);
+		setSelectedSceneRoomId(undefined);
 		// A wall model chosen from the catalog keeps the wall the user selected.
 		setSelectedPreloadedCatalogAssetId(undefined);
 		setSelectedCustomCatalogAssetId(undefined);
@@ -5693,19 +5700,6 @@ export function AppShell({
 		});
 	};
 
-	const changeLayoutSelection = (roomId: string, layoutId: string) => {
-		controller.selectRoomLayout(roomId, layoutId);
-		setLayoutPreferences(current => new Map(current).set(roomId, layoutId));
-		if (selectedItem?.roomId === roomId || supportsInView.some(value => value.item.assetInstanceId === selectedItemId && value.roomId === roomId)) {
-			clearSelection();
-		}
-	};
-	const applyLayoutEdit = async (command: RoomLayoutCommand) => {
-		if (isEditorReadOnly || isMutationBlocked || hasUndurableEditorDraft || hasRawRoomPropertyDraft) return;
-		const result = await controller.applyInteriorCommand({ kind: "room-layout", command });
-		if (result.kind === "durable" && "nextActiveLayoutId" in result) changeLayoutSelection(command.roomId, result.nextActiveLayoutId);
-		if (result.kind === "rejected") showEditRejection(result.reasonCode);
-	};
 	const chooseSupportOption = (option: SupportOption) => {
 		const anchor = (supportDraft?.dragPoint ? planSupportLevels : availableSupports).find(candidate => candidate.host.assetInstanceId === option.host.assetInstanceId
 			&& candidate.surface.key === option.surface.key)?.anchor;
@@ -5778,7 +5772,7 @@ export function AppShell({
 			return affected ? copy(`Не хватает свободного места для «${affected.label}».`, `There is not enough free space for “${affected.label}”.`)
 				: copy("Предмет выходит за край, входит в препятствие или не проходит по высоте.", "The item extends beyond the edge, overlaps an obstacle or has too little clearance.");
 		}
-		if (reason === "INTERIOR_TARGET_INVALID") return copy("Выберите допустимую площадку в этой расстановке.", "Choose a suitable surface in this layout.");
+		if (reason === "INTERIOR_TARGET_INVALID") return copy("Выберите подходящую площадку.", "Choose a suitable surface.");
 		if (reason === "INTERIOR_REHOME_REQUIRED") return copy("Сначала выберите новые места для декора.", "Choose new positions for all decor first.");
 		return errorCopy(reason);
 	};
@@ -5895,6 +5889,7 @@ export function AppShell({
 
 	const selectSceneRoom = (roomId: string) => {
 		clearSelection();
+		setActiveTool("select");
 		setSelectedSceneRoomId(roomId);
 	};
 
@@ -7198,7 +7193,7 @@ export function AppShell({
 		suspendForBack();
 		const nativePanel = [...document.querySelectorAll<HTMLDialogElement>("dialog[open]")].at(-1);
 		if (!explicitProjects && nativePanel?.hasAttribute("data-scene-color-palette")) {
-			if (!isWallColorSaving) nativePanel.close();
+			if (!isFinishSaving) nativePanel.close();
 			resumeTransientViews();
 			return;
 		}
@@ -8020,27 +8015,20 @@ export function AppShell({
 						if (result.kind === "rejected") showEditRejection(result.reasonCode);
 					}}>{copy("Назначить встроенный шаблон", "Use built-in template")}</button>
 			) : null}
-			{roomInteriorEnabled ? (
-				<button type="button" disabled={isEditorReadOnly || isMutationBlocked}
-					onClick={() => {
-						openRoomDirectory();
-						chooseRoomProperty(selectedItem.roomId);
-						setIsSelectionInspectorExpanded(false);
-					}}>{copy("Расстановки", "Layouts")}</button>
+			{!hostNavigation ? (
+				<button
+					disabled={
+						isEditorReadOnly ||
+						isWorking ||
+						state.kind === "persist-failed" ||
+						state.kind === "recovery-needed"
+					}
+					onClick={duplicateSelectedItem}
+					type="button"
+				>
+					{copy("Дублировать предмет", "Duplicate item")}
+				</button>
 			) : null}
-			<button
-				disabled={
-					isEditorReadOnly ||
-					isWorking ||
-					state.kind === "persist-failed" ||
-					state.kind === "recovery-needed"
-				}
-				aria-label={copy("Дублировать предмет", "Duplicate item")}
-				onClick={duplicateSelectedItem}
-				type="button"
-			>
-				{hostNavigation ? copy("Дублировать", "Duplicate") : copy("Дублировать предмет", "Duplicate item")}
-			</button>
 			<button
 				aria-label={
 					selectedItemLocked ? copy("Разблокировать предмет", "Unlock item") : copy("Заблокировать предмет", "Lock item")
@@ -8355,19 +8343,24 @@ export function AppShell({
 				) : null}
 				{!isStarterContourVisible ? storagePressureNotice : null}
 
-				{hostNavigation && (viewMode === "three-dimensional" || selectedSupportedItem) && !isItemPlacementActive && !supportDraft &&
+				{hostNavigation && !isItemPlacementActive && !supportDraft &&
 					!selectionBehindSheet && !isSelectionInspectorExpanded && !finishDraft && !selectedOpening ? (
-					selectedSpatialItem ? <SceneSelectionActions action={{ kind: "item", duplicate: duplicateSelectedItem, readOnly: isEditorReadOnly || isMutationBlocked || (selectedSupportedItem !== undefined && !roomInteriorEnabled) }}
+					selectedSpatialItem && (viewMode === "three-dimensional" || selectedSupportedItem) ? <SceneSelectionActions action={{ kind: "item", duplicate: duplicateSelectedItem, readOnly: isEditorReadOnly || isMutationBlocked || (selectedSupportedItem !== undefined && !roomInteriorEnabled) }}
 						triggerRef={floorPropertiesTriggerRef} open={openSelectionProperties} />
-					: selectedWall ? <SceneSelectionActions action={{ kind: "wall", wallItem: !!sceneWallItem }}
+					: selectedWall && viewMode === "three-dimensional" ? <SceneSelectionActions action={{ kind: "wall", wallItem: !!sceneWallItem }}
 						triggerRef={selectionPropertiesTriggerRef} open={openSelectionProperties} />
-					: selectedSceneRoom ? <SceneSelectionActions action={{ kind: "room" }}
-						triggerRef={sceneRoomPropertiesRef} open={() => openRoomDirectory(selectedSceneRoom.roomId)} /> : null
+					: selectedSceneRoom ? <SceneSelectionActions action={{ kind: "floor", disabled: isEditorReadOnly || isMutationBlocked }}
+						triggerRef={finishTriggerRef} open={() => openFloorFinish(selectedSceneRoom)} />
+					: viewMode === "three-dimensional" && hasNoCanvasSelection && editableRooms.length > 0 ? (
+						<SceneSelectionActions action={{ kind: "rooms", disabled: isEditorReadOnly || isMutationBlocked }}
+							triggerRef={sceneRoomPropertiesRef} open={() => openRoomDirectory()} />
+					) : null
 				) : null}
 				{viewMode === "three-dimensional" && threeDimensionalScene ? (
 					<RoomScene3d
 						selectedWallId={selectedItemId === undefined ? selectedWall?.wallSegmentId : undefined}
 						selectedOpeningId={selectedOpening?.openingId}
+						selectedFloorRoomId={selectedSceneRoom?.roomId}
 						onProductMetric={reportProductMetric}
 						roomTheme={roomTheme}
 						plainLabels={hostNavigation !== undefined}
@@ -8502,7 +8495,7 @@ export function AppShell({
 						onSelectItem={selectItem}
 						onSelectWall={hostNavigation ? selectWall : undefined}
 						onSelectOpening={hostNavigation ? selectOpening : undefined}
-						onSelectRoom={hostNavigation ? selectSceneRoom : undefined}
+						onSelectRoom={roomInteriorEnabled ? selectSceneRoom : undefined}
 						readOnly={isEditorReadOnly || isMutationBlocked}
 						scene={threeDimensionalScene}
 						selectedItemId={selectedItemId}
@@ -8535,7 +8528,6 @@ export function AppShell({
 						isWallVertexMoveMode={isWallVertexMoveMode}
 						movableWallVertexIds={movableSelectedWallVertexIds}
 						openingCreationPreview={openingCreationPreview}
-						{...(finishDraft?.kind === "floor" ? { finishPreview: finishDraft } : {})}
 						supportPreview={supportChoice}
 						supportDrag={!supportDraft ? supportedDrag : undefined}
 						supportPlanTargets={supportDraft ? {
@@ -8598,6 +8590,7 @@ export function AppShell({
 						onPlaceItem={(point) => placeItem(point)}
 						onSelectItem={selectItem}
 						onSelectWall={selectWall}
+						onSelectFloor={roomInteriorEnabled ? selectSceneRoom : undefined}
 						onClearSelection={clearSelection}
 						onSelectOpening={selectOpening}
 						onOpeningMoveStart={hostNavigation ? () => setDimensionError(undefined) : undefined}
@@ -8607,6 +8600,7 @@ export function AppShell({
 						project={supportPreviewProject ?? visibleProject ?? project}
 						selectedItemId={selectedItemId}
 						selectedWallId={selectedWallId}
+						selectedFloorRoomId={selectedSceneRoom?.roomId}
 						selectedWallRun={wallRunSegmentIds ? selectedWallRun : undefined}
 						wallThicknessMm={wallThicknessMm}
 						setViewport={(update) => setViewport(update)}
@@ -8799,9 +8793,8 @@ export function AppShell({
 										</svg>
 										<span>{copy("Добавить проём", "Add opening")}</span>
 									</button>
-								) : (
+								) : !hostNavigation || (viewMode === "plan" && hasNoCanvasSelection) ? (
 									<button
-										aria-label={copy("Комната", "Room")}
 										ref={roomDockActionRef}
 										aria-pressed={isRoomDirectoryOpen}
 										className={`${styles.dockAction} ${styles.roomDockAction}`}
@@ -8827,9 +8820,9 @@ export function AppShell({
 												strokeWidth="1.8"
 											/>
 										</svg>
-										<span>{copy("Комната", "Room")}</span>
+										<span>{hostNavigation ? copy("Помещения", "Rooms") : copy("Комната", "Room")}</span>
 									</button>
-								)}
+								) : null}
 								{!hostNavigation && selectToolButton}
 								{isWallOpeningDockContext ? (
 									<button
@@ -9139,7 +9132,7 @@ export function AppShell({
 				</fieldset>
 				{hostNavigation ? dimensionFilterButton : null}
 
-				{viewMode === "plan" &&
+				{!hostNavigation && viewMode === "plan" &&
 				activeTool === "select" &&
 				!selectedItem &&
 				!selectedWall &&
@@ -11264,31 +11257,11 @@ export function AppShell({
 				/>
 			) : null}
 			{finishDraft?.kind === "wall" ? (
-				<WallColorPalette draft={finishDraft} busy={isWallColorSaving} disabled={isWallColorSaving || isEditorReadOnly || isMutationBlocked}
-					error={dimensionError} onClose={closeFinishDraft} onSelect={finish => void selectWallColor(finish)} />
+				<WallColorPalette draft={finishDraft} busy={isFinishSaving} disabled={isFinishSaving || isEditorReadOnly || isMutationBlocked}
+					error={dimensionError} onClose={closeFinishDraft} onSelect={selectWallColor} />
 			) : finishDraft ? (
-				<EditorModalSheet
-					aria-label={copy("Пол", "Floor")}
-					busy={isWorking}
-					className={styles.interiorEditorSheet}
-					onRequestClose={() => requestEditorBack(false, closeFinishDraft)}
-					restoreFocus={() => finishTriggerRef.current}
-					telegramModal={canOpenTelegramEditorSheet}
-				>
-					<SheetHeader title={copy("Пол", "Floor")}
-						closeLabel={copy("Закрыть палитру", "Close palette")}
-						closeDisabled={isWorking}
-						onClose={() => requestEditorBack(false, closeFinishDraft)} />
-					<div className={styles.interiorChoices}>
-						<RoomFinishControls draft={finishDraft} disabled={isWorking || isEditorReadOnly} onChange={setFinishDraft} />
-					</div>
-					{dimensionError ? <p role="alert">{dimensionError}</p> : null}
-					<div className={styles.interiorChoices}>
-						<button type="button" disabled={isWorking} onClick={closeFinishDraft}>{copy("Отменить", "Cancel")}</button>
-						<button type="button" data-editor-action="confirm" disabled={!finishChanged || isEditorReadOnly || isMutationBlocked}
-							onClick={() => void confirmFinishDraft()}>{copy("Подтвердить", "Confirm")}</button>
-					</div>
-				</EditorModalSheet>
+				<FloorFinishPalette draft={finishDraft} busy={isFinishSaving} disabled={isFinishSaving || isEditorReadOnly || isMutationBlocked}
+					error={dimensionError} onClose={closeFinishDraft} onSelect={selectFloorFinish} />
 			) : null}
 			{isRoomDirectoryOpen && finishDraft === undefined ? (
 				<EditorModalSheet
@@ -11402,26 +11375,6 @@ export function AppShell({
 										/>
 									</label>
 
-									{roomInteriorEnabled ? (
-										<RoomLayoutControls key={selectedRoomProperty.room.roomId}
-											roomId={selectedRoomProperty.room.roomId}
-											layouts={(project.schemaVersion === 1 ? project.roomLayouts ?? [] : []).filter(layout => layout.roomId === selectedRoomProperty.room.roomId)}
-											activeLayoutId={layoutPreferences.get(selectedRoomProperty.room.roomId)}
-											disabled={isEditorReadOnly || isMutationBlocked || hasUndurableEditorDraft || hasRawRoomPropertyDraft}
-											onSelect={layoutId => changeLayoutSelection(selectedRoomProperty.room.roomId, layoutId)}
-											onCommand={command => void applyLayoutEdit(command)}
-										/>
-									) : null}
-									{roomInteriorEnabled || selectedRoomProperty.room.floorFinish ? (
-										<button type="button" ref={finishTriggerRef} aria-label={copy("Пол", "Floor")}
-											disabled={!roomInteriorEnabled || isEditorReadOnly || isMutationBlocked || !!roomHeightOpeningConflict}
-											onClick={() => {
-												setDimensionError(undefined);
-												setFinishDraft({ kind: "floor", roomId: selectedRoomProperty.room.roomId, finish: selectedRoomProperty.room.floorFinish });
-											}}>
-											{copy("Пол", "Floor")} · {finishLabel(selectedRoomProperty.room.floorFinish)}
-										</button>
-									) : null}
 									{roomHeightOpeningConflict ? (
 										<section
 											aria-label={copy("Конфликт высоты помещения и проёмов", "Room height and opening conflict")}

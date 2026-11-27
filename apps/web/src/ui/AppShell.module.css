@@ -5021,6 +5021,7 @@ main[data-editor-host="telegram"] button[type="button"][data-editor-action="canc
 .interiorChoices button[aria-pressed="true"] {
 	background: var(--editor-host-primary-soft, #e7f3fb);
 	border-color: var(--editor-host-primary, #1976b9);
+	color: var(--editor-host-primary, var(--blue));
 }
 
 .windowSectionLegend {
@@ -5040,16 +5041,6 @@ main[data-editor-host="telegram"] button[type="button"][data-editor-action="canc
 	display: grid;
 	gap: 8px;
 	padding: 16px;
-}
-
-.interiorEditorSheet .interiorChoices > button > span[aria-hidden="true"] {
-	border: 1px solid var(--line);
-	border-radius: 4px;
-	display: inline-block;
-	height: 1em;
-	margin-inline-end: 6px;
-	vertical-align: middle;
-	width: 1em;
 }
 
 .interiorSupportedPanel {

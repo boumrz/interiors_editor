@@ -8,14 +8,16 @@ export const FLOOR_DESTINATION_TINT = "#378cd8";
 
 export const STRUCTURE_SELECTION_TINT = "#267fff";
 
-export type SceneStructureSelection = `wall:${string}` | `opening:${string}`;
+export type SceneStructureSelection = `wall:${string}` | `opening:${string}` | `floor:${string}`;
 
 export function sceneStructureSelection(
 	wallSegmentId?: string,
 	openingId?: string,
+	floorRoomId?: string,
 ): SceneStructureSelection | undefined {
 	if (openingId !== undefined) return `opening:${openingId}`;
 	if (wallSegmentId !== undefined) return `wall:${wallSegmentId}`;
+	if (floorRoomId !== undefined) return `floor:${floorRoomId}`;
 }
 
 type OutlinePoint = SceneSurfaceHighlight["outline"][number];

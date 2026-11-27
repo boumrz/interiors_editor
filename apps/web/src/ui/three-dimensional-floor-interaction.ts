@@ -133,7 +133,7 @@ export function canvasPointForWorld(
 }
 
 /**
- * Projects the complete canonical floor envelope of a selected item for a
+ * Projects the complete base envelope of a selected item for a
  * passive 3D selection frame. Returning nothing is intentional when one
  * corner cannot be projected: a partial polygon would misrepresent the item.
  */
@@ -144,8 +144,9 @@ export function projectedItemFootprintFor(
 	size: CanvasSize,
 ): readonly CanvasPoint[] | undefined {
 	const footprint: CanvasPoint[] = [];
+	const baseHeight = item.assetAnchor === "support" ? item.centerYM - item.heightM / 2 : 0;
 	for (const corner of itemFloorCornersFor(item)) {
-		const projected = canvasPointForFloor(scene, camera, size, corner);
+		const projected = canvasPointForWorld(scene, camera, size, { x: corner.xM, y: baseHeight, z: corner.zM });
 		if (!projected) return undefined;
 		footprint.push(projected);
 	}

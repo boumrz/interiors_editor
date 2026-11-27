@@ -3508,7 +3508,6 @@
 
 
 
-/* Display preferences share the view row without adding a canvas overlay. */
 .editorViewRow { align-items: center; display: flex; gap: 8px; grid-column: 1 / -1; grid-row: 2; justify-content: center; min-width: 0; width: 100%; }
 .editorShell .editorViewRow .editorViewSwitch { flex: 1 1 180px; grid-column: auto; grid-row: auto; max-width: 266px; min-width: 0; width: auto; }
 .dimensionFilterTrigger { background:var(--surface); border:1px solid var(--line-soft); border-radius:var(--editor-host-radius, 10px); color:var(--ink); cursor: pointer; flex: 0 1 auto; font: 500 .78rem/1.2 var(--font-display); min-height: 48px; min-width: 76px; overflow-wrap: anywhere; padding: 8px 12px; }
@@ -4598,6 +4597,10 @@ main[data-editor-host="telegram"] :is(.openingCreationFields, .windowDraftPanel,
 
 main[data-editor-host="telegram"] .openingCreationFields input { text-align: start; }
 
+main[data-editor-host="telegram"] .selectionInspectorPanel :is(.itemDimensions, .openingRow) input {
+	padding-inline-start: 10px;
+}
+
 main[data-editor-host="telegram"] .itemDimensions > .fieldError {
 	grid-column: 1 / -1;
 }
@@ -4939,10 +4942,39 @@ main[data-editor-host="telegram"] button[type="button"][data-editor-action="canc
 	min-inline-size: 0;
 }
 
-@media (max-width: 320px) and (max-height: 400px) {
-	.editorShell[data-editor-host="telegram"][data-view-mode="plan"] .canvasHistory {
-		bottom: calc(var(--editor-dock-inset, 84px) + 74px);
+.editorShell[data-editor-host="telegram"][data-view-mode="plan"] {
+	--plan-control-edge: max(12px, var(--editor-safe-area-left, env(safe-area-inset-left)), var(--editor-safe-area-right, env(safe-area-inset-right)));
+	/* Each side pair has two 44 px buttons, 4 px padding and a 1 px border. */
+	--plan-control-pair-width: calc(98px + var(--editor-host-touch-gap, 2px));
+}
+
+.editorShell[data-editor-host="telegram"][data-view-mode="plan"] .canvasHistory { left: var(--plan-control-edge); }
+.editorShell[data-editor-host="telegram"] .planZoomControls { right: var(--plan-control-edge); }
+.editorShell[data-editor-host="telegram"] .dimensionFilterTrigger {
+	border-color: var(--line);
+	bottom: calc(var(--editor-dock-inset, 84px) + 12px);
+	box-shadow: 0 4px 16px #19283c14;
+	font-size: min(.78rem, 16px);
+	height: 54px;
+	left: 50%;
+	max-width: calc(100% - 2 * (var(--plan-control-edge) + var(--plan-control-pair-width) + 6px));
+	padding: 4px 8px;
+	position: absolute;
+	transform: translateX(-50%);
+	z-index: 7;
+}
+.editorShell[data-editor-host="telegram"] .returnToDrawing {
+	bottom: calc(var(--editor-dock-inset, 84px) + 74px);
+}
+
+@media (max-width: 359px) {
+	.editorShell[data-editor-host="telegram"] .dimensionFilterTrigger {
+		flex-direction: column;
+		font-size: min(.75rem, 12px);
+		gap: 1px;
+		padding-inline: 4px;
 	}
+	.editorShell[data-editor-host="telegram"] .dimensionFilterTrigger svg { flex-basis: 16px; height: 16px; width: 16px; }
 }
 
 .editorShell[data-editor-host="telegram"] .tmaSceneSelectionActions {
@@ -5038,13 +5070,10 @@ main[data-editor-host="telegram"] button[type="button"][data-editor-action="canc
 	z-index: 9;
 }
 
-.interiorSupportList, .interiorNumeric {
+.interiorSupportList {
 	display: grid;
 	gap: 4px;
 	grid-template-columns: repeat(auto-fit, minmax(min(112px, 100%), 1fr));
-}
-
-.interiorSupportList {
 	max-height: 106px;
 	overflow: auto;
 }
@@ -5061,22 +5090,6 @@ main[data-editor-host="telegram"] button[type="button"][data-editor-action="canc
 .interiorSupportList button[aria-pressed="true"] {
 	background: var(--editor-host-primary-soft, #e7f3fb);
 	border-color: var(--editor-host-primary, #1976b9);
-}
-
-.interiorNumeric label {
-	display: grid;
-	gap: 4px;
-}
-
-.interiorNumeric input {
-	background: var(--editor-host-surface, var(--surface));
-	border: 1px solid var(--editor-host-line, var(--line));
-	border-radius: var(--editor-host-radius, 12px);
-	color: var(--ink);
-	font: inherit;
-	min-height: 44px;
-	min-width: 0;
-	width: 100%;
 }
 
 .supportPlacementHeader {

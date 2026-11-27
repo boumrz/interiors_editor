@@ -120,7 +120,7 @@ import {
 	type MeasuredCustomGlbDimensions,
 } from "./CustomGlbPreview";
 import type { CustomGlbResource } from "./custom-glb-runtime-cache";
-import { DimensionFilter } from "./DimensionFilter";
+import { DimensionFilter, DimensionFilterButton } from "./DimensionFilter";
 import {
 	DRAWING_DIMENSION_PREFERENCES_KEY,
 	type DrawingDimensionVisibility,
@@ -144,6 +144,7 @@ import {
 } from "./editor-plan-presentation";
 import { type EditorViewport, initialEditorViewport } from "./editor-viewport";
 import inspectorStyles from "./InspectorPanels.module.css";
+import { PlanDimensionFields } from "./PlanDimensionFields";
 import { ItemWallDistanceFields } from "./ItemWallDistances";
 import { itemWallDistancePositionFor, itemWallDistancesFor, type ItemWallDistance } from "./item-wall-distances";
 import { EditorModalSheet } from "./EditorModalSheet";
@@ -1731,17 +1732,48 @@ export function AppShell({
 		return () => { transientBoundaries.current.delete(boundary); };
 	}, []);
 	const hostBackHandler = useRef<() => void>(() => undefined);
-	const prepareHostBack = useRef<() => void>(() => undefined);
+	const prepareHostBack = useRef<(blurOnly?: true) => void>(() => undefined);
 	const resumeHostViews = useRef<() => void>(() => undefined);
+	const touchBackFocus = useRef<EditorFocusSnapshot | undefined>(undefined);
 	useLayoutEffect(() => {
 		if (!fullTransientNavigationProtection) return;
-		const interceptBackPointer = (event: PointerEvent) => {
-			if (!(event.target instanceof Element) || !event.target.closest("[data-editor-host-back]")) return;
-			prepareHostBack.current();
-			event.preventDefault();
+		let touchBackContact: { trigger: Element; focus: EditorFocusSnapshot; pointerId: number } | undefined;
+		const cancelTouchBack = () => {
+			if (touchBackContact) resumeHostViews.current();
+			touchBackContact = undefined;
+			touchBackFocus.current = undefined;
 		};
+		const interceptBackPointer = (event: PointerEvent) => {
+			cancelTouchBack();
+			const trigger = event.target instanceof Element && event.target.closest("[data-editor-host-back]");
+			if (!trigger) return;
+			if (event.pointerType === "touch") {
+				// WebKit needs the pointer's default action to deliver the tap.
+				touchBackContact = { trigger, focus: captureEditorFocus(), pointerId: event.pointerId };
+				prepareHostBack.current(true);
+			} else {
+				prepareHostBack.current();
+				event.preventDefault();
+			}
+		};
+		const captureBackClick = (event: MouseEvent) => {
+			if (!touchBackContact) return;
+			if (event.detail && event.target instanceof Node && touchBackContact.trigger.contains(event.target)) {
+				touchBackFocus.current = touchBackContact.focus;
+				touchBackContact = undefined;
+			} else cancelTouchBack();
+		};
+		const cancelBackPointer = (event: PointerEvent) => { if (touchBackContact?.pointerId === event.pointerId) cancelTouchBack(); };
 		window.addEventListener("pointerdown", interceptBackPointer, { capture: true });
-		return () => window.removeEventListener("pointerdown", interceptBackPointer, { capture: true });
+		window.addEventListener("pointercancel", cancelBackPointer, { capture: true });
+		window.addEventListener("click", captureBackClick, { capture: true });
+		window.addEventListener("click", cancelTouchBack);
+		return () => {
+			window.removeEventListener("pointerdown", interceptBackPointer, { capture: true });
+			window.removeEventListener("pointercancel", cancelBackPointer, { capture: true });
+			window.removeEventListener("click", captureBackClick, { capture: true });
+			window.removeEventListener("click", cancelTouchBack);
+		};
 	}, [fullTransientNavigationProtection]);
 	const [leaveFocus, setLeaveFocus] = useState<EditorFocusSnapshot>();
 	const confirmedWriterExit = useRef<ReturnType<ProjectController["writerRecoveryCopy"]>>(undefined);
@@ -2100,7 +2132,7 @@ export function AppShell({
 	>();
 	const [isPlanInspectorOpen, setIsPlanInspectorOpen] = useState(false);
 	const [planDimensionError, setPlanDimensionError] = useState<
-		string | undefined
+		{ readonly message: string; readonly field?: keyof DimensionFields } | undefined
 	>();
 	const [isRoomDirectoryOpen, setIsRoomDirectoryOpen] = useState(false);
 	const [selectedRoomPropertyId, setSelectedRoomPropertyId] = useState<
@@ -2750,6 +2782,7 @@ export function AppShell({
 		(item): item is EditorFloorAsset =>
 			item.assetInstanceId === selectedItemId && isFloorEditorAsset(item),
 	);
+	const selectedSpatialItem = selectedItem ?? selectedSupportedItem;
 	const selectedItemPlacementAssessment =
 		project?.schemaVersion === 1 && selectedItem
 			? assessParametricFloorItemPlacement(
@@ -2776,9 +2809,9 @@ export function AppShell({
 		);
 	const selectedItemLocked =
 		project?.schemaVersion === 1 &&
-		selectedItem !== undefined &&
-		"locked" in selectedItem &&
-		selectedItem.locked === true;
+		selectedSpatialItem !== undefined &&
+		"locked" in selectedSpatialItem &&
+		selectedSpatialItem.locked === true;
 	const pendingItemColorVariant = itemColorVariantDraft
 		? alphaParametricItemColorVariants.find(
 				(variant) => variant.variantId === itemColorVariantDraft.variantId,
@@ -3307,8 +3340,8 @@ export function AppShell({
 		vertexDeletionCandidate !== undefined ||
 		roomHeightOpeningConflict !== undefined;
 	const hasRawRenameDraft = isRenameProjectOpen && renameProjectName !== (directoryRenameTarget?.name ?? project?.name);
-	const hasRawSelectedItemDraft = !!selectedItem && !!selectedItemFields && (
-		selectedItemFields.widthMm !== String(selectedItem.widthMm) || selectedItemFields.depthMm !== String(selectedItem.depthMm) || selectedItemFields.heightMm !== String(selectedItem.heightMm) || selectedItemFields.label !== selectedItem.label || (!onRotationStepModeChange && selectedItemAngleRaw !== degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem))) || selectedItemFields.color !== selectedItem.color
+	const hasRawSelectedItemDraft = !!selectedSpatialItem && !!selectedItemFields && (
+		selectedItemFields.widthMm !== String(selectedSpatialItem.widthMm) || selectedItemFields.depthMm !== String(selectedSpatialItem.depthMm) || selectedItemFields.heightMm !== String(selectedSpatialItem.heightMm) || selectedItemFields.label !== selectedSpatialItem.label || (selectedItem && !onRotationStepModeChange && selectedItemAngleRaw !== degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem))) || selectedItemFields.color !== selectedSpatialItem.color
 	);
 	const hasRawRoomPropertyDraft = isRoomDirectoryOpen && !!roomPropertyFields && !!selectedRoomProperty && (
 		roomPropertyFields.heightMm !== selectedRoomProperty.fields.heightMm || roomPropertyFields.type !== selectedRoomProperty.fields.type || roomPropertyFields.name !== selectedRoomProperty.fields.name
@@ -3461,34 +3494,47 @@ export function AppShell({
 		};
 	}, [controller]);
 
+	const lastPlanDimensions = useRef<{ readonly projectId: string | undefined; readonly fields: DimensionFields }>(undefined);
 	useEffect(() => {
-		setDimensions(dimensionsFrom(metrics));
-	}, [metrics]);
+		const previous = lastPlanDimensions.current;
+		const next = dimensionsFrom(metrics);
+		lastPlanDimensions.current = { projectId: project?.projectId, fields: next };
+		if (!hostNavigation || !isPlanInspectorOpen || !previous || previous.projectId !== project?.projectId) {
+			setDimensions(next);
+			return;
+		}
+		setDimensions(current => ({
+			widthMm: next.widthMm === previous.fields.widthMm ? current.widthMm : next.widthMm,
+			depthMm: next.depthMm === previous.fields.depthMm ? current.depthMm : next.depthMm,
+			heightMm: next.heightMm === previous.fields.heightMm ? current.heightMm : next.heightMm,
+		}));
+	}, [metrics, hostNavigation, isPlanInspectorOpen, project?.projectId]);
 
-	const previousInspectorItem = useRef<EditorFloorAsset | undefined>(undefined);
+	const previousInspectorItem = useRef<typeof selectedSpatialItem>(undefined);
 	useEffect(() => {
+		const item = selectedSpatialItem;
 		const previous = previousInspectorItem.current;
-		previousInspectorItem.current = selectedItem;
-		if (previous?.assetInstanceId !== selectedItem?.assetInstanceId) {
+		previousInspectorItem.current = item;
+		if (previous?.assetInstanceId !== item?.assetInstanceId) {
 			setFloorDimensionErrors({});
 		}
-		if (!selectedItem) {
+		if (!item) {
 			setSelectedItemFields(undefined);
 			setSelectedItemAngleRaw("0");
 			return;
 		}
-		const sameItem = hostNavigation && previous?.assetInstanceId === selectedItem.assetInstanceId;
+		const sameItem = hostNavigation && previous?.assetInstanceId === item.assetInstanceId;
 		setSelectedItemFields((raw) => ({
-			color: selectedItem.color,
-			depthMm: sameItem && raw && previous.depthMm === selectedItem.depthMm ? raw.depthMm : String(selectedItem.depthMm),
-			heightMm: sameItem && raw && previous.heightMm === selectedItem.heightMm ? raw.heightMm : String(selectedItem.heightMm),
-			label: selectedItem.label,
-			widthMm: sameItem && raw && previous.widthMm === selectedItem.widthMm ? raw.widthMm : String(selectedItem.widthMm),
+			color: item.color,
+			depthMm: sameItem && raw && previous.depthMm === item.depthMm ? raw.depthMm : String(item.depthMm),
+			heightMm: sameItem && raw && previous.heightMm === item.heightMm ? raw.heightMm : String(item.heightMm),
+			label: item.label,
+			widthMm: sameItem && raw && previous.widthMm === item.widthMm ? raw.widthMm : String(item.widthMm),
 		}));
 		setSelectedItemAngleRaw(
-			degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)),
+			selectedItem ? degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)) : "0",
 		);
-	}, [hostNavigation, selectedItem]);
+	}, [hostNavigation, selectedItem, selectedSpatialItem]);
 
 	useEffect(() => {
 		setWallItemPositionFields(
@@ -4316,8 +4362,12 @@ export function AppShell({
 		);
 	};
 
-	const applyPlanDimensions = async (event: FormEvent<HTMLFormElement>) => {
-		event.preventDefault();
+	const updatePlanDimension = (field: keyof DimensionFields, raw: string) => {
+		if (hostNavigation) setPlanDimensionError(current => current?.field === field ? undefined : current);
+		setDimensions(current => ({ ...current, [field]: raw }));
+	};
+
+	const applyPlanDimensions = async (input: DimensionFields, field?: keyof DimensionFields) => {
 		if (
 			!metrics ||
 			isEditorReadOnly ||
@@ -4327,11 +4377,12 @@ export function AppShell({
 		) {
 			return;
 		}
-		setPlanDimensionError(undefined);
+		setPlanDimensionError(current => !field || current?.field === field ? undefined : current);
+		if (field && input[field] === baselineDimensions[field]) return;
 		pendingCreationRef.current = undefined;
-		const result = await controller.configureRectangularRoom(dimensions);
+		const result = await controller.configureRectangularRoom(input);
 		if (result.kind === "rejected") {
-			setPlanDimensionError(errorCopy(result.reasonCode));
+			setPlanDimensionError({ message: errorCopy(result.reasonCode), ...(field ? { field } : {}) });
 			reportEditRejection(result.reasonCode);
 		}
 	};
@@ -4454,6 +4505,22 @@ export function AppShell({
 		readonly assetInstanceId: string;
 		readonly yawRadians: number;
 	}) => {
+		const support = supportsInView.find(({ item }) => item.assetInstanceId === input.assetInstanceId);
+		if (support) {
+			if (!roomInteriorEnabled || isMutationBlocked || isEditorReadOnly || support.item.locked) return false;
+			const { item, host } = support;
+			const relative = Math.round((input.yawRadians - yawRadiansForEditorFloorAsset(host)) * 180_000 / Math.PI);
+			const angle = ((relative % 360_000) + 360_000) % 360_000;
+			if (angle === item.relativeYawMilliDeg) return true;
+			setDimensionError(undefined);
+			const result = await controller.applyInteriorCommand({
+				kind: "move-supported", assetInstanceId: item.assetInstanceId,
+				target: { supportAssetInstanceId: item.supportAssetInstanceId, supportSurfaceKey: item.supportSurfaceKey,
+					offsetXMm: item.offsetXMm, offsetZMm: item.offsetZMm, relativeYawMilliDeg: angle },
+			});
+			if (result.kind === "rejected") setDimensionError(interiorReason(result.reasonCode, result.conflictAssetInstanceId));
+			return result.kind === "durable";
+		}
 		if (
 			isEditorReadOnly ||
 			isWorking ||
@@ -5671,15 +5738,10 @@ export function AppShell({
 		setSupportDraft(undefined);
 		setSupportMessage(undefined);
 	};
-	const openSupportEdit = (mode: Exclude<SupportedEditDraft["mode"], "catalog">, sourceId: string) => {
+	const openSupportEdit = (mode: Exclude<SupportedEditDraft["mode"], "catalog" | "move">, sourceId: string) => {
 		if (!roomInteriorEnabled || isEditorReadOnly || isMutationBlocked) return;
 		setSupportMessage(undefined);
-		const source = supportsInView.find(pose => pose.item.assetInstanceId === sourceId);
-		const target = mode === "move" && source ? {
-			supportAssetInstanceId: source.item.supportAssetInstanceId, supportSurfaceKey: source.item.supportSurfaceKey,
-			offsetXMm: source.item.offsetXMm, offsetZMm: source.item.offsetZMm, relativeYawMilliDeg: source.item.relativeYawMilliDeg,
-		} : undefined;
-		setSupportDraft({ mode, sourceId, target });
+		setSupportDraft({ mode, sourceId });
 		setIsSelectionInspectorExpanded(false);
 	};
 	const submitSupportEdit = async () => {
@@ -6050,6 +6112,10 @@ export function AppShell({
 	 * location and confirms it through the ordinary fenced placement command.
 	 */
 	const duplicateSelectedItem = () => {
+		if (selectedSupportedItem) {
+			openSupportEdit("copy", selectedSupportedItem.assetInstanceId);
+			return;
+		}
 		if (
 			!selectedItem ||
 			isEditorReadOnly ||
@@ -6734,11 +6800,13 @@ export function AppShell({
 		setFloorDimensionErrors((current) => ({ ...current, [field]: message }));
 	};
 	const commitSelectedItem = async (edit?: { field: keyof DimensionFields; raw: string }) => {
+		const item = selectedSpatialItem;
 		if (
-			!selectedItem ||
+			!item ||
 			!selectedItemFields ||
 			selectedItemLocked ||
 			selectedItemHasFixedDimensions ||
+			(item.anchorClass === "support" && !roomInteriorEnabled) ||
 			isEditorReadOnly ||
 			isWorking ||
 			state.kind === "persist-failed" ||
@@ -6751,31 +6819,33 @@ export function AppShell({
 			else setDimensionError(error);
 		};
 		const editedValue = edit ? positiveInteger(edit.raw.trim()) : undefined;
-		const widthMm = edit ? (edit.field === "widthMm" ? editedValue : selectedItem.widthMm)
+		const widthMm = edit ? (edit.field === "widthMm" ? editedValue : item.widthMm)
 			: positiveInteger(selectedItemFields.widthMm);
-		const depthMm = edit ? (edit.field === "depthMm" ? editedValue : selectedItem.depthMm)
+		const depthMm = edit ? (edit.field === "depthMm" ? editedValue : item.depthMm)
 			: positiveInteger(selectedItemFields.depthMm);
-		const heightMm = edit ? (edit.field === "heightMm" ? editedValue : selectedItem.heightMm)
+		const heightMm = edit ? (edit.field === "heightMm" ? editedValue : item.heightMm)
 			: positiveInteger(selectedItemFields.heightMm);
 		report(undefined);
 		if (!widthMm || !depthMm || !heightMm) {
 			report(edit ? copy("Укажите целый положительный размер в мм.", "Enter a positive whole number of millimetres.") : copy("Укажите целые положительные размеры предмета.", "Enter positive whole dimensions for the item."));
 			return;
 		}
-		if (widthMm === selectedItem.widthMm && depthMm === selectedItem.depthMm &&
-			heightMm === selectedItem.heightMm) {
+		if (widthMm === item.widthMm && depthMm === item.depthMm && heightMm === item.heightMm) {
 			if (edit && edit.raw !== String(editedValue)) {
 				setSelectedItemFields((current) => current ? { ...current, [edit.field]: String(editedValue) } : current);
 			}
 			return;
 		}
 		if (edit && dimensionNotice?.kind === "item-collision") setDimensionError(undefined);
-		const result = await controller.resizeParametricFloorItem({
-			assetInstanceId: selectedItem.assetInstanceId,
-			depthMm,
-			heightMm,
-			widthMm,
-		});
+		const input = { assetInstanceId: item.assetInstanceId, depthMm, heightMm, widthMm };
+		const reportPending = () => report(copy("Дождитесь сохранения предыдущей правки и повторите ввод.", "Wait for the previous edit to save before entering the value again."));
+		if (item.anchorClass === "support") {
+			const result = await controller.applyInteriorCommand({ kind: "resize-supported", ...input });
+			if (result.kind === "rejected") report(interiorReason(result.reasonCode, result.conflictAssetInstanceId));
+			else if (edit && (result.kind === "in-progress" || result.kind === "not-ready")) reportPending();
+			return;
+		}
+		const result = await controller.resizeParametricFloorItem(input);
 		if (result.kind === "rejected") {
 			const blockedByDecor = blockedSupportMessage(result);
 			if (hostNavigation && result.reasonCode === "ITEM_COLLISION") {
@@ -6788,7 +6858,7 @@ export function AppShell({
 			return;
 		}
 		if (edit && (result.kind === "in-progress" || result.kind === "not-ready")) {
-			report(copy("Дождитесь сохранения предыдущей правки и повторите ввод.", "Wait for the previous edit to save before entering the value again."));
+			reportPending();
 		}
 		if (result.kind === "durable" && "warnings" in result && result.warnings) {
 			setDimensionError(
@@ -6862,17 +6932,18 @@ export function AppShell({
 	const cancelSelectedItemNumericDraft = () => {
 		setItemWallDrafts({});
 		setFloorDimensionErrors({});
-		if (!selectedItem) return;
+		const item = selectedSpatialItem;
+		if (!item) return;
 		setDimensionError(undefined);
 		setSelectedItemFields({
-			color: selectedItem.color,
-			depthMm: String(selectedItem.depthMm),
-			heightMm: String(selectedItem.heightMm),
-			label: selectedItem.label,
-			widthMm: String(selectedItem.widthMm),
+			color: item.color,
+			depthMm: String(item.depthMm),
+			heightMm: String(item.heightMm),
+			label: item.label,
+			widthMm: String(item.widthMm),
 		});
 		setSelectedItemAngleRaw(
-			degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)),
+			selectedItem ? degreesForYawRadians(yawRadiansForEditorFloorAsset(selectedItem)) : "0",
 		);
 	};
 
@@ -7098,10 +7169,10 @@ export function AppShell({
 	const resumeTransientViews = () => { if (hostLifecycle?.snapshot().active === false) return; skipNextNumericBlurCommitRef.current = false; for (const boundary of transientBoundaries.current) boundary.resume(); };
 	resumeHostViews.current = resumeTransientViews;
 	const continueEditorDraft = () => { confirmedWriterExit.current = undefined; leaveFocusActive.current = false; setLeaveFocus(undefined); resumeTransientViews(); };
-	const suspendForBack = () => {
+	const suspendForBack = (blurOnly?: true) => {
 		const focused = document.activeElement;
 		if (fullTransientNavigationProtection && focused instanceof HTMLInputElement && focused.hasAttribute("data-editor-blur-commit")) skipNextNumericBlurCommitRef.current = focused;
-		for (const boundary of transientBoundaries.current) boundary.suspend();
+		if (!blurOnly) for (const boundary of transientBoundaries.current) boundary.suspend();
 	};
 	prepareHostBack.current = suspendForBack;
 	const hasPendingEditorCommand = () => controller.hasPendingPublication() || controller.snapshot().kind === "loading" || controller.snapshot().kind === "saving" || !!projectTransferAbortRef.current || isRepairingCustomGlb || isRemovingUnresolvedCustomGlb || isDeletingProject || isTakingOverWriterLease || [...transientBoundaries.current].some((boundary) => boundary.inspect().hasPendingCommand);
@@ -7120,6 +7191,8 @@ export function AppShell({
 		requestAnimationFrame(() => selectionPropertiesTriggerRef.current?.focus({ preventScroll: true }));
 	};
 	const requestEditorBack = (explicitProjects = false, onCleanPanelClose?: () => void) => {
+		const previousFocus = touchBackFocus.current;
+		touchBackFocus.current = undefined;
 		if (!isNavigationProtected) { void returnToProjects(); return; }
 		if (leaveFocus) { continueEditorDraft(); return; }
 		suspendForBack();
@@ -7141,7 +7214,7 @@ export function AppShell({
 			panel,
 			project: !!project || state.kind === "first-run" || state.kind === "recovery-needed",
 		});
-		if (decision === "confirm-discard") { confirmedWriterExit.current = recoveryExit; leaveFocusActive.current = true; setLeaveFocus(captureEditorFocus()); return; }
+		if (decision === "confirm-discard") { confirmedWriterExit.current = recoveryExit; leaveFocusActive.current = true; setLeaveFocus(previousFocus ?? captureEditorFocus()); return; }
 		resumeTransientViews();
 		if (decision === "saving") { setHostBackNotice(copy("Дождитесь завершения текущего действия. Сохраняемая правка не отменена.", "Wait for the current action to finish saving.")); return; }
 		if (decision === "persist-failed") {
@@ -7165,7 +7238,7 @@ export function AppShell({
 			else if (isBuiltInCatalogOpen) closeOverlay();
 			else if (isPlanInspectorOpen) closePlanInspector();
 			else if (isSelectionInspectorExpanded) {
-				if (hasTelegramEditorSheet && selectedItem) closeFloorItemProperties();
+				if (hasTelegramEditorSheet && selectedSpatialItem) closeFloorItemProperties();
 				else if (hasTelegramEditorSheet && selectedWall) closeWallProperties();
 				else setIsSelectionInspectorExpanded(false);
 			}
@@ -7522,6 +7595,7 @@ export function AppShell({
 	}
 
 	if (!project) {
+		const projectTransitionPending = hostNavigation !== undefined && isWorking;
 		return (
 			<main
 				data-editor-host={hostNavigation ? "telegram" : undefined}
@@ -7573,12 +7647,14 @@ export function AppShell({
 							{copy("‹ Назад", "‹ Back")}
 						</button>
 					) : null}
-					<h1 id="create-heading">
-						{state.kind === "recovery-needed"
-							? copy("Проект требует восстановления", "Project needs recovery")
-							: copy("Новый проект", "New project")}
-					</h1>
-					{state.kind !== "recovery-needed" ? (
+					{!projectTransitionPending ? (
+						<h1 id="create-heading">
+							{state.kind === "recovery-needed"
+								? copy("Проект требует восстановления", "Project needs recovery")
+								: copy("Новый проект", "New project")}
+						</h1>
+					) : null}
+					{state.kind !== "recovery-needed" && !projectTransitionPending ? (
 						<form
 							className={styles.createForm}
 							noValidate
@@ -7613,7 +7689,11 @@ export function AppShell({
 						</form>
 					) : null}
 					{state.kind !== "first-run" ? (
-						<span className={styles.startStatus} role="status">
+						<span
+							className={styles.startStatus}
+							id={projectTransitionPending ? "create-heading" : undefined}
+							role="status"
+						>
 							{isWriterLeaseReadOnly ? copy("Только просмотр", "View only") : statusCopy(state)}
 						</span>
 					) : null}
@@ -7798,7 +7878,7 @@ export function AppShell({
 	const selectedFloorLegacyPreset = selectedItem && (!("assetDefinitionId" in selectedItem) || selectedItem.assetDefinitionId === undefined) && !selectedFloorPresetId
 		? telegramGreyboxPresetForLabel(selectedItem.label) : undefined;
 	const floorItemDimensionFields =
-		selectedItem && selectedItemFields ? (
+		selectedSpatialItem && selectedItemFields ? (
 			<div className={styles.itemDimensions}>
 				{([
 					["widthMm", copy("Ширина", "Width")],
@@ -7819,6 +7899,7 @@ export function AppShell({
 									disabled={
 										isEditorReadOnly ||
 										selectedItemLocked ||
+										(selectedSupportedItem !== undefined && !roomInteriorEnabled) ||
 										(!hostNavigation && selectedItemHasFixedDimensions) ||
 										isWorking ||
 										state.kind === "persist-failed" ||
@@ -7852,7 +7933,7 @@ export function AppShell({
 						</Fragment>
 					);
 				})}
-				{!onRotationStepModeChange ? (
+				{selectedItem && !onRotationStepModeChange ? (
 					<div>
 						<label data-angle-unit>
 							<span>{copy("Поворот", "Rotation")}</span>
@@ -7928,7 +8009,6 @@ export function AppShell({
 		) : null;
 	const pendingFurnitureGuests = project.schemaVersion === 1 && furnitureRemovalId
 		? supportedGuestsFor(project, furnitureRemovalId) : [];
-	const selectedSupportPose = supportsInView.find(pose => pose.item.assetInstanceId === selectedSupportedItem?.assetInstanceId);
 	const selectedFloorGuests = project.schemaVersion === 1 && selectedItem
 		? supportedGuestsFor(project, selectedItem.assetInstanceId) : [];
 	const floorItemActions = selectedItem ? (
@@ -7939,10 +8019,6 @@ export function AppShell({
 						const result = await controller.applyInteriorCommand({ kind: "bind-preset", assetInstanceId: selectedItem.assetInstanceId, presetId: selectedFloorLegacyPreset.id });
 						if (result.kind === "rejected") showEditRejection(result.reasonCode);
 					}}>{copy("Назначить встроенный шаблон", "Use built-in template")}</button>
-			) : null}
-			{roomInteriorEnabled && selectedItem.anchorClass === "floor" && floorDecorPresetFor(selectedItem) ? (
-				<button type="button" disabled={isEditorReadOnly || isMutationBlocked || selectedItemLocked}
-					onClick={() => openSupportEdit("attach", selectedItem.assetInstanceId)}>{copy("Переставить", "Move decor")}</button>
 			) : null}
 			{roomInteriorEnabled ? (
 				<button type="button" disabled={isEditorReadOnly || isMutationBlocked}
@@ -8121,6 +8197,21 @@ export function AppShell({
 		</button>
 	);
 
+	const dimensionFilterButton = viewMode === "plan" ? (
+		<DimensionFilterButton
+			open={isDimensionFilterOpen}
+			disabled={hasUndurableEditorDraft || isWorking}
+			telegram={hostNavigation !== undefined}
+			buttonRef={dimensionFilterTriggerRef}
+			onOpen={() => {
+				setIsEditorActionMenuOpen(false);
+				setIsPlanInspectorOpen(false);
+				setIsRoomDirectoryOpen(false);
+				setIsDimensionFilterOpen(true);
+			}}
+		/>
+	) : null;
+
 	return (
 		<main
 			data-editor-host={hostNavigation ? "telegram" : undefined}
@@ -8264,9 +8355,9 @@ export function AppShell({
 				) : null}
 				{!isStarterContourVisible ? storagePressureNotice : null}
 
-				{hostNavigation && viewMode === "three-dimensional" && !isItemPlacementActive && !supportDraft &&
+				{hostNavigation && (viewMode === "three-dimensional" || selectedSupportedItem) && !isItemPlacementActive && !supportDraft &&
 					!selectionBehindSheet && !isSelectionInspectorExpanded && !finishDraft && !selectedOpening ? (
-					selectedItem ? <SceneSelectionActions action={{ kind: "item", duplicate: duplicateSelectedItem, readOnly: isEditorReadOnly || isMutationBlocked }}
+					selectedSpatialItem ? <SceneSelectionActions action={{ kind: "item", duplicate: duplicateSelectedItem, readOnly: isEditorReadOnly || isMutationBlocked || (selectedSupportedItem !== undefined && !roomInteriorEnabled) }}
 						triggerRef={floorPropertiesTriggerRef} open={openSelectionProperties} />
 					: selectedWall ? <SceneSelectionActions action={{ kind: "wall", wallItem: !!sceneWallItem }}
 						triggerRef={selectionPropertiesTriggerRef} open={openSelectionProperties} />
@@ -8319,7 +8410,7 @@ export function AppShell({
 							}, undefined, hostNavigation ? "reject" : "warn");
 						}}
 						customGlbResourceStates={customGlbResourceStates}
-						canTransformSelectedItem={!selectedItemLocked && !supportDraft && !selectedSupportedItem}
+						canTransformSelectedItem={!selectedItemLocked && !supportDraft && (!selectedSupportedItem || roomInteriorEnabled)}
 						supportDrag={!supportDraft && supportedDrag && threeDimensionalOrigin ? { ...supportedDrag, origin: threeDimensionalOrigin } : undefined}
 						copyingHostId={furnitureCopyId}
 						supportInteraction={supportDraft && threeDimensionalOrigin ? {
@@ -8611,38 +8702,7 @@ export function AppShell({
 								3D
 							</button>
 						</fieldset>
-						{viewMode === "plan" ? (
-							<button
-								aria-label={copy("Настроить размеры", "Configure dimensions")}
-								aria-haspopup="dialog"
-								aria-expanded={isDimensionFilterOpen}
-								className={styles.dimensionFilterTrigger}
-								disabled={hasUndurableEditorDraft || isWorking}
-								ref={dimensionFilterTriggerRef}
-								type="button"
-								onClick={() => {
-									setIsEditorActionMenuOpen(false);
-									setIsPlanInspectorOpen(false);
-									setIsRoomDirectoryOpen(false);
-									setIsDimensionFilterOpen(true);
-								}}
-							>
-								<svg
-									aria-hidden="true"
-									data-testid="dimension-filter-icon"
-									viewBox="0 0 24 24"
-									fill="none"
-								>
-									<path
-										d="M4 6h16M7 12h10M10 18h4"
-										stroke="currentColor"
-										strokeWidth="2"
-										strokeLinecap="round"
-									/>
-								</svg>
-								<span>{copy("Размеры", "Dimensions")}</span>
-							</button>
-						) : null}
+						{!hostNavigation ? dimensionFilterButton : null}
 					</div>
 				</header>
 				{isHealthyOfflineStatusVisible ? (
@@ -9077,6 +9137,7 @@ export function AppShell({
 						↷
 					</button>
 				</fieldset>
+				{hostNavigation ? dimensionFilterButton : null}
 
 				{viewMode === "plan" &&
 				activeTool === "select" &&
@@ -10082,9 +10143,10 @@ export function AppShell({
 				) : null}
 
 				{activeTool === "select" &&
-				selectedItem &&
+				selectedSpatialItem &&
 				selectedItemFields &&
-				(viewMode === "plan" || hasTelegramEditorSheet && isSelectionInspectorExpanded) ? (
+				!supportDraft &&
+				(viewMode === "plan" && !selectedSupportedItem || hasTelegramEditorSheet && isSelectionInspectorExpanded) ? (
 					<EditorModalSheet
 						telegramModal={canOpenTelegramEditorSheet && isSelectionInspectorExpanded && !selectionBehindSheet && selectedOpening === undefined}
 						busy={isWorking}
@@ -10105,7 +10167,7 @@ export function AppShell({
 					>
 						{localGreyboxCatalog && isSelectionInspectorExpanded ? (
 							<SheetHeader
-								title={selectedItem.label}
+								title={selectedSpatialItem.label}
 								closeLabel={copy("Скрыть панель предмета", "Hide item panel")}
 								protectEditorDraft={fullTransientNavigationProtection}
 								onClose={() => requestEditorBack(false, closeFloorItemProperties)}
@@ -10128,12 +10190,12 @@ export function AppShell({
 								</svg>
 							</span>
 							<span className={styles.selectionItemInspectorCategory}>
-								{"assetDefinitionId" in selectedItem &&
-								selectedItem.assetDefinitionId
+								{"assetDefinitionId" in selectedSpatialItem &&
+								selectedSpatialItem.assetDefinitionId
 									? copy("ВЫБРАННЫЙ ПРЕДМЕТ", "SELECTED ITEM")
 									: copy("МАКЕТНЫЙ ПРЕДМЕТ", "PLACEHOLDER ITEM")}
 							</span>
-							<strong>{selectedItem.label}</strong>
+							<strong>{selectedSpatialItem.label}</strong>
 							<button
 								aria-expanded={isSelectionInspectorExpanded}
 								aria-label={
@@ -10165,7 +10227,7 @@ export function AppShell({
 							</p>
 						) : null}
 						{hostNavigation ? null : floorItemDimensionFields}
-						{hostNavigation || localGreyboxCatalog || selectedItemHasNoDeclaredColorVariant ? null : (
+						{hostNavigation || localGreyboxCatalog || selectedItemHasNoDeclaredColorVariant || !selectedItem ? null : (
 							<fieldset className={styles.quickPalette}>
 								<legend>{copy("Цвет предмета", "Item color")}</legend>
 								<div>
@@ -10202,7 +10264,7 @@ export function AppShell({
 								</div>
 							</fieldset>
 						)}
-						{!hostNavigation ? (
+						{!hostNavigation && selectedItem ? (
 							<>
 								<dl className={styles.inlineMetrics}>
 									<div>
@@ -10276,7 +10338,25 @@ export function AppShell({
 							</>
 						) : null}
 						{hostNavigation ? (isSelectionInspectorExpanded ? (
-							<TmaFloorItemTabs
+							selectedSupportedItem ? (
+								<>
+									{floorItemDimensionFields}
+									<ItemInspectorActions telegram>
+										<button type="button" disabled={isEditorReadOnly || isMutationBlocked || !roomInteriorEnabled}
+											aria-pressed={selectedItemLocked} onClick={async () => {
+												const result = await controller.applyInteriorCommand({ kind: "set-supported-lock",
+													assetInstanceId: selectedSupportedItem.assetInstanceId, locked: !selectedItemLocked });
+												if (result.kind === "rejected") setDimensionError(interiorReason(result.reasonCode, result.conflictAssetInstanceId));
+											}}>{selectedItemLocked ? copy("Разблокировать", "Unlock") : copy("Заблокировать", "Lock")}</button>
+										<button type="button" disabled={isEditorReadOnly || isMutationBlocked || selectedItemLocked || !roomInteriorEnabled}
+											onClick={async () => {
+												const result = await controller.applyInteriorCommand({ kind: "delete-supported", assetInstanceId: selectedSupportedItem.assetInstanceId });
+												if (result.kind === "durable") clearSelection();
+												if (result.kind === "rejected") setDimensionError(interiorReason(result.reasonCode, result.conflictAssetInstanceId));
+											}}>{copy("Удалить", "Delete")}</button>
+									</ItemInspectorActions>
+								</>
+							) : <TmaFloorItemTabs
 								active={floorItemTab}
 								onChange={setFloorItemTab}
 								sizes={floorItemDimensionFields}
@@ -10821,106 +10901,24 @@ export function AppShell({
 							protectEditorDraft={fullTransientNavigationProtection}
 							onClose={() => isNavigationProtected ? requestEditorBack(false, closePlanInspector) : closePlanInspector()}
 						/>
-						<form
-							className={inspectorStyles.form}
-							onSubmit={applyPlanDimensions}
-						>
-							<div className={inspectorStyles.fields}>
-								<label>
-									<span>{copy("Ширина, мм", "Width, mm")}</span>
-									<input
-										aria-describedby={
-											planDimensionError ? "plan-dimension-error" : undefined
-										}
-										aria-invalid={planDimensionError ? "true" : undefined}
-										autoComplete="off"
-										disabled={
-											isEditorReadOnly ||
-											isWorking ||
-											state.kind === "persist-failed" ||
-											state.kind === "recovery-needed"
-										}
-										inputMode="numeric"
-										onChange={(event) =>
-											setDimensions({
-												...dimensions,
-												widthMm: event.target.value,
-											})
-										}
-										value={dimensions.widthMm}
-									/>
-								</label>
-								<label>
-									<span>{copy("Глубина, мм", "Depth, mm")}</span>
-									<input
-										aria-describedby={
-											planDimensionError ? "plan-dimension-error" : undefined
-										}
-										aria-invalid={planDimensionError ? "true" : undefined}
-										autoComplete="off"
-										disabled={
-											isEditorReadOnly ||
-											isWorking ||
-											state.kind === "persist-failed" ||
-											state.kind === "recovery-needed"
-										}
-										inputMode="numeric"
-										onChange={(event) =>
-											setDimensions({
-												...dimensions,
-												depthMm: event.target.value,
-											})
-										}
-										value={dimensions.depthMm}
-									/>
-								</label>
-								<label>
-									<span>{copy("Высота, мм", "Height, mm")}</span>
-									<input
-										aria-describedby={
-											planDimensionError ? "plan-dimension-error" : undefined
-										}
-										aria-invalid={planDimensionError ? "true" : undefined}
-										autoComplete="off"
-										disabled={
-											isEditorReadOnly ||
-											isWorking ||
-											state.kind === "persist-failed" ||
-											state.kind === "recovery-needed"
-										}
-										inputMode="numeric"
-										onChange={(event) =>
-											setDimensions({
-												...dimensions,
-												heightMm: event.target.value,
-											})
-										}
-										value={dimensions.heightMm}
-									/>
-								</label>
-							</div>
-							{planDimensionError ? (
-								<p
-									className={inspectorStyles.error}
-									id="plan-dimension-error"
-									role="alert"
-								>
-									{planDimensionError}
-								</p>
-							) : null}
-							<button
-								className={inspectorStyles.primary}
-								disabled={
-									isEditorReadOnly ||
-									isWorking ||
-									state.kind === "persist-failed" ||
-									state.kind === "recovery-needed"
+						<PlanDimensionFields
+							dimensions={dimensions}
+							error={planDimensionError}
+							disabled={isEditorReadOnly || isWorking || state.kind === "persist-failed" || state.kind === "recovery-needed"}
+							saveOnBlur={hostNavigation !== undefined}
+							onChange={updatePlanDimension}
+							onBlur={(field, input) => {
+								if (!consumeSkippedNumericBlurCommit(input)) {
+									void applyPlanDimensions({ ...baselineDimensions, [field]: input.value }, field);
 								}
-								type="submit"
-							>
-								{copy("Применить размеры", "Apply dimensions")}
-							</button>
-						</form>
+							}}
+							onKeyDown={(field, event) => {
+								if (!cancelNumericDraftOnEscape(event, () => updatePlanDimension(field, baselineDimensions[field]))) {
+									commitOnEnter(event);
+								}
+							}}
+							onApply={() => void applyPlanDimensions(dimensions)}
+						/>
 						<dl className={inspectorStyles.metrics}>
 							<div>
 								<dt>{copy("Площадь", "Area")}</dt>
@@ -11246,64 +11244,6 @@ export function AppShell({
 							}}>{copy("Удалить вместе", "Delete together")}</button>
 					</div>
 				</EditorModalSheet>
-			) : null}
-			{selectedSupportedItem && selectedSupportPose && !supportDraft && !furnitureRemovalId ? (
-				<section aria-label={copy("Параметры декора", "Decor properties")} className={styles.interiorSupportedPanel}>
-					<SheetHeader title={telegramGreyboxLabelForDisplay(selectedSupportedItem.label)}
-						closeLabel={copy("Закрыть параметры декора", "Close decor properties")} onClose={clearSelection} />
-					{selectedItemFields && roomInteriorEnabled ? (
-						<form onSubmit={async event => {
-							event.preventDefault();
-							const widthMm = positiveInteger(selectedItemFields.widthMm.trim());
-							const depthMm = positiveInteger(selectedItemFields.depthMm.trim());
-							const heightMm = positiveInteger(selectedItemFields.heightMm.trim());
-							if (!widthMm || !depthMm || !heightMm) {
-								setDimensionError(copy("Укажите целые положительные размеры в мм.", "Enter positive whole dimensions in mm."));
-								return;
-							}
-							const result = await controller.applyInteriorCommand({ kind: "resize-supported", assetInstanceId: selectedSupportedItem.assetInstanceId, widthMm, depthMm, heightMm });
-							if (result.kind === "rejected") setDimensionError(interiorReason(result.reasonCode, result.conflictAssetInstanceId));
-							else setDimensionError(undefined);
-						}}>
-							<div className={styles.interiorNumeric}>
-								{([
-									{ key: "widthMm", label: copy("Ширина, мм", "Width, mm") },
-									{ key: "depthMm", label: copy("Глубина, мм", "Depth, mm") },
-									{ key: "heightMm", label: copy("Высота, мм", "Height, mm") },
-								] as const).map(({ key, label }) => (
-									<label key={key}>{label}
-										<input inputMode="numeric" disabled={isEditorReadOnly || isMutationBlocked || selectedSupportedItem.locked}
-											value={selectedItemFields[key]} onChange={event => {
-												const value = event.currentTarget.value;
-												setSelectedItemFields(current => current ? { ...current, [key]: value } : current);
-											}} />
-									</label>
-								))}
-							</div>
-							<button type="submit" disabled={isEditorReadOnly || isMutationBlocked || selectedSupportedItem.locked ||
-								(["widthMm", "depthMm", "heightMm"] as const).every(key =>
-									selectedItemFields[key] === String(selectedSupportedItem[key]))}>{copy("Применить размеры", "Apply dimensions")}</button>
-						</form>
-					) : null}
-					{dimensionError ? <p role="alert">{dimensionError}</p> : null}
-					<div className={styles.interiorChoices}>
-						<button type="button" disabled={isEditorReadOnly || isMutationBlocked || !roomInteriorEnabled}
-							aria-pressed={selectedSupportedItem.locked === true} onClick={async () => {
-								const result = await controller.applyInteriorCommand({ kind: "set-supported-lock", assetInstanceId: selectedSupportedItem.assetInstanceId, locked: selectedSupportedItem.locked !== true });
-								if (result.kind === "rejected") setDimensionError(interiorReason(result.reasonCode, result.conflictAssetInstanceId));
-							}}>{selectedSupportedItem.locked ? copy("Разблокировать", "Unlock") : copy("Заблокировать", "Lock")}</button>
-						<button type="button" disabled={isEditorReadOnly || isMutationBlocked || selectedSupportedItem.locked || !roomInteriorEnabled}
-							onClick={() => openSupportEdit("move", selectedSupportedItem.assetInstanceId)}>{copy("Переставить", "Move decor")}</button>
-						<button type="button" disabled={isEditorReadOnly || isMutationBlocked || !roomInteriorEnabled}
-							onClick={() => openSupportEdit("copy", selectedSupportedItem.assetInstanceId)}>{copy("Дублировать", "Duplicate")}</button>
-						<button type="button" disabled={isEditorReadOnly || isMutationBlocked || selectedSupportedItem.locked || !roomInteriorEnabled}
-							onClick={async () => {
-								const result = await controller.applyInteriorCommand({ kind: "delete-supported", assetInstanceId: selectedSupportedItem.assetInstanceId });
-								if (result.kind === "durable") clearSelection();
-								if (result.kind === "rejected") setDimensionError(interiorReason(result.reasonCode, result.conflictAssetInstanceId));
-							}}>{copy("Удалить", "Delete")}</button>
-					</div>
-				</section>
 			) : null}
 			{supportDraft ? (
 				<SupportedPlacementControls

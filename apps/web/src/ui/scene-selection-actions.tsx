@@ -16,7 +16,7 @@ export function SceneSelectionActions({ action, triggerRef, open }: {
 		: action.kind === "wall" && !action.wallItem ? copy("Свойства стены", "Wall properties")
 		: copy("Параметры", "Settings");
 	return (
-		<div className={styles.tmaSceneSelectionActions}>
+		<div className={styles.tmaSceneSelectionActions} data-scene-selection-actions="">
 			<button ref={triggerRef} className={styles.tmaDuplicateAction} type="button" onClick={open}>{label}</button>
 			{action.kind === "item" ? (
 				<button className={styles.tmaDuplicateAction} type="button" disabled={action.readOnly} onClick={action.duplicate}>

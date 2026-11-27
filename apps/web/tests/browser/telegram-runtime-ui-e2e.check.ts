@@ -90,6 +90,44 @@ test.afterEach(async ({ page }) => {
 		.catch(() => undefined);
 });
 
+test("TMA-INTERIOR-PROJECT-TRANSITIONS: opening and saving show progress without flashing the creation form", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await createRoom(page, "Сохранённая комната");
+	const source = await currentProject(page);
+	await page.getByRole("button", { name: "Назад", exact: true }).click();
+	const openSaved = page.getByRole("button", { name: "Открыть Сохранённая комната", exact: true });
+	await expect(openSaved).toBeVisible();
+	const name = page.getByRole("textbox", { name: "Название проекта" });
+
+	await page.evaluate(() => window.__telegramRuntimeUi.holdScopeLock("a"));
+	try {
+		await openSaved.click();
+		await expect.poll(() => page.evaluate(() => window.__telegramRuntimeUi.state().kind)).toBe("loading");
+		await expect(name).toHaveCount(0);
+		await expect(page.getByRole("status")).toHaveText("Проверяем");
+	} finally {
+		await page.evaluate(() => window.__telegramRuntimeUi.releaseScopeLock());
+	}
+	await saved(page);
+	expect(await currentProject(page)).toEqual(source);
+
+	await page.getByRole("button", { name: "Назад", exact: true }).click();
+	await page.getByRole("button", { name: "Новый проект", exact: true }).click();
+	await name.fill("Новая комната");
+	await page.evaluate(() => window.__telegramRuntimeUi.holdScopeLock("a"));
+	try {
+		await page.getByRole("button", { name: "Создать проект", exact: true }).click();
+		await expect.poll(() => page.evaluate(() => window.__telegramRuntimeUi.state().kind)).toBe("saving");
+		await expect(name).toHaveCount(0);
+		await expect(page.getByRole("status")).toHaveText("Сохраняем локально…");
+	} finally {
+		await page.evaluate(() => window.__telegramRuntimeUi.releaseScopeLock());
+	}
+	await saved(page);
+	await expect(page.getByRole("form", { name: "Размеры стартового контура" })).toBeVisible();
+	expect((await currentProject(page)).name).toBe("Новая комната");
+});
+
 test("TMA-UI-01: real EditorApp creates a durable rectangle and reload reopens its exact scoped Revision", async ({
 	page,
 }) => {
@@ -835,6 +873,78 @@ async function expectEditorMenuKeepsItsHeaderRow(page: Page) {
 		return Math.abs(backCentre - menuCentre) <= 2 && menu.y + menu.height <= views.y;
 	}).toBe(true);
 }
+
+test("TMA-INTERIOR-DIMENSIONS-DOCK: Plan controls align at the bottom and view tabs stay fixed", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact"));
+	await createRoom(page, "Размеры в нижней панели");
+	const editor = page.getByTestId("editor-workspace");
+	const header = page.getByTestId("editor-top-bar");
+	const views = header.getByTestId("editor-view-switch");
+	const toggle = page.getByRole("button", { name: "Настроить размеры", exact: true });
+	const history = page.getByRole("group", { name: "История изменений", exact: true });
+	const zoom = page.getByRole("group", { name: "Масштаб плана", exact: true });
+	const tools = page.getByTestId("editor-action-dock");
+	await expect(header.getByRole("button", { name: "Настроить размеры", exact: true })).toHaveCount(0);
+	for (const viewport of [{ width: 320, height: 720 }, { width: 320, height: 400 }, { width: 768, height: 800 }]) {
+		await page.setViewportSize(viewport);
+		await expect(toggle).toBeInViewport({ ratio: 1 });
+		await expect.poll(async () => {
+			const [undo, dimensions, scale, dock] = await Promise.all([history.boundingBox(), toggle.boundingBox(), zoom.boundingBox(), tools.boundingBox()]);
+			return Boolean(undo && dimensions && scale && dock &&
+				undo.x + undo.width < dimensions.x && dimensions.x + dimensions.width < scale.x &&
+				Math.abs(dimensions.x + dimensions.width / 2 - viewport.width / 2) < 1 &&
+				Math.abs(undo.y - dimensions.y) <= 1 && Math.abs(scale.y - dimensions.y) <= 1 &&
+				Math.abs(undo.height - dimensions.height) <= 1 && Math.abs(scale.height - dimensions.height) <= 1 &&
+				dimensions.height >= 44 && dimensions.width >= 44 && dimensions.y + dimensions.height < dock.y);
+		}).toBe(true);
+		const planBounds = await views.boundingBox();
+		await views.getByRole("button", { name: "3D", exact: true }).click();
+		await expect(editor).toHaveAttribute("data-view-mode", "three-dimensional");
+		await expect(toggle).toHaveCount(0);
+		expect(await views.boundingBox()).toEqual(planBounds);
+		await views.getByRole("button", { name: "План 2D", exact: true }).click();
+		await expect(toggle).toBeVisible();
+		expect(await views.boundingBox()).toEqual(planBounds);
+	}
+	await toggle.click();
+	await expect(page.getByRole("dialog", { name: "Размеры", exact: true })).toBeVisible();
+	await page.keyboard.press("Escape");
+	await expect(toggle).toBeFocused();
+});
+
+test("TMA-INTERIOR-PLAN-FIELD-BLUR: exact dimensions save one field at a time", async ({ page }) => {
+	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "authoring", "authoring"));
+	await createRoom(page, "Точные размеры по расфокусу");
+	await page.getByRole("button", { name: "Открыть остальные действия", exact: true }).click();
+	await page.getByRole("dialog", { name: "Остальные действия редактора" }).getByRole("button", { name: "Размеры плана", exact: true }).click();
+	const sheet = page.getByRole("dialog", { name: "Точные размеры плана", exact: true });
+	await expect(sheet).toBeVisible();
+	await expect(sheet.getByRole("button", { name: "Применить размеры", exact: true })).toHaveCount(0);
+	const width = sheet.getByRole("textbox", { name: "Ширина, мм", exact: true });
+	const depth = sheet.getByRole("textbox", { name: "Глубина, мм", exact: true });
+	const height = sheet.getByRole("textbox", { name: "Высота, мм", exact: true });
+	const before = (await rows(page, "a")).revisions.length;
+	await width.fill("4100");
+	expect((await rows(page, "a")).revisions).toHaveLength(before);
+	await depth.focus();
+	await expect.poll(async () => Math.max(...(await currentProject(page)).level.vertices.map(vertex => vertex.xMm))).toBe(4200);
+	expect((await rows(page, "a")).revisions).toHaveLength(before + 1);
+
+	await depth.fill("0");
+	await depth.press("Enter");
+	await expect(depth).toHaveAttribute("aria-invalid", "true");
+	await expect(width).not.toHaveAttribute("aria-invalid", "true");
+	await height.fill("2900");
+	await height.press("Enter");
+	await expect.poll(async () => (await currentProject(page)).level.rooms[0]?.heightMm).toBe(2900);
+	await expect(depth).toHaveValue("0");
+	expect((await rows(page, "a")).revisions).toHaveLength(before + 2);
+	await depth.press("Escape");
+	await expect(depth).toHaveValue("3000");
+	await expect(depth).not.toHaveAttribute("aria-invalid", "true");
+	await expect(sheet).toBeVisible();
+	expect((await rows(page, "a")).revisions).toHaveLength(before + 2);
+});
 
 test("TMA-ROTATION-SPACING: four rotation controls stay on one row in Plan and 3D", async ({ page }) => {
 	test.setTimeout(60_000);
@@ -3339,6 +3449,9 @@ test("TMA-ITEM-PALETTE: a legacy wall light has concise dimension labels and ref
 	const inspector = page.getByTestId("selected-wall-inspector");
 	await expect(inspector.getByText("Смещение вдоль стены, мм", { exact: true })).toBeVisible();
 	await expect(inspector.getByText("Высота центра, мм", { exact: true })).toBeVisible();
+	const offset = inspector.getByRole("textbox", { name: /^Смещение настенного предмета/ });
+	const height = inspector.getByRole("textbox", { name: /^Высота центра настенного предмета/ });
+	for (const field of [offset, height]) await expect(field).toHaveCSS("padding-inline-start", "10px");
 	const lock = inspector.getByRole("button", { name: "Заблокировать настенный предмет", exact: true });
 	const remove = inspector.getByRole("button", { name: "Удалить настенный предмет", exact: true });
 	for (const [control, foreground] of [[lock, "var(--ink)"], [remove, "var(--editor-host-danger, var(--danger))"]] as const) {
@@ -3403,6 +3516,8 @@ test("TMA-NOV23-INSPECTOR: numeric blur saves a single field and color is chosen
 	await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
 	const width = inspector.getByRole("textbox", { name: "Ширина выбранного предмета, мм" });
 	const depth = inspector.getByRole("textbox", { name: "Глубина выбранного предмета, мм" });
+	const height = inspector.getByRole("textbox", { name: "Высота выбранного предмета, мм" });
+	for (const field of [width, depth, height]) await expect(field).toHaveCSS("padding-inline-start", "10px");
 	const original = (await currentProject(page)).assetInstances[0];
 	const before = await rows(page, "a");
 	await width.fill("550");
@@ -3695,6 +3810,7 @@ test("TMA-INTERIOR-SUPPORT: place a planter from the catalog on a bedside table"
 });
 
 test("TMA-INTERIOR-LEGACY-SUPPORT: a book attaches to a pre-existing table in 3D", async ({ page }) => {
+	test.setTimeout(55_000);
 	const name = "Книга на старом столе";
 	await page.evaluate(() => window.__telegramRuntimeUi.mountNavigable("a", true, "exact", "compatible", "compatible"));
 	await createRoom(page, name);
@@ -3756,7 +3872,44 @@ test("TMA-INTERIOR-LEGACY-SUPPORT: a book attaches to a pre-existing table in 3D
 	const bookTop = { ...book, centerYM: book.centerYM + book.heightM / 2 };
 	const bookContact = sceneContact(canvasPointForSceneItem(reloaded.scene, reloaded.camera, reloaded.bounds, bookTop), reloaded.bounds);
 	await page.touchscreen.tap(bookContact.x, bookContact.y);
-	await expect(page.getByRole("region", { name: "Параметры декора", exact: true })).toContainText("Книга");
+	const inspector = page.getByRole("dialog", { name: "Свойства выбранного предмета", exact: true });
+	await expect(inspector).toHaveCount(0);
+	const rotation = page.getByTestId("three-dimensional-rotation-editor");
+	await expect(rotation).toBeVisible();
+	const duplicate = page.getByRole("button", { name: "Дублировать", exact: true });
+	await expect(duplicate).toBeVisible();
+	const beforeRotate = (await rows(page, "a")).revisions.length;
+	await rotation.getByRole("button", { name: /Повернуть.*против часовой/ }).click();
+	await expect.poll(async () => (await currentProject(page)).supportedItems?.[0]?.relativeYawMilliDeg).not.toBe(0);
+	expect((await rows(page, "a")).revisions).toHaveLength(beforeRotate + 1);
+	await page.getByRole("button", { name: "Параметры", exact: true }).tap();
+	await expect(inspector.getByRole("heading", { name: "Книга", exact: true })).toBeVisible();
+	await expect(inspector.getByRole("button", { name: "Применить размеры", exact: true })).toHaveCount(0);
+	await expect(inspector.getByRole("button", { name: "Переставить", exact: true })).toHaveCount(0);
+	await expect(inspector.getByRole("button", { name: "Дублировать", exact: true })).toHaveCount(0);
+	const width = inspector.getByRole("textbox", { name: "Ширина выбранного предмета, мм" });
+	expect(Number.parseFloat(await width.evaluate(el => getComputedStyle(el).paddingInlineStart))).toBeGreaterThanOrEqual(8);
+	await width.fill("230");
+	expect((await currentProject(page)).supportedItems?.[0]?.widthMm).toBe(210);
+	await width.press("Tab");
+	await expect.poll(async () => (await currentProject(page)).supportedItems?.[0]?.widthMm).toBe(230);
+	expect((await rows(page, "a")).revisions).toHaveLength(beforeRotate + 2);
+	const close = inspector.getByRole("button", { name: "Скрыть панель предмета", exact: true });
+	await width.fill("240");
+	await close.tap();
+	const discard = page.getByRole("alertdialog", { name: "Несохранённая правка", exact: true });
+	await expect(discard).toBeVisible();
+	expect((await rows(page, "a")).revisions).toHaveLength(beforeRotate + 2);
+	await discard.getByRole("button", { name: "Продолжить", exact: true }).tap();
+	await expect(width).toBeFocused();
+	await expect(width).toHaveValue("240");
+	await width.press("Escape");
+	await close.tap();
+	await expect(inspector).toHaveCount(0);
+	await duplicate.tap();
+	await expect(placement).toBeVisible();
+	await placement.getByRole("button", { name: "Отменить", exact: true }).tap();
+	expect((await currentProject(page)).supportedItems).toHaveLength(1);
 });
 
 for (const width of [320, 620]) {
@@ -3812,18 +3965,20 @@ test("TMA-INTERIOR-SHELF-SELECTION: tap overlapping books directly on the plan w
 	if (!second) throw new Error("The book copy is missing");
 	const firstSymbol = page.locator(`[data-supported-id="${book.assetInstanceId}"]`);
 	const secondSymbol = page.locator(`[data-supported-id="${second.assetInstanceId}"]`);
-	const inspector = page.getByRole("region", { name: "Параметры декора", exact: true });
+	const inspector = page.getByTestId("selected-item-inspector");
 	await firstSymbol.press("Enter");
-	await expect(inspector.getByRole("button", { name: "Переставить", exact: true })).toBeVisible();
-	await expect(inspector.getByRole("button", { name: "Дублировать", exact: true })).toBeVisible();
+	await expect(inspector.getByRole("textbox", { name: "Ширина выбранного предмета, мм" })).toHaveCount(0);
+	await expect(page.getByRole("button", { name: "Дублировать", exact: true })).toBeVisible();
+	await expect(page.getByTestId("two-dimensional-rotation-editor")).toBeVisible();
+	await page.getByRole("button", { name: "Параметры", exact: true }).tap();
 	await expect(inspector.getByRole("group", { name: "Предметы на опоре", exact: true })).toHaveCount(0);
 	await expect(inspector.getByText(/Стеллаж · Полка/)).toHaveCount(0);
-	await inspector.getByRole("button", { name: "Закрыть параметры декора" }).tap();
+	await inspector.getByRole("button", { name: "Скрыть панель предмета" }).tap();
 	const bounds = await secondSymbol.boundingBox();
 	if (!bounds) throw new Error("The books have no plan symbols");
 	const tapBooks = () => page.touchscreen.tap(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
 	await tapBooks();
-	await expect(inspector).toBeVisible();
+	await expect(page.getByRole("button", { name: "Параметры", exact: true })).toBeVisible();
 	await expect(secondSymbol).toHaveAttribute("aria-pressed", "true");
 	await expect(firstSymbol).toHaveAttribute("aria-pressed", "false");
 	await tapBooks();
@@ -3833,10 +3988,22 @@ test("TMA-INTERIOR-SHELF-SELECTION: tap overlapping books directly on the plan w
 	await expect(secondSymbol).toHaveAttribute("aria-pressed", "true");
 	await firstSymbol.dispatchEvent("click", { detail: 0 });
 	await expect(firstSymbol).toHaveAttribute("aria-pressed", "true");
-	await inspector.getByRole("button", { name: "Закрыть параметры декора" }).tap();
 	await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
 	await expect(secondSymbol).toHaveAttribute("aria-pressed", "true");
-	await inspector.getByRole("button", { name: "Закрыть параметры декора" }).tap();
+	await page.getByTestId("two-dimensional-rotation-editor")
+		.getByRole("button", { name: /Повернуть выбранный предмет влево/ }).tap();
+	await saved(page);
+	const rotated = (await currentProject(page)).supportedItems;
+	expect(rotated?.find(item => item.assetInstanceId === second.assetInstanceId)).toMatchObject({
+		supportAssetInstanceId: second.supportAssetInstanceId,
+		supportSurfaceKey: second.supportSurfaceKey,
+		offsetXMm: second.offsetXMm,
+		offsetZMm: second.offsetZMm,
+	});
+	expect(rotated?.find(item => item.assetInstanceId === second.assetInstanceId)?.relativeYawMilliDeg)
+		.not.toBe(second.relativeYawMilliDeg);
+	expect(rotated?.find(item => item.assetInstanceId === book.assetInstanceId)?.relativeYawMilliDeg)
+		.toBe(book.relativeYawMilliDeg);
 	const hostSymbol = page.locator(`[data-item-id="${book.supportAssetInstanceId}"]`).getByTestId("schematic-item");
 	await hostSymbol.press("Enter");
 	const hostInspector = page.getByTestId("selected-item-inspector");
@@ -3865,10 +4032,10 @@ test("TMA-INTERIOR-CHAIR-CANCEL: touching the chair leaves imported decor on its
 	const nightstand = original.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "bedside-table");
 	if (!planter || !chair || !nightstand) throw new Error("The imported chair, nightstand and supported planter are required");
 	expect(planter).toMatchObject({ supportAssetInstanceId: nightstand.assetInstanceId, supportSurfaceKey: "top" });
-	await page.locator(`[data-supported-id="${planter.assetInstanceId}"]`).press("Enter");
-	const properties = page.getByRole("region", { name: "Параметры декора" });
-	await expect(properties.getByRole("heading", { name: "Кашпо", exact: true })).toBeVisible();
-	await properties.getByRole("button", { name: "Переставить", exact: true }).tap();
+	const symbol = page.locator(`[data-supported-id="${planter.assetInstanceId}"]`);
+	await symbol.press("Enter");
+	await expect(symbol).toHaveAttribute("aria-pressed", "true");
+	await page.getByRole("button", { name: "Дублировать", exact: true }).tap();
 	await page.getByRole("button", { name: "3D", exact: true }).tap();
 	const contact = await currentChairSeatContact(page, chair.assetInstanceId);
 	expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-testid"), contact))
@@ -3882,7 +4049,7 @@ test("TMA-INTERIOR-CHAIR-CANCEL: touching the chair leaves imported decor on its
 	await page.screenshot({ path: info.outputPath("chair-rejected.png"), scale: "css" });
 	await placement.getByRole("button", { name: "Отменить", exact: true }).tap();
 	await expect(placement).toHaveCount(0);
-	await expect(properties.getByRole("heading", { name: "Кашпо", exact: true })).toBeVisible();
+	await expect(page.getByRole("button", { name: "Параметры", exact: true })).toBeVisible();
 	expect(await currentProject(page)).toEqual(original);
 	expect(await rows(page, "b")).toEqual(originalRows);
 });
@@ -3897,8 +4064,7 @@ test("TMA-INTERIOR-PLAN-SUPPORT: touching a highlighted host previews decor with
 	if (!vase || !desk || !chair) throw new Error("Expected the demo vase, desk and chair");
 	const revisionsBefore = (await rows(page, "a")).revisions;
 	await page.locator(`[data-supported-id="${vase.assetInstanceId}"]`).press("Enter");
-	await page.getByRole("region", { name: "Параметры декора" })
-		.getByRole("button", { name: "Переставить", exact: true }).tap();
+	await page.getByRole("button", { name: "Дублировать", exact: true }).tap();
 	const host = page.getByTestId("plan-decor-support").filter({ has: page.getByTestId("plan-decor-support-surface") })
 		.and(page.getByRole("button", { name: "Опора Письменный стол", exact: true }));
 	await expect(host).toHaveAttribute("data-support-host-id", desk.assetInstanceId);
@@ -3906,9 +4072,9 @@ test("TMA-INTERIOR-PLAN-SUPPORT: touching a highlighted host previews decor with
 	await expect(page.locator(`[data-support-host-id="${chair.assetInstanceId}"]`)).toHaveCount(0);
 	await expect(page.getByRole("button", { name: "Выбрать предмет «Стул»", exact: true })).toHaveCount(0);
 	const selection = page.getByTestId("interior-support-plan-preview");
-	const originalSelection = await selection.getAttribute("points");
+	await expect(selection).toHaveCount(0);
 	await page.locator(`[data-item-id="${chair.assetInstanceId}"]`).getByTestId("schematic-item").tap();
-	await expect(selection).toHaveAttribute("points", originalSelection ?? "");
+	await expect(selection).toHaveCount(0);
 	const target = await host.boundingBox();
 	if (!target) throw new Error("The desk support is missing its touch area");
 	const start = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
@@ -3920,16 +4086,16 @@ test("TMA-INTERIOR-PLAN-SUPPORT: touching a highlighted host previews decor with
 	} finally {
 		await contact.detach();
 	}
-	await expect(selection).toHaveAttribute("points", originalSelection ?? "");
+	await expect(selection).toHaveCount(0);
 	expect(await currentProject(page)).toEqual(project);
 	await host.tap();
 	await expect(host).toHaveAttribute("aria-pressed", "true");
-	await expect(selection).not.toHaveAttribute("points", originalSelection ?? "");
+	await expect(selection).toBeVisible();
 	expect((await rows(page, "a")).revisions).toEqual(revisionsBefore);
 	const placement = page.getByTestId("interior-supported-placement");
 	await placement.getByRole("button", { name: "Подтвердить", exact: true }).tap();
 	await saved(page);
-	expect((await currentProject(page)).supportedItems?.find(item => item.assetInstanceId === vase.assetInstanceId))
+	expect((await currentProject(page)).supportedItems?.find(item => item.assetInstanceId !== vase.assetInstanceId && item.catalogPreset.presetId === "vase"))
 		.toMatchObject({ supportAssetInstanceId: desk.assetInstanceId, supportSurfaceKey: "top" });
 	expect((await rows(page, "a")).revisions).toHaveLength(revisionsBefore.length + 1);
 });
@@ -3942,8 +4108,7 @@ test("TMA-INTERIOR-PLAN-SHELF: tapping a layered host opens only its own levels"
 	const shelf = project.assetInstances.find(item => item.anchorClass === "floor" && item.catalogPreset?.presetId === "open-shelf");
 	if (!book || !shelf) throw new Error("Expected the demo book and shelf");
 	await page.locator(`[data-supported-id="${book.assetInstanceId}"]`).press("Enter");
-	await page.getByRole("region", { name: "Параметры декора" })
-		.getByRole("button", { name: "Дублировать", exact: true }).tap();
+	await page.getByRole("button", { name: "Дублировать", exact: true }).tap();
 	const placement = page.getByTestId("interior-supported-placement");
 	await expect(placement.getByRole("group", { name: "Стеллаж", exact: true })).toHaveCount(0);
 	const target = page.getByTestId("plan-decor-support").and(page.getByRole("button", { name: "Опора Стеллаж", exact: true }));
@@ -4028,6 +4193,9 @@ test("TMA-INTERIOR-DRAG: an existing book snaps to furniture in 2D and 3D", asyn
 	};
 	const bookContact = await sceneContactFor(book.assetInstanceId, false);
 	const standContact = await sceneContactFor(stand.assetInstanceId, true);
+	await page.touchscreen.tap(bookContact.x, bookContact.y);
+	await expect(page.getByRole("button", { name: "Параметры", exact: true })).toBeVisible();
+	await expect(page.getByTestId("selected-item-inspector")).toHaveCount(0);
 	if (browserName === "chromium") {
 		const drag3d = await page.context().newCDPSession(page);
 		try {

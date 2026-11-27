@@ -28,6 +28,7 @@ import {
 	assessParametricFloorItemPlacement,
 	findParametricFloorItemCollisionTargets,
 	findRoomForFloorItem,
+	type FloorItemFootprint,
 	floorItemFootprintCorners,
 	floorYawFieldsForRadians,
 	isFloorRug,
@@ -701,6 +702,7 @@ export function PlanProjection({
 		viewportRef.current = viewport;
 	}, [viewport]);
 
+	const supportPlacements = useMemo(() => project.schemaVersion === 1 ? resolveSupportedPlacements(project) : [], [project]);
 	useEffect(() => {
 		if (!submittedItemTransform) return;
 		const durableItem = project.assetInstances.find(
@@ -715,8 +717,11 @@ export function PlanProjection({
 				: isFloorEditorAsset(durableItem) &&
 					yawRadiansForEditorFloorAsset(durableItem) ===
 						submittedItemTransform.yawRadians);
-		if (isDurable) setSubmittedItemTransform(undefined);
-	}, [project, submittedItemTransform]);
+		const supportIsDurable = submittedItemTransform.kind === "rotation" && supportPlacements.some(pose =>
+			pose.item.assetInstanceId === submittedItemTransform.assetInstanceId &&
+			Math.abs(yawRadiansFor(pose) - submittedItemTransform.yawRadians) < 1e-9);
+		if (isDurable || supportIsDurable) setSubmittedItemTransform(undefined);
+	}, [project, submittedItemTransform, supportPlacements]);
 
 	useEffect(() => {
 		if (!hasProjectRevisionChanged(moveDraftProjectRef.current, project))
@@ -800,6 +805,7 @@ export function PlanProjection({
 				: []),
 		];
 		const rotationObstacleSelector = "[data-plan-rotation-obstacle]";
+		const sceneSelectionActionsSelector = "[data-scene-selection-actions]";
 		const visualViewport = plainLabels && onRotationStepModeChange ? window.visualViewport : undefined;
 		const syncCanvasSize = () => {
 			const bounds = canvas.getBoundingClientRect();
@@ -828,7 +834,9 @@ export function PlanProjection({
 						.map((box) => box.top),
 					...inspectorBoxes.map(({ box }) => box.top),
 				);
-				const rotationTop = Math.max(top, (visualViewport?.offsetTop ?? bounds.top) - bounds.top);
+				const topActions = shell?.querySelector(sceneSelectionActionsSelector);
+				const rotationTop = Math.max(top, (visualViewport?.offsetTop ?? bounds.top) - bounds.top,
+					(topActions?.getBoundingClientRect().bottom ?? bounds.top) - bounds.top);
 				const rotationBottom = Math.max(0, bottom - bounds.top);
 				const itemInspector = shell?.querySelector(selectedItemInspectorSelector);
 				const ready = planRotationChromeReady({
@@ -881,6 +889,7 @@ export function PlanProjection({
 		const chromeSelector = [
 			'[data-testid="editor-top-bar"]',
 			'[data-testid="editor-action-dock"]',
+			sceneSelectionActionsSelector,
 			...inspectorSelectors,
 		].join(",");
 		if (shell && plainLabels && onRotationStepModeChange) {
@@ -3358,28 +3367,32 @@ export function PlanProjection({
 	const selectedAsset = onRotationStepModeChange && activeTool === "select" && !isInteractionLocked && !pickingSupport
 		? project.assetInstances.find((item) => item.assetInstanceId === selectedItemId)
 		: undefined;
+	const selectedSupport = supportDrag && onRotationStepModeChange && activeTool === "select" && !isInteractionLocked && !pickingSupport
+		? supportPlacements.find(({ item }) => item.assetInstanceId === selectedItemId && !item.locked)
+		: undefined;
 	const rotationItem = selectedAsset && isFloorEditorAsset(selectedAsset)
 		&& !("locked" in selectedAsset && selectedAsset.locked)
 		? selectedAsset
-		: undefined;
+		: selectedSupport && { ...selectedSupport, assetInstanceId: selectedSupport.item.assetInstanceId };
 
-	const renderedItemPosition = (item: EditorFloorAsset) => {
+	type RotationPose = FloorItemFootprint & { readonly assetInstanceId: string };
+	const renderedItemPosition = (item: RotationPose) => {
 		if (itemDrag?.assetInstanceId === item.assetInstanceId) return itemDrag.end;
 		if (submittedItemTransform?.assetInstanceId === item.assetInstanceId && submittedItemTransform.kind === "move")
 			return submittedItemTransform;
 		return item;
 	};
-	const renderedItemYaw = (item: EditorFloorAsset) => {
+	const renderedItemYaw = (item: RotationPose) => {
 		if (itemRotation?.assetInstanceId === item.assetInstanceId) return itemRotation.yawRadians;
 		if (submittedItemTransform?.assetInstanceId === item.assetInstanceId && submittedItemTransform.kind === "rotation")
 			return submittedItemTransform.yawRadians;
-		return yawRadiansForEditorFloorAsset(item);
+		return yawRadiansFor(item);
 	};
 	const supportPolygonPoints = (option: SupportOption) => supportSurfacePlanVertices(option).map(position => {
 		const point = pointFor(position.xMm, position.zMm);
 		return `${point.x},${point.y}`;
 	}).join(" ");
-	const rotationRadius = (item: EditorFloorAsset) => plainLabels
+	const rotationRadius = (item: RotationPose) => plainLabels
 		? Math.max(36 / viewport.zoom, (Math.hypot(item.widthMm, item.depthMm) * drawingScale) / 2 + 24 / viewport.zoom)
 		: Math.max(24, (Math.max(item.widthMm, item.depthMm) * drawingScale) / 2 + 18);
 	const selectedRotationPlacement = rotationItem ? placePlanRotationEditor({
@@ -3395,7 +3408,7 @@ export function PlanProjection({
 	const selectedRotationDisabled =
 		readOnly || isConfirmingItemTransform || itemRotation !== undefined ||
 		itemDrag !== undefined || retainedHostTransform !== undefined;
-	const selectedRotationButton = (item: EditorFloorAsset, direction: 1 | -1) => (
+	const selectedRotationButton = (item: RotationPose, direction: 1 | -1) => (
 		<button
 			aria-label={copy(`Повернуть выбранный предмет ${direction === 1 ? "влево" : "вправо"} на ${rotationStep}°`, `Rotate the selected item ${direction === 1 ? "left" : "right"} by ${rotationStep}°`)}
 			className={rotationStyles.step}
@@ -4412,7 +4425,7 @@ export function PlanProjection({
 							</Fragment>
 						);
 					})}
-					{project.schemaVersion === 1 ? resolveSupportedPlacements(project).map(({ item, host }) => {
+					{supportPlacements.map(({ item, host }) => {
 						const at = renderedItemPosition(host);
 						const yaw = renderedItemYaw(host);
 						const xMm = at.xMm + Math.cos(yaw) * item.offsetXMm + Math.sin(yaw) * item.offsetZMm;
@@ -4421,7 +4434,9 @@ export function PlanProjection({
 							: submittedItemTransform?.kind === "move" && submittedItemTransform.assetInstanceId === item.assetInstanceId
 								? submittedItemTransform : undefined;
 						const position = pointFor(dragPosition?.xMm ?? xMm, dragPosition?.zMm ?? zMm);
-						const rotation = yaw * 180 / Math.PI + item.relativeYawMilliDeg / 1000;
+						const previewYaw = submittedItemTransform?.kind === "rotation" && submittedItemTransform.assetInstanceId === item.assetInstanceId
+							? submittedItemTransform.yawRadians : undefined;
+						const rotation = previewYaw === undefined ? yaw * 180 / Math.PI + item.relativeYawMilliDeg / 1000 : previewYaw * 180 / Math.PI;
 						const selected = item.assetInstanceId === selectedItemId;
 						return (
 							// biome-ignore lint/a11y/useSemanticElements: a focusable SVG group selects the supported item in plan coordinates.
@@ -4444,7 +4459,7 @@ export function PlanProjection({
 									transform={`rotate(${-rotation} ${position.x} ${position.y})`} />
 							</g>
 						);
-					}) : null}
+					})}
 
 					{project.schemaVersion === 1
 						? project.assetInstances.map((item) => {

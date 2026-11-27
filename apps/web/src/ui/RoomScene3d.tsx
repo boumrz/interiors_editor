@@ -48,7 +48,7 @@ import { copy } from "./editor-language";
 import { itemPlacementPreviewFeedback } from "./editor-plan-presentation";
 import sceneStyles from "./RoomScene3d.module.css";
 import {
-	canvasPointForFloor,
+	canvasPointForWorld,
 	floorItemAtPoint,
 	floorItemAtScreenPoint,
 	floorPointForCanvas,
@@ -2049,9 +2049,10 @@ export function RoomScene3d({
 	const retainedHostTransform = retainedHostItemTransform();
 	const rotationBlocked = !itemPlacementDraft && !allowsHostItemTransform("rotation", selectedItemId);
 	const gizmoPosition = rotationItem
-		? canvasPointForFloor(renderedScene, camera, liveCanvasSize, {
-				xM: rotationItem.centerXM,
-				zM: rotationItem.centerZM,
+		? canvasPointForWorld(renderedScene, camera, liveCanvasSize, {
+				x: rotationItem.centerXM,
+				y: rotationItem.assetAnchor === "support" ? rotationItem.centerYM - rotationItem.heightM / 2 : 0,
+				z: rotationItem.centerZM,
 			})
 		: undefined;
 	const selectedItemFootprint =

@@ -8,9 +8,37 @@ import {
 	useState,
 } from "react";
 import type { DrawingDimensionVisibility } from "./drawing-dimension-visibility";
+import shellStyles from "./AppShell.module.css";
 import styles from "./DimensionFilter.module.css";
 import { SheetHeader } from "./SheetHeader";
 import { TelegramSheetFrame } from "./TelegramSheetFrame";
+
+export function DimensionFilterButton({ open, disabled, telegram, buttonRef, onOpen }: {
+	readonly open: boolean;
+	readonly disabled: boolean;
+	readonly telegram: boolean;
+	readonly buttonRef: RefObject<HTMLButtonElement | null>;
+	readonly onOpen: () => void;
+}) {
+	return (
+		<button
+			aria-label={copy("Настроить размеры", "Configure dimensions")}
+			aria-haspopup="dialog"
+			aria-expanded={open}
+			className={shellStyles.dimensionFilterTrigger}
+			data-plan-rotation-obstacle={telegram || undefined}
+			disabled={disabled}
+			ref={buttonRef}
+			type="button"
+			onClick={onOpen}
+		>
+			<svg aria-hidden="true" data-testid="dimension-filter-icon" viewBox="0 0 24 24" fill="none">
+				<path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+			</svg>
+			<span>{copy("Размеры", "Dimensions")}</span>
+		</button>
+	);
+}
 
 export function DimensionFilter({
 	telegram = false,
